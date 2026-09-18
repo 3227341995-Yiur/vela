@@ -1,0 +1,4 @@
+def main() -> None {
+    mut a: Array[int, 8] = [0]
+    b: Array[int, 4] = a[0:4]
+}

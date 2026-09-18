@@ -1,0 +1,2 @@
+vela: safety error: constant index -1 is out of range for Array[int, 4]
+  at tests/build/check_cases/negative_const_index.vel:3

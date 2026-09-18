@@ -1,0 +1,10 @@
+struct P {
+    x: int
+}
+
+def main() -> None {
+    mut a: P = P(1)
+    b: P = a
+    a.x = 99
+    print(a.x, b.x)
+}

@@ -1,0 +1,9 @@
+def main() -> None {
+    mut m: Array[int, 256] = [0]
+    parallel for i in range(0, 16) {
+        for j in range(0, 16) {
+            m[i * 16 + j] = i + j
+        }
+    }
+    print(m[0], m[255], m[17])
+}

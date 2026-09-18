@@ -1,0 +1,1938 @@
+# ---------------------------------------------------------------------------
+# selfhost/parts/emit.vel — the C11 back end, written in Vela.
+#
+# This is stage 3: the same front end that lexes, parses, resolves and
+# interprets a program also *compiles* it, by writing C to standard output.  The
+# C it writes is meant to be read — it is the evidence for the compiler's claims
+# (SPEC 6.1) — so it is emitted with indentation and with the program's own names,
+# prefixed so that a Vela name can never collide with a C keyword or a runtime
+# symbol.
+#
+# Two properties make this a streaming emitter rather than a tree rewriter.  Vela
+# has no string concatenation (SPEC 1.5) and no mutable string, so nothing is ever
+# built in memory: every part of the C program is written to standard output the
+# moment it is known, and `emit_str`/`emit_int` put it there.  Second, a checked
+# operation is an *expression* — `vela_add_range(a, b, INT64_MIN, INT64_MAX, f,
+# l)` — so no temporaries have to be hoisted and no statement queue has to exist.
+#
+# Expressions report their kind (the K_* codes) as they are emitted, because the
+# same node needs a different C spelling depending on its type: `+` on two ints is
+# a checked runtime call, `+` on two floats is C's own operator, and `print`
+# dispatches on all four scalar kinds.
+#
+# What is deliberately conservative *in this back end*: the checker does prove
+# intervals — `ck_iv_*` in parts/check.vel, plus the loop-variable and
+# condition-narrowing rules of SPEC 6.1 — and the emitter **does not consume those
+# proofs yet**, so every bounds and overflow check is emitted even where the proof
+# exists.  That is the whole difference between "checked by default", which the
+# language promises and this back end delivers, and "checked only where the
+# compiler cannot prove otherwise", which is `selfhost/ELISION_PLAN.md`; its first
+# step is to have the checker write its per-site decisions into the node pool while
+# the emitter ignores them, which is a change with no behaviour at all and is
+# therefore safe to land first.
+#
+# The generated C is slower than it will be and identical in behaviour, and the
+# `run` and `dumps` cases in `tests/run_tests.vel` are what hold it to that.  (The
+# Python differential suites named here before — diff_emit.py and its siblings —
+# were deleted with stage 0; no `.py` remains in this repository.)
+# ---------------------------------------------------------------------------
+
+# ----------------------------------------------------------------- text out
+
+def emit_indent(n: int) -> None {
+    mut i: int = 0
+    while i < n {
+        emit_str("    ")
+        i += 1
+    }
+}
+
+def emit_cname(h: int) -> None {
+    emit_str("vl_")
+    emit_str(interned(h))
+}
+
+# `Self.method` becomes `vl_Self__method`, and a struct type is `struct vl_Self`
+# with members `f_name`: one naming rule for the whole back end, so nothing a
+# program declares can collide with a runtime symbol or a C keyword.
+def emit_fn_name(nd: Array[int, 655360], mem: Array[int, 3741696],
+                 f: int) -> None {
+    d: int = ft_get(mem, f, FT_DEF())
+    owner: int = ft_get(mem, f, FT_OWNER())
+    # `vl_` is how this back end keeps a program's names out of the runtime's
+    # way.  An `extern c` function is not ours to rename: the symbol it names is
+    # in somebody else's library, and `vl_abs` is a function that does not exist.
+    # The declared name *is* the C name, and that is the whole of the binding.
+    if ft_get(mem, f, FT_BODY()) < 0 {
+        emit_str(interned(nd[d * 10 + 1]))
+        return
+    }
+    emit_str("vl_")
+    if owner >= 0 {
+        emit_str(interned(stb_get(mem, owner, STB_NAME())))
+        emit_str("__")
+    }
+    emit_str(interned(nd[d * 10 + 1]))
+}
+
+def emit_fn_ret_ctype(nd: Array[int, 655360], ty: Array[int, 262144],
+                      mem: Array[int, 3741696], vm: VM, path: str,
+                      f: int) -> None {
+    t: int = ft_get(mem, f, FT_RETTY())
+    packed: int = type_packed(ty, t, mem, vm)
+    if unpack_kind(packed) == K_ST() {
+        emit_binding_ctype(nd, ty, mem, vm, path, packed,
+                           nd_line(nd, ft_get(mem, f, FT_DEF())))
+        return
+    }
+    emit_ctype(unpack_kind(packed), path, nd_line(nd, ft_get(mem, f, FT_DEF())))
+}
+
+# The struct definitions come first: C needs the complete type before any function
+# that mentions it, and the field order is declaration order.
+def emit_struct_defs(mem: Array[int, 3741696], vm: VM) -> None {
+    mut s: int = 0
+    while s < vm.nstruct {
+        emit_str("struct vl_")
+        emit_str(interned(stb_get(mem, s, STB_NAME())))
+        emit_str(" {")
+        n: int = stb_get(mem, s, STB_NFIELD())
+        off: int = stb_get(mem, s, STB_FOFF())
+        mut i: int = 0
+        while i < n {
+            emit_packed_ctype(mem, vm, "<struct field>", 0,
+                              sfl_get(mem, off + i * 2 + 1))
+            emit_str(" ")
+            emit_field_name(mem, sfl_get(mem, off + i * 2))
+            emit_str("; ")
+            i += 1
+        }
+        emit_str("};\n\n")
+        s += 1
+    }
+}
+
+# A C string literal for the bytes of a Vela string.  Bytes outside printable
+# ASCII are written as three-digit octal escapes: `\xNN` would swallow a
+# following hex digit, and octal stops at three by definition.
+def emit_c_quoted(s: str) -> None {
+    emit_str("\"")
+    mut i: int = 0
+    while i < len(s) {
+        b: int = bytes_at(s, i)
+        if b == 34 {
+            emit_str("\\\"")
+        } else if b == 92 {
+            emit_str("\\\\")
+        } else if b == 10 {
+            emit_str("\\n")
+        } else if b == 9 {
+            emit_str("\\t")
+        } else if b == 13 {
+            emit_str("\\r")
+        } else if b < 32 {
+            emit_str("\\")
+            emit_int((b >> 6) & 7)
+            emit_int((b >> 3) & 7)
+            emit_int(b & 7)
+        } else if b > 126 {
+            emit_str("\\")
+            emit_int((b >> 6) & 7)
+            emit_int((b >> 3) & 7)
+            emit_int(b & 7)
+        } else {
+            emit_str(substr(s, i, i + 1))
+        }
+        i += 1
+    }
+    emit_str("\"")
+}
+
+# The file name as a C literal, for the runtime's panic messages.
+def emit_path_lit(path: str) -> None {
+    emit_c_quoted(path)
+}
+
+def emit_location(path: str, line: int) -> None {
+    emit_str(", ")
+    emit_path_lit(path)
+    emit_str(", ")
+    emit_int(line)
+}
+
+# --------------------------------------------------------------------- types
+
+# The C name of a struct: its Vela name with the same prefix every other
+# identifier gets, so a struct called `FILE` or `time` cannot collide with C.
+def emit_struct_name(mem: Array[int, 3741696], sid: int) -> None {
+    emit_str("struct vl_")
+    emit_str(interned(stb_get(mem, sid, STB_NAME())))
+}
+
+def emit_field_name(mem: Array[int, 3741696], h: int) -> None {
+    emit_str("f_")
+    emit_str(interned(h))
+}
+
+def emit_ctype(kind: int, path: str, line: int) -> None {
+    if kind == K_INT() {
+        emit_str("int64_t")
+        return
+    }
+    if kind == K_FLT() {
+        emit_str("double")
+        return
+    }
+    if kind == K_BOOL() {
+        emit_str("bool")
+        return
+    }
+    if kind == K_STR() {
+        emit_str("vela_str")
+        return
+    }
+    if kind == K_I32() {
+        emit_str("int32_t")
+        return
+    }
+    if kind == K_U8() {
+        emit_str("uint8_t")
+        return
+    }
+    if kind == K_NONE() {
+        emit_str("void")
+        return
+    }
+    if is_array(kind) {
+        emit_array_ctype(kind, path, line)
+        return
+    }
+    if kind == K_ST() {
+        trap(path, line, "structs are not implemented in this slice of the back end")
+    }
+    trap(path, line, "this type has no C spelling")
+}
+
+def emit_array_ctype(kind: int, path: str, line: int) -> None {
+    if kind == K_AI() {
+        emit_str("int64_t*")
+        return
+    }
+    if kind == K_A32() {
+        emit_str("int32_t*")
+        return
+    }
+    if kind == K_AF() {
+        emit_str("double*")
+        return
+    }
+    if kind == K_AB() {
+        emit_str("uint8_t*")
+        return
+    }
+    if kind == K_AA() {
+        emit_str("bool*")
+        return
+    }
+    if kind == K_AS() {
+        emit_str("vela_str*")
+        return
+    }
+    if kind == K_AX() {
+        trap(path, line, "an array of structs is not implemented in this slice")
+    }
+    trap(path, line, "this array type has no C spelling")
+}
+
+# The C type of a declared type record, which is where an array's element type
+# and length come from (a type record is a name plus an element record plus a
+# length, selfhost/AST.md 6).
+def emit_ty_ctype(ty: Array[int, 262144], t: int, mem: Array[int, 3741696],
+                  vm: VM, path: str, line: int) -> None {
+    emit_ctype(type_kind(ty, t, mem, vm), path, line)
+}
+
+def is_ptr_ctype(kind: int) -> bool {
+    if is_array(kind) {
+        return True
+    }
+    return False
+}
+
+# ------------------------------------------------------------- declarations
+
+def emit_param_decl(nd: Array[int, 655360], ty: Array[int, 262144],
+                    mem: Array[int, 3741696], vm: VM, path: str,
+                    p: int) -> None {
+    emit_ty_ctype(ty, nd[p * 10 + 2], mem, vm, path, nd_line(nd, p))
+    emit_str(" ")
+    emit_cname(nd[p * 10 + 1])
+}
+
+def emit_decl_head(nd: Array[int, 655360], ty: Array[int, 262144],
+                   mem: Array[int, 3741696], vm: VM, path: str,
+                   d: int) -> None {
+    emit_binding_ctype(nd, ty, mem, vm, path, nt_get(mem, d, NT_LIT()),
+                       nd_line(nd, d))
+    emit_str(" ")
+    tgt: int = nd[d * 10 + 1]
+    emit_cname(nd[tgt * 10 + 1])
+}
+
+# ------------------------------------------------------------- expressions
+
+def emit_int_lit(v: int) -> None {
+    if v == (-9223372036854775807 - 1) {
+        emit_str("(-9223372036854775807LL - 1)")
+        return
+    }
+    emit_int(v)
+    emit_str("LL")
+}
+
+def emit_binop_operands(nd: Array[int, 655360], ty: Array[int, 262144],
+                        flt: Array[float, 65536], src: str, path: str,
+                        mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
+    # returns the kind of the *left* operand, which is the kind of both: Vela has
+    # no implicit conversion (SPEC 3.1), so a mixed pair is a program error
+    lt: int = emit_paren_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+    emit_str(", ")
+    emit_paren_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 3])
+    return lt
+}
+
+def emit_paren_expr(nd: Array[int, 655360], ty: Array[int, 262144],
+                    flt: Array[float, 65536], src: str, path: str,
+                    mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
+    emit_str("(")
+    k: int = emit_expr(nd, ty, flt, src, path, mem, vm, e)
+    emit_str(")")
+    return k
+}
+
+def emit_binop(nd: Array[int, 655360], ty: Array[int, 262144],
+               flt: Array[float, 65536], src: str, path: str,
+               mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
+    op: int = nd[e * 10 + 1]
+    line: int = nd_line(nd, e)
+    # an int operation that can overflow, or divide, goes through the runtime
+    lk: int = expr_kind(nd, ty, mem, vm, nd[e * 10 + 2])
+    if lk == K_INT() {
+        if op == 1 {
+            emit_str("vela_add_range(")
+            emit_binop_operands(nd, ty, flt, src, path, mem, vm, e)
+            emit_str(", INT64_MIN, INT64_MAX")
+            emit_location(path, line)
+            emit_str(")")
+            return K_INT()
+        }
+        if op == 2 {
+            emit_str("vela_sub_range(")
+            emit_binop_operands(nd, ty, flt, src, path, mem, vm, e)
+            emit_str(", INT64_MIN, INT64_MAX")
+            emit_location(path, line)
+            emit_str(")")
+            return K_INT()
+        }
+        if op == 3 {
+            emit_str("vela_mul_range(")
+            emit_binop_operands(nd, ty, flt, src, path, mem, vm, e)
+            emit_str(", INT64_MIN, INT64_MAX")
+            emit_location(path, line)
+            emit_str(")")
+            return K_INT()
+        }
+        if op == 20 {
+            emit_str("vela_floor_div(")
+            emit_binop_operands(nd, ty, flt, src, path, mem, vm, e)
+            emit_location(path, line)
+            emit_str(")")
+            return K_INT()
+        }
+        if op == 5 {
+            emit_str("vela_floor_mod(")
+            emit_binop_operands(nd, ty, flt, src, path, mem, vm, e)
+            emit_location(path, line)
+            emit_str(")")
+            return K_INT()
+        }
+        if op == 21 {
+            emit_str("vela_pow_int(")
+            emit_binop_operands(nd, ty, flt, src, path, mem, vm, e)
+            emit_location(path, line)
+            emit_str(")")
+            return K_INT()
+        }
+        if op == 35 {
+            emit_str("vela_shl_int(")
+            emit_binop_operands(nd, ty, flt, src, path, mem, vm, e)
+            emit_location(path, line)
+            emit_str(")")
+            return K_INT()
+        }
+        if op == 36 {
+            emit_str("vela_shr_int(")
+            emit_binop_operands(nd, ty, flt, src, path, mem, vm, e)
+            emit_location(path, line)
+            emit_str(")")
+            return K_INT()
+        }
+    }
+    # everything else is C's own operator, parenthesised so precedence is never
+    # in question
+    emit_str("(")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+    emit_str(" ")
+    emit_op_text(op)
+    emit_str(" ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 3])
+    emit_str(")")
+    return lk
+}
+
+def emit_op_text(op: int) -> None {
+    if op == 1 {
+        emit_str("+")
+        return
+    }
+    if op == 2 {
+        emit_str("-")
+        return
+    }
+    if op == 3 {
+        emit_str("*")
+        return
+    }
+    if op == 4 {
+        emit_str("/")
+        return
+    }
+    if op == 5 {
+        emit_str("%")
+        return
+    }
+    if op == 17 {
+        emit_str("&")
+        return
+    }
+    if op == 18 {
+        emit_str("|")
+        return
+    }
+    if op == 19 {
+        emit_str("^")
+        return
+    }
+    if op == 6 {
+        emit_str("<")
+        return
+    }
+    if op == 7 {
+        emit_str(">")
+        return
+    }
+    if op == 22 {
+        emit_str("==")
+        return
+    }
+    if op == 23 {
+        emit_str("!=")
+        return
+    }
+    if op == 24 {
+        emit_str("<=")
+        return
+    }
+    if op == 25 {
+        emit_str(">=")
+        return
+    }
+    if op == 13 {
+        emit_str("|")
+        return
+    }
+    if op == 35 {
+        emit_str("<<")
+        return
+    }
+    if op == 36 {
+        emit_str(">>")
+        return
+    }
+    emit_str("?")
+}
+
+def emit_cmp(nd: Array[int, 655360], ty: Array[int, 262144],
+             flt: Array[float, 65536], src: str, path: str,
+             mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
+    op: int = nd[e * 10 + 1]
+    lk: int = expr_kind(nd, ty, mem, vm, nd[e * 10 + 2])
+    if lk == K_STR() {
+        # a string comparison is a call, because a Vela string is a slice
+        if op == 23 {
+            emit_str("(!")
+        } else {
+            emit_str("(")
+        }
+        emit_str("vela_str_eq(")
+        emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+        emit_str(", ")
+        emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 3])
+        emit_str("))")
+        return K_BOOL()
+    }
+    emit_str("(")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+    emit_str(" ")
+    emit_op_text(op)
+    emit_str(" ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 3])
+    emit_str(")")
+    return K_BOOL()
+}
+
+def emit_boolop(nd: Array[int, 655360], ty: Array[int, 262144],
+                flt: Array[float, 65536], src: str, path: str,
+                mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
+    op: int = nd[e * 10 + 1]
+    emit_str("(")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+    if op == 13 {
+        emit_str(" && ")
+    } else {
+        emit_str(" || ")
+    }
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 3])
+    emit_str(")")
+    return K_BOOL()
+}
+
+def emit_unary(nd: Array[int, 655360], ty: Array[int, 262144],
+               flt: Array[float, 65536], src: str, path: str,
+               mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
+    op: int = nd[e * 10 + 1]
+    operand: int = nd[e * 10 + 2]
+    k: int = expr_kind(nd, ty, mem, vm, operand)
+    if op == 2 {
+        if k == K_INT() {
+            emit_str("vela_neg_int(")
+            emit_expr(nd, ty, flt, src, path, mem, vm, operand)
+            emit_location(path, nd_line(nd, e))
+            emit_str(")")
+            return K_INT()
+        }
+        emit_str("(-")
+        emit_expr(nd, ty, flt, src, path, mem, vm, operand)
+        emit_str(")")
+        return k
+    }
+    if op == 1 {
+        emit_str("(+")
+        emit_expr(nd, ty, flt, src, path, mem, vm, operand)
+        emit_str(")")
+        return k
+    }
+    if op == 32 {
+        emit_str("(~")
+        emit_expr(nd, ty, flt, src, path, mem, vm, operand)
+        emit_str(")")
+        return k
+    }
+    if op == 15 {
+        emit_str("(!")
+        emit_expr(nd, ty, flt, src, path, mem, vm, operand)
+        emit_str(")")
+        return K_BOOL()
+    }
+    trap(path, nd_line(nd, e), "unknown unary operator in the back end")
+    return K_NONE()
+}
+
+def emit_name(nd: Array[int, 655360], mem: Array[int, 3741696], path: str,
+              vm: VM, e: int) -> int {
+    sk: int = nt_get(mem, e, NT_SYM())
+    if sk == SYM_LOCAL() {
+        emit_cname(nd[e * 10 + 1])
+        return local_kind(mem, e)
+    }
+    if sk == SYM_FUNC() {
+        trap(path, nd_line(nd, e), "a function is not a value")
+    }
+    if sk == SYM_STRUCT() {
+        trap(path, nd_line(nd, e), "a struct name is not a value")
+    }
+    if sk == SYM_BUILTIN() {
+        trap(path, nd_line(nd, e), "a builtin is not a value")
+    }
+    trap(path, nd_line(nd, e), "unresolved name in the back end")
+    return K_NONE()
+}
+
+# A name expression's type: the resolver recorded the frame slot, and the
+# declaration that owns that slot recorded the kind.  Searching the node table
+# keeps the emitter free of a second symbol table.
+def local_kind(mem: Array[int, 3741696], e: int) -> int {
+    return nt_get(mem, e, NT_LIT())
+}
+
+# `s.f` and `p.f`: the arrow depends on how the base arrived.  A name that is a
+# `mut` struct parameter is a pointer in C (that is what makes a method's write
+# visible to its caller), and everything else is a value.
+def emit_field_base(nd: Array[int, 655360], ty: Array[int, 262144],
+                    flt: Array[float, 65536], src: str, path: str,
+                    mem: Array[int, 3741696], mut vm: VM, base: int) -> None {
+    if nd_kind(nd, base) == 25 {
+        packed: int = expr_packed(nd, ty, mem, vm, base)
+        emit_cname(nd[base * 10 + 1])
+        if is_ptr_binding(packed) {
+            emit_str("->")
+        } else {
+            emit_str(".")
+        }
+        return
+    }
+    emit_expr(nd, ty, flt, src, path, mem, vm, base)
+    emit_str(".")
+}
+
+def emit_field(nd: Array[int, 655360], ty: Array[int, 262144],
+               flt: Array[float, 65536], src: str, path: str,
+               mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
+    base: int = nd[e * 10 + 1]
+    emit_field_base(nd, ty, flt, src, path, mem, vm, base)
+    emit_field_name(mem, nd[e * 10 + 2])
+    # the packed field kind, the same value expr_packed answers for `.f`, so a
+    # struct-typed field still knows which struct it is
+    sid: int = unpack_len(expr_packed(nd, ty, mem, vm, base))
+    idx: int = find_field(mem, sid, nd[e * 10 + 2])
+    if idx < 0 {
+        trap(path, nd_line(nd, e), "this struct has no field of that name")
+    }
+    return sfl_get(mem, stb_get(mem, sid, STB_FOFF()) + idx * 2 + 1)
+}
+
+# A field's kind comes from the struct table, where the resolver put each field's
+# name beside the packed kind of its declared type.
+def field_kind(nd: Array[int, 655360], ty: Array[int, 262144],
+               mem: Array[int, 3741696], vm: VM, e: int) -> int {
+    base: int = nd[e * 10 + 1]
+    packed: int = expr_packed(nd, ty, mem, vm, base)
+    sid: int = unpack_len(packed)
+    idx: int = find_field(mem, sid, nd[e * 10 + 2])
+    if idx < 0 {
+        return K_NONE()
+    }
+    off: int = stb_get(mem, sid, STB_FOFF())
+    return unpack_kind(sfl_get(mem, off + idx * 2 + 1))
+}
+
+def emit_call(nd: Array[int, 655360], ty: Array[int, 262144],
+              flt: Array[float, 65536], src: str, path: str,
+              mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
+    callee: int = nd[e * 10 + 1]
+    if nd_kind(nd, callee) == 32 {
+        return emit_method_call(nd, ty, flt, src, path, mem, vm, e)
+    }
+    sk: int = nt_get(mem, callee, NT_SYM())
+    sv: int = nt_get(mem, callee, NT_VAL())
+    if sk == SYM_FUNC() {
+        emit_fn_name(nd, mem, sv)
+        emit_str("(")
+        emit_args_vs_params(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2],
+                            ft_get(mem, sv, FT_PARAM()))
+        emit_str(")")
+        return ft_ret_kind(nd, ty, mem, vm, sv)
+    }
+    if sk == SYM_BUILTIN() {
+        emit_str("(")
+        emit_builtin(nd, ty, flt, src, path, mem, vm, sv, e)
+        emit_str(")")
+        return builtin_kind(sv)
+    }
+    if sk == SYM_STRUCT() {
+        # a C99 compound literal: the fields are given in declaration order, which
+        # is the order the constructor's arguments are in
+        emit_str("(struct vl_")
+        emit_str(interned(stb_get(mem, sv, STB_NAME())))
+        emit_str("){ ")
+        emit_args(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+        emit_str(" }")
+        # the constructor's own struct, not struct 0
+        return pack_kind(K_ST(), sv)
+    }
+    trap(path, nd_line(nd, e), "this is not something that can be called")
+    return K_NONE()
+}
+
+# `recv.name(args)`: the receiver becomes argument 0, and it is a pointer exactly
+# when the method declares `mut self` — which is how `p.scale(2.0)` reaches p.
+def emit_method_call(nd: Array[int, 655360], ty: Array[int, 262144],
+                     flt: Array[float, 65536], src: str, path: str,
+                     mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
+    callee: int = nd[e * 10 + 1]
+    recv: int = nd[callee * 10 + 1]
+    name: int = nd[callee * 10 + 2]
+    rp: int = expr_packed(nd, ty, mem, vm, recv)
+    sid: int = unpack_len(rp)
+    mi: int = find_method(mem, sid, name)
+    if mi < 0 {
+        trap(path, nd_line(nd, e), "this struct has no method of that name")
+    }
+    fn: int = met_get(mem, mi, MET_FN())
+    emit_fn_name(nd, mem, fn)
+    emit_str("(")
+    # the receiver is parameter 0, reconciled like any other argument, so `self`
+    # arrives as a pointer exactly when the method declares `mut self`
+    emit_arg_for_param(nd, ty, flt, src, path, mem, vm, recv,
+                       param_packed(nd, ty, mem, vm,
+                                    ft_get(mem, fn, FT_PARAM())))
+    if nd[e * 10 + 2] > 0 {
+        emit_str(", ")
+        emit_args_vs_params(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2],
+                            nd_nx(nd, ft_get(mem, fn, FT_PARAM())))
+    }
+    emit_str(")")
+    return ft_ret_kind(nd, ty, mem, vm, fn)
+}
+
+def ft_ret_kind(nd: Array[int, 655360], ty: Array[int, 262144],
+                mem: Array[int, 3741696], vm: VM, f: int) -> int {
+    return type_packed(ty, ft_get(mem, f, FT_RETTY()), mem, vm)
+}
+
+def builtin_kind(b: int) -> int {
+    if b == B_LEN() { return K_INT() }
+    if b == B_TO_FLOAT() { return K_FLT() }
+    if b == B_TO_INT() { return K_INT() }
+    if b == B_SQRT() { return K_FLT() }
+    if b == B_FABS() { return K_FLT() }
+    if b == B_FLOOR() { return K_FLT() }
+    if b == B_POW() { return K_FLT() }
+    if b == B_ABS() { return K_INT() }
+    if b == B_MIN_INT() { return K_INT() }
+    if b == B_MAX_INT() { return K_INT() }
+    if b == B_MIN_FLT() { return K_FLT() }
+    if b == B_MAX_FLT() { return K_FLT() }
+    if b == B_BYTES_AT() { return K_INT() }
+    if b == B_SUBSTR() { return K_STR() }
+    if b == B_UNESCAPE() { return K_STR() }
+    if b == B_INTERN() { return K_INT() }
+    if b == B_INTERNED() { return K_STR() }
+    if b == B_ARGC() { return K_INT() }
+    if b == B_ARG() { return K_STR() }
+    if b == B_READ_TEXT() { return K_STR() }
+    if b == B_WRITE_TEXT() { return K_BOOL() }
+    if b == B_NOW() { return K_FLT() }
+    if b == B_CONCAT() { return K_STR() }
+    if b == B_RUN_CMD() { return K_INT() }
+    if b == B_ENV() { return K_STR() }
+    return K_NONE()
+}
+
+# A struct argument has to be reconciled with the parameter it is going to: a
+# `mut` parameter is a pointer in C, a plain one is a value, and a name that is
+# itself a `mut` parameter is a pointer too.  Four combinations, and getting one
+# of them wrong is a compile error in the generated C rather than a wrong answer —
+# which is the good kind of wrong, but it still has to be right.
+def emit_arg_for_param(nd: Array[int, 655360], ty: Array[int, 262144],
+                       flt: Array[float, 65536], src: str, path: str,
+                       mem: Array[int, 3741696], mut vm: VM, arg: int,
+                       parampacked: int) -> None {
+    if unpack_kind(parampacked) != K_ST() {
+        emit_expr(nd, ty, flt, src, path, mem, vm, arg)
+        return
+    }
+    wants_ptr: bool = is_ptr_binding(parampacked)
+    if nd_kind(nd, arg) == 25 {
+        arg_is_ptr: bool = is_ptr_binding(expr_packed(nd, ty, mem, vm, arg))
+        if wants_ptr {
+            if arg_is_ptr {
+                emit_cname(nd[arg * 10 + 1])
+                return
+            }
+            emit_str("(&")
+            emit_cname(nd[arg * 10 + 1])
+            emit_str(")")
+            return
+        }
+        if arg_is_ptr {
+            emit_str("(*")
+            emit_cname(nd[arg * 10 + 1])
+            emit_str(")")
+            return
+        }
+        emit_cname(nd[arg * 10 + 1])
+        return
+    }
+    if wants_ptr {
+        trap(path, nd_line(nd, arg), "a `mut` parameter needs a variable, not a value")
+    }
+    emit_expr(nd, ty, flt, src, path, mem, vm, arg)
+}
+
+# Arguments against the callee's parameter list, so each one knows how to arrive.
+def emit_args_vs_params(nd: Array[int, 655360], ty: Array[int, 262144],
+                        flt: Array[float, 65536], src: str, path: str,
+                        mem: Array[int, 3741696], mut vm: VM, args: int,
+                        p: int) -> None {
+    mut a: int = args
+    mut pi: int = p
+    mut n: int = 0
+    while a > 0 {
+        if n > 0 {
+            emit_str(", ")
+        }
+        mut pp: int = 0
+        if pi > 0 {
+            pp = param_packed(nd, ty, mem, vm, pi)
+            pi = nd_nx(nd, pi)
+        }
+        emit_arg_for_param(nd, ty, flt, src, path, mem, vm, a, pp)
+        a = nd_nx(nd, a)
+        n += 1
+    }
+}
+
+def emit_args(nd: Array[int, 655360], ty: Array[int, 262144],
+              flt: Array[float, 65536], src: str, path: str,
+              mem: Array[int, 3741696], mut vm: VM, head: int) -> None {
+    mut a: int = head
+    mut n: int = 0
+    while a > 0 {
+        if n > 0 {
+            emit_str(", ")
+        }
+        emit_expr(nd, ty, flt, src, path, mem, vm, a)
+        a = nd_nx(nd, a)
+        n += 1
+    }
+}
+
+def emit_one_arg(nd: Array[int, 655360], ty: Array[int, 262144],
+                 flt: Array[float, 65536], src: str, path: str,
+                 mem: Array[int, 3741696], mut vm: VM, e: int) -> None {
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+}
+
+def emit_two_args(nd: Array[int, 655360], ty: Array[int, 262144],
+                  flt: Array[float, 65536], src: str, path: str,
+                  mem: Array[int, 3741696], mut vm: VM, e: int) -> None {
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+    emit_str(", ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd_nx(nd, nd[e * 10 + 2]))
+}
+
+def emit_three_args(nd: Array[int, 655360], ty: Array[int, 262144],
+                    flt: Array[float, 65536], src: str, path: str,
+                    mem: Array[int, 3741696], mut vm: VM, e: int) -> None {
+    emit_two_args(nd, ty, flt, src, path, mem, vm, e)
+    emit_str(", ")
+    a1: int = nd[e * 10 + 2]
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd_nx(nd, nd_nx(nd, a1)))
+}
+
+# `min_int(a, b)` is a choice between two values, not a call: it is emitted as
+# the same conditional expression the stage-0 emitter writes.  Both arguments are
+# therefore evaluated twice when the chosen one wins — which is what the compiler
+# does today, and this back end matches the compiler rather than improving on it
+# behind its back.
+def emit_choice(nd: Array[int, 655360], ty: Array[int, 262144],
+                flt: Array[float, 65536], src: str, path: str,
+                mem: Array[int, 3741696], mut vm: VM, e: int,
+                rel: str) -> None {
+    a1: int = nd[e * 10 + 2]
+    a2: int = nd_nx(nd, a1)
+    emit_str("(")
+    emit_expr(nd, ty, flt, src, path, mem, vm, a1)
+    emit_str(" ")
+    emit_str(rel)
+    emit_str(" ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, a2)
+    emit_str(" ? ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, a1)
+    emit_str(" : ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, a2)
+    emit_str(")")
+}
+
+def emit_builtin(nd: Array[int, 655360], ty: Array[int, 262144],
+                 flt: Array[float, 65536], src: str, path: str,
+                 mem: Array[int, 3741696], mut vm: VM, b: int, e: int) -> None {
+    line: int = nd_line(nd, e)
+    if b == B_LEN() {
+        # len(str) is a field; len(Array) is a compile-time constant, and this
+        # slice does not carry array types yet
+        argpacked: int = expr_packed(nd, ty, mem, vm, nd[e * 10 + 2])
+        if is_array(unpack_kind(argpacked)) {
+            emit_int(unpack_len(argpacked))
+            emit_str("LL")
+            return
+        }
+        emit_str("((int64_t)")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(".len)")
+        return
+    }
+    if b == B_TO_FLOAT() {
+        emit_str("((double)")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_TO_INT() {
+        emit_str("((int64_t)")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_SQRT() {
+        emit_str("sqrt(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_FABS() {
+        emit_str("fabs(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_FLOOR() {
+        emit_str("floor(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_POW() {
+        emit_str("pow(")
+        emit_two_args(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_ABS() {
+        emit_str("vela_abs_int(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_location(path, line)
+        emit_str(")")
+        return
+    }
+    if b == B_MIN_INT() {
+        emit_choice(nd, ty, flt, src, path, mem, vm, e, "<")
+        return
+    }
+    if b == B_MAX_INT() {
+        emit_choice(nd, ty, flt, src, path, mem, vm, e, ">")
+        return
+    }
+    if b == B_MIN_FLT() {
+        emit_choice(nd, ty, flt, src, path, mem, vm, e, "<")
+        return
+    }
+    if b == B_MAX_FLT() {
+        emit_choice(nd, ty, flt, src, path, mem, vm, e, ">")
+        return
+    }
+    if b == B_BYTES_AT() {
+        emit_str("vela_bytes_at(")
+        emit_two_args(nd, ty, flt, src, path, mem, vm, e)
+        emit_location(path, line)
+        emit_str(")")
+        return
+    }
+    if b == B_SUBSTR() {
+        emit_str("vela_substr(")
+        emit_three_args(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_UNESCAPE() {
+        emit_str("vela_unescape(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_INTERN() {
+        emit_str("vela_intern(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_INTERNED() {
+        emit_str("vela_interned(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_location(path, line)
+        emit_str(")")
+        return
+    }
+    if b == B_ARGC() {
+        emit_str("vela_argc()")
+        return
+    }
+    if b == B_ARG() {
+        emit_str("vela_arg(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_location(path, line)
+        emit_str(")")
+        return
+    }
+    if b == B_READ_TEXT() {
+        emit_str("vela_read_text(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_WRITE_TEXT() {
+        emit_str("((bool)vela_write_text(")
+        emit_two_args(nd, ty, flt, src, path, mem, vm, e)
+        emit_str("))")
+        return
+    }
+    if b == B_NOW() {
+        emit_str("vela_now()")
+        return
+    }
+    if b == B_CONCAT() {
+        emit_str("vela_concat(")
+        emit_two_args(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_RUN_CMD() {
+        emit_str("vela_run_command(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_ENV() {
+        emit_str("vela_env(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_PANIC() {
+        emit_str("vela_panic_str(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_EMIT_STR() {
+        emit_str("vela_emit_str(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_EMIT_INT() {
+        emit_str("vela_emit_int(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_EMIT_FLT() {
+        emit_str("vela_emit_float(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_EMIT_NL() {
+        emit_str("vela_emit_nl()")
+        return
+    }
+    if b == B_WARN_STR() {
+        emit_str("vela_warn_str(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_WARN_INT() {
+        emit_str("vela_warn_int(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_WARN_NL() {
+        emit_str("vela_warn_nl()")
+        return
+    }
+    trap(path, line, "this builtin is not implemented in the back end yet")
+}
+
+# ---------------------------------------------------------------- statements
+
+def emit_print(nd: Array[int, 655360], ty: Array[int, 262144],
+               flt: Array[float, 65536], src: str, path: str,
+               mem: Array[int, 3741696], mut vm: VM, e: int,
+               indent: int) -> None {
+    mut a: int = nd[e * 10 + 2]
+    mut n: int = 0
+    while a > 0 {
+        if n > 0 {
+            emit_str("vela_print_sep();\n")
+            emit_indent(indent)
+        }
+        k: int = expr_kind(nd, ty, mem, vm, a)
+        if k == K_STR() {
+            emit_str("vela_print_str(")
+            emit_expr(nd, ty, flt, src, path, mem, vm, a)
+            emit_str(");\n")
+        } else if k == K_FLT() {
+            emit_str("vela_print_f64(")
+            emit_expr(nd, ty, flt, src, path, mem, vm, a)
+            emit_str(");\n")
+        } else if k == K_BOOL() {
+            emit_str("vela_print_bool(")
+            emit_expr(nd, ty, flt, src, path, mem, vm, a)
+            emit_str(");\n")
+        } else {
+            emit_str("vela_print_i64(")
+            emit_expr(nd, ty, flt, src, path, mem, vm, a)
+            emit_str(");\n")
+        }
+        a = nd_nx(nd, a)
+        n += 1
+        if a > 0 {
+            emit_indent(indent)
+        }
+    }
+    emit_indent(indent)
+    emit_str("vela_print_nl();\n")
+}
+
+def emit_assign(nd: Array[int, 655360], ty: Array[int, 262144],
+                flt: Array[float, 65536], src: str, path: str,
+                mem: Array[int, 3741696], mut vm: VM, s: int,
+                indent: int) -> None {
+    tgt: int = nd[s * 10 + 1]
+    v: int = nd[s * 10 + 2]
+    if (nd[s * 10 + 6] & 2) == 2 {
+        emit_decl_head(nd, ty, mem, vm, path, s)
+        if v <= 0 {
+            trap(path, nd_line(nd, s), "this declaration needs an initialiser")
+        }
+        emit_str(" = ")
+        emit_expr(nd, ty, flt, src, path, mem, vm, v)
+        emit_str(";\n")
+        return
+    }
+    if nd_kind(nd, tgt) == 31 {
+        # a store cannot carry its own check (a comma expression is not an
+        # lvalue), so the check is hoisted in front of the statement
+        emit_index_check(nd, ty, flt, src, path, mem, vm, tgt)
+        emit_str(";\n")
+        emit_indent(indent)
+    }
+    emit_lvalue(nd, ty, flt, src, path, mem, vm, tgt)
+    emit_str(" = ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, v)
+    emit_str(";\n")
+}
+
+# The left-hand side of an assignment.  It cannot be `emit_expr`: a read of an
+# indexed element is a comma expression, and a comma expression is not an lvalue
+# in C, so a store emits the element directly and relies on the check that was
+# hoisted in front of the statement.
+def emit_lvalue(nd: Array[int, 655360], ty: Array[int, 262144],
+                flt: Array[float, 65536], src: str, path: str,
+                mem: Array[int, 3741696], mut vm: VM, tgt: int) -> None {
+    if nd_kind(nd, tgt) == 31 {
+        emit_expr(nd, ty, flt, src, path, mem, vm, nd[tgt * 10 + 1])
+        emit_str("[")
+        emit_expr(nd, ty, flt, src, path, mem, vm, nd[tgt * 10 + 2])
+        emit_str("]")
+        return
+    }
+    if nd_kind(nd, tgt) == 32 {
+        emit_field_base(nd, ty, flt, src, path, mem, vm, nd[tgt * 10 + 1])
+        emit_field_name(mem, nd[tgt * 10 + 2])
+        return
+    }
+    emit_expr(nd, ty, flt, src, path, mem, vm, tgt)
+}
+
+# The bounds check for an indexed target, as a statement.  The array is always a
+# name — Vela has no arrays of arrays and no functions returning arrays — so its
+# length is known from the binding.
+def emit_index_check(nd: Array[int, 655360], ty: Array[int, 262144],
+                     flt: Array[float, 65536], src: str, path: str,
+                     mem: Array[int, 3741696], mut vm: VM, tgt: int) -> None {
+    emit_str("vela_bounds_check(")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[tgt * 10 + 2])
+    emit_str(", ")
+    emit_int(unpack_len(expr_packed(nd, ty, mem, vm, nd[tgt * 10 + 1])))
+    emit_location(path, nd_line(nd, tgt))
+    emit_str(")")
+}
+
+def emit_augassign(nd: Array[int, 655360], ty: Array[int, 262144],
+                   flt: Array[float, 65536], src: str, path: str,
+                   mem: Array[int, 3741696], mut vm: VM, s: int,
+                   indent: int) -> None {
+    tgt: int = nd[s * 10 + 1]
+    v: int = nd[s * 10 + 2]
+    op: int = nd[s * 10 + 3]
+    line: int = nd_line(nd, s)
+    if nd_kind(nd, tgt) == 31 {
+        emit_index_check(nd, ty, flt, src, path, mem, vm, tgt)
+        emit_str(";\n")
+        emit_indent(indent)
+    }
+    k: int = expr_kind(nd, ty, mem, vm, tgt)
+    if k != K_INT() {
+        # floats cannot overflow and cannot divide by an integer zero, so C's own
+        # augmented operator is the whole story
+        emit_lvalue(nd, ty, flt, src, path, mem, vm, tgt)
+        if op == 1 {
+            emit_str(" += ")
+        } else if op == 2 {
+            emit_str(" -= ")
+        } else if op == 3 {
+            emit_str(" *= ")
+        } else if op == 4 {
+            emit_str(" /= ")
+        } else {
+            trap(path, line, "this augmented operator has no float spelling")
+        }
+        emit_expr(nd, ty, flt, src, path, mem, vm, v)
+        emit_str(";\n")
+        return
+    }
+    emit_lvalue(nd, ty, flt, src, path, mem, vm, tgt)
+    emit_str(" = ")
+    if op == 1 {
+        emit_str("vela_add_range(")
+    } else if op == 2 {
+        emit_str("vela_sub_range(")
+    } else if op == 3 {
+        emit_str("vela_mul_range(")
+    } else if op == 20 {
+        emit_str("vela_floor_div(")
+    } else if op == 5 {
+        emit_str("vela_floor_mod(")
+    } else if op == 21 {
+        emit_str("vela_pow_int(")
+    } else {
+        trap(path, line, "this augmented operator is not implemented in the back end")
+    }
+    emit_expr(nd, ty, flt, src, path, mem, vm, tgt)
+    emit_str(", ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, v)
+    if op == 1 {
+        emit_str(", INT64_MIN, INT64_MAX")
+    } else if op == 2 {
+        emit_str(", INT64_MIN, INT64_MAX")
+    } else if op == 3 {
+        emit_str(", INT64_MIN, INT64_MAX")
+    }
+    emit_location(path, line)
+    emit_str(");\n")
+}
+
+def emit_if(nd: Array[int, 655360], ty: Array[int, 262144],
+            flt: Array[float, 65536], src: str, path: str,
+            mem: Array[int, 3741696], mut vm: VM, s: int, indent: int) -> None {
+    emit_str("if (")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 1])
+    emit_str(") {\n")
+    emit_body(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 2], indent + 1)
+    emit_indent(indent)
+    emit_str("}")
+    e: int = nd[s * 10 + 4]
+    if e > 0 {
+        if nd_kind(nd, e) == 10 {
+            # `else if`: Vela stores the nested if node directly, so C's own
+            # `else if` is a direct translation rather than a nested block
+            emit_str(" else ")
+            emit_if(nd, ty, flt, src, path, mem, vm, e, indent)
+            return
+        }
+        emit_str(" else {\n")
+        emit_body(nd, ty, flt, src, path, mem, vm, e, indent + 1)
+        emit_indent(indent)
+        emit_str("}")
+    }
+    emit_str("\n")
+}
+
+def emit_while(nd: Array[int, 655360], ty: Array[int, 262144],
+               flt: Array[float, 65536], src: str, path: str,
+               mem: Array[int, 3741696], mut vm: VM, s: int,
+               indent: int) -> None {
+    emit_str("while (")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 1])
+    emit_str(") {\n")
+    emit_body(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 2], indent + 1)
+    emit_indent(indent)
+    emit_str("}\n")
+}
+
+# A `for i in range(a, b, step)` loop is emitted as the equivalent while loop with
+# the bounds and the step evaluated once, in that order, before the first test.
+# The increment is the checked add, because that is what the compiled program
+# does: a range that runs off the end of int64 must panic, not wrap.
+# ------------------------------------------------------------ parallel loops
+#
+# Two questions decide whether a `parallel for` can be handed to OpenMP, and
+# both are about the *shape* of the loop rather than about the program's meaning:
+# the checker has already settled the meaning.
+
+# `for i in range(a, b)` has no step node, which is a step of one; anything else
+# is a step OpenMP's canonical form does not accept.
+def par_step_is_one(nd: Array[int, 655360], s: int) -> bool {
+    return nd[s * 10 + 4] <= 0
+}
+
+# A branch out of the parallel loop: `break` or `continue` at this level, or
+# inside an `if` at this level.  One inside a *nested* loop belongs to that loop
+# and is none of OpenMP's business, so the walk stops at the first nested loop.
+#
+# `return` is refused for the same reason and by the same rule — cl.exe rejects
+# it with `error C3010: "return" is not allowed to jump out of an OpenMP
+# structured block` — but the checker already refuses `return` inside a
+# `parallel for`, so this is belt and braces rather than the guard doing the
+# work: an emitter should never write C the host compiler will not take, even
+# when the program that would make it do so cannot currently reach it.
+def par_chain_ok(nd: Array[int, 655360], head: int) -> bool {
+    mut s: int = head
+    while s > 0 {
+        k: int = nd_kind(nd, s)
+        if k == 9 {
+            return False
+        }
+        if k == 13 {
+            return False
+        }
+        if k == 14 {
+            return False
+        }
+        if k == 10 {
+            if not par_chain_ok(nd, nd[s * 10 + 2]) {
+                return False
+            }
+            e: int = nd[s * 10 + 4]
+            if e > 0 {
+                if not par_chain_ok(nd, e) {
+                    return False
+                }
+            }
+        }
+        s = nd_nx(nd, s)
+    }
+    return True
+}
+
+# The canonical `for` OpenMP accepts, in the exact shape MSVC's `/openmp` insists
+# on.  Two properties of that shape are not free choices, and both were settled by
+# handing the C to cl.exe rather than by reading the manual — the first attempt at
+# this function got both wrong and produced C that cl refused:
+#
+#   * The pragma must be the last thing before the `for`.  The `{` that scopes
+#     the loop and the hoisted bound are declarations, and a declaration between
+#     the pragma and the loop is
+#         error C3014: OpenMP "parallel for" directive must be followed by a for loop
+#   * The induction variable must be declared out here, with the for-init a plain
+#     assignment.  MSVC implements OpenMP 2.0, whose canonical form takes
+#     `var = expr` in the init; writing the type there is
+#         error C3015: initialization in OpenMP "for" statement has improper form
+#     and `i++` for the increment is refused the same way, so the `+= 1` stays.
+#     Declaring the variable out here costs nothing: OpenMP makes the iteration
+#     variable of a `parallel for` predetermined private, so each thread still
+#     gets its own copy.
+#
+# The start and the bound are hoisted into variables of their own so that each
+# expression is evaluated exactly once, in the order the serial emitter evaluates
+# them (start, then bound), and so that the bound is loop-invariant as the
+# canonical form requires.  Both are read before the pragma, i.e. outside the
+# parallel region, which is what makes "once, in order" true.
+def emit_for_omp(nd: Array[int, 655360], ty: Array[int, 262144],
+                 flt: Array[float, 65536], src: str, path: str,
+                 mem: Array[int, 3741696], mut vm: VM, s: int,
+                 indent: int) -> None {
+    emit_str("{\n")
+    emit_indent(indent + 1)
+    emit_str("int64_t vl_start_")
+    emit_int(s)
+    emit_str(" = ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 2])
+    emit_str(";\n")
+    emit_indent(indent + 1)
+    emit_str("int64_t vl_stop_")
+    emit_int(s)
+    emit_str(" = ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 3])
+    emit_str(";\n")
+    emit_indent(indent + 1)
+    emit_str("int64_t ")
+    emit_cname(nd[s * 10 + 1])
+    emit_str(";\n")
+    emit_indent(indent + 1)
+    emit_str("#pragma omp parallel for\n")
+    emit_indent(indent + 1)
+    emit_str("for (")
+    emit_cname(nd[s * 10 + 1])
+    emit_str(" = vl_start_")
+    emit_int(s)
+    emit_str("; ")
+    emit_cname(nd[s * 10 + 1])
+    emit_str(" < vl_stop_")
+    emit_int(s)
+    emit_str("; ")
+    emit_cname(nd[s * 10 + 1])
+    emit_str(" += 1) {\n")
+    emit_body(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 8], indent + 2)
+    emit_indent(indent + 1)
+    emit_str("}\n")
+    emit_indent(indent)
+    emit_str("}\n")
+}
+
+def emit_for(nd: Array[int, 655360], ty: Array[int, 262144],
+             flt: Array[float, 65536], src: str, path: str,
+             mem: Array[int, 3741696], mut vm: VM, s: int, indent: int) -> None {
+    line: int = nd_line(nd, s)
+    emit_str("{\n")
+    emit_indent(indent + 1)
+    emit_str("int64_t ")
+    emit_cname(nd[s * 10 + 1])
+    emit_str(" = ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 2])
+    emit_str(";\n")
+    emit_indent(indent + 1)
+    emit_str("int64_t vl_stop_")
+    emit_int(s)
+    emit_str(" = ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 3])
+    emit_str(";\n")
+    emit_indent(indent + 1)
+    emit_str("int64_t vl_step_")
+    emit_int(s)
+    emit_str(" = ")
+    stepnode: int = nd[s * 10 + 4]
+    if stepnode > 0 {
+        emit_expr(nd, ty, flt, src, path, mem, vm, stepnode)
+    } else {
+        emit_str("1LL")
+    }
+    emit_str(";\n")
+    emit_indent(indent + 1)
+    emit_str("while (vl_step_")
+    emit_int(s)
+    emit_str(" > 0 ? ")
+    emit_cname(nd[s * 10 + 1])
+    emit_str(" < vl_stop_")
+    emit_int(s)
+    emit_str(" : ")
+    emit_cname(nd[s * 10 + 1])
+    emit_str(" > vl_stop_")
+    emit_int(s)
+    emit_str(") {\n")
+    emit_body(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 8], indent + 2)
+    emit_indent(indent + 2)
+    emit_cname(nd[s * 10 + 1])
+    emit_str(" = vela_add_range(")
+    emit_cname(nd[s * 10 + 1])
+    emit_str(", vl_step_")
+    emit_int(s)
+    emit_str(", INT64_MIN, INT64_MAX")
+    emit_location(path, line)
+    emit_str(");\n")
+    emit_indent(indent + 1)
+    emit_str("}\n")
+    emit_indent(indent)
+    emit_str("}\n")
+}
+
+# An array declaration is an arena allocation whose elements are zero, which is
+# what makes `Array[float, 4] = [0.0]` and a bare `Array[int, 8]` the same thing
+# with a different number of written elements.
+def emit_array_decl(nd: Array[int, 655360], ty: Array[int, 262144],
+                    flt: Array[float, 65536], src: str, path: str,
+                    mem: Array[int, 3741696], mut vm: VM, s: int,
+                    indent: int) -> None {
+    t: int = nd[s * 10 + 3]
+    if t < 0 {
+        trap(path, nd_line(nd, s), "this array declaration has no declared length")
+    }
+    n: int = ty_len(ty, t)
+    ek: int = type_kind(ty, ty_elem(ty, t), mem, vm)
+    if n < 0 {
+        trap(path, nd_line(nd, s), "this array declaration has no declared length")
+    }
+    emit_ctype(ek, path, nd_line(nd, s))
+    emit_str("* ")
+    tgt: int = nd[s * 10 + 1]
+    emit_cname(nd[tgt * 10 + 1])
+    emit_str(" = (")
+    emit_ctype(ek, path, nd_line(nd, s))
+    emit_str("*)vela_arena_alloc((size_t)")
+    emit_int(n)
+    emit_str(" * sizeof(")
+    emit_ctype(ek, path, nd_line(nd, s))
+    emit_str("));\n")
+    v: int = nd[s * 10 + 2]
+    if v <= 0 {
+        return
+    }
+    if nd_kind(nd, v) != 33 {
+        trap(path, nd_line(nd, s), "an array declaration needs an array literal")
+    }
+    mut i: int = 0
+    mut a: int = nd[v * 10 + 1]
+    while a > 0 {
+        emit_indent(indent)
+        emit_cname(nd[tgt * 10 + 1])
+        emit_str("[")
+        emit_int(i)
+        emit_str("] = ")
+        emit_expr(nd, ty, flt, src, path, mem, vm, a)
+        emit_str(";\n")
+        i += 1
+        a = nd_nx(nd, a)
+    }
+}
+
+def emit_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
+              flt: Array[float, 65536], src: str, path: str,
+              mem: Array[int, 3741696], mut vm: VM, s: int,
+              indent: int) -> None {
+    k: int = nd_kind(nd, s)
+    emit_indent(indent)
+    if k == 6 {
+        if (nd[s * 10 + 6] & 2) == 2 {
+            dk: int = unpack_kind(nt_get(mem, s, NT_LIT()))
+            if is_array(dk) {
+                emit_array_decl(nd, ty, flt, src, path, mem, vm, s, indent)
+                return
+            }
+        }
+        emit_assign(nd, ty, flt, src, path, mem, vm, s, indent)
+        return
+    }
+    if k == 7 {
+        emit_augassign(nd, ty, flt, src, path, mem, vm, s, indent)
+        return
+    }
+    if k == 8 {
+        v: int = nd[s * 10 + 1]
+        if nd_kind(nd, v) == 26 {
+            callee: int = nd[v * 10 + 1]
+            if nd_kind(nd, callee) == 25 {
+                if nt_get(mem, callee, NT_SYM()) == SYM_BUILTIN() {
+                    if nt_get(mem, callee, NT_VAL()) == B_PRINT() {
+                        emit_print(nd, ty, flt, src, path, mem, vm, v,
+                                   indent)
+                        return
+                    }
+                }
+            }
+        }
+        emit_str("(void)(")
+        emit_expr(nd, ty, flt, src, path, mem, vm, v)
+        emit_str(");\n")
+        return
+    }
+    if k == 9 {
+        v2: int = nd[s * 10 + 1]
+        if v2 <= 0 {
+            emit_str("return;\n")
+            return
+        }
+        emit_str("return ")
+        emit_expr(nd, ty, flt, src, path, mem, vm, v2)
+        emit_str(";\n")
+        return
+    }
+    if k == 10 {
+        emit_if(nd, ty, flt, src, path, mem, vm, s, indent)
+        return
+    }
+    if k == 11 {
+        emit_while(nd, ty, flt, src, path, mem, vm, s, indent)
+        return
+    }
+    if k == 12 {
+        if (nd[s * 10 + 6] & 1) == 1 {
+            # `parallel for`.  The checker admitted this loop because it *proved*
+            # the iterations race-free, and a proof nobody uses is a proof that
+            # costs the program its parallelism: for a long time this emitter
+            # wrote the same loop without OpenMP, on the reasoning that a
+            # race-free loop computed in order is the same computation, only
+            # slower.  True, and beside the point — `parallel for` is the feature
+            # the language is for.
+            #
+            # OpenMP takes only a canonical loop: an integer induction variable,
+            # a loop-invariant bound, a step of one, and no branch out of the
+            # structured block.  `range(a, b)` is exactly that; `range(a, b, k)`,
+            # a `break`, or a `continue` at this level is not, and those keep the
+            # serial form — still correct, just not parallel, rather than C that
+            # will not compile.
+            if par_step_is_one(nd, s) {
+                if par_chain_ok(nd, nd[s * 10 + 8]) {
+                    # the pragma belongs to `emit_for_omp`, which alone knows
+                    # where in the emitted shape OpenMP will accept it
+                    emit_for_omp(nd, ty, flt, src, path, mem, vm, s, indent)
+                    return
+                }
+            }
+        }
+        emit_for(nd, ty, flt, src, path, mem, vm, s, indent)
+        return
+    }
+    if k == 13 {
+        emit_str("break;\n")
+        return
+    }
+    if k == 14 {
+        emit_str("continue;\n")
+        return
+    }
+    if k == 15 {
+        emit_str(";\n")
+        return
+    }
+    trap(path, nd_line(nd, s), "this statement has no C spelling yet")
+}
+
+def emit_body(nd: Array[int, 655360], ty: Array[int, 262144],
+              flt: Array[float, 65536], src: str, path: str,
+              mem: Array[int, 3741696], mut vm: VM, head: int,
+              indent: int) -> None {
+    mut s: int = head
+    while s > 0 {
+        emit_stmt(nd, ty, flt, src, path, mem, vm, s, indent)
+        s = nd_nx(nd, s)
+    }
+}
+
+# ---------------------------------------------------------------- expressions
+
+def emit_expr(nd: Array[int, 655360], ty: Array[int, 262144],
+              flt: Array[float, 65536], src: str, path: str,
+              mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
+    k: int = nd_kind(nd, e)
+    if k == 20 {
+        emit_int_lit(nd[e * 10 + 1])
+        return K_INT()
+    }
+    if k == 21 {
+        # the literal exactly as it was written: printing a double back with
+        # emit_float would lose digits, and the source spelling is a valid C
+        # literal already
+        emit_str(substr(src, nd[e * 10 + 2], nd[e * 10 + 2] + nd[e * 10 + 3]))
+        return K_FLT()
+    }
+    if k == 22 {
+        # the *value* of the literal, not the text that was written: `"\n"` is one
+        # newline byte, and the byte count that goes with it is the count of the
+        # decoded text.  Escaping the raw source and claiming the decoded length
+        # drop the last byte of every literal that carries an escape -- which is
+        # how a self-hosted build first printed `\` where a newline belonged.
+        mut s: str = substr(src, nd[e * 10 + 1], nd[e * 10 + 1] + nd[e * 10 + 2])
+        if (nd[e * 10 + 6] & 1) == 1 {
+            s = unescape(s)
+        }
+        emit_str("vela_str_lit(")
+        emit_c_quoted(s)
+        emit_str(", ")
+        emit_int(len(s))
+        emit_str(")")
+        return K_STR()
+    }
+    if k == 23 {
+        if nd[e * 10 + 1] == 1 {
+            emit_str("true")
+        } else {
+            emit_str("false")
+        }
+        return K_BOOL()
+    }
+    if k == 24 {
+        emit_str("((void)0)")
+        return K_NONE()
+    }
+    if k == 25 {
+        return emit_name(nd, mem, path, vm, e)
+    }
+    if k == 26 {
+        return emit_call(nd, ty, flt, src, path, mem, vm, e)
+    }
+    if k == 27 {
+        return emit_binop(nd, ty, flt, src, path, mem, vm, e)
+    }
+    if k == 28 {
+        return emit_unary(nd, ty, flt, src, path, mem, vm, e)
+    }
+    if k == 29 {
+        return emit_boolop(nd, ty, flt, src, path, mem, vm, e)
+    }
+    if k == 30 {
+        return emit_cmp(nd, ty, flt, src, path, mem, vm, e)
+    }
+    if k == 31 {
+        # `(check, element)` — a comma expression, so a read needs no hoisting
+        emit_str("(vela_bounds_check(")
+        emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+        emit_str(", ")
+        emit_int(unpack_len(expr_packed(nd, ty, mem, vm, nd[e * 10 + 1])))
+        emit_location(path, nd_line(nd, e))
+        emit_str("), ")
+        emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 1])
+        emit_str("[")
+        emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+        emit_str("])")
+        return elem_kind_of(unpack_kind(expr_packed(nd, ty, mem, vm,
+                                                    nd[e * 10 + 1])))
+    }
+    if k == 32 {
+        return emit_field(nd, ty, flt, src, path, mem, vm, e)
+    }
+    if k == 33 {
+        trap(path, nd_line(nd, e), "array literals are not implemented in this slice of the back end")
+    }
+    trap(path, nd_line(nd, e), "this expression has no C spelling yet")
+    return K_NONE()
+}
+
+# The kind of an expression, without printing anything.  The emitter needs it
+# *before* it emits operands (to choose the operator) which is why it is a
+# separate walk rather than a return value the caller can look at first.
+def expr_kind(nd: Array[int, 655360], ty: Array[int, 262144],
+              mem: Array[int, 3741696], vm: VM, e: int) -> int {
+    return unpack_kind(expr_packed(nd, ty, mem, vm, e))
+}
+
+# The same walk, without the unpacking: an array's length travels beside its kind
+# (see pack_kind), and a bounds check needs the number.
+def expr_packed(nd: Array[int, 655360], ty: Array[int, 262144],
+                mem: Array[int, 3741696], vm: VM, e: int) -> int {
+    if e <= 0 {
+        return K_NONE()
+    }
+    k: int = nd_kind(nd, e)
+    if k == 20 {
+        return K_INT()
+    }
+    if k == 21 {
+        return K_FLT()
+    }
+    if k == 22 {
+        return K_STR()
+    }
+    if k == 23 {
+        return K_BOOL()
+    }
+    if k == 24 {
+        return K_NONE()
+    }
+    if k == 25 {
+        sk: int = nt_get(mem, e, NT_SYM())
+        if sk == SYM_LOCAL() {
+            return local_kind(mem, e)
+        }
+        return K_NONE()
+    }
+    if k == 31 {
+        # an index expression is the element kind of whatever it indexes
+        return elem_kind_of(unpack_kind(expr_packed(nd, ty, mem, vm,
+                                                    nd[e * 10 + 1])))
+    }
+    if k == 32 {
+        base: int = nd[e * 10 + 1]
+        packed: int = expr_packed(nd, ty, mem, vm, base)
+        sid: int = unpack_len(packed)
+        idx: int = find_field(mem, sid, nd[e * 10 + 2])
+        if idx < 0 {
+            return K_NONE()
+        }
+        off: int = stb_get(mem, sid, STB_FOFF())
+        return sfl_get(mem, off + idx * 2 + 1)
+    }
+    if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        if nd_kind(nd, callee) == 32 {
+            # a method call: its kind is the method's return type, which the
+            # struct table knows because the resolver recorded the owning struct
+            recv: int = nd[callee * 10 + 1]
+            sid: int = unpack_len(expr_packed(nd, ty, mem, vm, recv))
+            mi: int = find_method(mem, sid, nd[callee * 10 + 2])
+            if mi < 0 {
+                return K_NONE()
+            }
+            return type_packed(ty, ft_get(mem, met_get(mem, mi, MET_FN()),
+                                          FT_RETTY()), mem, vm)
+        }
+        if nd_kind(nd, callee) != 25 {
+            return K_NONE()
+        }
+        sk2: int = nt_get(mem, callee, NT_SYM())
+        sv2: int = nt_get(mem, callee, NT_VAL())
+        if sk2 == SYM_FUNC() {
+            return type_packed(ty, ft_get(mem, sv2, FT_RETTY()), mem, vm)
+        }
+        if sk2 == SYM_BUILTIN() {
+            return builtin_kind(sv2)
+        }
+        if sk2 == SYM_STRUCT() {
+            # `Box(1)`: a struct call is a value of that very struct
+            return pack_kind(K_ST(), sv2)
+        }
+        return K_NONE()
+    }
+    if k == 27 {
+        return expr_kind(nd, ty, mem, vm, nd[e * 10 + 2])
+    }
+    if k == 28 {
+        op: int = nd[e * 10 + 1]
+        if op == 15 {
+            return K_BOOL()
+        }
+        return expr_kind(nd, ty, mem, vm, nd[e * 10 + 2])
+    }
+    if k == 29 {
+        return K_BOOL()
+    }
+    if k == 30 {
+        return K_BOOL()
+    }
+    return K_NONE()
+}
+
+# -------------------------------------------------------------- whole program
+
+# A parameter is a pointer in C exactly when it is a `mut` struct, which is the
+# same rule the runtime's `param_decl` follows for the stage-0 compiler.
+def param_packed(nd: Array[int, 655360], ty: Array[int, 262144],
+                 mem: Array[int, 3741696], vm: VM, p: int) -> int {
+    t: int = nd[p * 10 + 2]
+    k: int = type_kind(ty, t, mem, vm)
+    if k == K_ST() {
+        sid: int = struct_of_type(ty, t, mem, vm)
+        if (nd[p * 10 + 6] & 1) == 1 {
+            return pack_ptr(pack_kind(K_ST(), sid))
+        }
+        return pack_kind(K_ST(), sid)
+    }
+    return pack_kind(k, ty_len(ty, t))
+}
+
+def emit_proto(nd: Array[int, 655360], ty: Array[int, 262144],
+               mem: Array[int, 3741696], vm: VM, path: str, f: int) -> None {
+    # An `extern c` function has no body: it is somebody else's, and this
+    # prototype is the *only* thing Vela writes about it — spelled from the
+    # declaration, so what C sees is exactly what the user wrote.  `static` would
+    # be a lie twice over: the symbol is not in this translation unit.
+    if ft_get(mem, f, FT_BODY()) >= 0 {
+        emit_str("static ")
+    }
+    emit_fn_ret_ctype(nd, ty, mem, vm, path, f)
+    emit_str(" ")
+    emit_fn_name(nd, mem, f)
+    emit_str("(")
+    emit_params(nd, ty, mem, vm, path, f, False)
+    emit_str(");\n")
+}
+
+# A struct value's C spelling depends on how it arrived: a local is a value, a
+# `mut` parameter is a pointer (that is what makes `p.scale(2.0)` visible to the
+# caller), and a field of a struct is a value inside another value.
+def emit_binding_ctype(nd: Array[int, 655360], ty: Array[int, 262144],
+                       mem: Array[int, 3741696], vm: VM, path: str,
+                       packed: int, line: int) -> None {
+    emit_packed_ctype(mem, vm, path, line, packed)
+}
+
+# The C spelling of a value whose packed kind is already known — a parameter, a
+# field, a declaration.  Separated from emit_binding_ctype so a struct definition
+# can spell its fields without a node to point at.
+def emit_packed_ctype(mem: Array[int, 3741696], vm: VM, path: str, line: int,
+                      packed: int) -> None {
+    k: int = unpack_kind(packed)
+    if k == K_ST() {
+        sid: int = unpack_len(packed)
+        if sid < 0 {
+            trap(path, line, "this struct binding has no struct id")
+        }
+        emit_struct_name(mem, sid)
+        if is_ptr_binding(packed) {
+            emit_str("*")
+        }
+        return
+    }
+    emit_ctype(k, path, line)
+}
+
+def emit_params(nd: Array[int, 655360], ty: Array[int, 262144],
+                mem: Array[int, 3741696], vm: VM, path: str, f: int,
+                with_names: bool) -> None {
+    mut p: int = ft_get(mem, f, FT_PARAM())
+    mut n: int = 0
+    while p > 0 {
+        if n > 0 {
+            emit_str(", ")
+        }
+        pk: int = param_packed(nd, ty, mem, vm, p)
+        emit_binding_ctype(nd, ty, mem, vm, path, pk, nd_line(nd, p))
+        if with_names {
+            emit_str(" ")
+            emit_cname(nd[p * 10 + 1])
+        }
+        p = nd_nx(nd, p)
+        n += 1
+    }
+    if n == 0 {
+        emit_str("void")
+    }
+}
+
+def emit_function(nd: Array[int, 655360], ty: Array[int, 262144],
+                  flt: Array[float, 65536], src: str, path: str,
+                  mem: Array[int, 3741696], mut vm: VM, f: int) -> None {
+    emit_str("static ")
+    emit_fn_ret_ctype(nd, ty, mem, vm, path, f)
+    emit_str(" ")
+    emit_fn_name(nd, mem, f)
+    emit_str("(")
+    emit_params(nd, ty, mem, vm, path, f, True)
+    emit_str(") {\n")
+    emit_body(nd, ty, flt, src, path, mem, vm, ft_get(mem, f, FT_BODY()), 1)
+    emit_str("}\n\n")
+}
+
+# The banner is printed into every program's C, so it says what this back end
+# actually does — the checker proves intervals and the emitter does not consume
+# those proofs yet (see the header of this file, and `ELISION_PLAN.md`), rather
+# than the two things it used to claim: that there was no checker, and that
+# proving things away was a property of the back end rather than work not done.
+def emit_program(nd: Array[int, 655360], ty: Array[int, 262144],
+                 flt: Array[float, 65536], src: str, path: str,
+                 mut mem: Array[int, 3741696], mut vm: VM) -> None {
+    emit_str("/* Generated by the self-hosted Vela compiler.  This file is a Vela program's\n")
+    emit_str(" * meaning in C11.  The checker ran and its verdicts hold, but this back end\n")
+    emit_str(" * does not consume its proofs yet, so every bounds and overflow check is\n")
+    emit_str(" * emitted deliberately: consuming them is ELISION_PLAN.md's work. */\n")
+    emit_str("#include \"vela_runtime.h\"\n")
+    emit_str("#include <stdbool.h>\n\n")
+    emit_struct_defs(mem, vm)
+    if find_main(mem, vm, nd) < 0 {
+        fail(path, 1, "this program has no `def main() -> None` to compile")
+    }
+    mut f: int = 0
+    while f < vm.nfn {
+        emit_proto(nd, ty, mem, vm, path, f)
+        f += 1
+    }
+    emit_str("\n")
+    mut g: int = 0
+    while g < vm.nfn {
+        # an `extern c` function got its prototype above and gets nothing here:
+        # emitting a definition for it would define a C function Vela does not
+        # own, and the linker would then call ours instead of the library's
+        if ft_get(mem, g, FT_BODY()) >= 0 {
+            emit_function(nd, ty, flt, src, path, mem, vm, g)
+        }
+        g += 1
+    }
+    emit_str("int main(int argc, char **argv) {\n")
+    emit_str("    vela_set_args(argc, argv);\n")
+    emit_str("    vela_runtime_init();\n")
+    emit_str("    vl_main();\n")
+    emit_str("    return 0;\n}\n")
+}

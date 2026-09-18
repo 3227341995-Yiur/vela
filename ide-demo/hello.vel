@@ -1,0 +1,13 @@
+# hello.vel — the smallest legal Vela program: three lines of output, no
+# arrays, no loops.  If this one does not run, nothing else here will.
+def main() -> None {
+    print("hello from Vela")
+    print("3 * 14 =", 3 * 14)
+    log("goodbye Vela")
+    log("err")
+}
+
+def log(s: str) -> None {
+    if (s == "err") { print("[==]", s) }
+    print(s)
+}

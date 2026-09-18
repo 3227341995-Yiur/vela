@@ -1,0 +1,75 @@
+# tests/probes/capture_probe.vel — isolate how a self-hosted test suite starts a
+# program and reads back what it printed.
+#
+# `run_tests.vel` does exactly this and reported a program that exits 7 as
+# "exited non-zero with no stderr", while the same binary run by hand exits 0.
+# So the question is narrow: does writing the sentinel, redirecting into the file
+# the sentinel just occupied, and reading it back behave the same inside a Vela
+# program as it does in a terminal?
+
+def q(s: str) -> str {
+    return concat("\"", concat(s, "\""))
+}
+
+def shell(c: str) -> str {
+    if len(env("OS")) > 0 {
+        return concat("\"", concat(c, "\""))
+    }
+    return c
+}
+
+def cap(cmd: str, out: str, err: str) -> int {
+    write_text(out, "!")
+    write_text(err, "!")
+    mut c: str = cmd
+    c = concat(c, " > ")
+    c = concat(c, q(out))
+    c = concat(c, " 2> ")
+    c = concat(c, q(err))
+    return run_command(shell(c))
+}
+
+def show(what: str, rc: int, out: str, err: str) -> None {
+    print(what, "rc", rc, "outlen", len(read_text(out)), "errlen", len(read_text(err)))
+    if len(read_text(out)) < 40 {
+        print("   out:", read_text(out))
+    }
+    if len(read_text(err)) > 0 {
+        print("   err:", read_text(err))
+    }
+}
+
+def main() -> None {
+    print("--- a program that prints and exits 0, three times in a row")
+    mut i: int = 0
+    while i < 3 {
+        mut rc: int = cap(q("tests/build/arith_basics.exe"), "tests/build/_p.out", "tests/build/_p.err")
+        show("exe", rc, "tests/build/_p.out", "tests/build/_p.err")
+        i += 1
+    }
+
+    print("--- exit codes: 0, 3, and a program that was never built")
+    mut rc2: int = cap("cmd /c exit 0", "tests/build/_p.out", "tests/build/_p.err")
+    show("exit0", rc2, "tests/build/_p.out", "tests/build/_p.err")
+    rc2 = cap("cmd /c exit 3", "tests/build/_p.out", "tests/build/_p.err")
+    show("exit3", rc2, "tests/build/_p.out", "tests/build/_p.err")
+    rc2 = cap(q("tests/build/_no_such_program.exe"), "tests/build/_p.out", "tests/build/_p.err")
+    show("missing", rc2, "tests/build/_p.out", "tests/build/_p.err")
+
+    print("--- build through the compiler's own driver, then run the result")
+    rc2 = cap(concat(concat(q("selfhost/build/vm.exe"), " build "), q("tests/build/arith_basics.vel")),
+              "tests/build/_p.out", "tests/build/_p.err")
+    show("build", rc2, "tests/build/_p.out", "tests/build/_p.err")
+    rc2 = cap(q("tests/build/arith_basics.exe"), "tests/build/_p.out", "tests/build/_p.err")
+    show("exe after build", rc2, "tests/build/_p.out", "tests/build/_p.err")
+
+    print("--- status of a refused program (the checker's own exit)")
+    rc2 = cap(concat(concat(q("selfhost/build/vm.exe"), " check "), q("tests/build/check_cases/truthiness.vel")),
+              "tests/build/_p.out", "tests/build/_p.err")
+    show("check-refused", rc2, "tests/build/_p.out", "tests/build/_p.err")
+
+    print("--- and of one that is accepted")
+    rc2 = cap(concat(concat(q("selfhost/build/vm.exe"), " check "), q("tests/build/recursion_fib.vel")),
+              "tests/build/_p.out", "tests/build/_p.err")
+    show("check-ok", rc2, "tests/build/_p.out", "tests/build/_p.err")
+}

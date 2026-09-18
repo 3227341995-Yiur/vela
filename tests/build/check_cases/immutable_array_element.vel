@@ -1,0 +1,4 @@
+def main() -> None {
+    a: Array[int, 4] = [1, 2, 3, 4]
+    a[0] = 9
+}

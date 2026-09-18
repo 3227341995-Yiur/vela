@@ -1,0 +1,16 @@
+# Refusal: a struct parameter, named.
+#
+# `Array[int, 4]` and `str` are the shapes the boundary is usually described by;
+# a struct is refused for a reason of its own, and the message says "struct"
+# rather than the struct's name because the packed kind carries the struct's
+# *id*, not its spelling.  It is still the right verdict, and the line is the
+# declaration's, which is where the fix goes.
+struct P {
+    x: int
+}
+
+extern c def take_p(p: P) -> i32
+
+def main() -> None {
+    print("unreachable")
+}

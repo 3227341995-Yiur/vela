@@ -1,0 +1,14 @@
+pure def fib(n: int) -> int {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+def main() -> None {
+    mut s: int = 0
+    for i in range(0, 15) {
+        s += fib(i)
+    }
+    print(s)
+}

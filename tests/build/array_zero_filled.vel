@@ -1,0 +1,4 @@
+def main() -> None {
+    mut big: Array[float, 1000]
+    print(big[0], big[999])
+}

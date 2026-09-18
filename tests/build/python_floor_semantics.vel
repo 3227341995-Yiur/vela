@@ -1,0 +1,8 @@
+def main() -> None {
+    mut a: int = -7
+    mut b: int = 2
+    print(a // b, a % b)
+    mut c: int = 7
+    mut d: int = -2
+    print(c // d, c % d)
+}

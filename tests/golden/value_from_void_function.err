@@ -1,0 +1,2 @@
+vela: type error: this function is declared '-> None', so it cannot return a value
+  at tests/build/check_cases/value_from_void_function.vel:2

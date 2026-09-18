@@ -1,0 +1,2 @@
+vela: type error: 'extern c' argument 300 to 'double_byte' does not fit in u8
+  at tests/probes/extern_u8_argument_out_of_range.vel:12

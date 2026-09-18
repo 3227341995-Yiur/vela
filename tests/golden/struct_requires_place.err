@@ -1,0 +1,2 @@
+vela: type error: cannot read a field from a temporary struct
+  at tests/build/check_cases/struct_requires_place.vel:6

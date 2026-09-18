@@ -1,0 +1,14 @@
+# Refusal: an `int` *value* for an `i32` parameter.
+#
+# Vela's `int` is a C `long long` and `i32` is a C `int`, so the C compiler would
+# narrow this silently — and 5000000000 does not survive the trip.  An int
+# *constant* that fits is allowed (it is the language's one implicit conversion),
+# a value is not: `int` and `i32` are different kinds, and `int + i32` is refused
+# for the same reason.  The way to write the narrowing down is a binding whose
+# declared type says so — `mut n: i32 = big` — and the rule then sees `i32`.
+extern c def abs(x: i32) -> i32
+
+def main() -> None {
+    mut big: int = 5000000000
+    print(abs(big))
+}

@@ -1,0 +1,12 @@
+# Refusal: a `float` argument for an `i32` parameter.
+#
+# C converts `double` to `int` without a word, truncating towards zero, so
+# `abs(1.5)` would print 1 — a number the program never wrote.  Vela refuses
+# `float` and `int` mixed in an operator ("operator '+' mixes float and int"),
+# and the boundary is the place where that rule matters most, because there is no
+# Vela-level conversion for C to be doing: the parameter's type is the contract.
+extern c def abs(x: i32) -> i32
+
+def main() -> None {
+    print(abs(1.5))
+}

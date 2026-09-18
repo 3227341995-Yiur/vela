@@ -1,0 +1,1348 @@
+# ---------------------------------------------------------------------------
+# selfhost/parts/parser.vel — the parse stage, written in Vela.
+#
+# This file is one part of the self-hosted front end.  Vela 0.1 has no module
+# system (`import` is reserved but not implemented), so `tools/link_selfhost.vel`
+# splices the parts together with the lexer into `selfhost/vm.vel` — the
+# compiler still compiles exactly one file.  That is the same trick C plays with
+# #include, and it disappears the day Vela grows modules.  The linker used to be
+# `tools/link_selfhost.py`; it is written in Vela now.
+#
+# ---------------------------------------------------------------------------
+# Node record — 10 ints per node, nd[i * 10 + k]:
+#
+#   0 kind    1 a     2 b     3 c     4 d
+#   5 line    6 flags 7 nx    8 e     9 f
+#
+# `nx` links a node to the next node in whatever chain it belongs to (a
+# statement list, a parameter list, an argument list, an element list) or -1.
+# Chains are linked instead of packed because a statement list is parsed
+# *around* its nested blocks: the nested statements are appended to the same
+# pool in between, so a contiguous run would only work for expressions.
+#
+# kind  1 module      a=first stmt  b=count
+# kind  2 def         a=name  b=ret type  c=first param  d=param count
+#                     e=first stmt  f=stmt count    flags: 4 = pure
+# kind  3 param       a=name  b=type                 flags: 1 = mut
+# kind  4 struct      a=name  b=first stmt  c=stmt count (fields and methods)
+# kind  5 field       a=name  b=type
+# kind  6 assign      a=target  b=value(-1)  c=declared type(-1)
+#                     flags: 1 = mut, 2 = a declaration
+# kind  7 augassign   a=target  b=value  c=base operator
+# kind  8 expr        a=value
+# kind  9 return      a=value(-1)
+# kind 10 if          a=cond  b=then first  c=then count  d=else first  e=else count
+# kind 11 while       a=cond  b=first  c=count
+# kind 12 for         a=var name  b=start  c=stop  d=step(-1)
+#                     e=first stmt  f=stmt count    flags: 1 = parallel
+# kind 13 break       14 continue      15 pass
+# kind 20 int         a=value
+# kind 21 float       a=index into the float pool  b=offset  c=length
+# kind 22 str         a=offset  b=length           flags: 1 = literal has escapes
+# kind 23 bool        a=0 or 1
+# kind 24 none
+# kind 25 name        a=name handle
+# kind 26 call        a=callee  b=first arg  c=arg count
+# kind 27 binop       a=op  b=left  c=right
+# kind 28 unary       a=op  b=operand
+# kind 29 boolop      a=op (13 and, 14 or)  b=left  c=right
+# kind 30 cmp         a=op  b=left  c=right
+# kind 31 index       a=value  b=index
+# kind 32 attr        a=value  b=name handle
+# kind 33 list        a=first elem  b=elem count
+# kind 34 slice       a=value  b=lower(-1)  c=upper(-1)
+#
+# ---------------------------------------------------------------------------
+# Type record — 4 ints per type, ty[i * 4 + k]:
+#
+#   0 kind (1 named)  1 name handle  2 element type (-1)  3 length (-1)
+#
+# `Array[int, 8]` is a named type whose name handle is "Array", whose element
+# slot holds `int` and whose length slot holds 8; every other type leaves slots
+# 2 and 3 at -1.
+#
+# ---------------------------------------------------------------------------
+# Ctx carries every cursor the stages need.  The lexer leaves `pos`, `line` and
+# `aux` behind, and the parser reuses them:
+#
+#   cx.ti     token cursor
+#   cx.ni     node cursor
+#   cx.sp     type pool cursor
+#   cx.fp     float literal pool cursor
+#   cx.rslot  out-parameter: how many items the chain just parsed has
+#   cx.aux    loop depth, so 'break' outside a loop is refused (the lexer's use
+#             of it as a bracket depth is over by then)
+#
+# Names are compared as *handles*: `intern` is content addressed, so equal
+# spellings get equal ints and the parser never has to compare strings.
+
+# `vela: <kind>: <message>`, the shape stage 0's diagnostics have and the shape
+# `tests/diff_check.py` reads a verdict out of.  A parser can raise a type error
+# (`slices are not implemented`) as easily as a syntax error, so the kind is a
+# parameter rather than a constant, and the location is a second line for the
+# same reason `ck_type`/`ck_safety` put it there: the message is what is compared.
+def perr_kind(mut cx: Ctx, kind: str, msg: str, line: int) -> None {
+    if cx.err == 0 {
+        cx.err = 1
+        warn_str("vela: ")
+        warn_str(kind)
+        warn_str(": ")
+        warn_str(msg)
+        warn_str("\n  at line ")
+        warn_int(line)
+        warn_nl()
+    }
+}
+
+def perr(mut cx: Ctx, msg: str, line: int) -> None {
+    perr_kind(cx, "syntax error", msg, line)
+}
+
+# The token under the cursor, spelled the way the reader wrote it.  Stage 0
+# quotes it (`found 'mut'`), and an offset plus a length is all that takes: the
+# parser owns `src` and the lexer already recorded both.
+def tok_text(src: str, tk: Array[int, 786432], cx: Ctx) -> str {
+    o: int = tk_off(tk, cx.ti)
+    mut e: int = o + tk_len(tk, cx.ti)
+    # the end-of-file token sits at the end of the text with no length, and a
+    # span that ran past it would index the string, not quote it
+    if e > len(src) {
+        e = len(src)
+    }
+    if o > e {
+        return ""
+    }
+    return substr(src, o, e)
+}
+
+def new_node(mut nd: Array[int, 655360], mut cx: Ctx, kind: int, line: int) -> int {
+    n: int = cx.ni
+    if n >= 65536 {
+        perr(cx, "this file has too many syntax nodes", line)
+        return -1
+    }
+    i: int = n * 10
+    nd[i] = kind
+    nd[i + 1] = 0
+    nd[i + 2] = 0
+    nd[i + 3] = 0
+    nd[i + 4] = 0
+    nd[i + 5] = line
+    nd[i + 6] = 0
+    nd[i + 7] = -1
+    nd[i + 8] = 0
+    nd[i + 9] = 0
+    cx.ni += 1
+    return n
+}
+
+# ---------------------------------------------------------------------------
+# token cursor
+
+def ti_kind(tk: Array[int, 786432], cx: Ctx) -> int {
+    return tk_kind(tk, cx.ti)
+}
+
+def ti_val(tk: Array[int, 786432], cx: Ctx) -> int {
+    return tk_ival(tk, cx.ti)
+}
+
+def ti_line(tk: Array[int, 786432], cx: Ctx) -> int {
+    return tk_line(tk, cx.ti)
+}
+
+def at_op(tk: Array[int, 786432], cx: Ctx, op: int) -> bool {
+    return tk_kind(tk, cx.ti) == 5 and tk_ival(tk, cx.ti) == op
+}
+
+def at_op2(tk: Array[int, 786432], cx: Ctx, k: int, op: int) -> bool {
+    return tk_kind(tk, cx.ti + k) == 5 and tk_ival(tk, cx.ti + k) == op
+}
+
+def at_kw(tk: Array[int, 786432], cx: Ctx, kw: int) -> bool {
+    return tk_kind(tk, cx.ti) == 1 and tk_ival(tk, cx.ti) == kw
+}
+
+def at_name(tk: Array[int, 786432], cx: Ctx) -> bool {
+    return tk_kind(tk, cx.ti) == 1 and tk_ival(tk, cx.ti) == 0
+}
+
+def at_eof(tk: Array[int, 786432], cx: Ctx) -> bool {
+    return tk_kind(tk, cx.ti) == 9
+}
+
+def at_nl(tk: Array[int, 786432], cx: Ctx) -> bool {
+    return tk_kind(tk, cx.ti) == 6
+}
+
+# the end of a block, or the end of the file
+def at_close(tk: Array[int, 786432], cx: Ctx) -> bool {
+    return at_op(tk, cx, 34) or at_eof(tk, cx)
+}
+
+def name_id(src: str, tk: Array[int, 786432], cx: Ctx) -> int {
+    return intern(substr(src, tk_off(tk, cx.ti),
+                         tk_off(tk, cx.ti) + tk_len(tk, cx.ti)))
+}
+
+# ---------------------------------------------------------------------------
+# operator tables.  The codes are the lexer's: one numbering for the whole front
+# end, so an operator never has to be spelled as a string at run time.
+
+def is_aug(tk: Array[int, 786432], cx: Ctx) -> bool {
+    if tk_kind(tk, cx.ti) != 5 {
+        return False
+    }
+    v: int = tk_ival(tk, cx.ti)
+    if v == 27 or v == 28 or v == 29 or v == 30 or v == 31 {
+        return True
+    }
+    if v == 37 or v == 38 or v == 39 or v == 40 or v == 41 {
+        return True
+    }
+    return v == 42 or v == 43
+}
+
+# `+=` is parsed into the `+` it stands for, so the interpreter has one node
+# kind to run instead of twelve
+def aug_base(op: int) -> int {
+    if op == 27 {
+        return 1
+    }
+    if op == 28 {
+        return 2
+    }
+    if op == 29 {
+        return 3
+    }
+    if op == 30 {
+        return 4
+    }
+    if op == 31 {
+        return 5
+    }
+    if op == 37 {
+        return 35
+    }
+    if op == 38 {
+        return 36
+    }
+    if op == 39 {
+        return 17
+    }
+    if op == 40 {
+        return 18
+    }
+    if op == 41 {
+        return 19
+    }
+    if op == 42 {
+        return 21
+    }
+    return 20
+}
+
+def is_cmp_op(tk: Array[int, 786432], cx: Ctx) -> bool {
+    if tk_kind(tk, cx.ti) != 5 {
+        return False
+    }
+    v: int = tk_ival(tk, cx.ti)
+    return v == 6 or v == 7 or v == 22 or v == 23 or v == 24 or v == 25
+}
+
+# ---------------------------------------------------------------------------
+# pools
+
+def flt_add(mut flt: Array[float, 65536], mut cx: Ctx, v: float, line: int) -> int {
+    i: int = cx.fp
+    if i >= 65536 {
+        perr(cx, "this file has too many float literals", line)
+        return 0
+    }
+    flt[i] = v
+    cx.fp += 1
+    return i
+}
+
+def ty_add(mut ty: Array[int, 262144], mut cx: Ctx, name: int, elem: int,
+           size: int, line: int) -> int {
+    i: int = cx.sp
+    if i >= 65536 {
+        perr(cx, "this file has too many type annotations", line)
+        return -1
+    }
+    ty[i * 4] = 1
+    ty[i * 4 + 1] = name
+    ty[i * 4 + 2] = elem
+    ty[i * 4 + 3] = size
+    cx.sp += 1
+    return i
+}
+
+# ---------------------------------------------------------------------------
+# types
+
+def parse_type(src: str, tk: Array[int, 786432], mut ty: Array[int, 262144],
+               mut cx: Ctx) -> int {
+    if cx.err != 0 {
+        return -1
+    }
+    line: int = ti_line(tk, cx)
+    if at_kw(tk, cx, 18) {
+        cx.ti += 1
+        return ty_add(ty, cx, intern("None"), -1, -1, line)
+    }
+    if not at_name(tk, cx) {
+        perr(cx, "expected a type name", line)
+        return -1
+    }
+    base: int = name_id(src, tk, cx)
+    cx.ti += 1
+    mut elem: int = -1
+    mut size: int = -1
+    if at_op(tk, cx, 14) {
+        cx.ti += 1
+        elem = parse_type(src, tk, ty, cx)
+        if cx.err != 0 {
+            return -1
+        }
+        if at_op(tk, cx, 11) {
+            cx.ti += 1
+            if tk_kind(tk, cx.ti) != 2 {
+                perr(cx, "expected a compile-time array length", ti_line(tk, cx))
+                return -1
+            }
+            size = ti_val(tk, cx)
+            cx.ti += 1
+        }
+        if not at_op(tk, cx, 15) {
+            perr(cx, "expected ']' to close the type", ti_line(tk, cx))
+            return -1
+        }
+        cx.ti += 1
+    }
+    return ty_add(ty, cx, base, elem, size, line)
+}
+
+# ---------------------------------------------------------------------------
+# statement lists
+
+def end_of_stmt(src: str, tk: Array[int, 786432], mut cx: Ctx) -> None {
+    if cx.err != 0 {
+        return
+    }
+    if at_nl(tk, cx) {
+        cx.ti += 1
+        return
+    }
+    if at_op(tk, cx, 34) {
+        return
+    }
+    if at_eof(tk, cx) {
+        return
+    }
+    perr(cx, concat(concat("expected a newline between statements, found '",
+                           tok_text(src, tk, cx)), "'"), ti_line(tk, cx))
+}
+
+# Consumes '{' statements '}' and returns the first statement of the chain.
+# The number of statements is left in cx.rslot, because a Vela function has
+# exactly one return value and threading a second one through a pool would be
+# worse than one documented out-parameter.
+def parse_body(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+               mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+               mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    cx.rslot = 0
+    if cx.err != 0 {
+        return -1
+    }
+    if not at_op(tk, cx, 33) {
+        perr(cx, concat(concat("expected '{' to open a block, found '",
+                               tok_text(src, tk, cx)), "'"), ti_line(tk, cx))
+        return -1
+    }
+    cx.ti += 1
+    mut head: int = -1
+    mut tail: int = -1
+    mut count: int = 0
+    while cx.err == 0 and not at_close(tk, cx) {
+        if at_nl(tk, cx) {
+            cx.ti += 1
+            continue
+        }
+        s: int = parse_stmt(src, tk, tkf, nd, ty, flt, cx)
+        if s >= 0 {
+            if head < 0 {
+                head = s
+            } else {
+                nd[tail * 10 + 7] = s
+            }
+            tail = s
+            count += 1
+        }
+        if cx.err != 0 {
+            break
+        }
+        end_of_stmt(src, tk, cx)
+    }
+    if cx.err != 0 {
+        return head
+    }
+    if at_eof(tk, cx) {
+        perr(cx, "missing '}': a block is never closed", ti_line(tk, cx))
+        return head
+    }
+    cx.ti += 1
+    cx.rslot = count
+    return head
+}
+
+# ---------------------------------------------------------------------------
+# statements
+
+def parse_stmt(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+               mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+               mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    if cx.err != 0 {
+        return -1
+    }
+    line: int = ti_line(tk, cx)
+    if at_kw(tk, cx, 20) {
+        cx.ti += 1
+        if not at_kw(tk, cx, 1) {
+            perr(cx, "'pure' must be followed by a function definition", line)
+            return -1
+        }
+        return parse_funcdef(src, tk, tkf, nd, ty, flt, cx, 4)
+    }
+    if at_kw(tk, cx, 1) {
+        return parse_funcdef(src, tk, tkf, nd, ty, flt, cx, 0)
+    }
+    if at_kw(tk, cx, 23) {
+        # `extern c def puts(s: str) -> None` — a *declaration*, not a
+        # definition: it says a C library function exists and what its C
+        # prototype is, and Vela emits that prototype and the call.  There is no
+        # header to name, because the declaration *is* the prototype; and there
+        # is no body, which is what flag 8 means to the resolver and the emitter.
+        cx.ti += 1
+        if not at_name(tk, cx) {
+            perr(cx, "expected 'c' after 'extern'", line)
+            return -1
+        }
+        if not name_eq(src, tk_off(tk, cx.ti), tk_len(tk, cx.ti), "c") {
+            perr(cx, "'extern' declares C functions only: write 'extern c'",
+                 line)
+            return -1
+        }
+        cx.ti += 1
+        # `extern c pure def sqrt(...)` is the useful spelling for a C function
+        # with no side effects (math.h, mostly): `pure` is what lets it be called
+        # from inside a `parallel for`, and a foreign function is exactly the one
+        # whose purity the compiler cannot see for itself.
+        mut xflag: int = 8
+        if at_kw(tk, cx, 20) {
+            xflag = 12
+            cx.ti += 1
+        }
+        if not at_kw(tk, cx, 1) {
+            perr(cx, "expected a function definition after 'extern c'", line)
+            return -1
+        }
+        return parse_funcdef(src, tk, tkf, nd, ty, flt, cx, xflag)
+    }
+    if at_kw(tk, cx, 21) {
+        return parse_structdef(src, tk, tkf, nd, ty, flt, cx)
+    }
+    if at_kw(tk, cx, 3) {
+        return parse_if(src, tk, tkf, nd, ty, flt, cx)
+    }
+    if at_kw(tk, cx, 4) {
+        perr(cx, "'elif' is not part of Vela; write 'else if'", line)
+        return -1
+    }
+    if at_kw(tk, cx, 6) {
+        return parse_while(src, tk, tkf, nd, ty, flt, cx)
+    }
+    if at_kw(tk, cx, 7) {
+        return parse_for(src, tk, tkf, nd, ty, flt, cx, 0)
+    }
+    if at_kw(tk, cx, 22) {
+        cx.ti += 1
+        if not at_kw(tk, cx, 7) {
+            perr(cx, "'parallel' must be followed by 'for'", line)
+            return -1
+        }
+        return parse_for(src, tk, tkf, nd, ty, flt, cx, 1)
+    }
+    if at_kw(tk, cx, 2) {
+        cx.ti += 1
+        n: int = new_node(nd, cx, 9, line)
+        nd[n * 10 + 1] = -1
+        if at_nl(tk, cx) or at_eof(tk, cx) {
+            return n
+        }
+        v: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+        nd[n * 10 + 1] = v
+        return n
+    }
+    if at_kw(tk, cx, 10) {
+        if cx.aux == 0 {
+            perr(cx, "'break' outside a loop", line)
+            return -1
+        }
+        cx.ti += 1
+        return new_node(nd, cx, 13, line)
+    }
+    if at_kw(tk, cx, 11) {
+        if cx.aux == 0 {
+            perr(cx, "'continue' outside a loop", line)
+            return -1
+        }
+        cx.ti += 1
+        return new_node(nd, cx, 14, line)
+    }
+    if at_kw(tk, cx, 12) {
+        cx.ti += 1
+        return new_node(nd, cx, 15, line)
+    }
+    return parse_simple(src, tk, tkf, nd, ty, flt, cx)
+}
+
+# `flag` is what goes into the node's flag word: 4 for `pure def`, 0 otherwise
+def parse_funcdef(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                  mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                  mut flt: Array[float, 65536], mut cx: Ctx, flag: int) -> int {
+    line: int = ti_line(tk, cx)
+    cx.ti += 1
+    if not at_name(tk, cx) {
+        perr(cx, "expected a function name", line)
+        return -1
+    }
+    nm: int = name_id(src, tk, cx)
+    cx.ti += 1
+    if not at_op(tk, cx, 9) {
+        perr(cx, "expected '(' after the function name", ti_line(tk, cx))
+        return -1
+    }
+    cx.ti += 1
+    mut phead: int = -1
+    mut ptail: int = -1
+    mut pcount: int = 0
+    if not at_op(tk, cx, 10) {
+        while cx.err == 0 {
+            mut pflag: int = 0
+            if at_kw(tk, cx, 19) {
+                pflag = 1
+                cx.ti += 1
+            }
+            if not at_name(tk, cx) {
+                perr(cx, "expected a parameter name", ti_line(tk, cx))
+                return -1
+            }
+            pline: int = ti_line(tk, cx)
+            pnm: int = name_id(src, tk, cx)
+            cx.ti += 1
+            if not at_op(tk, cx, 12) {
+                perr(cx, concat(concat(concat("parameter '", interned(pnm)), "'"),
+                                " has no type annotation"), pline)
+                return -1
+            }
+            cx.ti += 1
+            pt: int = parse_type(src, tk, ty, cx)
+            if cx.err != 0 {
+                return -1
+            }
+            pn: int = new_node(nd, cx, 3, pline)
+            nd[pn * 10 + 1] = pnm
+            nd[pn * 10 + 2] = pt
+            nd[pn * 10 + 6] = pflag
+            if phead < 0 {
+                phead = pn
+            } else {
+                nd[ptail * 10 + 7] = pn
+            }
+            ptail = pn
+            pcount += 1
+            if at_op(tk, cx, 11) {
+                cx.ti += 1
+                continue
+            }
+            break
+        }
+    }
+    if not at_op(tk, cx, 10) {
+        perr(cx, "expected ')' after the parameters", ti_line(tk, cx))
+        return -1
+    }
+    cx.ti += 1
+    if not at_op(tk, cx, 26) {
+        perr(cx, concat(concat("function '", interned(nm)),
+                        "' has no return type annotation"), ti_line(tk, cx))
+        return -1
+    }
+    cx.ti += 1
+    rt: int = parse_type(src, tk, ty, cx)
+    if cx.err != 0 {
+        return -1
+    }
+    # Flag 8 is `extern c`: a *declaration*, so there is no body to parse.  The
+    # three `-1`s below are the whole of how a foreign function is marked — the
+    # resolver copies word 8 into `FT_BODY`, the checker and the emitter ask
+    # whether it is negative, and no flag has to be threaded through either.
+    mut body: int = -1
+    mut bcount: int = 0
+    if (flag & 8) == 0 {
+        body = parse_body(src, tk, tkf, nd, ty, flt, cx)
+        bcount = cx.rslot
+    }
+    n: int = new_node(nd, cx, 2, line)
+    nd[n * 10 + 1] = nm
+    nd[n * 10 + 2] = rt
+    nd[n * 10 + 3] = phead
+    nd[n * 10 + 4] = pcount
+    nd[n * 10 + 6] = flag
+    nd[n * 10 + 8] = body
+    nd[n * 10 + 9] = bcount
+    return n
+}
+
+# A struct body is an ordinary block: its statements are either field
+# declarations (`name: T`) or `def`s.  Telling them apart is the *dumper's* and
+# the interpreter's job, so the parser stores the block as it stands and one
+# shape of body covers both.
+def parse_structdef(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                    mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                    mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    line: int = ti_line(tk, cx)
+    cx.ti += 1
+    if not at_name(tk, cx) {
+        perr(cx, "expected a struct name", line)
+        return -1
+    }
+    nm: int = name_id(src, tk, cx)
+    cx.ti += 1
+    body: int = parse_body(src, tk, tkf, nd, ty, flt, cx)
+    bcount: int = cx.rslot
+    n: int = new_node(nd, cx, 4, line)
+    nd[n * 10 + 1] = nm
+    nd[n * 10 + 2] = body
+    nd[n * 10 + 3] = bcount
+    return n
+}
+
+def parse_if(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+             mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+             mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    line: int = ti_line(tk, cx)
+    cx.ti += 1
+    cond: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+    then_head: int = parse_body(src, tk, tkf, nd, ty, flt, cx)
+    then_count: int = cx.rslot
+    if cx.err == 0 and at_kw(tk, cx, 4) {
+        perr(cx, "'elif' is not part of Vela; write 'else if'", ti_line(tk, cx))
+        return -1
+    }
+    mut else_head: int = -1
+    mut else_count: int = 0
+    if cx.err == 0 and at_kw(tk, cx, 5) {
+        cx.ti += 1
+        if at_kw(tk, cx, 3) {
+            else_head = parse_if(src, tk, tkf, nd, ty, flt, cx)
+            else_count = 1
+        } else {
+            else_head = parse_body(src, tk, tkf, nd, ty, flt, cx)
+            else_count = cx.rslot
+        }
+    }
+    n: int = new_node(nd, cx, 10, line)
+    nd[n * 10 + 1] = cond
+    nd[n * 10 + 2] = then_head
+    nd[n * 10 + 3] = then_count
+    nd[n * 10 + 4] = else_head
+    nd[n * 10 + 8] = else_count
+    return n
+}
+
+def parse_while(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    line: int = ti_line(tk, cx)
+    cx.ti += 1
+    cond: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+    cx.aux += 1
+    body: int = parse_body(src, tk, tkf, nd, ty, flt, cx)
+    bcount: int = cx.rslot
+    cx.aux -= 1
+    n: int = new_node(nd, cx, 11, line)
+    nd[n * 10 + 1] = cond
+    nd[n * 10 + 2] = body
+    nd[n * 10 + 3] = bcount
+    return n
+}
+
+def parse_for(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+              mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+              mut flt: Array[float, 65536], mut cx: Ctx, par: int) -> int {
+    line: int = ti_line(tk, cx)
+    cx.ti += 1
+    if not at_name(tk, cx) {
+        perr(cx, "expected a loop variable", line)
+        return -1
+    }
+    var: int = name_id(src, tk, cx)
+    cx.ti += 1
+    if not at_kw(tk, cx, 8) {
+        perr(cx, "expected 'in' after the loop variable", ti_line(tk, cx))
+        return -1
+    }
+    cx.ti += 1
+    if not at_kw(tk, cx, 9) {
+        perr(cx, "this front end iterates range(...) only", ti_line(tk, cx))
+        return -1
+    }
+    if not at_op2(tk, cx, 1, 9) {
+        perr(cx, "'range' is a function: write range(0, n)", ti_line(tk, cx))
+        return -1
+    }
+    cx.ti += 1
+    cx.ti += 1
+    mut start: int = -1
+    mut stop: int = -1
+    mut step: int = -1
+    mut nargs: int = 0
+    if not at_op(tk, cx, 10) {
+        while cx.err == 0 {
+            a: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+            if nargs == 0 {
+                start = a
+            } else if nargs == 1 {
+                stop = a
+            } else if nargs == 2 {
+                step = a
+            }
+            nargs += 1
+            if at_op(tk, cx, 11) {
+                cx.ti += 1
+                continue
+            }
+            break
+        }
+    }
+    if not at_op(tk, cx, 10) {
+        perr(cx, "expected ')' to close range(...)", ti_line(tk, cx))
+        return -1
+    }
+    cx.ti += 1
+    if nargs < 1 or nargs > 3 {
+        perr(cx, "range() takes 1 to 3 arguments", line)
+        return -1
+    }
+    if nargs == 1 {
+        kept: int = stop
+        zero: int = new_node(nd, cx, 20, line)
+        nd[zero * 10 + 1] = 0
+        start = zero
+        stop = kept
+    }
+    cx.aux += 1
+    body: int = parse_body(src, tk, tkf, nd, ty, flt, cx)
+    bcount: int = cx.rslot
+    cx.aux -= 1
+    n: int = new_node(nd, cx, 12, line)
+    nd[n * 10 + 1] = var
+    nd[n * 10 + 2] = start
+    nd[n * 10 + 3] = stop
+    nd[n * 10 + 4] = step
+    nd[n * 10 + 6] = par
+    nd[n * 10 + 8] = body
+    nd[n * 10 + 9] = bcount
+    return n
+}
+
+# `mut x: int = 0`, `x: int = 0`, `x = e`, `x += e`, `f(x)`
+def parse_simple(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                 mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                 mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    line: int = ti_line(tk, cx)
+    if at_kw(tk, cx, 19) {
+        cx.ti += 1
+        if not at_name(tk, cx) {
+            perr(cx, "expected a variable name after 'mut'", line)
+            return -1
+        }
+        nm: int = name_id(src, tk, cx)
+        cx.ti += 1
+        mut decl: int = -1
+        if at_op(tk, cx, 12) {
+            cx.ti += 1
+            decl = parse_type(src, tk, ty, cx)
+        }
+        mut val: int = -1
+        if at_op(tk, cx, 8) {
+            cx.ti += 1
+            val = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+        } else if decl < 0 {
+            perr(cx, "a 'mut' binding needs an initialiser or a type", line)
+            return -1
+        }
+        if cx.err != 0 {
+            return -1
+        }
+        n: int = new_node(nd, cx, 6, line)
+        tgt: int = new_node(nd, cx, 25, line)
+        nd[tgt * 10 + 1] = nm
+        nd[n * 10 + 1] = tgt
+        nd[n * 10 + 2] = val
+        nd[n * 10 + 3] = decl
+        nd[n * 10 + 6] = 3
+        return n
+    }
+    if at_name(tk, cx) and at_op2(tk, cx, 1, 12) {
+        nm2: int = name_id(src, tk, cx)
+        cx.ti += 1
+        cx.ti += 1
+        decl2: int = parse_type(src, tk, ty, cx)
+        mut val2: int = -1
+        if at_op(tk, cx, 8) {
+            cx.ti += 1
+            val2 = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+        }
+        if cx.err != 0 {
+            return -1
+        }
+        n2: int = new_node(nd, cx, 6, line)
+        tgt2: int = new_node(nd, cx, 25, line)
+        nd[tgt2 * 10 + 1] = nm2
+        nd[n2 * 10 + 1] = tgt2
+        nd[n2 * 10 + 2] = val2
+        nd[n2 * 10 + 3] = decl2
+        nd[n2 * 10 + 6] = 2
+        return n2
+    }
+    lhs: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+    if cx.err != 0 {
+        return -1
+    }
+    if at_op(tk, cx, 8) {
+        cx.ti += 1
+        val3: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+        n3: int = new_node(nd, cx, 6, line)
+        nd[n3 * 10 + 1] = lhs
+        nd[n3 * 10 + 2] = val3
+        nd[n3 * 10 + 3] = -1
+        return n3
+    }
+    if is_aug(tk, cx) {
+        base: int = aug_base(ti_val(tk, cx))
+        cx.ti += 1
+        val4: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+        n4: int = new_node(nd, cx, 7, line)
+        nd[n4 * 10 + 1] = lhs
+        nd[n4 * 10 + 2] = val4
+        nd[n4 * 10 + 3] = base
+        return n4
+    }
+    n5: int = new_node(nd, cx, 8, line)
+    nd[n5 * 10 + 1] = lhs
+    return n5
+}
+
+# ---------------------------------------------------------------------------
+# expressions, loosest binding outermost
+#
+# Every level is its own function so that the precedence is the call graph: to
+# read the grammar you read these signatures in order.
+
+def parse_expr(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+               mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+               mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    return parse_or(src, tk, tkf, nd, ty, flt, cx)
+}
+
+def parse_or(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+             mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+             mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    mut node: int = parse_and(src, tk, tkf, nd, ty, flt, cx)
+    while cx.err == 0 and at_kw(tk, cx, 14) {
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        rhs: int = parse_and(src, tk, tkf, nd, ty, flt, cx)
+        n: int = new_node(nd, cx, 29, line)
+        nd[n * 10 + 1] = 14
+        nd[n * 10 + 2] = node
+        nd[n * 10 + 3] = rhs
+        node = n
+    }
+    return node
+}
+
+def parse_and(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+              mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+              mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    mut node: int = parse_not(src, tk, tkf, nd, ty, flt, cx)
+    while cx.err == 0 and at_kw(tk, cx, 13) {
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        rhs: int = parse_not(src, tk, tkf, nd, ty, flt, cx)
+        n: int = new_node(nd, cx, 29, line)
+        nd[n * 10 + 1] = 13
+        nd[n * 10 + 2] = node
+        nd[n * 10 + 3] = rhs
+        node = n
+    }
+    return node
+}
+
+def parse_not(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+              mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+              mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    if cx.err != 0 {
+        return -1
+    }
+    if at_kw(tk, cx, 15) {
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        operand: int = parse_not(src, tk, tkf, nd, ty, flt, cx)
+        n: int = new_node(nd, cx, 28, line)
+        nd[n * 10 + 1] = 15
+        nd[n * 10 + 2] = operand
+        return n
+    }
+    return parse_cmp(src, tk, tkf, nd, ty, flt, cx)
+}
+
+# one comparison, never a chain: `a < b < c` is refused where it is written
+def parse_cmp(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+              mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+              mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    left: int = parse_bitor(src, tk, tkf, nd, ty, flt, cx)
+    if cx.err != 0 {
+        return -1
+    }
+    if is_cmp_op(tk, cx) {
+        op: int = ti_val(tk, cx)
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        right: int = parse_bitor(src, tk, tkf, nd, ty, flt, cx)
+        if is_cmp_op(tk, cx) {
+            perr(cx, "chained comparison is not allowed", ti_line(tk, cx))
+            return -1
+        }
+        n: int = new_node(nd, cx, 30, line)
+        nd[n * 10 + 1] = op
+        nd[n * 10 + 2] = left
+        nd[n * 10 + 3] = right
+        return n
+    }
+    return left
+}
+
+def parse_bitor(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    mut node: int = parse_bitxor(src, tk, tkf, nd, ty, flt, cx)
+    while cx.err == 0 and at_op(tk, cx, 18) {
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        rhs: int = parse_bitxor(src, tk, tkf, nd, ty, flt, cx)
+        n: int = new_node(nd, cx, 27, line)
+        nd[n * 10 + 1] = 18
+        nd[n * 10 + 2] = node
+        nd[n * 10 + 3] = rhs
+        node = n
+    }
+    return node
+}
+
+def parse_bitxor(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                 mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                 mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    mut node: int = parse_bitand(src, tk, tkf, nd, ty, flt, cx)
+    while cx.err == 0 and at_op(tk, cx, 19) {
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        rhs: int = parse_bitand(src, tk, tkf, nd, ty, flt, cx)
+        n: int = new_node(nd, cx, 27, line)
+        nd[n * 10 + 1] = 19
+        nd[n * 10 + 2] = node
+        nd[n * 10 + 3] = rhs
+        node = n
+    }
+    return node
+}
+
+def parse_bitand(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                 mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                 mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    mut node: int = parse_shift(src, tk, tkf, nd, ty, flt, cx)
+    while cx.err == 0 and at_op(tk, cx, 17) {
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        rhs: int = parse_shift(src, tk, tkf, nd, ty, flt, cx)
+        n: int = new_node(nd, cx, 27, line)
+        nd[n * 10 + 1] = 17
+        nd[n * 10 + 2] = node
+        nd[n * 10 + 3] = rhs
+        node = n
+    }
+    return node
+}
+
+def parse_shift(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    mut node: int = parse_additive(src, tk, tkf, nd, ty, flt, cx)
+    while cx.err == 0 and (at_op(tk, cx, 35) or at_op(tk, cx, 36)) {
+        op: int = ti_val(tk, cx)
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        rhs: int = parse_additive(src, tk, tkf, nd, ty, flt, cx)
+        n: int = new_node(nd, cx, 27, line)
+        nd[n * 10 + 1] = op
+        nd[n * 10 + 2] = node
+        nd[n * 10 + 3] = rhs
+        node = n
+    }
+    return node
+}
+
+def parse_additive(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                   mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                   mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    mut node: int = parse_multiplicative(src, tk, tkf, nd, ty, flt, cx)
+    while cx.err == 0 and (at_op(tk, cx, 1) or at_op(tk, cx, 2)) {
+        op: int = ti_val(tk, cx)
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        rhs: int = parse_multiplicative(src, tk, tkf, nd, ty, flt, cx)
+        n: int = new_node(nd, cx, 27, line)
+        nd[n * 10 + 1] = op
+        nd[n * 10 + 2] = node
+        nd[n * 10 + 3] = rhs
+        node = n
+    }
+    return node
+}
+
+def parse_multiplicative(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                         mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                         mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    mut node: int = parse_unary(src, tk, tkf, nd, ty, flt, cx)
+    while cx.err == 0 and (at_op(tk, cx, 3) or at_op(tk, cx, 4) or at_op(tk, cx, 5) or at_op(tk, cx, 20)) {
+        op: int = ti_val(tk, cx)
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        rhs: int = parse_unary(src, tk, tkf, nd, ty, flt, cx)
+        n: int = new_node(nd, cx, 27, line)
+        nd[n * 10 + 1] = op
+        nd[n * 10 + 2] = node
+        nd[n * 10 + 3] = rhs
+        node = n
+    }
+    return node
+}
+
+def parse_unary(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    if cx.err != 0 {
+        return -1
+    }
+    if at_op(tk, cx, 2) or at_op(tk, cx, 1) or at_op(tk, cx, 32) {
+        op: int = ti_val(tk, cx)
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        operand: int = parse_unary(src, tk, tkf, nd, ty, flt, cx)
+        n: int = new_node(nd, cx, 28, line)
+        nd[n * 10 + 1] = op
+        nd[n * 10 + 2] = operand
+        return n
+    }
+    return parse_power(src, tk, tkf, nd, ty, flt, cx)
+}
+
+def parse_power(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    node: int = parse_postfix(src, tk, tkf, nd, ty, flt, cx)
+    if cx.err != 0 {
+        return -1
+    }
+    if at_op(tk, cx, 21) {
+        line: int = ti_line(tk, cx)
+        cx.ti += 1
+        right: int = parse_unary(src, tk, tkf, nd, ty, flt, cx)
+        n: int = new_node(nd, cx, 27, line)
+        nd[n * 10 + 1] = 21
+        nd[n * 10 + 2] = node
+        nd[n * 10 + 3] = right
+        return n
+    }
+    return node
+}
+
+def parse_postfix(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                  mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                  mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    mut node: int = parse_atom(src, tk, tkf, nd, ty, flt, cx)
+    while cx.err == 0 {
+        if at_op(tk, cx, 9) {
+            line: int = ti_line(tk, cx)
+            cx.ti += 1
+            mut ahead: int = -1
+            mut atail: int = -1
+            mut acount: int = 0
+            if not at_op(tk, cx, 10) {
+                while cx.err == 0 {
+                    a: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+                    if a >= 0 {
+                        if ahead < 0 {
+                            ahead = a
+                        } else {
+                            nd[atail * 10 + 7] = a
+                        }
+                        atail = a
+                        acount += 1
+                    }
+                    if at_op(tk, cx, 11) {
+                        cx.ti += 1
+                        continue
+                    }
+                    break
+                }
+            }
+            if not at_op(tk, cx, 10) {
+                perr(cx, "expected ')' to close the call", ti_line(tk, cx))
+                return -1
+            }
+            cx.ti += 1
+            c: int = new_node(nd, cx, 26, line)
+            nd[c * 10 + 1] = node
+            nd[c * 10 + 2] = ahead
+            nd[c * 10 + 3] = acount
+            node = c
+            continue
+        }
+        if at_op(tk, cx, 14) {
+            line2: int = ti_line(tk, cx)
+            cx.ti += 1
+            mut lower: int = -1
+            if not at_op(tk, cx, 12) {
+                lower = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+            }
+            if at_op(tk, cx, 12) {
+                cx.ti += 1
+                mut upper: int = -1
+                if not at_op(tk, cx, 15) {
+                    upper = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+                }
+                if not at_op(tk, cx, 15) {
+                    perr(cx, "expected ']' to close the slice", ti_line(tk, cx))
+                    return -1
+                }
+                cx.ti += 1
+                s: int = new_node(nd, cx, 34, line2)
+                nd[s * 10 + 1] = node
+                nd[s * 10 + 2] = lower
+                nd[s * 10 + 3] = upper
+                node = s
+                continue
+            }
+            if not at_op(tk, cx, 15) {
+                perr(cx, "expected ']' to close the index", ti_line(tk, cx))
+                return -1
+            }
+            cx.ti += 1
+            ix: int = new_node(nd, cx, 31, line2)
+            nd[ix * 10 + 1] = node
+            nd[ix * 10 + 2] = lower
+            node = ix
+            continue
+        }
+        if at_op(tk, cx, 13) {
+            line3: int = ti_line(tk, cx)
+            cx.ti += 1
+            if not at_name(tk, cx) {
+                perr(cx, "expected a field name after '.'", ti_line(tk, cx))
+                return -1
+            }
+            nm: int = name_id(src, tk, cx)
+            cx.ti += 1
+            at: int = new_node(nd, cx, 32, line3)
+            nd[at * 10 + 1] = node
+            nd[at * 10 + 2] = nm
+            node = at
+            continue
+        }
+        break
+    }
+    return node
+}
+
+def parse_atom(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+               mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+               mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    if cx.err != 0 {
+        return -1
+    }
+    line: int = ti_line(tk, cx)
+    k: int = ti_kind(tk, cx)
+    if k == 2 {
+        v: int = ti_val(tk, cx)
+        cx.ti += 1
+        n: int = new_node(nd, cx, 20, line)
+        nd[n * 10 + 1] = v
+        return n
+    }
+    if k == 3 {
+        ti0: int = cx.ti
+        f: float = tkf[ti0]
+        cx.ti += 1
+        idx: int = flt_add(flt, cx, f, line)
+        n2: int = new_node(nd, cx, 21, line)
+        nd[n2 * 10 + 1] = idx
+        # The source span is kept as well as the value: the dump prints the
+        # literal the way it was written, which is exact (and does not depend
+        # on how a particular C library formats a double).
+        nd[n2 * 10 + 2] = tk_off(tk, ti0)
+        nd[n2 * 10 + 3] = tk_len(tk, ti0)
+        # flag 2 travels from the token: the lexer marks a float literal that is
+        # exactly zero, because the value itself lives in the float pool and the
+        # checker is not given the pool
+        if tk_flag(tk, ti0) == 2 {
+            nd[n2 * 10 + 6] = 2
+        }
+        return n2
+    }
+    if k == 4 {
+        off: int = tk_off(tk, cx.ti)
+        ln: int = tk_len(tk, cx.ti)
+        flag: int = tk_flag(tk, cx.ti)
+        cx.ti += 1
+        n3: int = new_node(nd, cx, 22, line)
+        nd[n3 * 10 + 1] = off
+        nd[n3 * 10 + 2] = ln
+        nd[n3 * 10 + 6] = flag
+        return n3
+    }
+    if at_name(tk, cx) {
+        nm: int = name_id(src, tk, cx)
+        cx.ti += 1
+        n4: int = new_node(nd, cx, 25, line)
+        nd[n4 * 10 + 1] = nm
+        return n4
+    }
+    if at_kw(tk, cx, 16) {
+        cx.ti += 1
+        n5: int = new_node(nd, cx, 23, line)
+        nd[n5 * 10 + 1] = 1
+        return n5
+    }
+    if at_kw(tk, cx, 17) {
+        cx.ti += 1
+        n6: int = new_node(nd, cx, 23, line)
+        nd[n6 * 10 + 1] = 0
+        return n6
+    }
+    if at_kw(tk, cx, 18) {
+        cx.ti += 1
+        return new_node(nd, cx, 24, line)
+    }
+    if at_op(tk, cx, 9) {
+        cx.ti += 1
+        inner: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+        if at_op(tk, cx, 11) {
+            perr(cx, "tuples are not supported", ti_line(tk, cx))
+            return -1
+        }
+        if not at_op(tk, cx, 10) {
+            perr(cx, "expected ')' to close the group", ti_line(tk, cx))
+            return -1
+        }
+        cx.ti += 1
+        return inner
+    }
+    if at_op(tk, cx, 14) {
+        cx.ti += 1
+        mut ahead: int = -1
+        mut atail: int = -1
+        mut acount: int = 0
+        if not at_op(tk, cx, 15) {
+            while cx.err == 0 {
+                e: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+                if e >= 0 {
+                    if ahead < 0 {
+                        ahead = e
+                    } else {
+                        nd[atail * 10 + 7] = e
+                    }
+                    atail = e
+                    acount += 1
+                }
+                if at_op(tk, cx, 11) {
+                    cx.ti += 1
+                    if at_op(tk, cx, 15) {
+                        break
+                    }
+                    continue
+                }
+                break
+            }
+        }
+        if not at_op(tk, cx, 15) {
+            perr(cx, "expected ']' to close the array literal", ti_line(tk, cx))
+            return -1
+        }
+        cx.ti += 1
+        if acount == 0 {
+            perr(cx, "an empty array literal has no element type", line)
+            return -1
+        }
+        n7: int = new_node(nd, cx, 33, line)
+        nd[n7 * 10 + 1] = ahead
+        nd[n7 * 10 + 2] = acount
+        return n7
+    }
+    perr(cx, "unexpected token in expression", line)
+    return -1
+}
+
+# ---------------------------------------------------------------------------
+# the whole file
+
+def parse_module(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                 mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                 mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    m: int = new_node(nd, cx, 1, 1)
+    mut head: int = -1
+    mut tail: int = -1
+    mut count: int = 0
+    while cx.err == 0 and not at_eof(tk, cx) {
+        if at_nl(tk, cx) {
+            cx.ti += 1
+            continue
+        }
+        if at_op(tk, cx, 34) {
+            perr(cx, "unexpected '}': there is no block open here",
+                 ti_line(tk, cx))
+            break
+        }
+        s: int = parse_stmt(src, tk, tkf, nd, ty, flt, cx)
+        if s >= 0 {
+            if head < 0 {
+                head = s
+            } else {
+                nd[tail * 10 + 7] = s
+            }
+            tail = s
+            count += 1
+        }
+        if cx.err != 0 {
+            break
+        }
+        end_of_stmt(src, tk, cx)
+    }
+    nd[m * 10 + 1] = head
+    nd[m * 10 + 2] = count
+    return m
+}

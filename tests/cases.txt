@@ -1,0 +1,293 @@
+# tests/cases.txt — the corpus, one case per line:
+#
+#   <mode>  <name>  <path>
+#
+# mode      what must be true
+# ------------------------------------------------------------------------------
+# run       built by the compiler under test (which drives the host's C
+#           compiler itself), executed, and *also* interpreted: both must print
+#           tests/golden/<name>.out exactly
+# refuse    `check` must fail with the first bytes of stderr equal to
+#           tests/golden/<name>.err, and must write nothing to stdout
+# panic     it must compile, and the program must then stop at run time with
+#           tests/golden/<name>.err as the head of stderr; the interpreter must
+#           stop too
+# ok        `check` must accept it and report ok
+# dumps     the digests of `lex`, `parse` and `emit-c` must all match
+#           tests/golden/digests.txt — three checks, three digests, so a change
+#           in the back end cannot hide behind an unchanged parser
+# lex       one of those three on its own, for a file that cannot be parsed
+# fixpoint  the compiler must build itself through its own driver, and the
+#           compiler it built must write the C it wrote — byte for byte
+#
+# Every refusal here is a program Python or C++ would accept and misbehave on,
+# and every `ok` is a program a conservative compiler would be wrong to refuse.
+# The two halves are the point: a compiler that refuses one program too many is
+# as broken as one that accepts one too few.
+
+# -------------------------------------------------------------- what it prints
+
+run arith_basics                             tests/build/arith_basics.vel
+run python_floor_semantics                   tests/build/python_floor_semantics.vel
+run recursion_fib                            tests/build/recursion_fib.vel
+run struct_and_methods                       tests/build/struct_and_methods.vel
+run struct_value_semantics                   tests/build/struct_value_semantics.vel
+run arrays_and_len_folding                   tests/build/arrays_and_len_folding.vel
+run array_zero_filled                        tests/build/array_zero_filled.vel
+run parallel_for_correct                     tests/build/parallel_for_correct.vel
+run parallel_nested_2d                       tests/build/parallel_nested_2d.vel
+run while_with_narrowing                     tests/build/while_with_narrowing.vel
+run int_width_literals                       tests/build/int_width_literals.vel
+run strings                                  tests/build/strings.vel
+run string_escapes                           tests/build/string_escapes.vel
+# ------------------------------------------------- what cannot be restored
+#
+# Three cases were commented out on 2026-09-19, and they are commented rather
+# than deleted on purpose: a suite that silently forgets what it used to check
+# gets worse without anybody noticing.
+#
+#   host_surface   the host surface end to end (`env`, `arg`, `argc`,
+#                  `read_text`, `write_text`) — its `run` and `dumps` lines
+#   bom_check      a source file that begins with a UTF-8 BOM
+#   crlf_check     a source file with CRLF line endings
+#
+# All three were lost when the corpus was deleted by hand, and *no* copy of their
+# text survives — not in the session transcripts, not in the compressed session
+# stores, not in IntelliJ's Local History (which was byte-scanned in three
+# encodings and holds path descriptors only).  Only their names survive, in this
+# manifest and in that index.  Inventing plausible-looking cases and calling them
+# restored would be worse than the gap, so the gap is written down instead, and
+# the properties they covered are taken up by new cases written on purpose:
+#
+#   host_surface_roundtrip   (see the `run` block below)
+#   bom_first_byte           needs a file whose first three bytes are EF BB BF
+#   crlf_line_endings        needs a file whose newlines are CR LF
+#
+# The last two are byte-level cases and are being written in the round that has a
+# shell to set those bytes with; until then they are deliberately absent rather
+# than present-and-lying.
+
+# run host_surface                           tests/build/host_surface.vel   -- source lost
+run control_flow                             tests/build/control_flow.vel
+run float_and_math                           tests/build/float_and_math.vel
+run pure_call_inside_parallel                tests/build/pure_call_inside_parallel.vel
+run bool_logic                               tests/build/bool_logic.vel
+# run bom_check                              tests/build/bom_check.vel      -- source lost
+# run crlf_check                             tests/build/crlf_check.vel     -- source lost
+run host_roundtrip                           tests/probes/host_roundtrip.vel
+run hello                                    examples/hello.vel
+
+# ------------------------------------------- a C library, called from Vela
+#
+# The one language feature that reaches outside the language: `extern c` names a
+# C function, the back end calls it, and the checker refuses the boundary it
+# cannot describe honestly (a `str`, an array) instead of inventing one.
+#
+# Two cases, because there are two promises.  The compiled program must call
+# `abs` and `sqrt` and print the right answers; the *interpreter* must refuse the
+# same program and say why.  Vela has no FFI and is not going to grow one, so an
+# interpreted program cannot reach a C library — that is a boundary the language
+# states rather than a gap the suite hides, and it is asserted right here.
+
+native extern_c_probe                        tests/build/extern/extern_c_probe.vel
+refuse-interp extern_c_probe_interp          tests/build/extern/extern_c_probe.vel
+
+# ------------------------------------- the call site, one rule at a time
+#
+# extern_c_probe is one program that uses the boundary.  These are the rules
+# that boundary is made of, one probe per rule: what a call site may pass at
+# which declared kind, when a declaration may appear, and what the checker must
+# refuse when an argument does not fit the declaration.  They live in
+# tests/probes/ because they are probes rather than corpus programs — the point
+# of each one is a single verdict, not an output.
+#
+# The four native cases are compiled and run: they must print their golden.
+# They are not interpreted — the interpreter cannot reach a C library at all,
+# which refuse-interp above asserts — so native is the right mode rather
+# than run, which would demand the interpreted twin agree.
+#
+# The two ok cases need no golden: the claim is that the checker accepts them,
+# and a checker that starts refusing one of these has become too strict, which is
+# the failure mode ok exists to catch.
+
+native extern_calls_as_declared              tests/probes/extern_calls_as_declared.vel
+native extern_constant_fits_declared_kind    tests/probes/extern_constant_fits_declared_kind.vel
+native extern_declared_after_the_call        tests/probes/extern_declared_after_the_call.vel
+native extern_declared_never_called          tests/probes/extern_declared_never_called.vel
+ok extern_void_call_accepted                 tests/probes/extern_void_call_accepted.vel
+ok extern_u8_argument_in_range               tests/probes/extern_u8_argument_in_range.vel
+refuse extern_str_argument                   tests/probes/extern_str_argument.vel
+refuse extern_float_argument_for_i32         tests/probes/extern_float_argument_for_i32.vel
+refuse extern_int_variable_for_i32           tests/probes/extern_int_variable_for_i32.vel
+refuse extern_int_argument_for_float         tests/probes/extern_int_argument_for_float.vel
+refuse extern_u8_argument_out_of_range       tests/probes/extern_u8_argument_out_of_range.vel
+refuse extern_array_argument                 tests/probes/extern_array_argument.vel
+refuse extern_struct_argument                tests/probes/extern_struct_argument.vel
+refuse extern_call_result_argument           tests/probes/extern_call_result_argument.vel
+refuse extern_str_result                     tests/probes/extern_str_result.vel
+refuse extern_struct_parameter               tests/probes/extern_struct_parameter.vel
+refuse extern_method                         tests/probes/extern_method.vel
+
+# ----------------------------------------------------------- what it refuses
+
+refuse implicit_int_to_float                 tests/build/check_cases/implicit_int_to_float.vel
+refuse float_to_int_variable                 tests/build/check_cases/float_to_int_variable.vel
+refuse truthiness                            tests/build/check_cases/truthiness.vel
+refuse truthiness_string                     tests/build/check_cases/truthiness_string.vel
+refuse immutable_rebind                      tests/build/check_cases/immutable_rebind.vel
+refuse immutable_array_element               tests/build/check_cases/immutable_array_element.vel
+refuse array_rebind                          tests/build/check_cases/array_rebind.vel
+refuse const_index_out_of_range              tests/build/check_cases/const_index_out_of_range.vel
+refuse negative_const_index                  tests/build/check_cases/negative_const_index.vel
+refuse division_by_constant_zero             tests/build/check_cases/division_by_constant_zero.vel
+refuse divide_float_by_literal_zero          tests/build/check_cases/divide_float_by_literal_zero.vel
+refuse shift_out_of_range                    tests/build/check_cases/shift_out_of_range.vel
+refuse literal_overflow                      tests/build/check_cases/literal_overflow.vel
+refuse parallel_shared_accumulator           tests/build/check_cases/parallel_shared_accumulator.vel
+refuse parallel_unprovable_index             tests/build/check_cases/parallel_unprovable_index.vel
+refuse parallel_writes_parameter             tests/build/check_cases/parallel_writes_parameter.vel
+refuse parallel_impure_call                  tests/build/check_cases/parallel_impure_call.vel
+refuse parallel_print                        tests/build/check_cases/parallel_print.vel
+refuse pure_function_impure_call             tests/build/check_cases/pure_function_impure_call.vel
+refuse chained_comparison                    tests/build/check_cases/chained_comparison.vel
+refuse elif_is_not_vela                      tests/build/check_cases/elif_is_not_vela.vel
+refuse missing_return                        tests/build/check_cases/missing_return.vel
+refuse value_from_void_function              tests/build/check_cases/value_from_void_function.vel
+refuse uninitialised_scalar                  tests/build/check_cases/uninitialised_scalar.vel
+refuse mutate_loop_variable                  tests/build/check_cases/mutate_loop_variable.vel
+refuse return_own_array                      tests/build/check_cases/return_own_array.vel
+refuse array_struct_field                    tests/build/check_cases/array_struct_field.vel
+refuse string_concat_not_implemented         tests/build/check_cases/string_concat_not_implemented.vel
+refuse slice_not_implemented                 tests/build/check_cases/slice_not_implemented.vel
+refuse nested_function                       tests/build/check_cases/nested_function.vel
+refuse tuple                                 tests/build/check_cases/tuple.vel
+refuse adjacent_string_literals              tests/build/check_cases/adjacent_string_literals.vel
+refuse missing_open_brace                    tests/build/check_cases/missing_open_brace.vel
+refuse missing_close_brace                   tests/build/check_cases/missing_close_brace.vel
+refuse statements_need_newlines              tests/build/check_cases/statements_need_newlines.vel
+refuse useless_expression_statement          tests/build/check_cases/useless_expression_statement.vel
+refuse unannotated_parameter                 tests/build/check_cases/unannotated_parameter.vel
+refuse missing_return_annotation             tests/build/check_cases/missing_return_annotation.vel
+refuse struct_requires_place                 tests/build/check_cases/struct_requires_place.vel
+refuse duplicate_field                       tests/build/check_cases/duplicate_field.vel
+refuse no_main                               tests/build/check_cases/no_main.vel
+refuse unterminated_string                   tests/build/lexer_error.vel
+refuse extern_str_parameter                  tests/build/extern/reject_str_parameter.vel
+refuse extern_non_scalar_parameter           tests/build/extern/reject_non_scalar.vel
+
+# ------------------------------------------------------ where it stops later
+#
+# A divisor the compiler cannot see is not a compile error: refusing this would
+# mean refusing every `a // b`.  What it must not do is stay silent at run time.
+
+panic divide_by_mutable_zero_checks_at_runtime tests/build/divide_by_mutable_zero_checks_at_runtime.vel
+
+# ------------------------------------------------------------ what it accepts
+#
+# The verdicts that never show up until they break: the corpus, the compiler's
+# own source, the benchmarks — and this suite itself.
+#
+# The compiler's *parts* are deliberately not listed here.  A part is not a
+# program: `selfhost/parts/check.vel` calls into the node layout of
+# vm_state.vel, has no `main`, and is only ever a program once
+# tools/link_selfhost.vel has spliced it into selfhost/vm.vel.  Listing it as
+# `ok` would be asking the checker to accept a fragment — which it refuses, in
+# eight different ways, all of them correct.  What is checked is the linked
+# compiler below, which contains every part verbatim, plus the tokens and the
+# syntax tree of each part on its own (see the `lex`/`parse` pairs further down).
+
+ok  hello_accepted                           examples/hello.vel
+ok  run_tests_accepted                       tests/run_tests.vel
+ok  vela_lexer_accepted                      selfhost/vela.vel
+ok  vm_accepted                              selfhost/vm.vel
+ok  matmul_accepted                          bench/matmul.vel
+ok  mandelbrot_accepted                      bench/mandelbrot.vel
+ok  sieve_accepted                           bench/sieve.vel
+
+# ------------------------------------------------------------- what it writes
+#
+# lex, parse and emit, held to a recorded digest.  diff_lexer.py, diff_ast.py
+# and diff_emit.py compared this compiler against the Python one on exactly
+# these files; three digests per file keep the coverage without a second front
+# end to appeal to.  A digest is not a diff, so when one of these fails, run the
+# mode by hand and read `git diff`.
+
+dumps arith_basics                           tests/build/arith_basics.vel
+dumps python_floor_semantics                 tests/build/python_floor_semantics.vel
+dumps recursion_fib                          tests/build/recursion_fib.vel
+dumps struct_and_methods                     tests/build/struct_and_methods.vel
+dumps struct_value_semantics                 tests/build/struct_value_semantics.vel
+dumps arrays_and_len_folding                 tests/build/arrays_and_len_folding.vel
+dumps array_zero_filled                      tests/build/array_zero_filled.vel
+dumps parallel_for_correct                   tests/build/parallel_for_correct.vel
+dumps parallel_nested_2d                     tests/build/parallel_nested_2d.vel
+dumps while_with_narrowing                   tests/build/while_with_narrowing.vel
+dumps int_width_literals                     tests/build/int_width_literals.vel
+dumps strings                                tests/build/strings.vel
+dumps string_escapes                         tests/build/string_escapes.vel
+# dumps host_surface                         tests/build/host_surface.vel   -- source lost
+dumps control_flow                           tests/build/control_flow.vel
+dumps float_and_math                         tests/build/float_and_math.vel
+dumps pure_call_inside_parallel              tests/build/pure_call_inside_parallel.vel
+dumps bool_logic                             tests/build/bool_logic.vel
+# dumps bom_check                            tests/build/bom_check.vel      -- source lost
+# dumps crlf_check                           tests/build/crlf_check.vel     -- source lost
+dumps zero_div_runtime                       tests/build/divide_by_mutable_zero_checks_at_runtime.vel
+dumps extern_c_probe                         tests/build/extern/extern_c_probe.vel
+dumps hello                                  examples/hello.vel
+dumps vela_lexer                             selfhost/vela.vel
+lex   vm_state                               selfhost/parts/vm_state.vel
+parse vm_state                               selfhost/parts/vm_state.vel
+lex   parser                                 selfhost/parts/parser.vel
+parse parser                                 selfhost/parts/parser.vel
+lex   resolve                                selfhost/parts/resolve.vel
+parse resolve                                selfhost/parts/resolve.vel
+lex   check                                  selfhost/parts/check.vel
+parse check                                  selfhost/parts/check.vel
+lex   eval                                   selfhost/parts/eval.vel
+parse eval                                   selfhost/parts/eval.vel
+lex   emit_part                              selfhost/parts/emit.vel
+parse emit_part                              selfhost/parts/emit.vel
+lex   dump                                   selfhost/parts/dump.vel
+parse dump                                   selfhost/parts/dump.vel
+lex   vm_main                                selfhost/parts/vm_main.vel
+parse vm_main                                selfhost/parts/vm_main.vel
+dumps vm                                     selfhost/vm.vel
+dumps run_tests                              tests/run_tests.vel
+dumps matmul                                 bench/matmul.vel
+dumps mandelbrot                             bench/mandelbrot.vel
+dumps sieve                                  bench/sieve.vel
+
+# --------------------------------------- the aliasing rule of `parallel for`
+#
+# An array the body **writes** may be read inside that loop only at the write's own
+# index expression.  It is the language-level form of what Rust's `par_iter_mut`
+# enforces by construction — an iteration is handed its own element and cannot
+# reach another iteration's — and it is why `a[i] = a[i - 1] + 1` cannot be written
+# here at all: before the rule existed that program compiled to
+# `#pragma omp parallel for` and printed **nine different wrong values in twenty
+# runs** (3, 7, 11, 15, 19, 27, 31, 51, 55) while the interpreter printed 63.
+#
+# Five cases, because a rule is only worth having if both directions are held: one
+# program that must be refused, and four that must keep compiling — including the
+# two shapes the benchmarks and ordinary accumulation depend on.
+#
+# These are NEW cases, written together with the rule, and their goldens have not
+# been recorded yet.  `tools\refreeze.ps1` records them while keeping every
+# existing `.out`/`.err` byte for byte (a golden is an expectation and must not be
+# replaced by the compiler's own output).
+
+refuse parallel_alias_cross_iteration        tests/probes/parallel_alias_cross_iteration.vel
+run    parallel_alias_read_only              tests/probes/parallel_alias_read_only.vel
+run    parallel_alias_read_any_index         tests/probes/parallel_alias_read_any_index.vel
+run    parallel_alias_same_index             tests/probes/parallel_alias_same_index.vel
+run    parallel_alias_nested_rowmajor        tests/probes/parallel_alias_nested_rowmajor.vel
+
+# ------------------------------------------------------- the compiler itself
+#
+# `selfhost/vm.vel` is the compiler.  The compiler under test writes its C,
+# builds a compiler from that C through its own build driver, and the compiler it
+# built writes the C again — byte-identical, or the foundation of the language is
+# a coincidence.  `run_tests.exe fast` skips this case.
+
+fixpoint selfhost_fixpoint                   selfhost/vm.vel

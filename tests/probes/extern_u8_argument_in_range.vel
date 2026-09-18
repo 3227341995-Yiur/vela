@@ -1,0 +1,14 @@
+# A `u8` parameter taking a constant that fits it.
+#
+# This one is a `check` case, not a build: no function in the C library takes a
+# single `unsigned char` and returns something a test could print, and the point
+# here is what the *checker* says about `200` against a `u8` — it fits, so the
+# call is accepted — while 300 is refused by the file next door
+# (extern_u8_argument_out_of_range.vel).  `u8` exists so that a C `unsigned char`
+# can be declared exactly; whether a declaration matches a C prototype is the
+# user's to get right, which is why a name no library has is enough here.
+extern c def double_byte(x: u8) -> i32
+
+def main() -> None {
+    print(double_byte(200))
+}

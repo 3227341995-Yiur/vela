@@ -1,0 +1,14 @@
+# 这个文件是故意写错的：插件应该在编辑器里画出诊断，而不是让程序跑起来。
+# This file is deliberately wrong: the plugin must draw a diagnostic in the
+# editor instead of letting the program run.
+#
+# 预期诊断 / expected diagnostic, from the repository root:
+#   selfhost\build\vm.exe check ide-demo\broken.vel
+#
+# `if` 的条件必须是 bool，这里的 1 是 int：
+# the condition of `if` must be bool, and the 1 here is an int.
+def main() -> None {
+    if 1 {
+        print("never printed: the program is refused before it can run")
+    }
+}

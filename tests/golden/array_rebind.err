@@ -1,0 +1,2 @@
+vela: safety error: cannot rebind array 'a'
+  at tests/build/check_cases/array_rebind.vel:4

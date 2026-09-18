@@ -1,0 +1,10 @@
+def touch(mut a: Array[int, 64], n: int) -> None {
+    parallel for i in range(0, n) {
+        a[i] = 1
+    }
+}
+
+def main() -> None {
+    mut a: Array[int, 64] = [0]
+    touch(a, 60)
+}

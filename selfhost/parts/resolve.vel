@@ -1,0 +1,675 @@
+# ---------------------------------------------------------------------------
+# selfhost/parts/resolve.vel — binding and layout, before a single line runs.
+#
+# The tree the parser hands over is deliberately unlabelled: a name node holds
+# an intern handle and nothing else, a declaration does not say which frame slot
+# it will live in, a struct field has no index, and a method is a plain `def`
+# with no owner — selfhost/AST.md §9 lists all of it.  This pass resolves; it does
+# not judge.  `undeclared = 1` and `1 = 2` are refused here because a name cannot
+# be bound, not because a rule was checked: the verdicts proper are
+# `selfhost/parts/check.vel`, which runs after this one and judges what it
+# resolved.
+#
+# This pass supplies what is missing, once, into the node and symbol tables:
+#
+#   * every `def` becomes a function record (owner, params, body), every
+#     `struct` a struct record (fields in declaration order, methods, size);
+#   * every declaration and every `for` variable gets a frame slot, so the
+#     evaluator never searches a name at run time;
+#   * every name node is bound to a local slot, a function, a struct or a
+#     builtin — or the program is refused, with the line it was refused on;
+#   * every declaration records the pool its elements live in, so the evaluator
+#     does not have to re-derive types from the type pool on every execution.
+#
+# After this returns, `nd` and `ty` are still exactly as the parser left them and
+# everything this pass learned is in `mem`.  Nothing here evaluates anything: a
+# resolver that runs code is a resolver that cannot be trusted to have looked at
+# the whole program first.
+# ---------------------------------------------------------------------------
+
+# `vela: <kind>: <message>`, then the location, exactly as the checker spells it:
+# the resolver raises type errors as often as it raises anything else, and a
+# reader — or a tool that has to tell a syntax error from a safety error — has to
+# be able to tell them apart.  `tests/diff_check.py` used to be that reader; it
+# was deleted with stage 0, and the recorded goldens are the reader now.
+def fail_kind(path: str, line: int, kind: str, msg: str) -> None {
+    warn_str("vela: ")
+    warn_str(kind)
+    warn_str(": ")
+    warn_str(msg)
+    warn_str("\n  at ")
+    warn_str(path)
+    warn_str(":")
+    warn_int(line)
+    warn_nl()
+    panic("the interpreted program was refused")
+}
+
+def fail(path: str, line: int, msg: str) -> None {
+    fail_kind(path, line, "type error", msg)
+}
+
+def fail_name(path: str, line: int, msg: str, name: str) -> None {
+    fail_kind(path, line, "type error",
+              concat(concat(msg, " '"), concat(name, "'")))
+}
+
+# --------------------------------------------------------------- scope stack
+#
+# One flat stack of (name, kind, value) entries in the tail of the stack cells:
+# globals at the bottom, then a function's parameters, then the locals of every
+# block currently open.  Lookup walks backwards, so the innermost declaration
+# wins, which is exactly Vela's shadowing rule.
+
+def sc_push(mut mem: Array[int, 3741696], mut vm: VM, name: int, kind: int,
+            val: int, ckind: int) -> None {
+    if vm.scn >= SCOPE_MAX() {
+        panic("vela: compiler: the resolver ran out of scope entries")
+    }
+    mem[SCOPE_BASE() + vm.scn * 4 + 0] = name
+    mem[SCOPE_BASE() + vm.scn * 4 + 1] = kind
+    mem[SCOPE_BASE() + vm.scn * 4 + 2] = val
+    # the value kind travels with the binding: the back end has to spell a name
+    # in C, and this is where it learns whether it is an int, a double or a
+    # pointer into the arena
+    mem[SCOPE_BASE() + vm.scn * 4 + 3] = ckind
+    vm.scn += 1
+}
+
+def sc_ckind(mem: Array[int, 3741696], i: int) -> int {
+    return mem[SCOPE_BASE() + i * 4 + 3]
+}
+
+def sc_find(mut mem: Array[int, 3741696], vm: VM, name: int) -> int {
+    mut i: int = vm.scn - 1
+    while i >= 0 {
+        if mem[SCOPE_BASE() + i * 4 + 0] == name {
+            return i
+        }
+        i -= 1
+    }
+    return -1
+}
+
+def sc_kind(mut mem: Array[int, 3741696], i: int) -> int {
+    return mem[SCOPE_BASE() + i * 4 + 1]
+}
+
+def sc_val(mut mem: Array[int, 3741696], i: int) -> int {
+    return mem[SCOPE_BASE() + i * 4 + 2]
+}
+
+# ------------------------------------------------------------------ builtins
+#
+# A bare name that is neither local, function nor struct is a builtin or an
+# error.  Comparing interned text is safe and cheap here because this runs once
+# per name node, not once per execution.
+
+def builtin_id(h: int) -> int {
+    s: str = interned(h)
+    if s == "print" { return B_PRINT() }
+    if s == "emit_str" { return B_EMIT_STR() }
+    if s == "emit_int" { return B_EMIT_INT() }
+    if s == "emit_float" { return B_EMIT_FLT() }
+    if s == "emit_nl" { return B_EMIT_NL() }
+    if s == "warn_str" { return B_WARN_STR() }
+    if s == "warn_int" { return B_WARN_INT() }
+    if s == "warn_nl" { return B_WARN_NL() }
+    if s == "len" { return B_LEN() }
+    if s == "to_float" { return B_TO_FLOAT() }
+    if s == "to_int" { return B_TO_INT() }
+    if s == "sqrt" { return B_SQRT() }
+    if s == "fabs" { return B_FABS() }
+    if s == "floor" { return B_FLOOR() }
+    if s == "pow" { return B_POW() }
+    if s == "abs" { return B_ABS() }
+    if s == "min_int" { return B_MIN_INT() }
+    if s == "max_int" { return B_MAX_INT() }
+    if s == "min_float" { return B_MIN_FLT() }
+    if s == "max_float" { return B_MAX_FLT() }
+    if s == "bytes_at" { return B_BYTES_AT() }
+    if s == "substr" { return B_SUBSTR() }
+    if s == "unescape" { return B_UNESCAPE() }
+    if s == "intern" { return B_INTERN() }
+    if s == "interned" { return B_INTERNED() }
+    if s == "argc" { return B_ARGC() }
+    if s == "arg" { return B_ARG() }
+    if s == "read_text" { return B_READ_TEXT() }
+    if s == "write_text" { return B_WRITE_TEXT() }
+    if s == "panic" { return B_PANIC() }
+    if s == "now" { return B_NOW() }
+    if s == "concat" { return B_CONCAT() }
+    if s == "run_command" { return B_RUN_CMD() }
+    if s == "env" { return B_ENV() }
+    return 0
+}
+
+# Arity of a builtin, or -1 when it is variadic (print and friends take any
+# number of values).  Enforced at resolve time so a wrong arity is a refusal
+# with a line number, not a strange failure in the middle of a run.
+
+def builtin_arity(b: int) -> int {
+    if b == B_PRINT() { return -1 }
+    if b == B_EMIT_NL() { return 0 }
+    if b == B_WARN_NL() { return 0 }
+    if b == B_POW() { return 2 }
+    if b == B_MIN_INT() { return 2 }
+    if b == B_MAX_INT() { return 2 }
+    if b == B_MIN_FLT() { return 2 }
+    if b == B_MAX_FLT() { return 2 }
+    if b == B_BYTES_AT() { return 2 }
+    if b == B_SUBSTR() { return 3 }
+    if b == B_WRITE_TEXT() { return 2 }
+    if b == B_CONCAT() { return 2 }
+    if b == B_ARGC() { return 0 }
+    if b == B_NOW() { return 0 }
+    return 1
+}
+
+# ------------------------------------------------------------- struct lookup
+
+def find_struct(mem: Array[int, 3741696], vm: VM, name: int) -> int {
+    mut i: int = 0
+    while i < vm.nstruct {
+        if stb_get(mem, i, STB_NAME()) == name {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+# The kind of a declared type, as one of the K_* codes.  Only declarations need
+# this: an expression's type is the value's tag at run time, which is why this
+# interpreter has no type inference pass at all.
+#
+# A nested array (`Array[Array[int, 4], 8]`) has no representation here and is
+# refused rather than silently stored as something else.
+
+def type_kind(ty: Array[int, 262144], t: int, mem: Array[int, 3741696],
+              vm: VM) -> int {
+    if t < 0 {
+        return K_NONE()
+    }
+    e: int = ty_elem(ty, t)
+    if e >= 0 {
+        ek: int = type_kind(ty, e, mem, vm)
+        if ek == K_AI() {
+            return K_BAD()
+        }
+        if ek == K_AF() {
+            return K_BAD()
+        }
+        if ek == K_AB() {
+            return K_BAD()
+        }
+        if ek == K_AA() {
+            return K_BAD()
+        }
+        if ek == K_AS() {
+            return K_BAD()
+        }
+        if ek == K_AX() {
+            return K_BAD()
+        }
+        if ek == K_A32() {
+            return K_BAD()
+        }
+        return arr_kind_of(ek)
+    }
+    base: int = ty_base(ty, t)
+    s: str = interned(base)
+    if s == "int" { return K_INT() }
+    if s == "float" { return K_FLT() }
+    if s == "bool" { return K_BOOL() }
+    if s == "str" { return K_STR() }
+    if s == "u8" { return K_U8() }
+    if s == "i32" { return K_I32() }
+    if s == "None" { return K_NONE() }
+    if find_struct(mem, vm, base) >= 0 {
+        return K_ST()
+    }
+    return K_BAD()
+}
+
+def struct_of_type(ty: Array[int, 262144], t: int,
+                   mem: Array[int, 3741696], vm: VM) -> int {
+    if t < 0 {
+        return -1
+    }
+    return find_struct(mem, vm, ty_base(ty, t))
+}
+
+# `type_kind` answers the bare kind, which is what a comparison wants.  A binding
+# needs one word more: which struct it is, or how long its array is.  Both facts
+# ride in the same word (pack_kind), and until this existed a struct binding
+# claimed struct 0 -- right for a program with one struct, wrong for the compiler
+# itself, which has a dozen.
+def type_packed(ty: Array[int, 262144], t: int,
+                mem: Array[int, 3741696], vm: VM) -> int {
+    k: int = type_kind(ty, t, mem, vm)
+    if k == K_ST() {
+        return pack_kind(K_ST(), struct_of_type(ty, t, mem, vm))
+    }
+    return pack_kind(k, ty_len(ty, t))
+}
+
+# ---------------------------------------------------------- registering shapes
+
+def add_field(nd: Array[int, 655360], ty: Array[int, 262144],
+              mut mem: Array[int, 3741696], path: str,
+              mut vm: VM, sid: int, f: int) -> None {
+    mut h: int = 0
+    if nd_kind(nd, f) == 5 {
+        h = nd[f * 10 + 1]
+    } else {
+        tgt: int = nd[f * 10 + 1]
+        if nd_kind(nd, tgt) != 25 {
+            fail(path, nd_line(nd, f), "a field needs a name")
+        }
+        h = nd[tgt * 10 + 1]
+    }
+    # a field record is two words: the name, and the packed kind of its type,
+    # which the back end needs to spell the member in C
+    ft: int = nd[f * 10 + 3]
+    sfl_put(mem, vm.sfln, h)
+    sfl_put(mem, vm.sfln + 1, type_packed(ty, ft, mem, vm))
+    vm.sfln += 2
+    n: int = stb_get(mem, sid, STB_NFIELD())
+    stb_put(mem, sid, STB_NFIELD(), n + 1)
+    # every field is one cell, so the size of an instance is its field count
+    stb_put(mem, sid, STB_SIZE(), n + 1)
+}
+
+def add_function(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+                 mut vm: VM, d: int, owner: int) -> int {
+    if vm.nfn >= 4096 {
+        fail(path, nd_line(nd, d), "too many functions")
+    }
+    fn: int = vm.nfn
+    vm.nfn += 1
+    ft_put(mem, fn, FT_DEF(), d)
+    ft_put(mem, fn, FT_OWNER(), owner)
+    ft_put(mem, fn, FT_NPARAM(), nd[d * 10 + 4])
+    ft_put(mem, fn, FT_RETTY(), nd[d * 10 + 2])
+    ft_put(mem, fn, FT_PARAM(), nd[d * 10 + 3])
+    ft_put(mem, fn, FT_BODY(), nd[d * 10 + 8])
+    ft_put(mem, fn, FT_NLOCAL(), 0)
+    if (nd[d * 10 + 6] & 4) == 4 {
+        ft_put(mem, fn, FT_PURE(), 1)
+    }
+    if owner < 0 {
+        sc_push(mem, vm, nd[d * 10 + 1], SYM_FUNC(), fn, 0)
+    }
+    return fn
+}
+
+def add_struct(nd: Array[int, 655360], ty: Array[int, 262144],
+               mut mem: Array[int, 3741696], path: str, mut vm: VM,
+               s: int) -> None {
+    if vm.nstruct >= 1024 {
+        fail(path, nd_line(nd, s), "too many structs")
+    }
+    sid: int = vm.nstruct
+    vm.nstruct += 1
+    stb_put(mem, sid, STB_NAME(), nd[s * 10 + 1])
+    stb_put(mem, sid, STB_NFIELD(), 0)
+    stb_put(mem, sid, STB_FOFF(), vm.sfln)
+    stb_put(mem, sid, STB_NMETH(), 0)
+    stb_put(mem, sid, STB_MOFF(), vm.metn)
+    stb_put(mem, sid, STB_SIZE(), 0)
+    sc_push(mem, vm, nd[s * 10 + 1], SYM_STRUCT(), sid, 0)
+
+    mut m: int = nd[s * 10 + 2]
+    while m > 0 {
+        k: int = nd_kind(nd, m)
+        if k == 6 {
+            if (nd[m * 10 + 6] & 2) != 2 {
+                fail(path, nd_line(nd, m),
+                     "a struct body may hold field declarations and methods only")
+            }
+            add_field(nd, ty, mem, path, vm, sid, m)
+        } else if k == 5 {
+            add_field(nd, ty, mem, path, vm, sid, m)
+        } else if k == 2 {
+            fn: int = add_function(nd, mem, path, vm, m, sid)
+            n: int = stb_get(mem, sid, STB_NMETH())
+            mi: int = stb_get(mem, sid, STB_MOFF()) + n
+            met_put(mem, mi, MET_STRUCT(), sid)
+            met_put(mem, mi, MET_NAME(), nd[m * 10 + 1])
+            met_put(mem, mi, MET_FN(), fn)
+            met_put(mem, mi, MET_MUTSELF(), 0)
+            pn: int = nd[m * 10 + 3]
+            if pn > 0 {
+                if (nd[pn * 10 + 6] & 1) == 1 {
+                    met_put(mem, mi, MET_MUTSELF(), 1)
+                }
+            }
+            stb_put(mem, sid, STB_NMETH(), n + 1)
+        } else {
+            fail(path, nd_line(nd, m), "a struct body may hold fields and methods only")
+        }
+        m = nd_nx(nd, m)
+    }
+}
+
+# -------------------------------------------------------- binding expressions
+
+def count_chain(nd: Array[int, 655360], head: int) -> int {
+    mut n: int = 0
+    mut a: int = head
+    while a > 0 {
+        n += 1
+        a = nd_nx(nd, a)
+    }
+    return n
+}
+
+def check_call(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+               vm: VM, e: int, callee: int) -> None {
+    nargs: int = count_chain(nd, nd[e * 10 + 2])
+    if nd_kind(nd, callee) != 25 {
+        # `recv.method(...)`: which method it is depends on the receiver's value
+        return
+    }
+    sk: int = nt_get(mem, callee, NT_SYM())
+    sv: int = nt_get(mem, callee, NT_VAL())
+    if sk == SYM_FUNC() {
+        if ft_get(mem, sv, FT_NPARAM()) != nargs {
+            fail(path, nd_line(nd, e), "wrong number of arguments")
+        }
+        return
+    }
+    if sk == SYM_STRUCT() {
+        if stb_get(mem, sv, STB_NFIELD()) != nargs {
+            fail(path, nd_line(nd, e), "wrong number of field values for this struct")
+        }
+        return
+    }
+    if sk == SYM_BUILTIN() {
+        want: int = builtin_arity(sv)
+        if want >= 0 {
+            if want != nargs {
+                fail(path, nd_line(nd, e), "wrong number of arguments for this builtin")
+            }
+        }
+        return
+    }
+    fail(path, nd_line(nd, e), "this is not something that can be called")
+}
+
+def bind_name(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+              mut vm: VM, e: int) -> None {
+    h: int = nd[e * 10 + 1]
+    i: int = sc_find(mem, vm, h)
+    if i >= 0 {
+        nt_put(mem, e, NT_SYM(), sc_kind(mem, i))
+        nt_put(mem, e, NT_VAL(), sc_val(mem, i))
+        # a name carries its own kind, so the back end can print its C type
+        # without a second symbol table
+        nt_put(mem, e, NT_LIT(), sc_ckind(mem, i))
+        return
+    }
+    b: int = builtin_id(h)
+    if b > 0 {
+        nt_put(mem, e, NT_SYM(), SYM_BUILTIN())
+        nt_put(mem, e, NT_VAL(), b)
+        return
+    }
+    fail_name(path, nd_line(nd, e), "undeclared name", interned(h))
+}
+
+def walk_expr(nd: Array[int, 655360], ty: Array[int, 262144],
+              mut mem: Array[int, 3741696], path: str, mut vm: VM,
+              e: int) -> None {
+    if e <= 0 {
+        return
+    }
+    k: int = nd_kind(nd, e)
+    if k == 25 {
+        bind_name(nd, mem, path, vm, e)
+        return
+    }
+    if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        walk_expr(nd, ty, mem, path, vm, callee)
+        mut a: int = nd[e * 10 + 2]
+        while a > 0 {
+            walk_expr(nd, ty, mem, path, vm, a)
+            a = nd_nx(nd, a)
+        }
+        check_call(nd, mem, path, vm, e, callee)
+        return
+    }
+    if k == 27 {
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 2])
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 3])
+        return
+    }
+    if k == 28 {
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 2])
+        return
+    }
+    if k == 29 {
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 2])
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 3])
+        return
+    }
+    if k == 30 {
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 2])
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 3])
+        return
+    }
+    if k == 31 {
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 1])
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 2])
+        return
+    }
+    if k == 32 {
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 1])
+        return
+    }
+    if k == 33 {
+        mut a: int = nd[e * 10 + 1]
+        while a > 0 {
+            walk_expr(nd, ty, mem, path, vm, a)
+            a = nd_nx(nd, a)
+        }
+        return
+    }
+    if k == 34 {
+        # stage 0's own words for it (checker.py:1206), kept because a slice is
+        # a *language* feature that is missing, not a typo the reader made
+        fail_kind(path, nd_line(nd, e), "type error",
+                  "slices are not implemented in Vela 0.1")
+    }
+    # 20 int, 21 float, 22 str, 23 bool, 24 none: nothing to bind
+}
+
+# -------------------------------------------------------- binding statements
+
+def declare_local(nd: Array[int, 655360], ty: Array[int, 262144],
+                  mut mem: Array[int, 3741696], path: str, mut vm: VM,
+                  decl: int, tgt: int) -> None {
+    if nd_kind(nd, tgt) != 25 {
+        fail(path, nd_line(nd, decl), "a declaration needs a name on its left")
+    }
+    name: int = nd[tgt * 10 + 1]
+    slot: int = vm.nlocal
+    vm.nlocal += 1
+    if vm.nlocal >= CELL_STACK_MAX() {
+        fail(path, nd_line(nd, decl), "a function has too many local variables")
+    }
+    nt_put(mem, decl, NT_SLOT(), slot)
+    t: int = nd[decl * 10 + 3]
+    kind: int = type_kind(ty, t, mem, vm)
+    mut ck: int = pack_kind(kind, ty_len(ty, t))
+    mut sid: int = -1
+    if kind == K_ST() {
+        sid = struct_of_type(ty, t, mem, vm)
+        if sid < 0 {
+            fail(path, nd_line(nd, decl), "unknown struct type")
+        }
+        ck = pack_kind(K_ST(), sid)
+    }
+    if kind == K_AX() {
+        sid = struct_of_type(ty, ty_elem(ty, t), mem, vm)
+        if sid < 0 {
+            fail(path, nd_line(nd, decl), "unknown struct type")
+        }
+    }
+    sc_push(mem, vm, name, SYM_LOCAL(), slot, ck)
+    nt_put(mem, decl, NT_LIT(), ck)
+    nt_put(mem, decl, NT_VAL(), sid)
+}
+
+def walk_body(nd: Array[int, 655360], ty: Array[int, 262144],
+              mut mem: Array[int, 3741696], path: str, mut vm: VM,
+              head: int) -> None {
+    mut s: int = head
+    while s > 0 {
+        walk_stmt(nd, ty, mem, path, vm, s)
+        s = nd_nx(nd, s)
+    }
+}
+
+def walk_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
+              mut mem: Array[int, 3741696], path: str, mut vm: VM,
+              s: int) -> None {
+    k: int = nd_kind(nd, s)
+    if k == 6 {
+        tgt: int = nd[s * 10 + 1]
+        if (nd[s * 10 + 6] & 2) == 2 {
+            declare_local(nd, ty, mem, path, vm, s, tgt)
+        } else {
+            walk_expr(nd, ty, mem, path, vm, tgt)
+        }
+        v: int = nd[s * 10 + 2]
+        if v > 0 {
+            walk_expr(nd, ty, mem, path, vm, v)
+        }
+        return
+    }
+    if k == 7 {
+        walk_expr(nd, ty, mem, path, vm, nd[s * 10 + 1])
+        walk_expr(nd, ty, mem, path, vm, nd[s * 10 + 2])
+        return
+    }
+    if k == 8 {
+        walk_expr(nd, ty, mem, path, vm, nd[s * 10 + 1])
+        return
+    }
+    if k == 9 {
+        v: int = nd[s * 10 + 1]
+        if v > 0 {
+            walk_expr(nd, ty, mem, path, vm, v)
+        }
+        return
+    }
+    if k == 10 {
+        walk_expr(nd, ty, mem, path, vm, nd[s * 10 + 1])
+        mark: int = vm.scn
+        walk_body(nd, ty, mem, path, vm, nd[s * 10 + 2])
+        vm.scn = mark
+        e: int = nd[s * 10 + 4]
+        if e > 0 {
+            # `else { ... }` is a block chain, `else if ...` is one nested if
+            # node in the same word (parser.vel:589); walking the chain handles
+            # both.  Word 8 is the else *count*, not the head.
+            walk_body(nd, ty, mem, path, vm, e)
+            vm.scn = mark
+        }
+        return
+    }
+    if k == 11 {
+        walk_expr(nd, ty, mem, path, vm, nd[s * 10 + 1])
+        mark: int = vm.scn
+        walk_body(nd, ty, mem, path, vm, nd[s * 10 + 2])
+        vm.scn = mark
+        return
+    }
+    if k == 12 {
+        walk_expr(nd, ty, mem, path, vm, nd[s * 10 + 2])
+        walk_expr(nd, ty, mem, path, vm, nd[s * 10 + 3])
+        st: int = nd[s * 10 + 4]
+        if st > 0 {
+            walk_expr(nd, ty, mem, path, vm, st)
+        }
+        mark: int = vm.scn
+        name: int = nd[s * 10 + 1]
+        slot: int = vm.nlocal
+        vm.nlocal += 1
+        nt_put(mem, s, NT_SLOT(), slot)
+        sc_push(mem, vm, name, SYM_LOCAL(), slot, K_INT())
+        walk_body(nd, ty, mem, path, vm, nd[s * 10 + 8])
+        vm.scn = mark
+        return
+    }
+    if k == 2 {
+        # A `def` inside a body is neither a closure nor a forward declaration:
+        # Vela 0.1 has one scope for functions, and refusing the nesting here is
+        # what stage 0 does too (checker.py, "nested functions are not
+        # supported") — left alone, the body would simply never be registered
+        # and the first call to it would report a name that "does not exist" for
+        # no visible reason.
+        fail_kind(path, nd_line(nd, s), "type error",
+                  "nested functions are not supported")
+        return
+    }
+    # 13 break, 14 continue, 15 pass: nothing to bind, nothing to allocate
+}
+
+# --------------------------------------------------------------- entry point
+#
+# Two passes, in this order and not the other: every top-level name must be
+# registered before any body is resolved, or a function could not call one
+# defined below it — and a language where the order of definitions decides
+# which ones are visible is a language with a trap in it.
+
+def resolve_function(nd: Array[int, 655360], ty: Array[int, 262144],
+                     mut mem: Array[int, 3741696], path: str, mut vm: VM,
+                     fn: int) -> None {
+    vm.scn = vm.nglob
+    vm.nlocal = 0
+    mut p: int = ft_get(mem, fn, FT_PARAM())
+    while p > 0 {
+        if vm.nlocal >= CELL_STACK_MAX() {
+            fail(path, nd_line(nd, p), "too many parameters")
+        }
+        sc_push(mem, vm, nd[p * 10 + 1], SYM_LOCAL(), vm.nlocal,
+                param_packed(nd, ty, mem, vm, p))
+        vm.nlocal += 1
+        p = nd_nx(nd, p)
+    }
+    body: int = ft_get(mem, fn, FT_BODY())
+    # `extern c` declarations have no body: `-1` is not a node, and walking one
+    # would be walking a statement that does not exist
+    if body >= 0 {
+        walk_body(nd, ty, mem, path, vm, body)
+    }
+    ft_put(mem, fn, FT_NLOCAL(), vm.nlocal)
+}
+
+def resolve_module(nd: Array[int, 655360], ty: Array[int, 262144],
+                   mut mem: Array[int, 3741696], path: str,
+                   mut vm: VM) -> None {
+    mut s: int = nd[1]
+    while s > 0 {
+        k: int = nd_kind(nd, s)
+        if k == 2 {
+            add_function(nd, mem, path, vm, s, -1)
+        } else if k == 4 {
+            add_struct(nd, ty, mem, path, vm, s)
+        } else {
+            fail(path, nd_line(nd, s),
+                 "a top-level statement must be a function or a struct")
+        }
+        s = nd_nx(nd, s)
+    }
+    vm.nglob = vm.scn
+    mut f: int = 0
+    while f < vm.nfn {
+        resolve_function(nd, ty, mem, path, vm, f)
+        f += 1
+    }
+}

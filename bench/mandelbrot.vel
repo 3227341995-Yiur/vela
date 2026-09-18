@@ -1,0 +1,27 @@
+def main() -> None {
+    mut img: Array[int, 1920000] = [0]
+    t0: float = now()
+    parallel for y in range(0, 1200) {
+        for x in range(0, 1600) {
+            mut cr: float = to_float(x) / 1600.0 * 3.5 - 2.5
+            mut ci: float = to_float(y) / 1200.0 * 2.0 - 1.0
+            mut zr: float = 0.0
+            mut zi: float = 0.0
+            mut it: int = 0
+            while it < 100 and zr * zr + zi * zi < 4.0 {
+                mut t: float = zr * zr - zi * zi + cr
+                zi = 2.0 * zr * zi + ci
+                zr = t
+                it += 1
+            }
+            img[y * 1600 + x] = it
+        }
+    }
+    t1: float = now()
+    mut sum: int = 0
+    for i in range(0, 1920000) {
+        sum += img[i]
+    }
+    print("checksum", sum)
+    print("seconds", t1 - t0)
+}

@@ -1,0 +1,26 @@
+pure def classify(n: int) -> int {
+    if n < 0 {
+        return 0
+    } else if n == 0 {
+        return 1
+    } else {
+        return 2
+    }
+}
+
+def main() -> None {
+    print(classify(0 - 5), classify(0), classify(5))
+    mut i: int = 0
+    mut count: int = 0
+    while i < 20 {
+        i += 1
+        if i % 2 == 0 {
+            continue
+        }
+        if i > 15 {
+            break
+        }
+        count += 1
+    }
+    print(count, i)
+}

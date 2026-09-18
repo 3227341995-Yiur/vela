@@ -1,0 +1,22 @@
+# tests/probes/host_roundtrip.vel — does the host surface a self-hosted test
+# suite needs actually work, in *both* the interpreter and compiled code?
+#
+# A test runner written in Vela has to write a file, read it back, start a
+# subprocess and compare text.  Each of those is one builtin, and each has to
+# mean the same thing in `vm.exe run` and in the C `vm.exe build` emits.
+def main() -> None {
+    write_text("tests/build/_probe.txt", "alpha\nbeta\n")
+    s: str = read_text("tests/build/_probe.txt")
+    print(len(s))
+    print(s)
+    print(read_text("tests/build/_probe.txt") == "alpha\nbeta\n")
+    print(concat("al", "pha") == "alpha")
+    print(substr("alpha\nbeta\n", 0, 5) == "alpha")
+    print(bytes_at("A", 0))
+    print(run_command("exit 0") == 0)
+    print(run_command("exit 3") == 0)
+    write_text("tests/build/_probe2.txt", "x")
+    print(run_command("copy /y tests\\build\\_probe2.txt tests\\build\\_probe3.txt > nul") == 0)
+    print(read_text("tests/build/_probe3.txt") == "x")
+    print(len(read_text("tests/build/_probe_missing_file.txt")))
+}

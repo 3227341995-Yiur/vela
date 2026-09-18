@@ -1,0 +1,23 @@
+# The boundary working, in the shape a declaration allows.
+#
+# Every argument here is *exactly* the kind its parameter declares: an `i32` for
+# C's `int`, a `float` for C's `double`, and a variable whose declared kind is
+# the parameter's kind.  That is the whole of what `extern c` accepts, and it is
+# checked at the call site (check.vel, "the same rule, call site"); the refusals
+# are the other half of the promise and live one file each, next to this one.
+extern c def abs(x: i32) -> i32
+extern c pure def sqrt(x: float) -> float
+
+# A `pure` C function is what makes this callable from a `pure def`: a foreign
+# function is exactly the one whose side effects the compiler cannot see, so the
+# declaration is where the user says there are none.
+pure def scaled_root(x: float) -> int {
+    return to_int(sqrt(x) * 100.0)
+}
+
+def main() -> None {
+    mut n: i32 = -7
+    print("abs(-7) =", abs(n))
+    print("abs(9) =", abs(9))
+    print("sqrt(2) scaled =", scaled_root(2.0))
+}

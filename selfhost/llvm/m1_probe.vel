@@ -1,0 +1,16 @@
+# The same program as `m1_probe.ll`, written in Vela.
+#
+# It exists to be an *independent* expectation.  `tools\llvm-m1.ps1` runs this
+# file three ways -- interpreted, compiled through the C backend, and linked from
+# hand-written LLVM IR -- and requires the three to print identical bytes.  The
+# expected bytes are written down here rather than recorded from any of them:
+#
+#     hello from Vela
+#     m1: 3
+#
+# which is exactly the "hello from Vela" line `examples/hello.vel` opens with, so
+# the M1 evidence connects to the existing corpus instead of to a private program.
+def main() -> None {
+    print("hello from Vela")
+    print("m1:", 1 + 2)
+}

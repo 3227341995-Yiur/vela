@@ -1,0 +1,2 @@
+vela: type error: nested functions are not supported
+  at tests/build/check_cases/nested_function.vel:2

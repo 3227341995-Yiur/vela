@@ -1,0 +1,4 @@
+def main() -> None {
+    mut a: int = 5
+    a = a // 0
+}

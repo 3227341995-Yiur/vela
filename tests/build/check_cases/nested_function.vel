@@ -1,0 +1,6 @@
+def main() -> None {
+    def inner() -> int {
+        return 1
+    }
+    print(inner())
+}

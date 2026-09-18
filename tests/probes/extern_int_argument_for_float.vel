@@ -1,0 +1,12 @@
+# Refusal: an `int` argument for a `float` parameter.
+#
+# There is no implicit int-to-float in Vela — `1.0 + 1` is "operator '+' mixes
+# float and int" — which is why `to_float` exists, and the working probe spells
+# `sqrt(to_float(i))` for exactly this reason.  Accepting `sqrt(4)` here would
+# make the boundary the one place the language converts an `int` to a `float`
+# behind the reader's back.
+extern c def sqrt(x: float) -> float
+
+def main() -> None {
+    print(sqrt(4))
+}

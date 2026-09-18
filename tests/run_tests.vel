@@ -1,0 +1,874 @@
+# tests/run_tests.vel — Vela's test suite, written in Vela, run by Vela.
+#
+# Until stage 4 the suites here were Python programs whose whole method was to
+# run *two* front ends and print where they disagreed (tests/diff_*.py).  That
+# kind of test cannot survive its oracle: with the Python front end deleted
+# there is nothing left to disagree with.  So the corpus is held to *recorded*
+# evidence instead, in three shapes:
+#
+#   tests/golden/<name>.out    what a program must print — checked twice, once
+#                              compiled and once interpreted, because an
+#                              interpreter that quietly disagrees with the back
+#                              end is worse than no interpreter at all
+#   tests/golden/<name>.err    the diagnostic a refused program must produce,
+#                              byte for byte, as the head of stderr
+#   tests/golden/digests.txt   one number for a token stream, a syntax tree or a
+#                              body of emitted C — a megabyte of golden text
+#                              does not fit in a review, and does not have to
+#
+# Every golden here was recorded while the Python front end was still in the
+# tree and the differential suites still held both front ends to the same text
+# (lexer 24/24, parser 18/18, run 23/23, emit 23/23, checker 70/70 with 42
+# messages byte-identical).  That is what certifies them as evidence rather than
+# as a transcript of whatever this compiler happened to do.  From stage 4 on,
+# this file *is* the guarantee:
+#
+#   selfhost/build/vm.exe build tests/run_tests.vel    && tests/run_tests.exe
+#   selfhost/build/vm.exe run   tests/run_tests.vel       # no C compiler in the loop
+#   tests/run_tests.exe fast                              # skip the self-compile
+#   tests/run_tests.exe struct                            # cases whose name matches
+#   tests/run_tests.exe record                            # re-freeze the goldens
+#
+# `record` exists because a corpus nobody can re-bless after a deliberate change
+# is a corpus people delete instead.  It is not a way to make a failure go away:
+# read the diff first, then record.
+#
+# Nothing here reaches for anything outside the language: `read_text`,
+# `write_text`, `run_command`, `env` and `concat` are the whole of the host
+# surface it uses, and those are the same four calls the compiler itself needs.
+
+# ------------------------------------------------------------------ tallying
+#
+# There are no globals in Vela 0.1, so the counters travel as a mutable struct.
+# That is the same shape the compiler uses for its own parameter blocks.  The
+# fields are called npass/nfail because `pass` is a reserved word (it is the
+# do-nothing statement), which is the kind of thing a test runner written in the
+# language finds out immediately and a test runner written next to it does not.
+
+struct Tally {
+    mut npass: int
+    mut nfail: int
+    mut ncap: int
+}
+
+def cli() -> str {
+    s: str = env("VELA_SELF")
+    if len(s) > 0 {
+        return s
+    }
+    # A relative path does not survive the quoting.  `shell()` wraps every command
+    # in an extra pair of quotes for cmd.exe's sake, and with a *forward slash* path
+    # cmd.exe splits at the first `/` and answers
+    #
+    #     'selfhost' is not recognized as an internal or external command
+    #
+    # so the compiler is never started.  This function used to fall back to exactly
+    # that relative path, which meant the failure arrived as "could not be built"
+    # with the captured stderr — the driver's own harmless first line — as the only
+    # explanation.  Measured: 30 cases failed that way while the same build
+    # succeeded when typed by hand.
+    #
+    # Asking for the variable is better than a fallback that fails misleadingly.
+    # `tools\build.ps1` and `tools\refreeze.ps1` both set it, and README.md says so
+    # under "Running the suite by hand".
+    panic("the suite needs VELA_SELF: an absolute path to the compiler, because the relative fallback does not survive cmd quoting and every case would report a build failure that never happened")
+    return "selfhost/build/vm.exe"
+}
+
+def digests_file() -> str { return "tests/golden/digests.txt" }
+def cases_file() -> str { return "tests/cases.txt" }
+def cap_dir() -> str { return "tests/build/" }
+
+# Every capture gets a file of its own, and the reason is a host fact worth
+# writing down.  cl.exe starts a detached telemetry process (vctip.exe) and a PDB
+# server (mspdbsrv.exe); both inherit the handles of whatever ran them, including
+# the file this suite redirected the compiler's output into.  Those processes
+# outlive the build by minutes or hours, and while one of them is alive the file
+# it holds cannot be opened again — so a *reused* capture name turns into "the
+# process cannot access the file because it is being used by another process",
+# which is what this suite reported as "the compiled program exited non-zero".
+#
+# A name nothing has ever held cannot be blocked, so the name carries a stamp
+# taken when `main` starts plus a counter: one file per capture, and the suite
+# deletes its own litter on the way out.  The stamp is fixed rather than read
+# from the clock here, because whoever reads the capture back has to be able to
+# name the same file the writer made.
+def cap_file(n: int, step: str, ext: str) -> str {
+    return concat(concat(cap_dir(), "_cap_"),
+                  concat(concat(fmt_int(n), "_"), concat(step, ext)))
+}
+
+# ------------------------------------------------------------------ the shell
+#
+# A command is run through the host's own shell, so quoting is the shell's.  On
+# Windows `cmd.exe /c` strips the first and the last quote character of the line
+# it is given, which would eat the quote in front of the program name; the whole
+# command therefore needs one more pair around it.  This is the same fix, for
+# the same reason, as `shell()` in selfhost/parts/vm_main.vel.
+
+def q(s: str) -> str {
+    return concat("\"", concat(s, "\""))
+}
+
+def shell(c: str) -> str {
+    if len(env("OS")) > 0 {
+        return concat("\"", concat(c, "\""))
+    }
+    return c
+}
+
+def run_capture(mut t: Tally, cmd: str, step: str) -> int {
+    # One file per capture (see cap_file), and a sentinel first: the shell
+    # truncates what it redirects into, so a capture that never happened leaves
+    # the sentinel behind instead of looking like a program that printed nothing.
+    t.ncap += 1
+    outpath: str = cap_file(t.ncap, step, ".out")
+    errpath: str = cap_file(t.ncap, step, ".err")
+    write_text(outpath, "!")
+    write_text(errpath, "!")
+    mut c: str = cmd
+    c = concat(c, " > ")
+    c = concat(c, q(outpath))
+    c = concat(c, " 2> ")
+    c = concat(c, q(errpath))
+    return run_command(shell(c))
+}
+
+def reads(path: str) -> str {
+    return read_text(path)
+}
+
+def bytes_of(path: str) -> int {
+    return len(reads(path))
+}
+
+# ------------------------------------------------------------- text plumbing
+#
+# No regexes, no split, no globbing — the language has none of them, and a test
+# runner that needed them would be a test runner that could not be written in
+# the language it tests.
+
+def starts_with(s: str, p: str) -> bool {
+    if len(p) > len(s) {
+        return False
+    }
+    return substr(s, 0, len(p)) == p
+}
+
+def has(s: str, needle: str) -> bool {
+    n: int = len(needle)
+    if n == 0 {
+        return True
+    }
+    if n > len(s) {
+        return False
+    }
+    mut i: int = 0
+    while i + n <= len(s) {
+        if substr(s, i, i + n) == needle {
+            return True
+        }
+        i += 1
+    }
+    return False
+}
+
+# Lines are segments separated by '\n'; a trailing newline does not open an
+# empty last line, which is what every tool that reads a text file expects.
+
+def line_count(s: str) -> int {
+    mut n: int = 0
+    mut i: int = 0
+    while i < len(s) {
+        if bytes_at(s, i) == 10 {
+            n += 1
+        }
+        i += 1
+    }
+    if len(s) > 0 {
+        if bytes_at(s, len(s) - 1) != 10 {
+            n += 1
+        }
+    }
+    return n
+}
+
+def line_at(s: str, k: int) -> str {
+    mut start: int = 0
+    mut idx: int = 0
+    mut i: int = 0
+    while i <= len(s) {
+        mut at_end: bool = i == len(s)
+        mut nl: bool = False
+        if not at_end {
+            nl = bytes_at(s, i) == 10
+        }
+        if at_end or nl {
+            if idx == k {
+                mut e: int = i
+                if e > start {
+                    if bytes_at(s, e - 1) == 13 {
+                        e -= 1
+                    }
+                }
+                return substr(s, start, e)
+            }
+            idx += 1
+            start = i + 1
+        }
+        i += 1
+    }
+    return ""
+}
+
+def field(line: str, k: int) -> str {
+    mut idx: int = 0
+    mut i: int = 0
+    n: int = len(line)
+    while i < n {
+        while i < n {
+            if bytes_at(line, i) != 32 {
+                break
+            }
+            i += 1
+        }
+        mut s0: int = i
+        while i < n {
+            if bytes_at(line, i) == 32 {
+                break
+            }
+            i += 1
+        }
+        if idx == k {
+            return substr(line, s0, i)
+        }
+        idx += 1
+    }
+    return ""
+}
+
+def parse_int(s: str) -> int {
+    mut v: int = 0
+    mut i: int = 0
+    while i < len(s) {
+        c: int = bytes_at(s, i)
+        if c >= 48 {
+            if c <= 57 {
+                v = v * 10 + (c - 48)
+            }
+        }
+        i += 1
+    }
+    return v
+}
+
+def fmt_int(v: int) -> str {
+    if v == 0 {
+        return "0"
+    }
+    mut digits: str = ""
+    mut x: int = v
+    while x > 0 {
+        d: int = x % 10
+        digits = concat(substr("0123456789", d, d + 1), digits)
+        x = x // 10
+    }
+    return digits
+}
+
+# A digest is not cryptography and does not need to be: it is a detector for
+# "this output changed at all", and `h * 31` stays well inside a 64-bit int for
+# h < 10^9, so the arithmetic never trips the language's own overflow check.
+
+def digest(s: str) -> int {
+    mut h: int = 1
+    mut i: int = 0
+    while i < len(s) {
+        h = (h * 31 + bytes_at(s, i)) % 1000000007
+        i += 1
+    }
+    return h
+}
+
+# What a compiler says about a program, separated from what the command line
+# says about having stopped.
+#
+# A refused program produces two things on stderr: the diagnostic, and then —
+# once the driver has reported everything it has to say — a panic line of its own
+# ("the program was refused", "the front end stopped after an error", "the
+# interpreted program stopped").  The golden holds only the diagnostic, because
+# the driver's parting line is about the command line, not about the program, and
+# a golden that swallowed it would fail every time the driver's wording changed.
+#
+# Neither helper cares about line endings.  Both join with "\n" and drop empty
+# lines, so a golden recorded from Windows text-mode output compares equal to the
+# same diagnostic wherever it was produced.
+
+def diag_lines(e: str) -> str {
+    n: int = line_count(e)
+    mut out: str = ""
+    mut i: int = 0
+    mut past: bool = False
+    while i < n {
+        line: str = line_at(e, i)
+        if not past {
+            if starts_with(line, "vela: panic: ") {
+                past = True
+            } else {
+                if len(line) > 0 {
+                    out = concat(out, line)
+                    out = concat(out, "\n")
+                }
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+# The other shape: the program itself stopped, so the *first* panic block is the
+# diagnostic and any later one belongs to whatever ran it.  A compiled program's
+# runtime panic, and an interpreted program that reaches for something the
+# interpreter cannot do, both read this way.
+def panic_block(e: str) -> str {
+    n: int = line_count(e)
+    mut out: str = ""
+    mut i: int = 0
+    mut inside: bool = False
+    mut done: bool = False
+    while i < n {
+        line: str = line_at(e, i)
+        if not done {
+            if starts_with(line, "vela: panic: ") {
+                if inside {
+                    done = True
+                } else {
+                    inside = True
+                    out = concat(out, concat(line, "\n"))
+                }
+            } else {
+                if inside {
+                    if len(line) > 0 {
+                        out = concat(out, concat(line, "\n"))
+                    }
+                }
+            }
+        }
+        i += 1
+    }
+    return out
+}
+
+def strip_vel(path: str) -> str {
+    n: int = len(path)
+    if n > 4 {
+        if substr(path, n - 4, n) == ".vel" {
+            return substr(path, 0, n - 4)
+        }
+    }
+    return path
+}
+
+def exe_for(path: str) -> str {
+    return concat(strip_vel(path), ".exe")
+}
+
+def golden(name: str, ext: str) -> str {
+    return concat("tests/golden/", concat(name, ext))
+}
+
+# ------------------------------------------------------------------ reporting
+
+def ok_line(name: str, note: str) -> None {
+    emit_str("  ok    ")
+    emit_str(name)
+    if len(note) > 0 {
+        emit_str("    (")
+        emit_str(note)
+        emit_str(")")
+    }
+    emit_nl()
+}
+
+def fail_line(name: str, why: str) -> None {
+    emit_str("  FAIL  ")
+    emit_str(name)
+    emit_str("    ")
+    emit_str(why)
+    emit_nl()
+}
+
+def scored(mut t: Tally, good: bool, name: str, note: str, why: str) -> None {
+    if good {
+        t.npass += 1
+        ok_line(name, note)
+        return
+    }
+    t.nfail += 1
+    fail_line(name, why)
+}
+
+# ------------------------------------------------------------------ the cases
+
+# `run` — the program is compiled by the compiler under test (which drives the
+# host's C compiler itself) and executed; then, unless it reaches for a C library,
+# the same program is interpreted.  Both must print exactly what the golden holds.
+# This is diff_run.py's promise without a second front end to make it.
+
+def case_run(mut t: Tally, name: str, path: str, record: bool, also_interp: bool) -> None {
+    mut rc: int = run_capture(t, concat(concat(q(cli()), " build "), q(path)), "build")
+    if rc != 0 {
+        scored(t, False, name, "", concat("could not be built: ", reads(cap_file(t.ncap, "build", ".err"))))
+        return
+    }
+    rc = run_capture(t, q(exe_for(path)), "prog")
+    got: str = reads(cap_file(t.ncap, "prog", ".out"))
+    if rc != 0 {
+        scored(t, False, name, "", concat("the compiled program exited non-zero: ", reads(cap_file(t.ncap, "prog", ".err"))))
+        return
+    }
+    if record {
+        if not write_text(golden(name, ".out"), got) {
+            scored(t, False, name, "", concat("could not write ", golden(name, ".out")))
+            return
+        }
+        scored(t, True, name, "recorded", "")
+        return
+    }
+    want: str = reads(golden(name, ".out"))
+    if got != want {
+        scored(t, False, name, "", "the compiled program printed something else")
+        return
+    }
+    if not also_interp {
+        # Nothing in this program needs a C library, but the case asked for the
+        # compiled path only.  Say so instead of pretending the interpreter ran.
+        scored(t, True, name, "compiled", "")
+        return
+    }
+    rc = run_capture(t, concat(concat(q(cli()), " run "), q(path)), "interp")
+    got2: str = reads(cap_file(t.ncap, "interp", ".out"))
+    if rc != 0 {
+        scored(t, False, name, "", concat("the interpreter exited non-zero: ", reads(cap_file(t.ncap, "interp", ".err"))))
+        return
+    }
+    if got2 != want {
+        scored(t, False, name, "", "the interpreter disagrees with the compiled program")
+        return
+    }
+    scored(t, True, name, "compiled + interpreted", "")
+}
+
+# `refuse` — the program must not compile, the diagnostic must be the one on
+# record, and nothing may reach stdout.  run_tests.py's reject half, plus the
+# byte-for-byte part of diff_check.py.
+
+def case_refuse(mut t: Tally, name: str, path: str, record: bool) -> None {
+    mut rc: int = run_capture(t, concat(concat(q(cli()), " check "), q(path)), "check")
+    err: str = reads(cap_file(t.ncap, "check", ".err"))
+    out: str = reads(cap_file(t.ncap, "check", ".out"))
+    if record {
+        if rc == 0 {
+            scored(t, False, name, "", "accepted while recording — nothing to record")
+            return
+        }
+        if not write_text(golden(name, ".err"), diag_lines(err)) {
+            scored(t, False, name, "", concat("could not write ", golden(name, ".err")))
+            return
+        }
+        scored(t, True, name, "recorded", "")
+        return
+    }
+    want: str = reads(golden(name, ".err"))
+    if rc == 0 {
+        scored(t, False, name, "", "compiled, but it must not")
+        return
+    }
+    if len(want) == 0 {
+        scored(t, False, name, "", concat("no recorded diagnostic for ", name))
+        return
+    }
+    if diag_lines(err) != want {
+        scored(t, False, name, "", concat(concat("wrong diagnostic: ", diag_lines(err)), ""))
+        return
+    }
+    if len(out) > 0 {
+        scored(t, False, name, "", "wrote to stdout while being refused")
+        return
+    }
+    scored(t, True, name, "", "")
+}
+
+# `refuse-interp` — the interpreter must refuse the program, for the reason on
+# record.  This is the honest shape of a real limit: the interpreter has no way
+# to call into a C library (`extern c` is a *code generator* feature — the
+# language has no FFI and deliberately never will), so a program that reaches for
+# `abs` cannot be interpreted, and saying so is a promise the language keeps
+# rather than a gap the test suite hides.
+
+def case_interp_refuse(mut t: Tally, name: str, path: str, record: bool) -> None {
+    mut rc: int = run_capture(t, concat(concat(q(cli()), " run "), q(path)), "interp")
+    err: str = reads(cap_file(t.ncap, "interp", ".err"))
+    if record {
+        if rc == 0 {
+            scored(t, False, name, "", "was interpreted while recording — nothing to record")
+            return
+        }
+        if not write_text(golden(name, ".err"), panic_block(err)) {
+            scored(t, False, name, "", concat("could not write ", golden(name, ".err")))
+            return
+        }
+        scored(t, True, name, "recorded", "")
+        return
+    }
+    want: str = reads(golden(name, ".err"))
+    if rc == 0 {
+        scored(t, False, name, "", "the interpreter ran what it cannot run")
+        return
+    }
+    if len(want) == 0 {
+        scored(t, False, name, "", concat("no recorded diagnostic for ", name))
+        return
+    }
+    if panic_block(err) != want {
+        scored(t, False, name, "", concat(concat("wrong refusal: ", panic_block(err)), ""))
+        return
+    }
+    scored(t, True, name, "refused by the interpreter", "")
+}
+
+# `panic` — the program compiles, and the *program* stops at run time.  The
+# honest outcome for a divisor the compiler cannot see coming.
+
+def case_panic(mut t: Tally, name: str, path: str, record: bool) -> None {
+    mut rc: int = run_capture(t, concat(concat(q(cli()), " build "), q(path)), "build")
+    if rc != 0 {
+        scored(t, False, name, "", concat("could not be built: ", reads(cap_file(t.ncap, "build", ".err"))))
+        return
+    }
+    rc = run_capture(t, q(exe_for(path)), "prog")
+    err: str = reads(cap_file(t.ncap, "prog", ".err"))
+    if record {
+        if rc == 0 {
+            scored(t, False, name, "", "did not panic while recording")
+            return
+        }
+        if not write_text(golden(name, ".err"), panic_block(err)) {
+            scored(t, False, name, "", concat("could not write ", golden(name, ".err")))
+            return
+        }
+        scored(t, True, name, "recorded", "")
+        return
+    }
+    want: str = reads(golden(name, ".err"))
+    if rc == 0 {
+        scored(t, False, name, "", "was supposed to panic and did not")
+        return
+    }
+    if len(want) == 0 {
+        scored(t, False, name, "", concat("no recorded panic for ", name))
+        return
+    }
+    if panic_block(err) != want {
+        scored(t, False, name, "", "panicked for the wrong reason")
+        return
+    }
+    rc = run_capture(t, concat(concat(q(cli()), " run "), q(path)), "interp")
+    if rc == 0 {
+        scored(t, False, name, "", "the interpreter ran what must panic")
+        return
+    }
+    scored(t, True, name, "compiled panic + interpreter panic", "")
+}
+
+# `ok` — accepted, with the verdict spelled out.  This is the half of a checker
+# suite that only ever shows up when it breaks: a compiler that refuses one
+# program too many is as wrong as one that accepts one too few.
+
+def case_ok(mut t: Tally, name: str, path: str) -> None {
+    mut rc: int = run_capture(t, concat(concat(q(cli()), " check "), q(path)), "check")
+    if rc != 0 {
+        scored(t, False, name, "", concat("was refused: ", reads(cap_file(t.ncap, "check", ".err"))))
+        return
+    }
+    # `ok` and nothing else.  Not `== "ok\n"`: stdout is a text stream, so the C
+    # runtime turns every "\n" a program writes into "\r\n" on Windows, and a
+    # comparison that forgot that would fail on a compiler that is behaving.
+    if not starts_with(reads(cap_file(t.ncap, "check", ".out")), "ok") {
+        scored(t, False, name, "", "check did not report ok")
+        return
+    }
+    scored(t, True, name, "", "")
+}
+
+# `lex` / `parse` / `emit` — dump a phase and hold its digest to the recorded
+# one.  diff_lexer.py, diff_ast.py and diff_emit.py, in one number each.
+#
+# The corpus names the third phase the way the documentation does ("emit"); the
+# command line calls it `emit-c`, because that is the name that says which C it
+# is.  One translation, in one place.
+
+def cli_mode(mode: str) -> str {
+    if mode == "emit" {
+        return "emit-c"
+    }
+    return mode
+}
+
+def lookup_digest(mode: str, name: str, text: str) -> int {
+    mut i: int = 0
+    n: int = line_count(text)
+    while i < n {
+        line: str = line_at(text, i)
+        i += 1
+        if field(line, 0) == mode {
+            if field(line, 1) == name {
+                return parse_int(field(line, 2))
+            }
+        }
+    }
+    return 0 - 1
+}
+
+def case_dump(mut t: Tally, mode: str, name: str, path: str, want: int, record: bool) -> str {
+    mut rc: int = run_capture(t, concat(concat(concat(q(cli()), " "), cli_mode(mode)), concat(" ", q(path))), mode)
+    if rc != 0 {
+        scored(t, False, name, "", concat(concat(mode, " failed: "),
+                                          reads(cap_file(t.ncap, mode, ".err"))))
+        return ""
+    }
+    got: int = digest(reads(cap_file(t.ncap, mode, ".out")))
+    if record {
+        scored(t, True, name, "recorded", "")
+        return concat(concat(concat(concat(mode, " "), name), " "), concat(fmt_int(got), "\n"))
+    }
+    if want < 0 {
+        scored(t, False, name, "", concat("no recorded digest for ", mode))
+        return ""
+    }
+    if got != want {
+        scored(t, False, name, "", concat(mode, " output changed"))
+        return ""
+    }
+    scored(t, True, name, "", "")
+    return ""
+}
+
+# `fixpoint` — the compiler compiles itself, and the compiler it built writes
+# the C it wrote.  This is the case that makes the word self-hosting mean
+# something: it is not enough for a compiler to run, it has to reproduce itself
+# exactly, through its own build driver, with no other front end anywhere.
+
+def case_fixpoint(mut t: Tally, name: str, path: str, record: bool) -> None {
+    if record {
+        ok_line(name, "nothing to record: it is its own golden")
+        return
+    }
+    mut rc: int = run_capture(t, concat(concat(q(cli()), " emit-c "), q(path)), "gen1")
+    n_gen1: int = t.ncap
+    if rc != 0 {
+        scored(t, False, name, "", concat("generation 1 could not emit the C: ", reads(cap_file(t.ncap, "gen1", ".err"))))
+        return
+    }
+    rc = run_capture(t, concat(concat(q(cli()), " build "), q(path)), "selfbuild")
+    if rc != 0 {
+        scored(t, False, name, "", concat("the compiler could not build itself: ", reads(cap_file(t.ncap, "selfbuild", ".err"))))
+        return
+    }
+    g2: str = exe_for(path)
+    if bytes_of(g2) == 0 {
+        scored(t, False, name, "", "the build driver reported success but wrote no compiler")
+        return
+    }
+    rc = run_capture(t, concat(concat(q(g2), " emit-c "), q(path)), "gen2")
+    if rc != 0 {
+        scored(t, False, name, "", concat("generation 2 could not emit the C: ", reads(cap_file(t.ncap, "gen2", ".err"))))
+        return
+    }
+    a: str = reads(cap_file(n_gen1, "gen1", ".out"))
+    b: str = reads(cap_file(t.ncap, "gen2", ".out"))
+    if len(a) == 0 {
+        scored(t, False, name, "", "generation 1 wrote no C")
+        return
+    }
+    if a != b {
+        scored(t, False, name, "", "generation 2 does not write the C generation 1 wrote")
+        return
+    }
+    # generation 1 also wrote selfhost/vm.c through the build driver; that file
+    # has to be the same C, or the driver and the emitter disagree about it
+    seed: str = reads(concat(strip_vel(path), ".c"))
+    if seed != a {
+        scored(t, False, name, "", concat(concat(strip_vel(path), ".c"), " is not the C generation 1 wrote"))
+        return
+    }
+    scored(t, True, name, "generation 2 reproduces the C byte for byte", "")
+}
+
+# ---------------------------------------------------------------------- main
+
+def main() -> None {
+    # argv, the same rule as C: arg(0) is the program's own name, so the first
+    # argument a user typed is arg(1), and `argc() >= 2` is what "an argument was
+    # given" means.  The interpreter implements this exactly (it is handed
+    # `vm.exe run FILE ...` and reports the program as arg(0) too), which is why
+    # one program can be run both ways and argue about nothing.
+    mut mode: str = ""
+    if argc() >= 2 {
+        mode = arg(1)
+    }
+    mut record: bool = mode == "record"
+    mut skip_fix: bool = mode == "fast"
+    mut filter: str = ""
+    if mode != "record" {
+        if mode != "fast" {
+            if mode != "all" {
+                filter = mode
+            }
+        }
+    }
+
+    cases: str = reads(cases_file())
+    if len(cases) == 0 {
+        panic("run this from the repository root: tests/cases.txt could not be read")
+    }
+    # `selfhost/build/vm.c` is the seed the compiler is built from; asking for it
+    # by *text* rather than reading the binary is on purpose, because reading an
+    # executable as a string is not a thing this language should be asked to do.
+    if bytes_of("selfhost/build/vm.c") == 0 {
+        panic("no compiler to test: build selfhost/build/vm.exe from selfhost/build/vm.c first")
+    }
+
+    emit_str("run_tests: ")
+    emit_str(cli())
+    emit_str(" against ")
+    emit_int(line_count(cases))
+    emit_str(" cases")
+    if record {
+        emit_str("  (recording)")
+    }
+    emit_nl()
+
+    # The capture stamp: a fresh number for this run, so no capture file can
+    # collide with one a leaked host process is still holding (see cap_file).
+    stamp: int = to_int(now())
+    mut t: Tally = Tally(0, 0, stamp)
+    mut dig: str = ""
+    mut digests: str = ""
+    if not record {
+        digests = reads(digests_file())
+    }
+    mut total: int = 0
+    mut i: int = 0
+    n: int = line_count(cases)
+    while i < n {
+        line: str = line_at(cases, i)
+        i += 1
+        if len(line) > 0 {
+            if bytes_at(line, 0) != 35 {
+                m: str = field(line, 0)
+                name: str = field(line, 1)
+                path: str = field(line, 2)
+                mut wanted: bool = len(filter) == 0
+                if not wanted {
+                    wanted = has(name, filter)
+                }
+                if wanted {
+                    if m == "run" {
+                        total += 1
+                        case_run(t, name, path, record, True)
+                    } else if m == "native" {
+                        # compiled and executed, but not interpreted: the program
+                        # reaches for a C library, and the interpreter cannot —
+                        # `refuse-interp` is where that is asserted
+                        total += 1
+                        case_run(t, name, path, record, False)
+                    } else if m == "refuse" {
+                        total += 1
+                        case_refuse(t, name, path, record)
+                    } else if m == "refuse-interp" {
+                        total += 1
+                        case_interp_refuse(t, name, path, record)
+                    } else if m == "panic" {
+                        total += 1
+                        case_panic(t, name, path, record)
+                    } else if m == "ok" {
+                        total += 1
+                        case_ok(t, name, path)
+                    } else if m == "dumps" {
+                        # one line, three checks: the tokens, the tree, the C.
+                        # The three modes are separate digests, so a change in
+                        # the back end cannot hide behind an unchanged parser.
+                        total += 3
+                        dig = concat(dig, case_dump(t, "lex", name, path,
+                                                    lookup_digest("lex", name, digests), record))
+                        dig = concat(dig, case_dump(t, "parse", name, path,
+                                                    lookup_digest("parse", name, digests), record))
+                        dig = concat(dig, case_dump(t, "emit", name, path,
+                                                    lookup_digest("emit", name, digests), record))
+                    } else if m == "lex" {
+                        total += 1
+                        dig = concat(dig, case_dump(t, "lex", name, path,
+                                                    lookup_digest("lex", name, digests), record))
+                    } else if m == "parse" {
+                        total += 1
+                        dig = concat(dig, case_dump(t, "parse", name, path,
+                                                    lookup_digest("parse", name, digests), record))
+                    } else if m == "emit" {
+                        total += 1
+                        dig = concat(dig, case_dump(t, "emit", name, path,
+                                                    lookup_digest("emit", name, digests), record))
+                    } else if m == "fixpoint" {
+                        total += 1
+                        if skip_fix {
+                            emit_str("  skip  ")
+                            emit_str(name)
+                            emit_nl()
+                        } else {
+                            case_fixpoint(t, name, path, record)
+                        }
+                    } else {
+                        total += 1
+                        t.nfail += 1
+                        fail_line(name, concat("unknown mode ", m))
+                    }
+                }
+            }
+        }
+    }
+
+    if record {
+        if len(dig) > 0 {
+            if not write_text(digests_file(), dig) {
+                t.nfail += 1
+                fail_line(digests_file(), "could not be written")
+            }
+            emit_str("recorded ")
+            emit_int(line_count(dig))
+            emit_str(" digests to ")
+            emit_str(digests_file())
+            emit_nl()
+        }
+    }
+
+    emit_nl()
+    emit_int(t.npass)
+    emit_str(" passed, ")
+    emit_int(t.nfail)
+    emit_str(" failed  (of ")
+    emit_int(total)
+    emit_str(" cases, ")
+    emit_int(t.ncap - stamp)
+    emit_str(" captures)")
+    emit_nl()
+
+    # Clean up this run's capture files.  Best effort on purpose: a file a
+    # detached cl.exe helper is still holding will not delete, and that is the
+    # same fact that made fresh names necessary in the first place.
+    run_command("del /q \"tests\\build\\_cap_*\" > nul 2>&1")
+    run_command("del /q \"tests\\build\\_rec.*\" > nul 2>&1")
+
+    if t.nfail > 0 {
+        panic("the corpus is not green")
+    }
+}

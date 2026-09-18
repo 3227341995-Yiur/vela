@@ -1,0 +1,7 @@
+def main() -> None {
+    mut a: int = 7
+    mut b: int = 3
+    print(a + b, a - b, a * b)
+    print(to_float(a) / to_float(b))
+    print(a // b, a % b)
+}

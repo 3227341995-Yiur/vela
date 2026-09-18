@@ -1,0 +1,2 @@
+vela: type error: 'extern c' parameter 'a' has type Array[int, 4]
+  at tests/build/extern/reject_non_scalar.vel:10

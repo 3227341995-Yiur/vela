@@ -1,0 +1,13 @@
+# A `void` C function, called as a statement.
+#
+# `check` is what this asserts, and the name is deliberately not a CRT symbol:
+# no function in the C library takes a plain `int` and returns `void` that a test
+# may call for a fixed answer — `exit` ends the program, `srand` takes an
+# `unsigned int` and Vela has no kind for one.  So the *call* is what is judged
+# here (the argument is the declared kind, the arity is right, the result is
+# discarded), and the build of a real one is the user's declaration to get right.
+extern c def vela_probe_void_call(x: i32) -> None
+
+def main() -> None {
+    vela_probe_void_call(1)
+}

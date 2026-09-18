@@ -1,0 +1,4 @@
+@echo off
+call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
+set VSLANG=1033
+call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1 && set VSCMD_SKIP_SENDTELEMETRY=1 && cl /nologo /std:c11 /utf-8 /O2 /I "C:\Users\lu\Downloads\vela\selfhost\build/../../runtime" "C:\Users\lu\AppData\Local\Temp\dsh-4DvovY\vela-build\C__Users_lu_Downloads_vela_selfhost_llvm_m1_probe.vel.c" /Fe:"C:\Users\lu\Downloads\vela\selfhost\llvm\m1_probe.exe" /Fo:"C:\Users\lu\AppData\Local\Temp\dsh-4DvovY\vela-build\C__Users_lu_Downloads_vela_selfhost_llvm_m1_probe.vel.obj" 1>&2

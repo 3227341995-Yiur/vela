@@ -1,0 +1,5 @@
+def main() -> None {
+    mut a: bool = True
+    mut b: bool = False
+    print(a and b, a or b, not a)
+}

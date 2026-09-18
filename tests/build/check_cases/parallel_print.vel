@@ -1,0 +1,7 @@
+def main() -> None {
+    mut a: Array[int, 64] = [0]
+    parallel for i in range(0, 64) {
+        a[i] = i
+        print("no")
+    }
+}

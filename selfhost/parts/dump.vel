@@ -1,0 +1,545 @@
+# ---------------------------------------------------------------------------
+# selfhost/parts/dump.vel — the canonical syntax-tree dump, written in Vela.
+#
+# This format is fixed by the recorded digests: `tests/cases.txt`'s `dumps` and
+# `parse` cases hold this printer to `tests/golden/digests.txt`, one number per
+# file, so a change here that is not deliberate fails.  The contract used to be
+# `python tests/dump_ast.py`, compared by `tests/diff_ast.py`, which put two
+# independently written parsers to the same text; stage 4 deleted both with the
+# Python front end, and the digest is what is left of that agreement.
+#
+# The dump writes through emit_str/emit_int/emit_float, so it never builds a
+# string at run time — Vela has no string concatenation, and a printer that
+# needs one would be a printer that cannot be written in Vela.
+
+def d_indent(depth: int) -> None {
+    mut i: int = 0
+    while i < depth {
+        emit_str("  ")
+        i += 1
+    }
+}
+
+# ---------------------------------------------------------------------------
+# leaves
+
+# Operator codes are the lexer's numbering; printing them as text keeps the
+# dump readable and keeps it comparable with the Python parser's own spelling.
+def op_name(op: int) -> str {
+    if op == 1 {
+        return "+"
+    }
+    if op == 2 {
+        return "-"
+    }
+    if op == 3 {
+        return "*"
+    }
+    if op == 4 {
+        return "/"
+    }
+    if op == 5 {
+        return "%"
+    }
+    if op == 6 {
+        return "<"
+    }
+    if op == 7 {
+        return ">"
+    }
+    if op == 15 {
+        return "not"
+    }
+    if op == 17 {
+        return "&"
+    }
+    if op == 18 {
+        return "|"
+    }
+    if op == 19 {
+        return "^"
+    }
+    if op == 20 {
+        return "//"
+    }
+    if op == 21 {
+        return "**"
+    }
+    if op == 22 {
+        return "=="
+    }
+    if op == 23 {
+        return "!="
+    }
+    if op == 24 {
+        return "<="
+    }
+    if op == 25 {
+        return ">="
+    }
+    if op == 32 {
+        return "~"
+    }
+    if op == 35 {
+        return "<<"
+    }
+    return ">>"
+}
+
+def d_flag(nd: Array[int, 655360], n: int, bit: int) -> None {
+    if (nd[n * 10 + 6] & bit) != 0 {
+        emit_int(1)
+    } else {
+        emit_int(0)
+    }
+}
+
+def d_type(ty: Array[int, 262144], t: int) -> None {
+    if t < 0 {
+        emit_str("-")
+        return
+    }
+    elem: int = ty[t * 4 + 2]
+    size: int = ty[t * 4 + 3]
+    emit_str(interned(ty[t * 4 + 1]))
+    if elem < 0 {
+        return
+    }
+    emit_str("[")
+    d_type(ty, elem)
+    if size >= 0 {
+        emit_str(",")
+        emit_int(size)
+    }
+    emit_str("]")
+}
+
+# A string literal is dumped as the bytes it denotes, escaped the way the
+# Python dumper escapes them: anything outside printable ASCII becomes \xNN, so
+# the comparison is byte exact and a diff never hides inside a literal.
+def d_str(src: str, off: int, ln: int, flag: int) -> None {
+    mut s: str = substr(src, off, off + ln)
+    if flag == 1 {
+        s = unescape(s)
+    }
+    mut i: int = 0
+    n: int = len(s)
+    while i < n {
+        c: int = bytes_at(s, i)
+        if c == 34 {
+            emit_str("\\\"")
+        } else if c == 92 {
+            emit_str("\\\\")
+        } else if c == 10 {
+            emit_str("\\n")
+        } else if c == 9 {
+            emit_str("\\t")
+        } else if c == 13 {
+            emit_str("\\r")
+        } else if c >= 32 and c < 127 {
+            emit_str(substr(s, i, i + 1))
+        } else {
+            emit_str("\\x")
+            emit_str(substr("0123456789abcdef", c // 16, c // 16 + 1))
+            emit_str(substr("0123456789abcdef", c % 16, c % 16 + 1))
+        }
+        i += 1
+    }
+}
+
+def d_name(nd: Array[int, 655360], n: int) -> None {
+    emit_str(interned(nd[n * 10 + 1]))
+}
+
+# ---------------------------------------------------------------------------
+# chains
+
+# A statement list is a linked chain, so walking one is a loop and never an
+# index computation.
+def d_body(src: str, nd: Array[int, 655360], ty: Array[int, 262144],
+           flt: Array[float, 65536], first: int, depth: int) -> None {
+    d_indent(depth)
+    emit_str("block")
+    emit_nl()
+    mut c: int = first
+    while c >= 0 {
+        d_node(src, nd, ty, flt, c, depth + 1)
+        c = nd[c * 10 + 7]
+    }
+}
+
+def d_chain(src: str, nd: Array[int, 655360], ty: Array[int, 262144],
+            flt: Array[float, 65536], first: int, depth: int) -> None {
+    mut c: int = first
+    while c >= 0 {
+        d_node(src, nd, ty, flt, c, depth)
+        c = nd[c * 10 + 7]
+    }
+}
+
+# A struct field reaches the parser as an ordinary `name: T` declaration; the
+# dump prints it the way the Python parser's StructField does.
+def d_field(nd: Array[int, 655360], ty: Array[int, 262144], n: int,
+            depth: int) -> None {
+    d_indent(depth)
+    emit_str("field name=")
+    d_name(nd, nd[n * 10 + 1])
+    emit_str(" type=")
+    d_type(ty, nd[n * 10 + 3])
+    emit_nl()
+}
+
+# ---------------------------------------------------------------------------
+# nodes
+
+def d_node(src: str, nd: Array[int, 655360], ty: Array[int, 262144],
+           flt: Array[float, 65536], n: int, depth: int) -> None {
+    k: int = nd[n * 10]
+    if k == 1 {
+        d_indent(depth)
+        emit_str("module")
+        emit_nl()
+        d_body(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        return
+    }
+    if k == 2 {
+        d_indent(depth)
+        emit_str("def name=")
+        d_name(nd, n)
+        emit_str(" pure=")
+        d_flag(nd, n, 4)
+        emit_str(" ret=")
+        d_type(ty, nd[n * 10 + 2])
+        emit_nl()
+        mut p: int = nd[n * 10 + 3]
+        while p >= 0 {
+            d_indent(depth + 1)
+            emit_str("param name=")
+            d_name(nd, p)
+            emit_str(" mut=")
+            d_flag(nd, p, 1)
+            emit_str(" type=")
+            d_type(ty, nd[p * 10 + 2])
+            emit_nl()
+            p = nd[p * 10 + 7]
+        }
+        d_body(src, nd, ty, flt, nd[n * 10 + 8], depth + 1)
+        return
+    }
+    if k == 3 {
+        d_indent(depth)
+        emit_str("param name=")
+        d_name(nd, n)
+        emit_str(" mut=")
+        d_flag(nd, n, 1)
+        emit_str(" type=")
+        d_type(ty, nd[n * 10 + 2])
+        emit_nl()
+        return
+    }
+    if k == 4 {
+        d_indent(depth)
+        emit_str("struct name=")
+        d_name(nd, n)
+        emit_nl()
+        # fields first, then methods — the order the Python AST stores them in
+        mut c: int = nd[n * 10 + 2]
+        while c >= 0 {
+            if nd[c * 10] == 6 {
+                d_field(nd, ty, c, depth + 1)
+            }
+            c = nd[c * 10 + 7]
+        }
+        mut m: int = nd[n * 10 + 2]
+        while m >= 0 {
+            if nd[m * 10] == 2 {
+                d_node(src, nd, ty, flt, m, depth + 1)
+            }
+            m = nd[m * 10 + 7]
+        }
+        return
+    }
+    if k == 5 {
+        d_field(nd, ty, n, depth)
+        return
+    }
+    if k == 6 {
+        if (nd[n * 10 + 6] & 2) != 0 {
+            d_indent(depth)
+            emit_str("decl name=")
+            d_name(nd, nd[n * 10 + 1])
+            emit_str(" mut=")
+            d_flag(nd, n, 1)
+            emit_str(" type=")
+            d_type(ty, nd[n * 10 + 3])
+            emit_nl()
+            v: int = nd[n * 10 + 2]
+            if v >= 0 {
+                d_node(src, nd, ty, flt, v, depth + 1)
+            }
+            return
+        }
+        d_indent(depth)
+        emit_str("assign")
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        v2: int = nd[n * 10 + 2]
+        if v2 >= 0 {
+            d_node(src, nd, ty, flt, v2, depth + 1)
+        }
+        return
+    }
+    if k == 7 {
+        d_indent(depth)
+        emit_str("augassign op=")
+        emit_str(op_name(nd[n * 10 + 3]))
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        d_node(src, nd, ty, flt, nd[n * 10 + 2], depth + 1)
+        return
+    }
+    if k == 8 {
+        d_indent(depth)
+        emit_str("expr")
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        return
+    }
+    if k == 9 {
+        v: int = nd[n * 10 + 1]
+        d_indent(depth)
+        emit_str("return has_value=")
+        if v >= 0 {
+            emit_int(1)
+        } else {
+            emit_int(0)
+        }
+        emit_nl()
+        if v >= 0 {
+            d_node(src, nd, ty, flt, v, depth + 1)
+        }
+        return
+    }
+    if k == 10 {
+        d_indent(depth)
+        emit_str("if")
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        d_body(src, nd, ty, flt, nd[n * 10 + 2], depth + 1)
+        if nd[n * 10 + 8] > 0 {
+            d_indent(depth + 1)
+            emit_str("else")
+            emit_nl()
+            e: int = nd[n * 10 + 4]
+            if nd[e * 10] == 10 {
+                d_node(src, nd, ty, flt, e, depth + 2)
+            } else {
+                d_body(src, nd, ty, flt, e, depth + 2)
+            }
+        }
+        return
+    }
+    if k == 11 {
+        d_indent(depth)
+        emit_str("while")
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        d_body(src, nd, ty, flt, nd[n * 10 + 2], depth + 1)
+        return
+    }
+    if k == 12 {
+        d_indent(depth)
+        emit_str("for var=")
+        d_name(nd, n)
+        emit_str(" parallel=")
+        d_flag(nd, n, 1)
+        emit_str(" has_step=")
+        if nd[n * 10 + 4] >= 0 {
+            emit_int(1)
+        } else {
+            emit_int(0)
+        }
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 2], depth + 1)
+        d_node(src, nd, ty, flt, nd[n * 10 + 3], depth + 1)
+        st: int = nd[n * 10 + 4]
+        if st >= 0 {
+            d_node(src, nd, ty, flt, st, depth + 1)
+        }
+        d_body(src, nd, ty, flt, nd[n * 10 + 8], depth + 1)
+        return
+    }
+    if k == 13 {
+        d_indent(depth)
+        emit_str("break")
+        emit_nl()
+        return
+    }
+    if k == 14 {
+        d_indent(depth)
+        emit_str("continue")
+        emit_nl()
+        return
+    }
+    if k == 15 {
+        d_indent(depth)
+        emit_str("pass")
+        emit_nl()
+        return
+    }
+    if k == 20 {
+        d_indent(depth)
+        emit_str("int ")
+        emit_int(nd[n * 10 + 1])
+        emit_nl()
+        return
+    }
+    if k == 21 {
+        off: int = nd[n * 10 + 2]
+        ln: int = nd[n * 10 + 3]
+        d_indent(depth)
+        emit_str("float ")
+        if ln > 0 {
+            # printed as written: exact, and independent of how a C library
+            # happens to format a double
+            emit_str(substr(src, off, off + ln))
+        } else {
+            emit_float(flt[nd[n * 10 + 1]])
+        }
+        emit_nl()
+        return
+    }
+    if k == 22 {
+        d_indent(depth)
+        emit_str("str \"")
+        d_str(src, nd[n * 10 + 1], nd[n * 10 + 2], nd[n * 10 + 6])
+        emit_str("\"")
+        emit_nl()
+        return
+    }
+    if k == 23 {
+        d_indent(depth)
+        emit_str("bool ")
+        emit_int(nd[n * 10 + 1])
+        emit_nl()
+        return
+    }
+    if k == 24 {
+        d_indent(depth)
+        emit_str("none")
+        emit_nl()
+        return
+    }
+    if k == 25 {
+        d_indent(depth)
+        emit_str("name ")
+        d_name(nd, n)
+        emit_nl()
+        return
+    }
+    if k == 26 {
+        d_indent(depth)
+        emit_str("call")
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        d_chain(src, nd, ty, flt, nd[n * 10 + 2], depth + 1)
+        return
+    }
+    if k == 27 {
+        d_indent(depth)
+        emit_str("binop op=")
+        emit_str(op_name(nd[n * 10 + 1]))
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 2], depth + 1)
+        d_node(src, nd, ty, flt, nd[n * 10 + 3], depth + 1)
+        return
+    }
+    if k == 28 {
+        d_indent(depth)
+        emit_str("unary op=")
+        emit_str(op_name(nd[n * 10 + 1]))
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 2], depth + 1)
+        return
+    }
+    if k == 29 {
+        d_indent(depth)
+        emit_str("boolop op=")
+        if nd[n * 10 + 1] == 13 {
+            emit_str("and")
+        } else {
+            emit_str("or")
+        }
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 2], depth + 1)
+        d_node(src, nd, ty, flt, nd[n * 10 + 3], depth + 1)
+        return
+    }
+    if k == 30 {
+        d_indent(depth)
+        emit_str("cmp op=")
+        emit_str(op_name(nd[n * 10 + 1]))
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 2], depth + 1)
+        d_node(src, nd, ty, flt, nd[n * 10 + 3], depth + 1)
+        return
+    }
+    if k == 31 {
+        d_indent(depth)
+        emit_str("index")
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        d_node(src, nd, ty, flt, nd[n * 10 + 2], depth + 1)
+        return
+    }
+    if k == 32 {
+        d_indent(depth)
+        emit_str("attr name=")
+        emit_str(interned(nd[n * 10 + 2]))
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        return
+    }
+    if k == 33 {
+        d_indent(depth)
+        emit_str("list")
+        emit_nl()
+        d_chain(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        return
+    }
+    if k == 34 {
+        lo: int = nd[n * 10 + 2]
+        hi: int = nd[n * 10 + 3]
+        d_indent(depth)
+        emit_str("slice has_lower=")
+        if lo >= 0 {
+            emit_int(1)
+        } else {
+            emit_int(0)
+        }
+        emit_str(" has_upper=")
+        if hi >= 0 {
+            emit_int(1)
+        } else {
+            emit_int(0)
+        }
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        if lo >= 0 {
+            d_node(src, nd, ty, flt, lo, depth + 1)
+        }
+        if hi >= 0 {
+            d_node(src, nd, ty, flt, hi, depth + 1)
+        }
+        return
+    }
+    d_indent(depth)
+    emit_str("unknown-node-")
+    emit_int(k)
+    emit_nl()
+}
+
+def dump_module(src: str, nd: Array[int, 655360], ty: Array[int, 262144],
+                flt: Array[float, 65536]) -> None {
+    d_node(src, nd, ty, flt, 0, 0)
+}

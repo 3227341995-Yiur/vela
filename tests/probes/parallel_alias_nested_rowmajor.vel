@@ -1,0 +1,23 @@
+# parallel_alias_nested_rowmajor — the shape the matmul benchmark depends on:
+# a nested loop inside `parallel for`, writing one row-major array read back at the
+# same index.
+#
+# `m[i * 8 + j]` is the write index and the read index, spelled identically in both
+# places, so the read is of the element this iteration owns.  What makes this worth
+# its own case is that the index is not the loop variable itself but an expression
+# of two of them: a rule that compared "is the index a bare loop variable" would
+# accept this by accident, and one that compared text would reject `i * 8 + j`
+# written two different ways.  Both directions are wrong; the rule compares the
+# expression.
+#
+# If this ever stops compiling, `bench/matmul.vel` stops compiling with it.
+
+def main() -> None {
+    mut m: Array[int, 64]
+    parallel for i in range(0, 8) {
+        for j in range(0, 8) {
+            m[i * 8 + j] = m[i * 8 + j] + 1
+        }
+    }
+    print(m[0], m[63])
+}

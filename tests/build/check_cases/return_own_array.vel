@@ -1,0 +1,8 @@
+def make() -> Array[int, 4] {
+    mut a: Array[int, 4] = [1]
+    return a
+}
+
+def main() -> None {
+    print(1)
+}

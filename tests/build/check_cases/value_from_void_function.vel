@@ -1,0 +1,7 @@
+def f() -> None {
+    return 3
+}
+
+def main() -> None {
+    f()
+}

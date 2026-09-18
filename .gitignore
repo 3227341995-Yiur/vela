@@ -1,0 +1,101 @@
+# Build outputs.  The rule is simple: nothing that a build produces is tracked,
+# except the two bootstrap artefacts the build needs in order to start.
+#
+#   selfhost/build/vm.c   the seed C the toolchain bootstraps vm.exe from, and
+#   selfhost/build/vm.exe the compiler itself
+#
+# `vm.c` is generated — the fixpoint regenerates and byte-compares it — but
+# without it there is nothing to bootstrap from, so it is the one generated file
+# that is tracked.  `vm.exe` is tracked too, so a fresh checkout can run the
+# compiler without a build step; it is promoted by `tools\build.ps1`.
+
+# compiler and program outputs
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.lib
+*.exp
+*.o
+
+# the emitted C, wherever it lands: beside a source in the corpus, in the
+# benchmarks, in the examples, or in the repository root by accident.
+#
+# The pattern has to name what is *generated*, not the directory it lands in.
+# The first version of this file ignored `/tests/build/**`, which is where 65 of
+# the corpus's `.vel` sources live: a fresh checkout would have lost most of the
+# test suite while looking perfectly healthy, and three of those sources have
+# already been deleted once in this project's history and could not be recovered.
+/hello.c
+/examples/*.c
+/ide-demo/*.c
+/bench/*.c
+/selfhost/*.c
+/selfhost/llvm/*.c
+/tests/probes/*.c
+/runtime/_*.c
+/tests/build/**/*.c
+/tests/build/**/*.obj
+/tests/build/**/*.exe
+/bench/build/**
+/examples/build/**
+
+# what a fresh checkout needs in order to start at all, and the only generated
+# files that are tracked: the seed C the compiler bootstraps from and the
+# promoted compiler binary itself
+!/selfhost/build/vm.c
+!/selfhost/build/vm.exe
+
+# the suite's own captures and work files
+/tests/build/_cap_*
+/tests/build/_rec*
+/tests/run_tests.exe
+/tests/run_tests.obj
+
+# the compiler's build directory: keep vm.c and promote results, ignore the rest
+/selfhost/build/*.obj
+/selfhost/build/_*
+/selfhost/build/*.ilk
+/selfhost/build/*.pdb
+/tools/link_selfhost.exe
+/tools/link_selfhost.obj
+/tools/_*
+
+# the plugin's build tree and packages
+/idea-plugin/build/**
+/idea-plugin/dist/**
+/idea-plugin/out/**
+
+# scratch directories agents work in, inside the checkout
+/_probe_lang/**
+/_cwdtest/**
+/_feat/**
+/build/**
+/extern_scratch/**
+/scratch/**
+
+# the tools' own work directories: refreeze's golden backup and smoke's scratch
+/.work/**
+
+# generated C inside the compiler's own build directory, except the seed
+/selfhost/build/*.c
+!/selfhost/build/vm.c
+/tests/run_tests.c
+
+# agents' scratch files: `_`-prefixed, wherever they were working.  These are
+# not evidence and not source -- 45 files named `_ovf_child_NN.txt` from one
+# overflow study had been sitting in `runtime\` since the day it ran.
+/_*
+/runtime/_*
+/tools/_*
+/selfhost/_*
+
+# the build report, written next to the checkout by tools\build.ps1
+/../vela-build-report.txt
+
+# editor/OS noise
+.vscode/
+*.swp
+*~
+Thumbs.db
+desktop.ini

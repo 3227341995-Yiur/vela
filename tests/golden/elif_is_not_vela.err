@@ -1,0 +1,2 @@
+vela: syntax error: 'elif' is not part of Vela; write 'else if'
+  at line 6

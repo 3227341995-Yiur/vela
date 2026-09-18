@@ -1,0 +1,2 @@
+vela: type error: operator '+' mixes float and int
+  at tests/build/check_cases/implicit_int_to_float.vel:3

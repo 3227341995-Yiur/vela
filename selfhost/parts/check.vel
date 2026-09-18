@@ -1,0 +1,2883 @@
+# ---------------------------------------------------------------------------
+# selfhost/parts/check.vel — the semantic verdicts, in Vela.
+#
+# `resolve.vel` answers "where does this name live".  This pass answers the other
+# question: "is this program allowed to exist".  Stage 0 keeps both in one file
+# (`vela/checker.py`); the self-hosted front end grows the verdicts here, rule by
+# rule, because stage 4 deletes stage 0 and "the compiler refuses what would be
+# unsafe" is a language feature that must not be lost on the way.
+#
+# Two rules of the house.  Both used to be enforced by `tests/diff_check.py`,
+# which ran this pass against `vela/checker.py` while stage 0 was still in the
+# tree; stage 4 deleted the checker, the harness and its oracle together, so the
+# rule is now kept by the recorded goldens instead:
+#
+#   * the message is the one stage 0 wrote, byte for byte, and
+#     `tests/golden/<name>.err` is where that text is now recorded — the harness
+#     compared the text, not merely the verdict, and a golden does the same.
+#     Building a message like `'x' is already declared in this scope` is why
+#     `concat` exists.
+#   * a rule lands with a case that reaches it.  A verdict nobody can trigger is
+#     a verdict nobody can trust.
+#
+# The pass runs *after* resolve, because it judges resolved facts: which frame
+# slot a name has, which function a call reaches, which struct a field belongs
+# to.  It evaluates nothing.
+#
+# This slice holds the rules that need no static types: assignment targets,
+# same-scope redeclaration, duplicate parameters, immutable assignment, array
+# rebinding, constant indices and divisors, condition types, purity, the entry
+# point, and the `parallel for` proofs — which bring their own interval
+# arithmetic, since "the range of j is wider than the stride" is arithmetic.
+# Static types and the operator table land next; `selfhost/CHECKER_PLAN.md` has
+# the order it was ported in.
+# ---------------------------------------------------------------------------
+
+def ck_type(path: str, line: int, msg: str) -> None {
+    warn_str("vela: type error: ")
+    warn_str(msg)
+    warn_str("\n  at ")
+    warn_str(path)
+    warn_str(":")
+    warn_int(line)
+    warn_nl()
+    panic("the program was refused")
+}
+
+def ck_safety(path: str, line: int, msg: str) -> None {
+    warn_str("vela: safety error: ")
+    warn_str(msg)
+    warn_str("\n  at ")
+    warn_str(path)
+    warn_str(":")
+    warn_int(line)
+    warn_nl()
+    panic("the program was refused")
+}
+
+# `checker.py` writes these as f-strings; the same text has to be built here.
+# The caller spells both quotes — `ck_quoted("cannot assign to '", name,
+# "': it was declared immutable")` — so the name lands *between* them and the
+# helper never has to guess which of the two was meant.
+def ck_quoted(prefix: str, name: int, suffix: str) -> str {
+    return concat(concat(prefix, interned(name)), suffix)
+}
+
+# The spelling stage 0 puts in its messages: `Array[int, 4]`, `Array[float, 8]`.
+# The length and the element kind both ride in the packed word a binding carries,
+# which is why a message can be built without going back to the type pool.
+def ck_elem_name(ek: int) -> str {
+    if ek == K_INT() { return "int" }
+    if ek == K_FLT() { return "float" }
+    if ek == K_BOOL() { return "bool" }
+    if ek == K_STR() { return "str" }
+    if ek == K_U8() { return "u8" }
+    if ek == K_I32() { return "i32" }
+    if ek == K_NONE() { return "None" }
+    return "struct"
+}
+
+def ck_kind_name(k: int) -> str {
+    if k == K_INT() { return "int" }
+    if k == K_FLT() { return "float" }
+    if k == K_BOOL() { return "bool" }
+    if k == K_STR() { return "str" }
+    if k == K_NONE() { return "None" }
+    if k == K_U8() { return "u8" }
+    if k == K_I32() { return "i32" }
+    if k == K_ST() { return "struct" }
+    return "?"
+}
+
+def ck_int_text(v: int) -> str {
+    # messages quote numbers, and Vela has no `str(int)`: emit_int writes to
+    # stdout, so the digits are formatted here.  -9223372036854775808 is the one
+    # value whose magnitude does not fit the positive side.
+    if v == 0 {
+        return "0"
+    }
+    neg: bool = v < 0
+    mut n: int = v
+    if neg {
+        n = -v
+    }
+    mut digits: str = ""
+    while n > 0 {
+        d: int = n % 10
+        n = n // 10
+        digits = concat(substr("0123456789", d, d + 1), digits)
+    }
+    if neg {
+        return concat("-", digits)
+    }
+    return digits
+}
+
+def ck_spell_array(ck: int) -> str {
+    mut s: str = concat("Array[", ck_elem_name(elem_kind_of(unpack_kind(ck))))
+    s = concat(s, ", ")
+    s = concat(s, ck_int_text(unpack_len(ck)))
+    return concat(s, "]")
+}
+
+def ck_spell_ck(ck: int) -> str {
+    k: int = unpack_kind(ck)
+    if ck_is_array_ck(ck) {
+        return ck_spell_array(ck)
+    }
+    return ck_kind_name(k)
+}
+
+def ck_is_array_ck(ck: int) -> bool {
+    k: int = unpack_kind(ck)
+    if k == K_AI() { return True }
+    if k == K_AF() { return True }
+    if k == K_AB() { return True }
+    if k == K_AS() { return True }
+    if k == K_AA() { return True }
+    if k == K_AX() { return True }
+    if k == K_A32() { return True }
+    return False
+}
+
+# --------------------------------------------------------------- scope stack
+#
+# The same stack `resolve.vel` fills, read the same way: a name is "in this
+# scope" when it sits at or above the mark its block started at.  That is the
+# whole of Vela's shadowing rule — shadowing across blocks is legal, rebinding
+# inside one block is not.
+#
+# The checker pushes its own entries, because mutability is *not* in the entry
+# resolve left behind: a checker that guessed it from the declaration would get
+# the enclosing binding right and the innermost one wrong.  The flag rides in
+# bit 41, above the pointer bit the back end already uses for `mut` parameters.
+
+def ck_seen(mem: Array[int, 3741696], vm: VM, name: int, mark: int) -> bool {
+    mut i: int = vm.scn - 1
+    while i >= mark {
+        if mem[SCOPE_BASE() + i * 4 + 0] == name {
+            return True
+        }
+        i -= 1
+    }
+    return False
+}
+
+def ck_push(mut mem: Array[int, 3741696], mut vm: VM, name: int,
+            ck: int, is_mut: bool) -> None {
+    mut packed: int = ck
+    if is_mut {
+        packed = pack_mut(ck)
+    }
+    sc_push(mem, vm, name, SYM_LOCAL(), 0, packed)
+}
+
+# The same push, for a parameter: identical in every respect but the bit that
+# says "this one arrived from the caller, so it may be an alias of something
+# else".
+def ck_push_par(mut mem: Array[int, 3741696], mut vm: VM, name: int,
+                ck: int, is_mut: bool) -> None {
+    mut packed: int = ck
+    if is_mut {
+        packed = pack_mut(ck)
+    }
+    sc_push(mem, vm, name, SYM_LOCAL(), 0, pack_param(packed))
+}
+
+def ck_bound(mut mem: Array[int, 3741696], vm: VM, name: int) -> int {
+    i: int = sc_find(mem, vm, name)
+    if i < 0 {
+        return -1
+    }
+    if sc_kind(mem, i) != SYM_LOCAL() {
+        return -1
+    }
+    return i
+}
+
+# ------------------------------------------------------------------- entries
+
+def ck_find_main(nd: Array[int, 655360], mem: Array[int, 3741696],
+                 vm: VM) -> int {
+    mut i: int = 0
+    while i < vm.nfn {
+        if ft_get(mem, i, FT_OWNER()) < 0 {
+            if interned(nd[ft_get(mem, i, FT_DEF()) * 10 + 1]) == "main" {
+                return i
+            }
+        }
+        i += 1
+    }
+    return -1
+}
+
+def ck_check_main(nd: Array[int, 655360], ty: Array[int, 262144],
+                  mem: Array[int, 3741696], path: str, vm: VM) -> None {
+    f: int = ck_find_main(nd, mem, vm)
+    if f < 0 {
+        ck_type(path, 1, "no 'main' function")
+        return
+    }
+    # stage 0 points both of the next two at the module's first statement rather
+    # than at the `def` (checker.py:373-375) — a quirk kept, because the harness
+    # compares what the compiler said *and* where
+    first: int = nd[1]
+    mut line: int = 1
+    if first > 0 {
+        line = nd_line(nd, first)
+    }
+    if ft_get(mem, f, FT_NPARAM()) != 0 {
+        ck_type(path, line, "'main' must take no parameters")
+        return
+    }
+    if type_kind(ty, ft_get(mem, f, FT_RETTY()), mem, vm) != K_NONE() {
+        ck_type(path, line, "'main' must be declared '-> None'")
+        return
+    }
+}
+
+# -----------------------------------------------------------------   stores
+
+# The operator numbers the parser writes, from `parser.vel` (and `dump.vel`'s
+# `op_name`): 1 +, 2 -, 3 *, 4 /, 5 %, 17 &, 18 |, 19 ^, 20 //, 21 **, 35 <<,
+# 36 >>.  They are repeated here rather than shared because the checker must not
+# silently change meaning when the parser's table grows.
+def ck_op_div() -> int { return 4 }
+def ck_op_mod() -> int { return 5 }
+def ck_op_floordiv() -> int { return 20 }
+def ck_op_shl() -> int { return 35 }
+def ck_op_shr() -> int { return 36 }
+
+def ck_no_const() -> int { return 9223372036854775807 }
+
+# `-1` is a unary node around a literal, not a negative literal: a rule about
+# constant indices has to see through it or it misses exactly the case a reader
+# would write first.
+# Constant folding, as far as a *checker* needs it: enough to see `4`, `-1` and
+# `0 - 1` as the same kind of fact.  The bound is deliberate — the compiler's own
+# arithmetic is wrapping (it is built with --fast-int), so a fold that could
+# overflow is declined rather than performed wrongly.  Declining means the rule
+# does not fire, which shows up as a `diff_check` difference rather than as a
+# wrong verdict.
+def ck_foldable(v: int) -> bool {
+    if v > 1073741824 {
+        return False
+    }
+    if v < -1073741824 {
+        return False
+    }
+    return True
+}
+
+def ck_const_int(nd: Array[int, 655360], e: int) -> int {
+    if nd_kind(nd, e) == 20 {
+        v: int = nd[e * 10 + 1]
+        if ck_foldable(v) {
+            return v
+        }
+        return ck_no_const()
+    }
+    if nd_kind(nd, e) == 28 {
+        if nd[e * 10 + 1] != 2 {
+            return ck_no_const()
+        }
+        inner: int = ck_const_int(nd, nd[e * 10 + 2])
+        if inner == ck_no_const() {
+            return ck_no_const()
+        }
+        r: int = -inner
+        if not ck_foldable(r) {
+            return ck_no_const()
+        }
+        return r
+    }
+    if nd_kind(nd, e) == 27 {
+        l: int = ck_const_int(nd, nd[e * 10 + 2])
+        if l == ck_no_const() {
+            return ck_no_const()
+        }
+        rr: int = ck_const_int(nd, nd[e * 10 + 3])
+        if rr == ck_no_const() {
+            return ck_no_const()
+        }
+        op: int = nd[e * 10 + 1]
+        mut out: int = 0
+        if op == 1 {
+            out = l + rr
+        } else if op == 2 {
+            out = l - rr
+        } else if op == 3 {
+            out = l * rr
+        } else {
+            return ck_no_const()
+        }
+        if not ck_foldable(out) {
+            return ck_no_const()
+        }
+        return out
+    }
+    return ck_no_const()
+}
+
+# ------------------------------------------------------------- static types
+#
+# Just enough of a type for the operator table to be *checked*: what kind of
+# value an expression has, or K_BAD when this front end cannot say.  K_BAD is the
+# important half.  Every rule below is written so that an unknown operand makes
+# the rule silent rather than wrong — refusing a program stage 0 accepts is a
+# bug, while not catching one it refuses is a gap, and a gap is visible in
+# `tests/diff_check.py` instead of in a user's build.
+#
+# What is left unknown, and why: the result of a call (the return type lives in
+# the type pool, which this pass is not given), a field read, an array literal,
+# and a struct operand (stage 0 spells those with their *name* in the message,
+# and "struct" is not that name).  Each of them makes a rule stay quiet.
+
+def ck_is_scalar_kind(k: int) -> bool {
+    if k == K_INT() {
+        return True
+    }
+    if k == K_I32() {
+        return True
+    }
+    if k == K_U8() {
+        return True
+    }
+    if k == K_FLT() {
+        return True
+    }
+    if k == K_BOOL() {
+        return True
+    }
+    if k == K_STR() {
+        return True
+    }
+    return False
+}
+
+def ck_is_num_kind(k: int) -> bool {
+    if k == K_INT() {
+        return True
+    }
+    if k == K_I32() {
+        return True
+    }
+    if k == K_U8() {
+        return True
+    }
+    if k == K_FLT() {
+        return True
+    }
+    return False
+}
+
+def ck_is_int_kind(k: int) -> bool {
+    if k == K_INT() {
+        return True
+    }
+    if k == K_I32() {
+        return True
+    }
+    if k == K_U8() {
+        return True
+    }
+    return False
+}
+
+# The packed kind a binding carries, with the checker's own bits taken off
+# (`MUT_BIT`, `PARAM_BIT`): what is left is the kind and, for an array or a
+# struct, the length or the struct id — the same word `type_packed` produces.
+def ck_kind_of_ck(ck: int) -> int {
+    return pack_kind(unpack_kind(ck), unpack_len(ck))
+}
+
+# Does an int literal with this value fit the given integer kind?  The only
+# implicit conversion Vela has, and it is safe for the same reason stage 0 says
+# it is (checker.py:1277): the value is a compile-time fact, so the conversion
+# cannot lose anything.
+def ck_fits_kind(v: int, k: int) -> bool {
+    if k == K_I32() {
+        if v < -2147483648 {
+            return False
+        }
+        if v > 2147483647 {
+            return False
+        }
+        return True
+    }
+    if k == K_U8() {
+        if v < 0 {
+            return False
+        }
+        if v > 255 {
+            return False
+        }
+        return True
+    }
+    return True
+}
+
+def ck_adapt_pair(nd: Array[int, 655360], e: int, lt: int, rt: int) -> bool {
+    if lt == rt {
+        return True
+    }
+    if ck_is_int_kind(lt) and ck_is_int_kind(rt) {
+        l: int = nd[e * 10 + 2]
+        r: int = nd[e * 10 + 3]
+        if nd_kind(nd, l) == 20 {
+            if ck_fits_kind(nd[l * 10 + 1], rt) {
+                return True
+            }
+        }
+        if nd_kind(nd, r) == 20 {
+            if ck_fits_kind(nd[r * 10 + 1], lt) {
+                return True
+            }
+        }
+    }
+    return False
+}
+
+def ck_op_text(op: int) -> str {
+    if op == 1 {
+        return "+"
+    }
+    if op == 2 {
+        return "-"
+    }
+    if op == 3 {
+        return "*"
+    }
+    if op == 4 {
+        return "/"
+    }
+    if op == 5 {
+        return "%"
+    }
+    if op == 17 {
+        return "&"
+    }
+    if op == 18 {
+        return "|"
+    }
+    if op == 19 {
+        return "^"
+    }
+    if op == 20 {
+        return "//"
+    }
+    if op == 21 {
+        return "**"
+    }
+    if op == 35 {
+        return "<<"
+    }
+    return ">>"
+}
+
+# "operator '+' mixes float and int", and the twelve other shapes of it.  The
+# operator's own spelling is composed by the caller, because stage 0 puts it in
+# two places: sometimes as `operator '+'` and sometimes as `'/' is ...`.
+def ck_op_msg(pre: str, mid: str, lt: int, rt: int) -> str {
+    mut m: str = concat(pre, mid)
+    m = concat(m, ck_spell_ck(lt))
+    m = concat(m, " and ")
+    return concat(m, ck_spell_ck(rt))
+}
+
+def ck_op_pre(op: int) -> str {
+    return concat(concat("operator '", ck_op_text(op)), "'")
+}
+
+def ck_op_quoted(op: int) -> str {
+    return concat(concat("'", ck_op_text(op)), "'")
+}
+
+# `_arith_result` (checker.py:1308-1356), the table that makes "no implicit
+# conversion" a rule rather than a slogan.  Both kinds are known when this is
+# called, so every branch here is a statement about the program.
+def ck_arith(nd: Array[int, 655360], path: str, line: int, e: int, op: int,
+             lt: int, rt: int) -> None {
+    if op == 1 {
+        if lt == K_STR() and rt == K_STR() {
+            ck_type(path, line,
+                    "string concatenation is not implemented in Vela 0.1")
+            return
+        }
+    }
+    if not ck_is_scalar_kind(lt) or not ck_is_scalar_kind(rt) {
+        ck_type(path, line,
+                ck_op_msg(ck_op_pre(op), " cannot be applied to ", lt, rt))
+        return
+    }
+    if op == 1 or op == 2 or op == 3 {
+        if not ck_adapt_pair(nd, e, lt, rt) {
+            ck_type(path, line, ck_op_msg(ck_op_pre(op), " mixes ", lt, rt))
+            return
+        }
+        if ck_is_num_kind(lt) {
+            return
+        }
+        # equal, but not a number: `true + true` is not a sum
+        ck_type(path, line,
+                ck_op_msg(ck_op_pre(op), " is not defined for ", lt, rt))
+        return
+    }
+    if op == 4 {
+        if lt == K_FLT() and rt == K_FLT() {
+            return
+        }
+        ck_type(path, line,
+                ck_op_msg(ck_op_quoted(op), " is float division; got ", lt, rt))
+        return
+    }
+    if op == 20 {
+        if ck_is_int_kind(lt) and ck_is_int_kind(rt) {
+            return
+        }
+        ck_type(path, line,
+                ck_op_msg(ck_op_quoted(op), " is integer division; got ", lt, rt))
+        return
+    }
+    if op == 5 {
+        if ck_is_int_kind(lt) and ck_is_int_kind(rt) {
+            return
+        }
+        ck_type(path, line,
+                ck_op_msg(ck_op_quoted(op), " is integer remainder; got ", lt, rt))
+        return
+    }
+    if op == 35 or op == 36 {
+        if ck_is_int_kind(lt) and ck_is_int_kind(rt) {
+            return
+        }
+        ck_type(path, line,
+                ck_op_msg(ck_op_quoted(op), " needs integers, got ", lt, rt))
+        return
+    }
+    if op == 17 or op == 18 or op == 19 {
+        if ck_is_int_kind(lt) and ck_is_int_kind(rt) {
+            return
+        }
+        ck_type(path, line,
+                ck_op_msg(ck_op_quoted(op), " needs integers, got ", lt, rt))
+        return
+    }
+    if op == 21 {
+        if lt == rt and ck_is_num_kind(lt) {
+            return
+        }
+        ck_type(path, line,
+                ck_op_msg(ck_op_quoted(21),
+                          " needs matching numeric operands, got ", lt, rt))
+        return
+    }
+    ck_type(path, line,
+            ck_op_msg(ck_op_pre(op), " is not defined for ", lt, rt))
+}
+
+def ck_etype(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+             e: int) -> int {
+    if e <= 0 {
+        return K_BAD()
+    }
+    k: int = nd_kind(nd, e)
+    if k == 20 {
+        return K_INT()
+    }
+    if k == 21 {
+        return K_FLT()
+    }
+    if k == 22 {
+        return K_STR()
+    }
+    if k == 23 {
+        return K_BOOL()
+    }
+    if k == 24 {
+        return K_NONE()
+    }
+    if k == 25 {
+        i: int = ck_bound(mem, vm, nd[e * 10 + 1])
+        if i < 0 {
+            return K_BAD()
+        }
+        ck: int = ck_kind_of_ck(sc_ckind(mem, i))
+        if unpack_kind(ck) == K_ST() {
+            # a struct's spelling is its *name* in stage 0's messages, and this
+            # front end does not carry it here
+            return K_BAD()
+        }
+        return ck
+    }
+    if k == 27 {
+        op: int = nd[e * 10 + 1]
+        lt: int = ck_etype(nd, mem, vm, nd[e * 10 + 2])
+        rt: int = ck_etype(nd, mem, vm, nd[e * 10 + 3])
+        if lt == K_BAD() or rt == K_BAD() {
+            return K_BAD()
+        }
+        if op == 1 or op == 2 or op == 3 {
+            if lt == rt {
+                if ck_is_num_kind(lt) {
+                    return lt
+                }
+                return K_BAD()
+            }
+            if ck_adapt_pair(nd, e, lt, rt) {
+                if ck_is_int_kind(lt) {
+                    return lt
+                }
+                return rt
+            }
+            return K_BAD()
+        }
+        if op == 4 {
+            if lt == K_FLT() and rt == K_FLT() {
+                return K_FLT()
+            }
+            return K_BAD()
+        }
+        if op == 20 or op == 5 or op == 35 or op == 36 {
+            if ck_is_int_kind(lt) and ck_is_int_kind(rt) {
+                return lt
+            }
+            return K_BAD()
+        }
+        if op == 17 or op == 18 or op == 19 {
+            if ck_is_int_kind(lt) and ck_is_int_kind(rt) {
+                return lt
+            }
+            return K_BAD()
+        }
+        if op == 21 {
+            if lt == rt and ck_is_num_kind(lt) {
+                return lt
+            }
+        }
+        return K_BAD()
+    }
+    if k == 28 {
+        op: int = nd[e * 10 + 1]
+        if op == 15 {
+            return K_BOOL()
+        }
+        if op == 1 or op == 2 or op == 32 {
+            inner: int = ck_etype(nd, mem, vm, nd[e * 10 + 2])
+            if ck_is_num_kind(inner) {
+                return inner
+            }
+        }
+        return K_BAD()
+    }
+    if k == 29 {
+        return K_BOOL()
+    }
+    if k == 30 {
+        return K_BOOL()
+    }
+    if k == 31 {
+        base: int = ck_etype(nd, mem, vm, nd[e * 10 + 1])
+        if ck_is_array_ck(base) {
+            return elem_kind_of(unpack_kind(base))
+        }
+    }
+    return K_BAD()
+}
+
+def ck_binop(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+             path: str, vm: VM, e: int) -> None {
+    op: int = nd[e * 10 + 1]
+    lhs: int = nd[e * 10 + 2]
+    rhs: int = nd[e * 10 + 3]
+    line: int = nd_line(nd, e)
+    # stage 0's order, and it matters: the *type* of the operands is decided
+    # first (check_binop calls `_arith_result` before the constant checks), so
+    # `1.0 / 0` is a mixing error rather than a division by zero
+    lt: int = ck_etype(nd, mem, vm, lhs)
+    rt: int = ck_etype(nd, mem, vm, rhs)
+    if lt != K_BAD() and rt != K_BAD() {
+        ck_arith(nd, path, line, e, op, lt, rt)
+    }
+    if op == ck_op_div() {
+        # `/` is float division in Vela, always
+        if ck_const_int(nd, rhs) == 0 {
+            ck_safety(path, line, "division by constant zero")
+        }
+        # `x / 0.0` is refused too, and separately: IEEE would hand back an
+        # infinity or a nan, which is almost never what the line meant.  The
+        # value of a float literal is not on the node — it is in the parser's
+        # float pool — so the lexer marks the ones that are exactly zero (flag 2)
+        # and this asks the mark, not the pool.
+        if nd_kind(nd, rhs) == 21 {
+            if (nd[rhs * 10 + 6] & 2) == 2 {
+                ck_safety(path, nd_line(nd, rhs),
+                          "float division by constant zero")
+            }
+        }
+        return
+    }
+    if op == ck_op_floordiv() {
+        if ck_const_int(nd, rhs) == 0 {
+            ck_safety(path, line, "division by constant zero")
+        }
+        return
+    }
+    if op == ck_op_mod() {
+        if ck_const_int(nd, rhs) == 0 {
+            ck_safety(path, line, "division by constant zero")
+        }
+        return
+    }
+    if op == ck_op_shl() {
+        ck_shift_count(nd, path, line, rhs)
+        return
+    }
+    if op == ck_op_shr() {
+        ck_shift_count(nd, path, line, rhs)
+    }
+}
+
+def ck_shift_count(nd: Array[int, 655360], path: str, line: int,
+                   rhs: int) -> None {
+    v: int = ck_const_int(nd, rhs)
+    if v == ck_no_const() {
+        return
+    }
+    if v < 0 {
+        ck_safety(path, line,
+                  concat(concat("shift by constant ", ck_int_text(v)),
+                         " is out of range 0..63"))
+        return
+    }
+    if v > 63 {
+        ck_safety(path, line,
+                  concat(concat("shift by constant ", ck_int_text(v)),
+                         " is out of range 0..63"))
+    }
+}
+
+# ------------------------------------------------------- purity and returning
+#
+# Stage 0's `always_returns` (checker.py:519) and the two rules around it.  "Every
+# control-flow path returns" is a structural question, not a type question: a
+# return anywhere in the list counts (even after other statements), an `if` counts
+# only with an `else` whose both arms return, and `while True` counts only if its
+# body cannot `break` out.
+
+def ck_has_break(nd: Array[int, 655360], head: int) -> bool {
+    mut s: int = head
+    while s > 0 {
+        k: int = nd_kind(nd, s)
+        if k == 13 {
+            return True
+        }
+        if k == 10 {
+            if ck_has_break(nd, nd[s * 10 + 2]) {
+                return True
+            }
+            if ck_has_break(nd, nd[s * 10 + 4]) {
+                return True
+            }
+        }
+        s = nd_nx(nd, s)
+    }
+    return False
+}
+
+def ck_always_returns(nd: Array[int, 655360], head: int) -> bool {
+    mut s: int = head
+    while s > 0 {
+        k: int = nd_kind(nd, s)
+        if k == 9 {
+            return True
+        }
+        if k == 10 {
+            e: int = nd[s * 10 + 4]
+            if e > 0 {
+                if ck_always_returns(nd, nd[s * 10 + 2]) {
+                    if ck_always_returns(nd, e) {
+                        return True
+                    }
+                }
+            }
+        }
+        if k == 11 {
+            if nd_kind(nd, nd[s * 10 + 1]) == 23 {
+                if nd[nd[s * 10 + 1] * 10 + 1] == 1 {
+                    if not ck_has_break(nd, nd[s * 10 + 2]) {
+                        return True
+                    }
+                }
+            }
+        }
+        s = nd_nx(nd, s)
+    }
+    return False
+}
+
+def ck_callee_impure(nd: Array[int, 655360], mem: Array[int, 3741696],
+                     e: int) -> bool {
+    callee: int = nd[e * 10 + 1]
+    if nd_kind(nd, callee) != 25 {
+        return False
+    }
+    if nt_get(mem, callee, NT_SYM()) != SYM_FUNC() {
+        return False
+    }
+    fn: int = nt_get(mem, callee, NT_VAL())
+    return ft_get(mem, fn, FT_PURE()) == 0
+}
+
+# A condition has to be a bool, and Vela will not invent one from an int or a
+# string the way Python does.  What follows is deliberately shallow: literals, a
+# name, a comparison, `and`/`or`/`not` and arithmetic are decided from what is
+# written; anything else (a call, a field, an element) answers "unknown" and is
+# left alone.  A checker that guesses here would refuse correct programs, and a
+# false refusal is worse than a missing one.
+def ck_cond_kind(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+                 vm: VM, e: int) -> int {
+    k: int = nd_kind(nd, e)
+    if k == 23 {
+        return K_BOOL()
+    }
+    if k == 20 {
+        return K_INT()
+    }
+    if k == 21 {
+        return K_FLT()
+    }
+    if k == 22 {
+        return K_STR()
+    }
+    if k == 24 {
+        return K_NONE()
+    }
+    if k == 30 {
+        return K_BOOL()
+    }
+    if k == 29 {
+        return K_BOOL()
+    }
+    if k == 28 {
+        if nd[e * 10 + 1] == 15 {
+            return K_BOOL()
+        }
+        return ck_cond_kind(nd, mem, vm, nd[e * 10 + 2])
+    }
+    if k == 27 {
+        if nd[e * 10 + 1] == ck_op_div() {
+            return K_FLT()
+        }
+        return ck_cond_kind(nd, mem, vm, nd[e * 10 + 2])
+    }
+    if k == 25 {
+        i: int = ck_bound(mem, vm, nd[e * 10 + 1])
+        if i >= 0 {
+            kk: int = unpack_kind(sc_ckind(mem, i))
+            if ck_is_array_ck(sc_ckind(mem, i)) {
+                return K_BAD()
+            }
+            return kk
+        }
+    }
+    return K_BAD()
+}
+
+def ck_condition(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+                 path: str, vm: VM, s: int, word: str) -> None {
+    e: int = nd[s * 10 + 1]
+    k: int = ck_cond_kind(nd, mem, vm, e)
+    if k == K_BAD() {
+        return
+    }
+    if k == K_BOOL() {
+        return
+    }
+    ck_type(path, nd_line(nd, e),
+            concat(concat(concat(concat("'", word), "' condition must be bool, got "),
+                          ck_kind_name(k)), ""))
+}
+
+def ck_index(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+             path: str, vm: VM, e: int) -> None {
+    # `a[4]` where the length of `a` is a compile-time fact: a constant index
+    # outside it is wrong in every run, so stage 0 refuses the program instead of
+    # emitting a check whose only possible outcome is a panic
+    base: int = nd[e * 10 + 1]
+    if nd_kind(nd, base) != 25 {
+        return
+    }
+    i: int = ck_bound(mem, vm, nd[base * 10 + 1])
+    if i < 0 {
+        return
+    }
+    ck: int = sc_ckind(mem, i)
+    if not ck_is_array_ck(ck) {
+        return
+    }
+    ln: int = unpack_len(ck)
+    if ln <= 0 {
+        return
+    }
+    idx: int = nd[e * 10 + 2]
+    v: int = ck_const_int(nd, idx)
+    if v == ck_no_const() {
+        return
+    }
+    if v < 0 {
+        ck_safety(path, nd_line(nd, e),
+                  concat(concat("constant index ", ck_int_text(v)),
+                         concat(" is out of range for ",
+                                ck_spell_array(ck))))
+        return
+    }
+    if v >= ln {
+        ck_safety(path, nd_line(nd, e),
+                  concat(concat("constant index ", ck_int_text(v)),
+                         concat(" is out of range for ",
+                                ck_spell_array(ck))))
+    }
+}
+
+def ck_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+            path: str, vm: VM, e: int) -> None {
+    # The rules that need a static type of their own still come later; what this
+    # walk does is reach every subexpression, so that the rules which need only
+    # what is *written* — a constant index, a literal divisor — can fire wherever
+    # they appear.
+    if e <= 0 {
+        return
+    }
+    k: int = nd_kind(nd, e)
+    if k == 31 {
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 1])
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 2])
+        ck_index(nd, mem, path, vm, e)
+        return
+    }
+    if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        if nd_kind(nd, callee) == 32 {
+            # a method call is not a field *read*: walking the attribute here
+            # would refuse `P(1).scale(2.0)`, which is a call on a temporary
+            ck_expr(nd, mem, path, vm, nd[callee * 10 + 1])
+        }
+        if vm.cpure == 1 {
+            if ck_callee_impure(nd, mem, e) {
+                ck_type(path, nd_line(nd, e),
+                        ck_quoted("a 'pure' function may not call '",
+                                  nd[callee * 10 + 1],
+                                  "', which is not declared 'pure'"))
+            }
+        }
+        mut a: int = nd[e * 10 + 2]
+        while a > 0 {
+            ck_expr(nd, mem, path, vm, a)
+            a = nd_nx(nd, a)
+        }
+        # last, so that a verdict about the arguments themselves keeps the
+        # precedence it has always had
+        ck_extern_call(nd, mem, path, vm, e)
+        return
+    }
+    if k == 33 {
+        mut el: int = nd[e * 10 + 1]
+        while el > 0 {
+            ck_expr(nd, mem, path, vm, el)
+            el = nd_nx(nd, el)
+        }
+        return
+    }
+    if k == 27 {
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 2])
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 3])
+        ck_binop(nd, mem, path, vm, e)
+        return
+    }
+    if k == 28 {
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 2])
+        return
+    }
+    if k == 29 {
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 2])
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 3])
+        return
+    }
+    if k == 30 {
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 2])
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 3])
+        return
+    }
+    if k == 32 {
+        # a field belongs to a *place*: a struct value that exists nowhere —
+        # `P(1).x` — has no field to read, and stage 0 refuses rather than
+        # inventing storage for it
+        base: int = nd[e * 10 + 1]
+        bk: int = nd_kind(nd, base)
+        if bk != 25 and bk != 31 and bk != 32 {
+            ck_type(path, nd_line(nd, e),
+                    "cannot read a field from a temporary struct")
+        }
+        ck_expr(nd, mem, path, vm, base)
+        return
+    }
+    if k == 34 {
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 1])
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 2])
+        ck_expr(nd, mem, path, vm, nd[e * 10 + 3])
+        return
+    }
+    # 20 int, 21 float, 22 str, 23 bool, 24 none, 25 name are leaves
+}
+
+def ck_store_name(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+                  path: str, mut vm: VM, s: int, tgt: int) -> None {
+    name: int = nd[tgt * 10 + 1]
+    i: int = ck_bound(mem, vm, name)
+    if i < 0 {
+        # a function, a struct or a builtin: `bind_name` already refused anything
+        # that is not a name at all, and these are the next slice's business
+        return
+    }
+    ck: int = sc_ckind(mem, i)
+    if not is_mut_binding(ck) {
+        # `x = e` and `x += e` are two different mistakes in stage 0's eyes —
+        # "cannot assign to" against "cannot modify" (checker.py:702, 788) — and
+        # the reader who wrote a compound assignment is owed the second one.
+        if nd_kind(nd, s) == 7 {
+            ck_safety(path, nd_line(nd, s),
+                      ck_quoted("cannot modify '", name,
+                                "': it was declared immutable"))
+            return
+        }
+        ck_safety(path, nd_line(nd, s),
+                  ck_quoted("cannot assign to '", name,
+                            "': it was declared immutable"))
+        return
+    }
+    if ck_is_array_ck(ck) {
+        ck_safety(path, nd_line(nd, s),
+                  ck_quoted("cannot rebind array '", name, "'"))
+    }
+}
+
+def ck_store(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+             path: str, mut vm: VM, s: int) -> None {
+    tgt: int = nd[s * 10 + 1]
+    k: int = nd_kind(nd, tgt)
+    if k == 25 {
+        ck_store_name(nd, mem, path, vm, s, tgt)
+        return
+    }
+    if k == 31 {
+        # `a[i] = v`: an array that is not `mut` may not have its elements
+        # written, and `mut` belongs to the *binding*, which is why the scope
+        # stack is asked rather than the type pool
+        base: int = nd[tgt * 10 + 1]
+        if nd_kind(nd, base) == 25 {
+            name: int = nd[base * 10 + 1]
+            i: int = ck_bound(mem, vm, name)
+            if i >= 0 {
+                ck: int = sc_ckind(mem, i)
+                if ck_is_array_ck(ck) {
+                    if not is_mut_binding(ck) {
+                        ck_safety(path, nd_line(nd, s),
+                                  ck_quoted("cannot write to elements of '",
+                                            name,
+                                            "': the array is not mutable"))
+                    }
+                }
+            }
+        }
+        ck_expr(nd, mem, path, vm, nd[tgt * 10 + 1])
+        ck_expr(nd, mem, path, vm, nd[tgt * 10 + 2])
+        ck_index(nd, mem, path, vm, tgt)
+        return
+    }
+    if k == 32 {
+        ck_expr(nd, mem, path, vm, nd[tgt * 10 + 1])
+        return
+    }
+    ck_type(path, nd_line(nd, s), "invalid assignment target")
+}
+
+# ============================================================ parallel proofs
+#
+# `parallel for` is not a promise the programmer makes, it is a *theorem the
+# compiler checks*: a body whose writes cannot be proved race-free does not
+# compile at all.  Nothing in the generated C is different — Vela 0.1 emits the
+# loop sequentially — so the whole worth of the keyword is this pass, and it is
+# stage 0's `verify_parallel` (checker.py:899-1113) rule for rule:
+#
+#   * every write must land on an element of an array declared `mut` in *this*
+#     function: a parameter could alias another array, and two aliases race;
+#   * every write to one array must go through one index expression, textually
+#     the same one;
+#   * that expression must pick a distinct element per iteration — either
+#     `c * i + j` where `|c|` is strictly wider than the range of `j`, or
+#     `i * K + j` where the inner loop runs `j in range(0, K)`: then (i, j) are
+#     the base-K digits of the index, so no two pairs collide whatever K is;
+#   * every call in the body must reach a function declared `pure`, and `print`
+#     is refused outright, because interleaved output has no defined order.
+#
+# What this needs that the earlier slices do not have is *intervals*, since "the
+# range of j is narrower than c" is arithmetic, not syntax.  So the interval
+# arithmetic of `vela/analysis.py` comes with it: `Iv` is its `Interval` (either
+# bound may be missing), `ck_iv_expr` is its `eval_interval`, and `ck_linear` is
+# its `linear_form` with the width question folded in.  `linear_form` builds the
+# remainder as a *new node* (`make_binop`, `make_neg`); this computes that
+# remainder's interval directly, which is the same arithmetic over the same parts
+# and keeps the checker out of the node allocator.
+#
+# An array is judged on the *first* write to it, exactly as stage 0 does with
+# `items[0]`, and the table is walked in first-write order, so the refusal a
+# reader sees is the one stage 0 would have printed.
+#
+# Two narrowings, both in the safe direction — they can refuse a program stage 0
+# accepts, never accept one it refuses:
+#   * the interval environment holds the loops *inside* the parallel body, not
+#     the ones it is nested in: stage 0's interval scopes also carry those, and
+#     this front end has no assignment tracking to fill them;
+#   * an impure *method* is recognised only when the receiver is a plain name,
+#     because the type of `p.field.scale(2.0)` needs the static-type pass this
+#     front end has not grown yet.
+
+# One interval: `analysis.Interval` with each end optional, so "at least 0,
+# unbounded above" is expressible — which is what a range with a runtime bound
+# gives.
+struct Iv {
+    mut lo: int
+    mut hi: int
+    mut lok: int
+    mut hik: int
+}
+
+# analysis.CLAMP.  Bounds are clamped rather than wrapped: a limit that overflows
+# must say "unbounded", because a wrapped one would be a lie a proof could use.
+def ck_clamp(v: int) -> int {
+    if v > 4611686018427387904 {
+        return 4611686018427387904
+    }
+    if v < -4611686018427387904 {
+        return -4611686018427387904
+    }
+    return v
+}
+
+def ck_iv_unknown(mut out: Iv) -> None {
+    out.lo = 0
+    out.hi = 0
+    out.lok = 0
+    out.hik = 0
+}
+
+def ck_iv_exact(mut out: Iv, v: int) -> None {
+    out.lo = v
+    out.hi = v
+    out.lok = 1
+    out.hik = 1
+}
+
+def ck_iv_add(mut out: Iv, a: Iv, b: Iv) -> None {
+    if a.lok == 1 and b.lok == 1 {
+        out.lo = ck_clamp(a.lo + b.lo)
+        out.lok = 1
+    } else {
+        out.lo = 0
+        out.lok = 0
+    }
+    if a.hik == 1 and b.hik == 1 {
+        out.hi = ck_clamp(a.hi + b.hi)
+        out.hik = 1
+    } else {
+        out.hi = 0
+        out.hik = 0
+    }
+}
+
+def ck_iv_sub(mut out: Iv, a: Iv, b: Iv) -> None {
+    if a.lok == 1 and b.hik == 1 {
+        out.lo = ck_clamp(a.lo - b.hi)
+        out.lok = 1
+    } else {
+        out.lo = 0
+        out.lok = 0
+    }
+    if a.hik == 1 and b.lok == 1 {
+        out.hi = ck_clamp(a.hi - b.lo)
+        out.hik = 1
+    } else {
+        out.hi = 0
+        out.hik = 0
+    }
+}
+
+def ck_iv_mul(mut out: Iv, a: Iv, b: Iv) -> None {
+    if a.lok == 0 or a.hik == 0 or b.lok == 0 or b.hik == 0 {
+        ck_iv_unknown(out)
+        return
+    }
+    p1: int = a.lo * b.lo
+    p2: int = a.lo * b.hi
+    p3: int = a.hi * b.lo
+    p4: int = a.hi * b.hi
+    mut lo: int = p1
+    if p2 < lo { lo = p2 }
+    if p3 < lo { lo = p3 }
+    if p4 < lo { lo = p4 }
+    mut hi: int = p1
+    if p2 > hi { hi = p2 }
+    if p3 > hi { hi = p3 }
+    if p4 > hi { hi = p4 }
+    out.lo = ck_clamp(lo)
+    out.hi = ck_clamp(hi)
+    out.lok = 1
+    out.hik = 1
+}
+
+def ck_iv_neg(mut out: Iv, a: Iv) -> None {
+    if a.hik == 1 {
+        out.lo = ck_clamp(-a.hi)
+        out.lok = 1
+    } else {
+        out.lo = 0
+        out.lok = 0
+    }
+    if a.lok == 1 {
+        out.hi = ck_clamp(-a.lo)
+        out.hik = 1
+    } else {
+        out.hi = 0
+        out.hik = 0
+    }
+}
+
+# `//` is floor division in Vela, so `analysis.floordiv`'s four corner quotients
+# are the same four here; a divisor whose range straddles zero says nothing.
+def ck_iv_floordiv(mut out: Iv, a: Iv, b: Iv) -> None {
+    if a.lok == 0 or a.hik == 0 or b.lok == 0 or b.hik == 0 {
+        ck_iv_unknown(out)
+        return
+    }
+    if b.lo <= 0 {
+        if b.hi >= 0 {
+            ck_iv_unknown(out)
+            return
+        }
+    }
+    q1: int = a.lo // b.lo
+    q2: int = a.lo // b.hi
+    q3: int = a.hi // b.lo
+    q4: int = a.hi // b.hi
+    mut lo: int = q1
+    if q2 < lo { lo = q2 }
+    if q3 < lo { lo = q3 }
+    if q4 < lo { lo = q4 }
+    mut hi: int = q1
+    if q2 > hi { hi = q2 }
+    if q3 > hi { hi = q3 }
+    if q4 > hi { hi = q4 }
+    out.lo = lo
+    out.hi = hi
+    out.lok = 1
+    out.hik = 1
+}
+
+def ck_iv_mod(mut out: Iv, a: Iv, b: Iv) -> None {
+    mut r: Iv = Iv(0, 0, 0, 0)
+    ck_iv_floordiv(r, a, b)
+    if r.lok == 0 or r.hik == 0 {
+        ck_iv_unknown(out)
+        return
+    }
+    if b.lok == 0 or b.hik == 0 {
+        ck_iv_unknown(out)
+        return
+    }
+    if b.lo <= 0 {
+        ck_iv_unknown(out)
+        return
+    }
+    mut hi: int = r.hi
+    if b.hi - 1 < hi {
+        hi = b.hi - 1
+    }
+    # a positive divisor bounds the remainder by it, and its sign makes 0 a
+    # lower bound — the one non-obvious line of the whole thing
+    out.lo = 0
+    out.hi = hi
+    out.lok = 1
+    out.hik = 1
+}
+
+def ck_iv_pow(mut out: Iv, a: Iv, b: Iv) -> None {
+    if a.lok == 1 and a.hik == 1 and a.lo == a.hi {
+        if b.lok == 1 and b.hik == 1 and b.lo == b.hi {
+            if b.lo >= 0 and b.lo <= 40 {
+                if a.lo > -16777216 and a.lo < 16777216 {
+                    mut v: int = 1
+                    mut i: int = 0
+                    while i < b.lo {
+                        v = v * a.lo
+                        i += 1
+                    }
+                    ck_iv_exact(out, ck_clamp(v))
+                    return
+                }
+            }
+        }
+    }
+    ck_iv_unknown(out)
+}
+
+# ------------------------------------------------------------------ the env
+#
+# Both the interval environment and the loop bounds are flat, stride-4 tables
+# owned by one `ck_parallel` call: Vela has no dictionary and a struct may not
+# hold an array, so this is the same shape the resolver's scope stack has.
+# Lookup walks backwards, so an inner loop's interval shadows an outer one's.
+#
+# Their live counts live in `Par` rather than being two more `mut int`
+# parameters, and that is not a style choice: **a `mut` scalar parameter does not
+# write through in Vela 0.1** — `def f(mut n: int)` receives a copy, so
+# `n += 1` inside it changes nothing at the call site, while `mut` on a struct (or
+# an array, which is already a pointer) does.  Probe:
+# `tests/probes/mut_scalar_parameter.vel`, with `mut_struct_parameter.vel` beside
+# it as the contrast.  SPEC.md:148 reads "`mut` before a parameter means the
+# callee may write through it", so this is an implementation gap, not a design
+# one — but both front ends agree on the behaviour today, and a checker that
+# leaned on the documented reading would compile here and misbehave in C.
+struct Par {
+    mut ni: int
+    mut nlb: int
+}
+
+def ck_iv_find(iv: Array[int, 64], ni: int, name: int) -> int {
+    mut i: int = ni - 1
+    while i >= 0 {
+        if iv[i * 4] == name {
+            return i
+        }
+        i -= 1
+    }
+    return -1
+}
+
+def ck_iv_push(mut iv: Array[int, 64], mut p: Par, name: int, a: Iv) -> None {
+    if p.ni >= 16 {
+        return
+    }
+    iv[p.ni * 4] = name
+    iv[p.ni * 4 + 1] = a.lo
+    iv[p.ni * 4 + 2] = a.hi
+    mut f: int = 0
+    if a.lok == 1 {
+        f += 1
+    }
+    if a.hik == 1 {
+        f += 2
+    }
+    iv[p.ni * 4 + 3] = f
+    p.ni += 1
+}
+
+def ck_lb_find(lb: Array[int, 64], nlb: int, name: int) -> int {
+    mut i: int = nlb - 1
+    while i >= 0 {
+        if lb[i * 4] == name {
+            return i
+        }
+        i -= 1
+    }
+    return -1
+}
+
+def ck_lb_push(mut lb: Array[int, 64], mut p: Par, name: int, start: int,
+               stop: int, step: int) -> None {
+    if p.nlb >= 16 {
+        return
+    }
+    lb[p.nlb * 4] = name
+    lb[p.nlb * 4 + 1] = start
+    lb[p.nlb * 4 + 2] = stop
+    lb[p.nlb * 4 + 3] = step
+    p.nlb += 1
+}
+
+# `analysis.eval_interval`, minus the parts that need a static type: literals, a
+# name, `+ - ~`, the binary table, and `len(array)`, whose value is a
+# compile-time fact the same way it is for stage 0 (`const_value` there, the
+# binding's packed kind here).
+def ck_iv_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+               iv: Array[int, 64], ni: int, e: int, mut out: Iv) -> None {
+    if e <= 0 {
+        ck_iv_unknown(out)
+        return
+    }
+    k: int = nd_kind(nd, e)
+    if k == 20 {
+        ck_iv_exact(out, nd[e * 10 + 1])
+        return
+    }
+    if k == 23 {
+        if nd[e * 10 + 1] == 1 {
+            ck_iv_exact(out, 1)
+        } else {
+            ck_iv_exact(out, 0)
+        }
+        return
+    }
+    if k == 25 {
+        i: int = ck_iv_find(iv, ni, nd[e * 10 + 1])
+        if i < 0 {
+            ck_iv_unknown(out)
+            return
+        }
+        out.lo = iv[i * 4 + 1]
+        out.hi = iv[i * 4 + 2]
+        if (iv[i * 4 + 3] & 1) == 1 {
+            out.lok = 1
+        } else {
+            out.lok = 0
+        }
+        if (iv[i * 4 + 3] & 2) == 2 {
+            out.hik = 1
+        } else {
+            out.hik = 0
+        }
+        return
+    }
+    if k == 28 {
+        op: int = nd[e * 10 + 1]
+        if op == 1 or op == 2 or op == 32 {
+            mut a: Iv = Iv(0, 0, 0, 0)
+            ck_iv_expr(nd, mem, vm, iv, ni, nd[e * 10 + 2], a)
+            if op == 1 {
+                out.lo = a.lo
+                out.hi = a.hi
+                out.lok = a.lok
+                out.hik = a.hik
+                return
+            }
+            if op == 2 {
+                ck_iv_neg(out, a)
+                return
+            }
+            # `~x` is `-(x + 1)`: stage 0's spelling, kept because the two must
+            # agree on what is *provable*, not merely on what is true
+            mut one: Iv = Iv(0, 0, 0, 0)
+            ck_iv_exact(one, 1)
+            mut t: Iv = Iv(0, 0, 0, 0)
+            ck_iv_add(t, a, one)
+            ck_iv_neg(out, t)
+            return
+        }
+        ck_iv_unknown(out)
+        return
+    }
+    if k == 27 {
+        op: int = nd[e * 10 + 1]
+        mut a: Iv = Iv(0, 0, 0, 0)
+        ck_iv_expr(nd, mem, vm, iv, ni, nd[e * 10 + 2], a)
+        mut b: Iv = Iv(0, 0, 0, 0)
+        ck_iv_expr(nd, mem, vm, iv, ni, nd[e * 10 + 3], b)
+        if op == 1 {
+            ck_iv_add(out, a, b)
+            return
+        }
+        if op == 2 {
+            ck_iv_sub(out, a, b)
+            return
+        }
+        if op == 3 {
+            ck_iv_mul(out, a, b)
+            return
+        }
+        if op == 4 or op == 20 {
+            ck_iv_floordiv(out, a, b)
+            return
+        }
+        if op == 5 {
+            ck_iv_mod(out, a, b)
+            return
+        }
+        if op == 21 {
+            ck_iv_pow(out, a, b)
+            return
+        }
+        ck_iv_unknown(out)
+        return
+    }
+    if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        if nd_kind(nd, callee) == 25 {
+            if nt_get(mem, callee, NT_SYM()) == SYM_BUILTIN() {
+                if nt_get(mem, callee, NT_VAL()) == B_LEN() {
+                    a: int = nd[e * 10 + 2]
+                    if a > 0 {
+                        if nd_kind(nd, a) == 25 {
+                            i: int = ck_bound(mem, vm, nd[a * 10 + 1])
+                            if i >= 0 {
+                                ck: int = sc_ckind(mem, i)
+                                if ck_is_array_ck(ck) {
+                                    ck_iv_exact(out, unpack_len(ck))
+                                    return
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ck_iv_unknown(out)
+        return
+    }
+    ck_iv_unknown(out)
+}
+
+# ------------------------------------------------------- linearity, and width
+#
+# `analysis.linear_form`, with the remainder's interval delivered instead of a
+# node.  The coefficient comes back as the return value; `ck_no_const()` means
+# "not linear in `var`".  An absent remainder is the exact interval [0, 0],
+# which is what stage 0's `width = 0` means — a constant index really is the
+# same element every iteration, so it must not be reported as provable.
+def ck_linear(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+              iv: Array[int, 64], ni: int, e: int, var: int,
+              mut rest: Iv) -> int {
+    k: int = nd_kind(nd, e)
+    if k == 20 {
+        ck_iv_exact(rest, nd[e * 10 + 1])
+        return 0
+    }
+    if k == 25 {
+        if nd[e * 10 + 1] == var {
+            ck_iv_exact(rest, 0)
+            return 1
+        }
+        ck_iv_expr(nd, mem, vm, iv, ni, e, rest)
+        return 0
+    }
+    if k == 28 {
+        op: int = nd[e * 10 + 1]
+        if op == 1 {
+            return ck_linear(nd, mem, vm, iv, ni, nd[e * 10 + 2], var, rest)
+        }
+        if op == 2 {
+            c: int = ck_linear(nd, mem, vm, iv, ni, nd[e * 10 + 2], var, rest)
+            if c == ck_no_const() {
+                return ck_no_const()
+            }
+            mut t: Iv = Iv(0, 0, 0, 0)
+            t.lo = rest.lo
+            t.hi = rest.hi
+            t.lok = rest.lok
+            t.hik = rest.hik
+            # the remainder is negated even when the coefficient is zero, which
+            # is stage 0's `_combine` branch for `-` written out
+            ck_iv_neg(rest, t)
+            return -c
+        }
+        return ck_no_const()
+    }
+    if k == 27 {
+        op: int = nd[e * 10 + 1]
+        l: int = nd[e * 10 + 2]
+        r: int = nd[e * 10 + 3]
+        if op == 1 or op == 2 {
+            mut lr: Iv = Iv(0, 0, 0, 0)
+            lc: int = ck_linear(nd, mem, vm, iv, ni, l, var, lr)
+            if lc == ck_no_const() {
+                return ck_no_const()
+            }
+            mut rr: Iv = Iv(0, 0, 0, 0)
+            rc: int = ck_linear(nd, mem, vm, iv, ni, r, var, rr)
+            if rc == ck_no_const() {
+                return ck_no_const()
+            }
+            if op == 1 {
+                ck_iv_add(rest, lr, rr)
+                return lc + rc
+            }
+            ck_iv_sub(rest, lr, rr)
+            return lc - rc
+        }
+        if op == 3 {
+            mut lr: Iv = Iv(0, 0, 0, 0)
+            lc: int = ck_linear(nd, mem, vm, iv, ni, l, var, lr)
+            if lc == ck_no_const() {
+                return ck_no_const()
+            }
+            mut rr: Iv = Iv(0, 0, 0, 0)
+            rc: int = ck_linear(nd, mem, vm, iv, ni, r, var, rr)
+            if rc == ck_no_const() {
+                return ck_no_const()
+            }
+            if lc != 0 and rc != 0 {
+                # `var * var`: not linear, and stage 0 says so rather than
+                # guessing a coefficient
+                return ck_no_const()
+            }
+            if lc != 0 {
+                kk: int = ck_const_int(nd, r)
+                if kk == ck_no_const() {
+                    return ck_no_const()
+                }
+                mut kn: Iv = Iv(0, 0, 0, 0)
+                ck_iv_exact(kn, kk)
+                ck_iv_mul(rest, kn, lr)
+                return lc * kk
+            }
+            if rc != 0 {
+                kk: int = ck_const_int(nd, l)
+                if kk == ck_no_const() {
+                    return ck_no_const()
+                }
+                mut kn: Iv = Iv(0, 0, 0, 0)
+                ck_iv_exact(kn, kk)
+                ck_iv_mul(rest, kn, rr)
+                return rc * kk
+            }
+            # neither side moves with the variable: the product is one more
+            # remainder, exactly as `linear_form`'s last line has it
+            ck_iv_mul(rest, lr, rr)
+            return 0
+        }
+        return ck_no_const()
+    }
+    return ck_no_const()
+}
+
+# `expr_key(a) == expr_key(b)`, without the strings: two index expressions are
+# "the same element" when they are literally the same tree.  Float and string
+# literals compare by their span in the literal pools rather than by their
+# *value* — `1.0` and `1.00` are one value and two receipts, and a difference
+# there can only make this pass see two keys where stage 0 sees one, which is
+# the refusal it already makes when it sees two.
+def ck_same_expr(nd: Array[int, 655360], a: int, b: int) -> bool {
+    if a == b {
+        return True
+    }
+    if a <= 0 or b <= 0 {
+        return False
+    }
+    ka: int = nd_kind(nd, a)
+    if ka != nd_kind(nd, b) {
+        return False
+    }
+    if ka == 20 {
+        return nd[a * 10 + 1] == nd[b * 10 + 1]
+    }
+    if ka == 21 {
+        if nd[a * 10 + 1] != nd[b * 10 + 1] {
+            return False
+        }
+        if nd[a * 10 + 2] != nd[b * 10 + 2] {
+            return False
+        }
+        return nd[a * 10 + 3] == nd[b * 10 + 3]
+    }
+    if ka == 22 {
+        if nd[a * 10 + 1] != nd[b * 10 + 1] {
+            return False
+        }
+        return nd[a * 10 + 2] == nd[b * 10 + 2]
+    }
+    if ka == 23 {
+        return nd[a * 10 + 1] == nd[b * 10 + 1]
+    }
+    if ka == 24 {
+        return True
+    }
+    if ka == 25 {
+        return nd[a * 10 + 1] == nd[b * 10 + 1]
+    }
+    if ka == 27 or ka == 29 or ka == 30 {
+        if nd[a * 10 + 1] != nd[b * 10 + 1] {
+            return False
+        }
+        if not ck_same_expr(nd, nd[a * 10 + 2], nd[b * 10 + 2]) {
+            return False
+        }
+        return ck_same_expr(nd, nd[a * 10 + 3], nd[b * 10 + 3])
+    }
+    if ka == 28 {
+        if nd[a * 10 + 1] != nd[b * 10 + 1] {
+            return False
+        }
+        return ck_same_expr(nd, nd[a * 10 + 2], nd[b * 10 + 2])
+    }
+    if ka == 26 {
+        if not ck_same_expr(nd, nd[a * 10 + 1], nd[b * 10 + 1]) {
+            return False
+        }
+        if nd[a * 10 + 3] != nd[b * 10 + 3] {
+            return False
+        }
+        mut x: int = nd[a * 10 + 2]
+        mut y: int = nd[b * 10 + 2]
+        while x > 0 and y > 0 {
+            if not ck_same_expr(nd, x, y) {
+                return False
+            }
+            x = nd_nx(nd, x)
+            y = nd_nx(nd, y)
+        }
+        return x <= 0 and y <= 0
+    }
+    if ka == 31 {
+        if not ck_same_expr(nd, nd[a * 10 + 1], nd[b * 10 + 1]) {
+            return False
+        }
+        return ck_same_expr(nd, nd[a * 10 + 2], nd[b * 10 + 2])
+    }
+    if ka == 32 {
+        if nd[a * 10 + 2] != nd[b * 10 + 2] {
+            return False
+        }
+        return ck_same_expr(nd, nd[a * 10 + 1], nd[b * 10 + 1])
+    }
+    if ka == 33 {
+        mut x: int = nd[a * 10 + 1]
+        mut y: int = nd[b * 10 + 1]
+        while x > 0 and y > 0 {
+            if not ck_same_expr(nd, x, y) {
+                return False
+            }
+            x = nd_nx(nd, x)
+            y = nd_nx(nd, y)
+        }
+        return x <= 0 and y <= 0
+    }
+    if ka == 34 {
+        if not ck_same_expr(nd, nd[a * 10 + 1], nd[b * 10 + 1]) {
+            return False
+        }
+        if not ck_same_expr(nd, nd[a * 10 + 2], nd[b * 10 + 2]) {
+            return False
+        }
+        return ck_same_expr(nd, nd[a * 10 + 3], nd[b * 10 + 3])
+    }
+    return False
+}
+
+# `(var * K) + rest`, and then `K` is checked against the inner loop's own bound.
+# Stage 0 builds `K`'s expected spelling as a new node (`BinOp("*", stop, step)`)
+# and compares keys; comparing the parts structurally is the same question.
+def ck_rowmajor(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+                expr: int, var: int, lb: Array[int, 64], nlb: int) -> bool {
+    mut kn: int = -1
+    mut rn: int = -1
+    if nd_kind(nd, expr) != 27 {
+        return False
+    }
+    if nd[expr * 10 + 1] == 1 {
+        left: int = nd[expr * 10 + 2]
+        if nd_kind(nd, left) == 27 {
+            if nd[left * 10 + 1] == 3 {
+                l0: int = nd[left * 10 + 2]
+                l1: int = nd[left * 10 + 3]
+                if nd_kind(nd, l0) == 25 and nd[l0 * 10 + 1] == var {
+                    kn = l1
+                    rn = nd[expr * 10 + 3]
+                } else if nd_kind(nd, l1) == 25 and nd[l1 * 10 + 1] == var {
+                    kn = l0
+                    rn = nd[expr * 10 + 3]
+                }
+            }
+        }
+    } else if nd[expr * 10 + 1] == 3 {
+        l0: int = nd[expr * 10 + 2]
+        l1: int = nd[expr * 10 + 3]
+        if nd_kind(nd, l0) == 25 and nd[l0 * 10 + 1] == var {
+            kn = l1
+        } else if nd_kind(nd, l1) == 25 and nd[l1 * 10 + 1] == var {
+            kn = l0
+        }
+    }
+    if kn < 0 {
+        return False
+    }
+    # a bare `var * K` has no inner variable to place: it is the stride case
+    if rn <= 0 {
+        return False
+    }
+    if nd_kind(nd, rn) != 25 {
+        return False
+    }
+    j: int = ck_lb_find(lb, nlb, nd[rn * 10 + 1])
+    if j < 0 {
+        return False
+    }
+    bstart: int = lb[j * 4 + 1]
+    bstop: int = lb[j * 4 + 2]
+    bstep: int = lb[j * 4 + 3]
+    if ck_const_int(nd, bstart) != 0 {
+        return False
+    }
+    if bstep > 0 {
+        if ck_const_int(nd, bstep) == ck_no_const() {
+            return False
+        }
+    }
+    if bstep < 0 {
+        return ck_same_expr(nd, kn, bstop)
+    }
+    if nd_kind(nd, kn) != 27 {
+        return False
+    }
+    if nd[kn * 10 + 1] != 3 {
+        return False
+    }
+    if not ck_same_expr(nd, nd[kn * 10 + 2], bstop) {
+        return False
+    }
+    return ck_same_expr(nd, nd[kn * 10 + 3], bstep)
+}
+
+# `verify_parallel`'s `_match_linear`, in full: the row-major case first, then
+# the coefficient-and-width case.
+def ck_match_linear(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+                    vm: VM, iv: Array[int, 64], ni: int,
+                    lb: Array[int, 64], nlb: int, expr: int, var: int) -> bool {
+    if ck_rowmajor(nd, mem, vm, expr, var, lb, nlb) {
+        return True
+    }
+    mut rest: Iv = Iv(0, 0, 0, 0)
+    c: int = ck_linear(nd, mem, vm, iv, ni, expr, var, rest)
+    if c == ck_no_const() {
+        return False
+    }
+    if c == 0 {
+        return False
+    }
+    if rest.lok == 0 or rest.hik == 0 {
+        return False
+    }
+    mut a: int = c
+    if a < 0 {
+        a = -a
+    }
+    return a > rest.hi - rest.lo
+}
+
+# `range(a, b)` / `range(a, b, s)` as an interval, from `range_interval`.  A step
+# of zero is left alone here: stage 0 refuses that at the statement, and
+# re-refusing it inside the proof would print a different line for it.
+def ck_range_iv(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+                iv: Array[int, 64], ni: int, start: int, stop: int,
+                step: int, mut out: Iv) -> None {
+    mut a: Iv = Iv(0, 0, 0, 0)
+    ck_iv_expr(nd, mem, vm, iv, ni, start, a)
+    mut b: Iv = Iv(0, 0, 0, 0)
+    ck_iv_expr(nd, mem, vm, iv, ni, stop, b)
+    if step < 0 {
+        if a.lok == 1 and a.hik == 1 and b.lok == 1 and b.hik == 1 {
+            if b.lo <= a.lo {
+                ck_iv_exact(out, a.lo)
+                return
+            }
+            out.lo = a.lo
+            out.hi = b.hi - 1
+            out.lok = 1
+            out.hik = 1
+            return
+        }
+        if a.lok == 1 and a.hik == 1 and a.lo == a.hi {
+            out.lo = a.lo
+            out.hi = 0
+            out.lok = 1
+            out.hik = 0
+            return
+        }
+        ck_iv_unknown(out)
+        return
+    }
+    mut c: Iv = Iv(0, 0, 0, 0)
+    ck_iv_expr(nd, mem, vm, iv, ni, step, c)
+    if a.lok == 0 or a.hik == 0 or a.lo != a.hi {
+        ck_iv_unknown(out)
+        return
+    }
+    if c.lok == 0 or c.hik == 0 or c.lo != c.hi {
+        ck_iv_unknown(out)
+        return
+    }
+    if c.lo == 0 {
+        ck_iv_unknown(out)
+        return
+    }
+    if b.lok == 1 and b.hik == 1 and b.lo == b.hi {
+        if c.lo > 0 and b.lo <= a.lo {
+            ck_iv_exact(out, a.lo)
+            return
+        }
+        if c.lo < 0 and b.lo >= a.lo {
+            ck_iv_exact(out, a.lo)
+            return
+        }
+        mut last: int = b.lo - 1
+        if c.lo < 0 {
+            last = b.lo + 1
+        }
+        mut hi: int = last
+        if a.lo > hi {
+            hi = a.lo
+        }
+        out.lo = a.lo
+        out.hi = hi
+        out.lok = 1
+        out.hik = 1
+        return
+    }
+    ck_iv_unknown(out)
+}
+
+# ------------------------------------------------------------ the write table
+#
+# One flat table for every fact the walk collects, because a local array is the
+# only container Vela gives a function and one is easier to thread than six.
+#
+#   [TW_WB, TW_WB+32)   the array each write is aimed at, in first-write order
+#   [TW_WD, TW_WD+32)   how many *distinct* index expressions it is written by
+#   [TW_WP, TW_WP+32)   1 when the first of them was proved injective
+#   [TW_WX, TW_WX+32)   that first index expression, for the refusal's line
+#   [TW_WK, TW_WK+256)  up to TW_KCAP distinct expressions, 8 slots per array
+#   TW_NB               how many arrays the table holds
+#
+# The count is capped at 8 per array: past that the message's number would be a
+# floor rather than the count stage 0 prints.  A body that writes one array
+# through nine different expressions is refused by both checkers either way.
+def TW_WB() -> int { return 0 }
+def TW_WD() -> int { return 32 }
+def TW_WP() -> int { return 64 }
+def TW_WX() -> int { return 96 }
+def TW_WK() -> int { return 128 }
+def TW_NB() -> int { return 384 }
+def TW_CAP() -> int { return 32 }
+def TW_KCAP() -> int { return 8 }
+
+# A write is legal when every iteration provably lands elsewhere *and* every
+# call it makes is pure.  The first index expression to reach an array is the
+# one judged, which is what makes the order of this table mean something.
+#
+# `idx` is the `a[i]` node itself — the thing stage 0 names `items[0]` and points
+# its refusal at — and the expression the proof is about is the node *inside* it,
+# `a[i]`'s second word.  Two different questions, two different words.
+def ck_pwrite(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+              iv: Array[int, 64], ni: int, lb: Array[int, 64], nlb: int,
+              mut tb: Array[int, 448], bn: int, idx: int, var: int) -> None {
+    n: int = tb[TW_NB()]
+    mut b: int = -1
+    mut i: int = 0
+    while i < n {
+        if tb[TW_WB() + i] == bn {
+            b = i
+            break
+        }
+        i += 1
+    }
+    if b < 0 {
+        if n >= TW_CAP() {
+            return
+        }
+        b = n
+        tb[TW_NB()] = n + 1
+        tb[TW_WB() + b] = bn
+        tb[TW_WD() + b] = 0
+        tb[TW_WP() + b] = 0
+        tb[TW_WX() + b] = 0
+    }
+    if tb[TW_WD() + b] >= TW_KCAP() {
+        return
+    }
+    mut j: int = 0
+    while j < tb[TW_WD() + b] {
+        if ck_same_expr(nd, idx, tb[TW_WK() + b * 8 + j]) {
+            return
+        }
+        j += 1
+    }
+    tb[TW_WK() + b * 8 + tb[TW_WD() + b]] = idx
+    tb[TW_WD() + b] = tb[TW_WD() + b] + 1
+    if tb[TW_WD() + b] == 1 {
+        tb[TW_WX() + b] = idx
+        if ck_match_linear(nd, mem, vm, iv, ni, lb, nlb, nd[idx * 10 + 2], var) {
+            tb[TW_WP() + b] = 1
+        }
+    }
+}
+
+# An assignment to a name the body did not declare is an assignment to something
+# every iteration shares — which is a race, and the two spellings of it are told
+# apart because stage 0 tells them apart.
+def ck_pname(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+             vm: VM, s: int, aug: int) -> None {
+    nm: int = nd[nd[s * 10 + 1] * 10 + 1]
+    if ck_bound(mem, vm, nm) < 0 {
+        return
+    }
+    if aug == 1 {
+        ck_safety(path, nd_line(nd, s),
+                  ck_quoted("'parallel for' accumulates into '", nm,
+                            "', which is shared across iterations"))
+        return
+    }
+    ck_safety(path, nd_line(nd, s),
+              ck_quoted("'parallel for' assigns to '", nm,
+                        "', which is shared across every iteration"))
+}
+
+# `analysis`-free purity: an impure method is only caught when the receiver is a
+# plain name, because anything else needs the type of an arbitrary expression.
+def ck_pure_method(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+                   path: str, vm: VM, e: int, callee: int) -> None {
+    recv: int = nd[callee * 10 + 1]
+    if nd_kind(nd, recv) != 25 {
+        return
+    }
+    i: int = ck_bound(mem, vm, nd[recv * 10 + 1])
+    if i < 0 {
+        return
+    }
+    ck: int = sc_ckind(mem, i)
+    if unpack_kind(ck) != K_ST() {
+        return
+    }
+    sid: int = unpack_len(ck)
+    nm: int = nd[callee * 10 + 2]
+    n: int = stb_get(mem, sid, STB_NMETH())
+    off: int = stb_get(mem, sid, STB_MOFF())
+    mut j: int = 0
+    while j < n {
+        if met_get(mem, off + j, MET_NAME()) == nm {
+            fn: int = met_get(mem, off + j, MET_FN())
+            if ft_get(mem, fn, FT_PURE()) == 0 {
+                ck_safety(path, nd_line(nd, e),
+                          ck_quoted("call to impure function '", nm,
+                                    "' inside 'parallel for'"))
+            }
+            return
+        }
+        j += 1
+    }
+}
+
+# `_parallel_rhs_ok`: everything a parallel body calls must be provably pure,
+# and `print` is refused before purity is even asked about, because its whole
+# purpose is a side effect on a shared stream.
+def ck_pure(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+            vm: VM, e: int) -> None {
+    if e <= 0 {
+        return
+    }
+    k: int = nd_kind(nd, e)
+    if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        if nd_kind(nd, callee) == 25 {
+            s: int = nt_get(mem, callee, NT_SYM())
+            if s == SYM_BUILTIN() {
+                if nt_get(mem, callee, NT_VAL()) == B_PRINT() {
+                    ck_safety(path, nd_line(nd, e),
+                              "'print' inside a 'parallel for' would interleave output unpredictably")
+                    return
+                }
+            }
+            if s == SYM_FUNC() {
+                fn: int = nt_get(mem, callee, NT_VAL())
+                if ft_get(mem, fn, FT_PURE()) == 0 {
+                    ck_safety(path, nd_line(nd, e),
+                              ck_quoted("call to impure function '",
+                                        nd[callee * 10 + 1],
+                                        "' inside 'parallel for'"))
+                    return
+                }
+            }
+        } else if nd_kind(nd, callee) == 32 {
+            ck_pure_method(nd, mem, path, vm, e, callee)
+        }
+        mut a: int = nd[e * 10 + 2]
+        while a > 0 {
+            ck_pure(nd, mem, path, vm, a)
+            a = nd_nx(nd, a)
+        }
+        return
+    }
+    if k == 27 or k == 29 or k == 30 {
+        ck_pure(nd, mem, path, vm, nd[e * 10 + 2])
+        ck_pure(nd, mem, path, vm, nd[e * 10 + 3])
+        return
+    }
+    if k == 28 {
+        ck_pure(nd, mem, path, vm, nd[e * 10 + 2])
+        return
+    }
+    if k == 31 {
+        ck_pure(nd, mem, path, vm, nd[e * 10 + 1])
+        ck_pure(nd, mem, path, vm, nd[e * 10 + 2])
+        return
+    }
+    if k == 32 {
+        ck_pure(nd, mem, path, vm, nd[e * 10 + 1])
+        return
+    }
+    if k == 33 {
+        mut el: int = nd[e * 10 + 1]
+        while el > 0 {
+            ck_pure(nd, mem, path, vm, el)
+            el = nd_nx(nd, el)
+        }
+        return
+    }
+    if k == 34 {
+        ck_pure(nd, mem, path, vm, nd[e * 10 + 1])
+        ck_pure(nd, mem, path, vm, nd[e * 10 + 2])
+        ck_pure(nd, mem, path, vm, nd[e * 10 + 3])
+    }
+    # 20 int, 21 float, 22 str, 23 bool, 24 none, 25 name are leaves
+}
+
+# The walk itself.  A statement list is followed with `nx`, and the four block
+# kinds recurse back into this same function — one function rather than a list
+# walker and a statement walker, because the two would be mutually recursive and
+# Vela has no forward declaration to make that legal.
+#
+# The two rules this walk does *not* apply are the two stage 0 does not apply
+# either, and they are worth naming because they look like oversights: an `if` or
+# `while` *condition* is never checked for purity, and neither is the index inside
+# a write's target.  Both are stage 0's behaviour, and a port that quietly
+# improved on them would be a port that refuses programs stage 0 accepts.
+def ck_pcol(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+            vm: VM, head: int, var: int,
+            mut iv: Array[int, 64], mut lb: Array[int, 64], mut p: Par,
+            mut tb: Array[int, 448]) -> None {
+    mut s: int = head
+    while s > 0 {
+        k: int = nd_kind(nd, s)
+        line: int = nd_line(nd, s)
+        if k == 6 {
+            tgt: int = nd[s * 10 + 1]
+            tk: int = nd_kind(nd, tgt)
+            if tk == 31 {
+                base: int = nd[tgt * 10 + 1]
+                if nd_kind(nd, base) != 25 {
+                    ck_safety(path, line,
+                              "'parallel for' may only write to a local array, not through a nested expression")
+                    return
+                }
+                ck_pwrite(nd, mem, vm, iv, p.ni, lb, p.nlb, tb, nd[base * 10 + 1],
+                          tgt, var)
+                if nd[s * 10 + 2] > 0 {
+                    ck_pure(nd, mem, path, vm, nd[s * 10 + 2])
+                }
+            } else if tk == 25 {
+                ck_pname(nd, mem, path, vm, s, 0)
+                if nd[s * 10 + 2] > 0 {
+                    ck_pure(nd, mem, path, vm, nd[s * 10 + 2])
+                }
+            } else {
+                ck_safety(path, line,
+                          "'parallel for' may only write to array elements")
+                return
+            }
+        } else if k == 7 {
+            tgt: int = nd[s * 10 + 1]
+            tk: int = nd_kind(nd, tgt)
+            if tk == 31 {
+                base: int = nd[tgt * 10 + 1]
+                if nd_kind(nd, base) != 25 {
+                    ck_safety(path, line,
+                              "'parallel for' may only write to a local array")
+                    return
+                }
+                ck_pwrite(nd, mem, vm, iv, p.ni, lb, p.nlb, tb, nd[base * 10 + 1],
+                          tgt, var)
+                ck_pure(nd, mem, path, vm, nd[s * 10 + 2])
+            } else if tk == 25 {
+                ck_pname(nd, mem, path, vm, s, 1)
+                ck_pure(nd, mem, path, vm, nd[s * 10 + 2])
+            } else {
+                ck_safety(path, line, "'parallel for' may not write this target")
+                return
+            }
+        } else if k == 8 {
+            ck_pure(nd, mem, path, vm, nd[s * 10 + 1])
+        } else if k == 9 {
+            ck_safety(path, line, "'parallel for' bodies may not 'return'")
+            return
+        } else if k == 10 {
+            ck_pcol(nd, mem, path, vm, nd[s * 10 + 2], var, iv, lb, p, tb)
+            ck_pcol(nd, mem, path, vm, nd[s * 10 + 4], var, iv, lb, p, tb)
+        } else if k == 11 {
+            # a while loop is collected exactly like anything else: refusing it
+            # would refuse the escape loop that only touches its own variables
+            ck_pcol(nd, mem, path, vm, nd[s * 10 + 2], var, iv, lb, p, tb)
+        } else if k == 12 {
+            if (nd[s * 10 + 6] & 1) == 1 {
+                ck_safety(path, line,
+                          "nested 'parallel for' is not supported in Vela 0.1")
+                return
+            }
+            sn: int = p.ni
+            sl: int = p.nlb
+            mut jv: Iv = Iv(0, 0, 0, 0)
+            ck_range_iv(nd, mem, vm, iv, p.ni, nd[s * 10 + 2], nd[s * 10 + 3],
+                        nd[s * 10 + 4], jv)
+            ck_iv_push(iv, p, nd[s * 10 + 1], jv)
+            ck_lb_push(lb, p, nd[s * 10 + 1], nd[s * 10 + 2], nd[s * 10 + 3],
+                       nd[s * 10 + 4])
+            ck_pcol(nd, mem, path, vm, nd[s * 10 + 8], var, iv, lb, p, tb)
+            p.ni = sn
+            p.nlb = sl
+        } else if k != 13 and k != 14 and k != 15 {
+            ck_safety(path, line, "unsupported statement in 'parallel for'")
+            return
+        }
+        s = nd_nx(nd, s)
+    }
+}
+
+# --------------------------------------------- the aliasing rule (reads)
+#
+# An array the body **writes** may be read inside the same loop only at the write's
+# own index expression.  This is the language-level form of what Rust's
+# `par_iter_mut` enforces by construction: an iteration is handed its own element
+# and cannot reach another iteration's.  So
+#
+#     parallel for i in range(0, 64) { a[i] = a[i - 1] + 1 }
+#
+# is refused — every iteration reads the element its neighbour is writing, which is
+# a loop-carried dependence, and `#pragma omp parallel for` over it gives a
+# different answer on every run (measured: nine distinct wrong values in twenty
+# runs of one program) — while
+#
+#     parallel for i in range(0, 64) { out[i] = a[i] * 2 }
+#
+# stays legal, because `a` is only *read* here, and reads of an array nobody
+# writes are free: a thread may read anything no thread is writing.
+#
+# Two decisions worth naming.  The write's index expression is the first one the
+# body used (`TW_WX`), which is well defined because a body with more than one
+# write expression was already refused.  And the walk is a *second* pass, run
+# after every write-side verdict, because a read may sit above the statement that
+# writes the array — and because a body refused today must keep the message it
+# has today.
+def ck_twrow(tb: Array[int, 448], bn: int) -> int {
+    n: int = tb[TW_NB()]
+    mut i: int = 0
+    while i < n {
+        if tb[TW_WB() + i] == bn {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+# The message names the array and both occurrences by line, because that is what
+# this pass has: the checker is given the node pool and not the source text, so
+# the *spelling* of the two index expressions (`i` and `i - 1`) is not available
+# here, while the line of each is.
+def ck_pread_msg(name: int, wline: int, rline: int) -> str {
+    mut m: str = concat("'parallel for' reads '", interned(name))
+    m = concat(m, "' at an index other than the one it writes (written on line ")
+    m = concat(m, ck_int_text(wline))
+    m = concat(m, ", read on line ")
+    m = concat(m, ck_int_text(rline))
+    return concat(m, "), so one iteration could read what another is writing")
+}
+
+# Every `a[e]` in an expression, where `a` is an array this loop writes: reading
+# it at an index other than the write's is the race.  The comparison is
+# `ck_same_expr` — the same notion of "the identical index expression" the write
+# rule already uses — so `a[i] = a[i] + 1` and `a[i] += 1` stay legal: each
+# iteration reads exactly the element it writes.
+def ck_pread_expr(nd: Array[int, 655360], path: str, tb: Array[int, 448],
+                  e: int) -> None {
+    if e <= 0 {
+        return
+    }
+    k: int = nd_kind(nd, e)
+    if k == 31 {
+        base: int = nd[e * 10 + 1]
+        if nd_kind(nd, base) == 25 {
+            b: int = ck_twrow(tb, nd[base * 10 + 1])
+            if b >= 0 {
+                if not ck_same_expr(nd, nd[e * 10 + 2],
+                                    nd[tb[TW_WX() + b] * 10 + 2]) {
+                    ck_safety(path, nd_line(nd, e),
+                              ck_pread_msg(nd[base * 10 + 1],
+                                           nd_line(nd, tb[TW_WX() + b]),
+                                           nd_line(nd, e)))
+                    return
+                }
+            }
+        }
+        ck_pread_expr(nd, path, tb, base)
+        ck_pread_expr(nd, path, tb, nd[e * 10 + 2])
+        return
+    }
+    if k == 26 {
+        ck_pread_expr(nd, path, tb, nd[e * 10 + 1])
+        mut a: int = nd[e * 10 + 2]
+        while a > 0 {
+            ck_pread_expr(nd, path, tb, a)
+            a = nd_nx(nd, a)
+        }
+        return
+    }
+    if k == 27 or k == 29 or k == 30 {
+        ck_pread_expr(nd, path, tb, nd[e * 10 + 2])
+        ck_pread_expr(nd, path, tb, nd[e * 10 + 3])
+        return
+    }
+    if k == 28 {
+        ck_pread_expr(nd, path, tb, nd[e * 10 + 2])
+        return
+    }
+    if k == 32 {
+        ck_pread_expr(nd, path, tb, nd[e * 10 + 1])
+        return
+    }
+    if k == 33 {
+        mut el: int = nd[e * 10 + 1]
+        while el > 0 {
+            ck_pread_expr(nd, path, tb, el)
+            el = nd_nx(nd, el)
+        }
+        return
+    }
+    if k == 34 {
+        ck_pread_expr(nd, path, tb, nd[e * 10 + 1])
+        ck_pread_expr(nd, path, tb, nd[e * 10 + 2])
+        ck_pread_expr(nd, path, tb, nd[e * 10 + 3])
+    }
+    # 20 int, 21 float, 22 str, 23 bool, 24 none, 25 name are leaves
+}
+
+# The statements, one body: the same block kinds `ck_pcol` walks, and the
+# conditions it deliberately leaves alone — a condition is an expression and a
+# read in one is a read (stage 0 never looked for purity in a condition; it never
+# looked for a race in one either, because this rule did not exist).
+def ck_pread(nd: Array[int, 655360], path: str, tb: Array[int, 448],
+             head: int) -> None {
+    mut s: int = head
+    while s > 0 {
+        k: int = nd_kind(nd, s)
+        if k == 6 or k == 7 {
+            ck_pread_expr(nd, path, tb, nd[s * 10 + 1])
+            ck_pread_expr(nd, path, tb, nd[s * 10 + 2])
+        } else if k == 8 {
+            ck_pread_expr(nd, path, tb, nd[s * 10 + 1])
+        } else if k == 10 {
+            ck_pread_expr(nd, path, tb, nd[s * 10 + 1])
+            ck_pread(nd, path, tb, nd[s * 10 + 2])
+            ck_pread(nd, path, tb, nd[s * 10 + 4])
+        } else if k == 11 {
+            ck_pread_expr(nd, path, tb, nd[s * 10 + 1])
+            ck_pread(nd, path, tb, nd[s * 10 + 2])
+        } else if k == 12 {
+            ck_pread_expr(nd, path, tb, nd[s * 10 + 2])
+            ck_pread_expr(nd, path, tb, nd[s * 10 + 3])
+            ck_pread_expr(nd, path, tb, nd[s * 10 + 4])
+            ck_pread(nd, path, tb, nd[s * 10 + 8])
+        }
+        s = nd_nx(nd, s)
+    }
+}
+
+# The verdict.  Stage 0's order is the order here: no writes at all first, then
+# for each array in first-write order — is it a local `mut` array, does it have
+# one index expression, and is that expression injective.
+def ck_parallel(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+                path: str, vm: VM, s: int) -> None {
+    mut iv: Array[int, 64]
+    mut lb: Array[int, 64]
+    mut tb: Array[int, 448]
+    mut p: Par = Par(0, 0)
+    var: int = nd[s * 10 + 1]
+    mut li: Iv = Iv(0, 0, 0, 0)
+    ck_range_iv(nd, mem, vm, iv, 0, nd[s * 10 + 2], nd[s * 10 + 3],
+                nd[s * 10 + 4], li)
+    ck_iv_push(iv, p, var, li)
+    ck_lb_push(lb, p, var, nd[s * 10 + 2], nd[s * 10 + 3], nd[s * 10 + 4])
+    ck_pcol(nd, mem, path, vm, nd[s * 10 + 8], var, iv, lb, p, tb)
+
+    n: int = tb[TW_NB()]
+    if n == 0 {
+        ck_safety(path, nd_line(nd, s),
+                  "'parallel for' has no effect: the body writes nothing")
+        return
+    }
+    mut i: int = 0
+    while i < n {
+        bn: int = tb[TW_WB() + i]
+        mut local: bool = False
+        j: int = ck_bound(mem, vm, bn)
+        if j >= 0 {
+            ck: int = sc_ckind(mem, j)
+            if ck_is_array_ck(ck) and is_mut_binding(ck) {
+                if not is_param_binding(ck) {
+                    local = True
+                }
+            }
+        }
+        if not local {
+            ck_safety(path, nd_line(nd, s),
+                      ck_quoted("'parallel for' writes to '", bn,
+                                "', which is not a mutable array local to this function"))
+            return
+        }
+        if tb[TW_WD() + i] > 1 {
+            mut m: str = concat("'parallel for' writes to '", interned(bn))
+            m = concat(m, "' at ")
+            m = concat(m, ck_int_text(tb[TW_WD() + i]))
+            m = concat(m, " different index expressions, so two iterations could land on the same element")
+            ck_safety(path, nd_line(nd, s), m)
+            return
+        }
+        if tb[TW_WP() + i] == 0 {
+            ck_safety(path, nd_line(nd, tb[TW_WX() + i]),
+                      ck_quoted("cannot prove that 'parallel for' writes '", bn,
+                                "' to distinct elements"))
+            return
+        }
+        i += 1
+    }
+    # last, so every refusal above keeps the message it has always had: a body
+    # that only reads an array the loop does not write is free, and a body that
+    # reads a written array must read its own element (see ck_pread)
+    ck_pread(nd, path, tb, nd[s * 10 + 8])
+}
+
+# ------------------------------------------------------------------- bodies
+
+def ck_body(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+            path: str, mut vm: VM, head: int) -> None {
+    mark: int = vm.scn
+    mut s: int = head
+    while s > 0 {
+        ck_stmt(nd, mem, path, vm, s, mark)
+        s = nd_nx(nd, s)
+    }
+    vm.scn = mark
+}
+
+def ck_block(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+             path: str, mut vm: VM, head: int) -> None {
+    if head <= 0 {
+        return
+    }
+    ck_body(nd, mem, path, vm, head)
+}
+
+def ck_stmt(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+            path: str, mut vm: VM, s: int, mark: int) -> None {
+    k: int = nd_kind(nd, s)
+    if k == 6 {
+        tgt: int = nd[s * 10 + 1]
+        v: int = nd[s * 10 + 2]
+        if (nd[s * 10 + 6] & 2) == 2 {
+            if nd_kind(nd, tgt) != 25 {
+                ck_type(path, nd_line(nd, s), "invalid assignment target")
+            }
+            name: int = nd[tgt * 10 + 1]
+            if ck_seen(mem, vm, name, mark) {
+                ck_type(path, nd_line(nd, s),
+                        ck_quoted("'", name,
+                                  "' is already declared in this scope"))
+            }
+            # a binding with no initialiser: only an array may be left zeroed,
+            # and a binding with neither a type nor a value says nothing at all
+            if v <= 0 {
+                if nd[s * 10 + 3] < 0 {
+                    ck_type(path, nd_line(nd, s),
+                            ck_quoted("'", name,
+                                      "' has no type and no initialiser"))
+                } else if not ck_is_array_ck(nt_get(mem, s, NT_LIT())) {
+                    ck_type(path, nd_line(nd, s),
+                            ck_quoted("'", name,
+                                      "' is declared without an initialiser"))
+                }
+            }
+            # the binding joins the scope so the rest of the block sees it
+            ck_push(mem, vm, name, nt_get(mem, s, NT_LIT()),
+                    (nd[s * 10 + 6] & 1) == 1)
+        } else {
+            ck_store(nd, mem, path, vm, s)
+        }
+        if v > 0 {
+            ck_expr(nd, mem, path, vm, v)
+        }
+        return
+    }
+    if k == 7 {
+        ck_store(nd, mem, path, vm, s)
+        return
+    }
+    if k == 8 {
+        # an expression statement that is not a call is a value thrown away, and
+        # in a language with no side effects in expressions that is always a bug
+        if nd_kind(nd, nd[s * 10 + 1]) != 26 {
+            ck_type(path, nd_line(nd, s),
+                    "this expression statement has no effect")
+        }
+        ck_expr(nd, mem, path, vm, nd[s * 10 + 1])
+        return
+    }
+    if k == 9 {
+        if nd[s * 10 + 1] > 0 {
+            if unpack_kind(vm.cret) == K_NONE() {
+                ck_type(path, nd_line(nd, s),
+                        "this function is declared '-> None', so it cannot return a value")
+            }
+            ck_expr(nd, mem, path, vm, nd[s * 10 + 1])
+        }
+        return
+    }
+    if k == 10 {
+        ck_condition(nd, mem, path, vm, s, "if")
+        ck_expr(nd, mem, path, vm, nd[s * 10 + 1])
+        ck_block(nd, mem, path, vm, nd[s * 10 + 2])
+        ck_block(nd, mem, path, vm, nd[s * 10 + 4])
+        return
+    }
+    if k == 11 {
+        ck_condition(nd, mem, path, vm, s, "while")
+        ck_expr(nd, mem, path, vm, nd[s * 10 + 1])
+        ck_block(nd, mem, path, vm, nd[s * 10 + 2])
+        return
+    }
+    if k == 12 {
+        ck_expr(nd, mem, path, vm, nd[s * 10 + 2])
+        ck_expr(nd, mem, path, vm, nd[s * 10 + 3])
+        ck_expr(nd, mem, path, vm, nd[s * 10 + 4])
+        name: int = nd[s * 10 + 1]
+        if ck_seen(mem, vm, name, mark) {
+            ck_type(path, nd_line(nd, s),
+                    ck_quoted("'", name,
+                              "' is already declared in this scope"))
+        }
+        m2: int = vm.scn
+        ck_push(mem, vm, name, K_INT(), False)
+        ck_block(nd, mem, path, vm, nd[s * 10 + 8])
+        # The proof runs here, and *here* is the point: the body's own bindings
+        # have just gone out of scope again, while the loop variable has not.  A
+        # name the body declared is therefore private to an iteration and a name
+        # it did not declare is shared by all of them — which is exactly the
+        # question the parallel rules ask, and exactly the state stage 0 asks it
+        # in (checker.py:883-888).
+        if (nd[s * 10 + 6] & 1) == 1 {
+            ck_parallel(nd, mem, path, vm, s)
+        }
+        vm.scn = m2
+        return
+    }
+    # 13 break, 14 continue, 15 pass: nothing to say about them yet
+}
+
+# ------------------------------------------------------------------- foreign
+#
+# `extern c def sqrt(x: float) -> float` declares a C function.  The rule the
+# boundary needs is one sentence: **the types are scalars**.  A `str` is a length
+# and a pointer into Vela's own string region, not a `char *`, and an array is
+# storage whose length Vela owns — handing either across would be inventing an
+# ABI, and inventing an ABI is how a safe language stops being one.  `i32` and
+# `u8` exist so that a C `int` and a C `unsigned char` can be declared *exactly*;
+# whether a declaration matches the C prototype is the user's to get right, and
+# the compiler spells out what they wrote and nothing more.
+def ck_is_extern_scalar(pk: int) -> bool {
+    k: int = unpack_kind(pk)
+    if k == K_INT() { return True }
+    if k == K_I32() { return True }
+    if k == K_U8() { return True }
+    if k == K_FLT() { return True }
+    if k == K_BOOL() { return True }
+    return False
+}
+
+def ck_extern_ok(pk: int) -> bool {
+    if unpack_kind(pk) == K_NONE() { return True }
+    return ck_is_extern_scalar(pk)
+}
+
+# --------------------------------------------------- the same rule, call site
+#
+# A declaration above says what a C function takes.  Handing it something else is
+# the mistake a foreign call actually makes, and it is the one C will not catch:
+# a C compiler converts an `int` to a `float`, a `float` to an `int` and a pointer
+# to an `int` without a word, so `abs(1.5)` prints 1 and `abs(some_array)`
+# truncates an address.  Vela already refuses exactly these conversions between
+# two Vela values — "operator '+' mixes float and int" — so the boundary refuses
+# them too, in the same voice and with the line of the call.
+#
+# The rule is one sentence: **an argument crosses only as the type the parameter
+# declares**, with the one implicit conversion the language has anywhere — an int
+# *constant* whose value fits, the same test `ck_adapt_pair` applies to `i32 + 1`
+# and the reason `abs(-7)` can be written.
+
+# What kind is this argument?  `ck_etype` answers for everything the checker can
+# see without the type pool: a literal, a bound name, an operator, an index.  Two
+# shapes are worth one more step, and for both the answer is already written
+# down:
+#
+#   * a *call* — `ck_record_decls` files every function's packed return kind in
+#     the `NT_TY` slot of its `def` node, so `abs(g(x))` is as knowable as
+#     `abs(x)`, and a function returning a `float` is not taken for an `i32`;
+#   * a struct *value*, which `ck_etype` deliberately leaves unknown because it
+#     cannot spell a struct's name — "struct" is the spelling this rule needs,
+#     and it is the reason no C prototype can carry one.
+#
+# What stays unknown — a field read, an array literal, a method call — is
+# `K_BAD`, and a rule that reads this stays quiet about it, which is the same
+# honesty as everywhere else in this pass.
+def ck_arg_kind(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+                e: int) -> int {
+    k: int = ck_etype(nd, mem, vm, e)
+    if k != K_BAD() {
+        return k
+    }
+    if nd_kind(nd, e) == 25 {
+        i: int = ck_bound(mem, vm, nd[e * 10 + 1])
+        if i >= 0 {
+            if unpack_kind(ck_kind_of_ck(sc_ckind(mem, i))) == K_ST() {
+                return K_ST()
+            }
+        }
+        return K_BAD()
+    }
+    if nd_kind(nd, e) != 26 {
+        return K_BAD()
+    }
+    callee: int = nd[e * 10 + 1]
+    if nd_kind(nd, callee) != 25 {
+        return K_BAD()
+    }
+    if nt_get(mem, callee, NT_SYM()) != SYM_FUNC() {
+        return K_BAD()
+    }
+    f: int = nt_get(mem, callee, NT_VAL())
+    return unpack_kind(nt_get(mem, ft_get(mem, f, FT_DEF()), NT_TY()))
+}
+
+# Declarations first, once, before any body is walked: the verdict must not
+# depend on whether the `extern c` line sits before or after the call that
+# reaches it.  The node table has the room for this — `NT_TY` is declared for a
+# node's static type and until now nothing wrote it — and a struct cannot hold a
+# pool, so a slot next to the node is the only place a call site can be told what
+# the *callee* declared.
+def ck_record_decls(nd: Array[int, 655360], ty: Array[int, 262144],
+                    mut mem: Array[int, 3741696], vm: VM, f: int) -> None {
+    d: int = ft_get(mem, f, FT_DEF())
+    nt_put(mem, d, NT_TY(), type_packed(ty, ft_get(mem, f, FT_RETTY()), mem, vm))
+    if ft_get(mem, f, FT_BODY()) >= 0 {
+        return
+    }
+    # only a foreign function needs its parameters filed: a call to a Vela
+    # function is not judged here
+    mut p: int = ft_get(mem, f, FT_PARAM())
+    while p > 0 {
+        nt_put(mem, p, NT_TY(), type_packed(ty, nd[p * 10 + 2], mem, vm))
+        p = nd_nx(nd, p)
+    }
+}
+
+# Both messages name the function, the parameter and both types: "has type float,
+# but parameter 'x' has type i32" is the whole of what a reader needs, and the
+# constant that does not fit says so in the words the literal rule already uses.
+def ck_extern_mismatch(fn: int, par: int, ak: int, pk: int) -> str {
+    mut m: str = concat("'extern c' argument to '", interned(fn))
+    m = concat(m, "' has type ")
+    m = concat(m, ck_spell_ck(ak))
+    m = concat(m, ", but parameter '")
+    m = concat(m, interned(par))
+    m = concat(m, "' has type ")
+    return concat(m, ck_spell_ck(pk))
+}
+
+def ck_extern_too_big(fn: int, v: int, pk: int) -> str {
+    mut m: str = concat("'extern c' argument ", ck_int_text(v))
+    m = concat(m, " to '")
+    m = concat(m, interned(fn))
+    m = concat(m, "' does not fit in ")
+    return concat(m, ck_spell_ck(pk))
+}
+
+# One argument against the parameter it is going to.
+def ck_extern_arg(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+                  path: str, vm: VM, e: int, callee: int, p: int,
+                  a: int) -> None {
+    pk: int = nt_get(mem, p, NT_TY())
+    if pk == 0 {
+        # nothing filed for this parameter: there is nothing to judge against,
+        # so the rule stays quiet rather than guessing a type
+        return
+    }
+    ak: int = ck_arg_kind(nd, mem, vm, a)
+    if ak == K_BAD() {
+        return
+    }
+    if unpack_kind(ak) == unpack_kind(pk) {
+        return
+    }
+    fn: int = nd[callee * 10 + 1]
+    if ck_is_int_kind(unpack_kind(ak)) and ck_is_int_kind(unpack_kind(pk)) {
+        v: int = ck_const_int(nd, a)
+        if v != ck_no_const() {
+            if ck_fits_kind(v, unpack_kind(pk)) {
+                return
+            }
+            ck_type(path, nd_line(nd, e), ck_extern_too_big(fn, v, pk))
+            return
+        }
+    }
+    ck_type(path, nd_line(nd, e), ck_extern_mismatch(fn, nd[p * 10 + 1], ak, pk))
+}
+
+# `abs(...)` where `abs` is `extern c`.  The number of arguments is already the
+# resolver's verdict ("wrong number of arguments", with the line of the call), so
+# what is left for this rule is the type of each one.
+def ck_extern_call(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+                   path: str, vm: VM, e: int) -> None {
+    callee: int = nd[e * 10 + 1]
+    if nd_kind(nd, callee) != 25 {
+        # `recv.name(...)`: the receiver is not in the argument chain, and an
+        # `extern c` method is refused where it is declared — its receiver is a
+        # struct, which no C prototype can carry
+        return
+    }
+    if nt_get(mem, callee, NT_SYM()) != SYM_FUNC() {
+        return
+    }
+    f: int = nt_get(mem, callee, NT_VAL())
+    if ft_get(mem, f, FT_BODY()) >= 0 {
+        # an ordinary Vela function: the boundary is Vela's own, and how a C
+        # compiler converts its arguments is the back end's business, not a rule
+        # this pass can state
+        return
+    }
+    mut p: int = ft_get(mem, f, FT_PARAM())
+    mut a: int = nd[e * 10 + 2]
+    while p > 0 {
+        if a <= 0 {
+            return
+        }
+        ck_extern_arg(nd, mem, path, vm, e, callee, p, a)
+        p = nd_nx(nd, p)
+        a = nd_nx(nd, a)
+    }
+}
+
+def ck_function(nd: Array[int, 655360], ty: Array[int, 262144],
+                mut mem: Array[int, 3741696],
+                path: str, mut vm: VM, f: int) -> None {
+    d: int = ft_get(mem, f, FT_DEF())
+    retp: int = type_packed(ty, ft_get(mem, f, FT_RETTY()), mem, vm)
+    if ck_is_array_ck(retp) {
+        # an array lives in the callee's arena frame: returning one would hand
+        # the caller memory that is released as the frame unwinds
+        ck_safety(path, nd_line(nd, d),
+                  ck_quoted("function '", nd[d * 10 + 1],
+                            concat("' returns ", ck_spell_array(retp))))
+        return
+    }
+    # a foreign function is the one with no body (`FT_BODY` is -1, which is what
+    # the parser wrote and the resolver copied): nothing to walk, nothing to
+    # prove about returning — but its own kinds have to be legal, which is the
+    # only thing Vela will ever know about it
+    mut ext: bool = False
+    if ft_get(mem, f, FT_BODY()) < 0 {
+        ext = True
+        if not ck_extern_ok(retp) {
+            ck_type(path, nd_line(nd, d),
+                    ck_quoted("'extern c' function '", nd[d * 10 + 1],
+                              concat("' may not return ", ck_spell_ck(retp))))
+            return
+        }
+    }
+    mark: int = vm.scn
+    mut saved: int = vm.cret
+    mut saved_pure: int = vm.cpure
+    vm.cret = retp
+    if ft_get(mem, f, FT_PURE()) == 1 {
+        vm.cpure = 1
+    } else {
+        vm.cpure = 0
+    }
+    mut p: int = ft_get(mem, f, FT_PARAM())
+    while p > 0 {
+        name: int = nd[p * 10 + 1]
+        if ck_seen(mem, vm, name, mark) {
+            ck_type(path, nd_line(nd, p),
+                    ck_quoted("duplicate parameter '", name, "'"))
+        }
+        pk: int = type_packed(ty, nd[p * 10 + 2], mem, vm)
+        if ext {
+            if not ck_is_extern_scalar(pk) {
+                ck_type(path, nd_line(nd, p),
+                        ck_quoted("'extern c' parameter '", name,
+                                  concat("' has type ", ck_spell_ck(pk))))
+                return
+            }
+        }
+        # a parameter's type is not in the node table: the emitter asks the type
+        # pool for it (`param_packed`), and so does this, so that the two agree
+        ck_push_par(mem, vm, name, pk, (nd[p * 10 + 6] & 1) == 1)
+        p = nd_nx(nd, p)
+    }
+    body: int = ft_get(mem, f, FT_BODY())
+    if not ext {
+        ck_block(nd, mem, path, vm, body)
+    }
+    if unpack_kind(retp) != K_NONE() and not ext {
+        if not ck_always_returns(nd, body) {
+            ck_type(path, nd_line(nd, d),
+                    ck_quoted("function '", nd[d * 10 + 1],
+                              concat("' may finish without returning ",
+                                     ck_spell_ck(retp))))
+        }
+    }
+    vm.cret = saved
+    vm.cpure = saved_pure
+    vm.scn = mark
+}
+
+def ck_struct_fields(mem: Array[int, 3741696], path: str, vm: VM,
+                     sid: int) -> None {
+    n: int = stb_get(mem, sid, STB_NFIELD())
+    off: int = stb_get(mem, sid, STB_FOFF())
+    mut i: int = 0
+    while i < n {
+        ck: int = sfl_get(mem, off + i * 2 + 1)
+        if ck_is_array_ck(ck) {
+            ck_type(path, 0,
+                    ck_quoted("field '", sfl_get(mem, off + i * 2),
+                              "' may not be an array"))
+        }
+        i += 1
+    }
+}
+
+def ck_module(nd: Array[int, 655360], ty: Array[int, 262144],
+              mut mem: Array[int, 3741696], path: str, mut vm: VM) -> None {
+    mut sid: int = 0
+    while sid < vm.nstruct {
+        ck_struct_fields(mem, path, vm, sid)
+        sid += 1
+    }
+    # what every function declared, before any body is judged: the foreign
+    # boundary is checked against the *declaration* a call reaches, and a file's
+    # order must not decide the verdict (see ck_record_decls)
+    mut r: int = 0
+    while r < vm.nfn {
+        ck_record_decls(nd, ty, mem, vm, r)
+        r += 1
+    }
+    mut i: int = 0
+    while i < vm.nfn {
+        ck_function(nd, ty, mem, path, vm, i)
+        i += 1
+    }
+    ck_check_main(nd, ty, mem, path, vm)
+}

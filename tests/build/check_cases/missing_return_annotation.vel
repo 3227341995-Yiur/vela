@@ -1,0 +1,6 @@
+
+def f(n: int):
+    return 1
+
+def main() -> None:
+    print(f(1))

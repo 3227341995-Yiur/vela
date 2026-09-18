@@ -1,0 +1,7 @@
+struct Bad {
+    data: Array[int, 4]
+}
+
+def main() -> None {
+    print(1)
+}

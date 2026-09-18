@@ -1,0 +1,14 @@
+# Refusal: an array argument.
+#
+# An array is storage whose length Vela owns.  Passing one to a C `int`
+# parameter would hand C a pointer it would convert to an integer (with a warning
+# MSVC does not even call an error), and the length would be lost on the way; the
+# declaration rule refuses an array *parameter* for the same reason, and this is
+# the call site where a reader meets it.  The message spells the array, length
+# and all, because the length is half of what Vela knows and C would not.
+extern c def abs(x: i32) -> i32
+
+def main() -> None {
+    mut a: Array[int, 4] = [1, 2, 3, 4]
+    print(abs(a))
+}

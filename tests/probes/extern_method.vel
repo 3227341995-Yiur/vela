@@ -1,0 +1,17 @@
+# Refusal: `extern c` on a struct method.
+#
+# A method's first parameter is its receiver, and the receiver of a method on
+# `P` is a `P` — so every `extern c` method is refused by the parameter rule
+# before anything else about it can matter.  That is not a special case: it is
+# the same "no struct crosses" verdict, pointed at the parameter the reader did
+# not write (`self`), and it is why the call site rule never has to think about
+# `recv.name(...)`: there is no foreign method to call.
+struct P {
+    x: int
+
+    extern c def abs(self: P) -> i32
+}
+
+def main() -> None {
+    print("unreachable")
+}

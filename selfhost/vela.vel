@@ -1,0 +1,749 @@
+# ============================================================================
+# selfhost/vela.vel — Vela's lexer, written in Vela.
+#
+# This is the independent lexer: the compiler in `selfhost/vm.vel` has its own
+# `lex` and `count` modes, and this file is the same token stream as a program
+# of its own, which is what `tools/build.ps1` step 4 builds.  Build it with the
+# compiler in the tree:
+#     selfhost/build/vm.exe build selfhost/vela.vel
+# and then, with no Python involved at any point:
+#     selfhost/build/vela.exe lex   selfhost/vela.vel     # dump tokens
+#     selfhost/build/vela.exe count selfhost/vela.vel     # count them
+#
+# What it is held to is recorded, not compared: `tests/cases.txt` has a `dumps`
+# case for this file, so its token stream, syntax tree and emitted C are pinned
+# by `tests/golden/digests.txt`.  The Python front end it was once built by, and
+# the `diff_lexer.py` that held it token-for-token against stage 0's lexer, were
+# both deleted in stage 4.
+#
+# Why it is shaped like this: Vela has no pointers, no generics, no heap
+# objects and no arrays inside structs, so the textbook "array of nodes"
+# design becomes *stride packing* — one Array[int, N] holding six ints per
+# token — and every function threads those arrays through its parameters.
+# That is not a workaround for a missing feature; it is the only shape the
+# language permits, and it is why Vela can implement itself without a single
+# unsafe construct.
+#
+# Vela does not use indentation for structure: braces do the work, so this
+# lexer needs no indentation stack and no INDENT/DEDENT tokens at all.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# state: one struct carries every cursor the stages need.  It holds ints only,
+# because a struct may not contain an array in Vela.
+
+struct Ctx {
+    pos: int
+    line: int
+    ntok: int
+    ti: int
+    ni: int
+    sp: int
+    fp: int
+    rslot: int
+    err: int
+    aux: int
+}
+
+# ---------------------------------------------------------------------------
+# token encoding:   tk[i * 6 + k]
+#   0 kind   1 offset   2 length   3 value (int / op code / keyword id)
+#   4 line   5 flag (1 = the literal contains a backslash escape)
+#
+# capacity: 131072 tokens, i.e. Array[int, 131072 * 6]; a bigger file is refused
+# with a diagnostic rather than silently truncated.  (The parser, the
+# interpreter and this lexer are one programme, so they share the pool.)
+#
+# The pool is a fixed array because Vela has no growable one, so its size is a
+# real limit on what this front end can compile — and the biggest program it has
+# to compile is itself.  It was 65536 until the compiler's own source passed
+# that; the number is now twice what `selfhost/vm.vel` needs, and the next time
+# it is crossed the honest move is to size it from the file rather than to guess
+# again.
+#
+# kinds: 1 NAME 2 INT 3 FLOAT 4 STR 5 OP 6 NEWLINE 9 EOF
+# ops:   1 +  2 -  3 *  4 /  5 %  6 <  7 >  8 =  9 (  10 )  11 ,  12 :  13 .
+#        14 [  15 ]  16 !  17 &  18 |  19 ^  20 //  21 **  22 ==  23 !=
+#        24 <=  25 >=  26 ->  27 +=  28 -=  29 *=  30 /=  31 %=  32 ~
+#        33 {  34 }  35 <<  36 >>  37 <<=  38 >>=  39 &=  40 |=  41 ^=
+#        42 **=  43 //=
+# keywords: 1 def 2 return 3 if 4 elif 5 else 6 while 7 for 8 in 9 range
+#           10 break 11 continue 12 pass 13 and 14 or 15 not 16 True
+#           17 False 18 None 19 mut 20 pure 21 struct 22 parallel
+
+def tk_kind(tk: Array[int, 786432], i: int) -> int {
+    return tk[i * 6]
+}
+
+def tk_off(tk: Array[int, 786432], i: int) -> int {
+    return tk[i * 6 + 1]
+}
+
+def tk_len(tk: Array[int, 786432], i: int) -> int {
+    return tk[i * 6 + 2]
+}
+
+def tk_ival(tk: Array[int, 786432], i: int) -> int {
+    return tk[i * 6 + 3]
+}
+
+def tk_line(tk: Array[int, 786432], i: int) -> int {
+    return tk[i * 6 + 4]
+}
+
+def tk_flag(tk: Array[int, 786432], i: int) -> int {
+    return tk[i * 6 + 5]
+}
+
+# ---------------------------------------------------------------------------
+# small helpers
+
+def is_digit(c: int) -> bool {
+    return c >= 48 and c <= 57
+}
+
+def is_alpha(c: int) -> bool {
+    if c >= 97 and c <= 122 {
+        return True
+    }
+    if c >= 65 and c <= 90 {
+        return True
+    }
+    return c == 95
+}
+
+def is_alnum(c: int) -> bool {
+    return is_alpha(c) or is_digit(c)
+}
+
+def digit_val(c: int, base: int) -> int {
+    if c >= 48 and c <= 57 {
+        if c - 48 < base {
+            return c - 48
+        }
+        return -1
+    }
+    if c >= 97 and c <= 122 {
+        if c - 97 + 10 < base {
+            return c - 97 + 10
+        }
+        return -1
+    }
+    if c >= 65 and c <= 90 {
+        if c - 65 + 10 < base {
+            return c - 65 + 10
+        }
+        return -1
+    }
+    return -1
+}
+
+def name_eq(src: str, off: int, ln: int, lit: str) -> bool {
+    if ln != len(lit) {
+        return False
+    }
+    mut i: int = 0
+    while i < ln {
+        if bytes_at(src, off + i) != bytes_at(lit, i) {
+            return False
+        }
+        i += 1
+    }
+    return True
+}
+
+def keyword_id(src: str, off: int, ln: int) -> int {
+    if name_eq(src, off, ln, "def") {
+        return 1
+    }
+    if name_eq(src, off, ln, "return") {
+        return 2
+    }
+    if name_eq(src, off, ln, "if") {
+        return 3
+    }
+    if name_eq(src, off, ln, "elif") {
+        return 4
+    }
+    if name_eq(src, off, ln, "else") {
+        return 5
+    }
+    if name_eq(src, off, ln, "while") {
+        return 6
+    }
+    if name_eq(src, off, ln, "for") {
+        return 7
+    }
+    if name_eq(src, off, ln, "in") {
+        return 8
+    }
+    if name_eq(src, off, ln, "range") {
+        return 9
+    }
+    if name_eq(src, off, ln, "break") {
+        return 10
+    }
+    if name_eq(src, off, ln, "continue") {
+        return 11
+    }
+    if name_eq(src, off, ln, "pass") {
+        return 12
+    }
+    if name_eq(src, off, ln, "and") {
+        return 13
+    }
+    if name_eq(src, off, ln, "or") {
+        return 14
+    }
+    if name_eq(src, off, ln, "not") {
+        return 15
+    }
+    if name_eq(src, off, ln, "True") {
+        return 16
+    }
+    if name_eq(src, off, ln, "False") {
+        return 17
+    }
+    if name_eq(src, off, ln, "None") {
+        return 18
+    }
+    if name_eq(src, off, ln, "mut") {
+        return 19
+    }
+    if name_eq(src, off, ln, "pure") {
+        return 20
+    }
+    if name_eq(src, off, ln, "struct") {
+        return 21
+    }
+    if name_eq(src, off, ln, "parallel") {
+        return 22
+    }
+    if name_eq(src, off, ln, "extern") {
+        return 23
+    }
+    return 0
+}
+
+def op1_code(c: int) -> int {
+    if c == 43 {
+        return 1
+    }
+    if c == 45 {
+        return 2
+    }
+    if c == 42 {
+        return 3
+    }
+    if c == 47 {
+        return 4
+    }
+    if c == 37 {
+        return 5
+    }
+    if c == 60 {
+        return 6
+    }
+    if c == 62 {
+        return 7
+    }
+    if c == 61 {
+        return 8
+    }
+    if c == 40 {
+        return 9
+    }
+    if c == 41 {
+        return 10
+    }
+    if c == 44 {
+        return 11
+    }
+    if c == 58 {
+        return 12
+    }
+    if c == 46 {
+        return 13
+    }
+    if c == 91 {
+        return 14
+    }
+    if c == 93 {
+        return 15
+    }
+    if c == 33 {
+        return 16
+    }
+    if c == 38 {
+        return 17
+    }
+    if c == 124 {
+        return 18
+    }
+    if c == 94 {
+        return 19
+    }
+    if c == 126 {
+        return 32
+    }
+    if c == 123 {
+        return 33
+    }
+    if c == 125 {
+        return 34
+    }
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# diagnostics go to stderr, so a program's own output stays clean
+#
+# The shape is stage 0's — `vela: <kind>: <message>` — and the kind is not
+# decoration: a tool that reads a compiler's output has to be able to tell a
+# syntax error from a safety error without pattern-matching the English, and
+# `tests/diff_check.py` compares exactly this line.  The location rides on the
+# next line, because the message is what gets compared.
+
+def report_kind(mut cx: Ctx, kind: str, msg: str) -> None {
+    if cx.err == 0 {
+        cx.err = 1
+        warn_str("vela: ")
+        warn_str(kind)
+        warn_str(": ")
+        warn_str(msg)
+        warn_str("\n  at line ")
+        warn_int(cx.line)
+        warn_nl()
+    }
+}
+
+def report(mut cx: Ctx, msg: str) -> None {
+    report_kind(cx, "syntax error", msg)
+}
+
+def push_tok(mut tk: Array[int, 786432], mut cx: Ctx, kind: int, off: int,
+             ln: int, ival: int, flag: int) -> None {
+    if cx.ntok >= 131072 {
+        report(cx, "too many tokens")
+        return
+    }
+    i: int = cx.ntok * 6
+    tk[i] = kind
+    tk[i + 1] = off
+    tk[i + 2] = ln
+    tk[i + 3] = ival
+    tk[i + 4] = cx.line
+    tk[i + 5] = flag
+    cx.ntok += 1
+}
+
+# ---------------------------------------------------------------------------
+# scanners
+
+def scan_number(src: str, mut tk: Array[int, 786432], mut tkf: Array[float, 65536],
+                mut cx: Ctx) -> None {
+    n: int = len(src)
+    start: int = cx.pos
+    c: int = bytes_at(src, cx.pos)
+
+    if c == 48 and cx.pos + 1 < n {
+        c2: int = bytes_at(src, cx.pos + 1)
+        mut base: int = 0
+        if c2 == 120 or c2 == 88 {
+            base = 16
+        } else if c2 == 98 or c2 == 66 {
+            base = 2
+        } else if c2 == 111 or c2 == 79 {
+            base = 8
+        }
+        if base > 0 {
+            cx.pos += 2
+            mut v: int = 0
+            mut seen: int = 0
+            while cx.pos < n {
+                d: int = digit_val(bytes_at(src, cx.pos), base)
+                if d < 0 {
+                    break
+                }
+                v = v * base + d
+                seen = 1
+                cx.pos += 1
+            }
+            if seen == 0 {
+                report(cx, "number has no digits")
+                return
+            }
+            push_tok(tk, cx, 2, start, cx.pos - start, v, 0)
+            return
+        }
+    }
+
+    mut iv: int = 0
+    mut over: int = 0
+    while cx.pos < n {
+        cc: int = bytes_at(src, cx.pos)
+        if cc == 95 {
+            cx.pos += 1
+        } else if is_digit(cc) {
+            d: int = cc - 48
+            # 9223372036854775807 is the largest int.  Once a literal has passed
+            # it, the digits stop being accumulated — the cursor keeps moving, so
+            # the token still ends where the literal does, and the refusal is
+            # raised below, where the source text is still in reach.  Stopping
+            # rather than wrapping matters: this lexer is itself a Vela program,
+            # and a program built with overflow *checking* would panic here
+            # instead of refusing the file it was given.
+            if over == 0 {
+                if iv > 922337203685477580 {
+                    over = 1
+                } else if iv == 922337203685477580 and d > 7 {
+                    over = 1
+                } else {
+                    iv = iv * 10 + d
+                }
+            }
+            cx.pos += 1
+        } else {
+            break
+        }
+    }
+
+    mut isf: int = 0
+    mut frac: float = 0.0
+    if cx.pos + 1 < n and bytes_at(src, cx.pos) == 46 and is_digit(bytes_at(src, cx.pos + 1)) {
+        isf = 1
+        cx.pos += 1
+        mut scale: float = 1.0
+        while cx.pos < n and is_digit(bytes_at(src, cx.pos)) {
+            scale = scale * 10.0
+            frac = frac + to_float(bytes_at(src, cx.pos) - 48) / scale
+            cx.pos += 1
+        }
+    }
+
+    mut exp: int = 0
+    if cx.pos < n {
+        cc2: int = bytes_at(src, cx.pos)
+        if cc2 == 101 or cc2 == 69 {
+            mut j: int = cx.pos + 1
+            mut esign: int = 1
+            if j < n {
+                if bytes_at(src, j) == 43 {
+                    j += 1
+                } else if bytes_at(src, j) == 45 {
+                    esign = -1
+                    j += 1
+                }
+            }
+            if j < n and is_digit(bytes_at(src, j)) {
+                isf = 1
+                mut ev: int = 0
+                while j < n and is_digit(bytes_at(src, j)) {
+                    ev = ev * 10 + (bytes_at(src, j) - 48)
+                    j += 1
+                }
+                exp = esign * ev
+                cx.pos = j
+            }
+        }
+    }
+
+    if isf == 1 {
+        mut value: float = to_float(iv) + frac
+        if exp != 0 {
+            value = value * pow(10.0, to_float(exp))
+        }
+        # Flag 2 on a float token means "this literal is exactly zero".  The
+        # checker refuses `/ 0.0` and needs the value to know it, but the value
+        # lives in the float pool the check pass does not carry; the question is
+        # asked here, once, where the number and its spelling are both in hand.
+        mut fl: int = 0
+        if value == 0.0 {
+            fl = 2
+        }
+        push_tok(tk, cx, 3, start, cx.pos - start, 0, fl)
+        tkf[cx.ntok - 1] = value
+        return
+    }
+    if over == 1 {
+        # the message is the checker's (checker.py:1160-1164), and so is the
+        # kind: an int literal that does not fit is a fact about the program, not
+        # a malformed one.  It is raised here because only the lexer still has
+        # the digits the reader wrote — by the time a node exists, a value that
+        # did not fit has already wrapped.
+        report_kind(cx, "safety error",
+                    concat(concat("integer literal ",
+                                  substr(src, start, cx.pos)),
+                           " does not fit in int (64-bit signed)"))
+        return
+    }
+    push_tok(tk, cx, 2, start, cx.pos - start, iv, 0)
+}
+
+def scan_name(src: str, mut tk: Array[int, 786432], mut cx: Ctx) -> None {
+    n: int = len(src)
+    start: int = cx.pos
+    while cx.pos < n and is_alnum(bytes_at(src, cx.pos)) {
+        cx.pos += 1
+    }
+    ln: int = cx.pos - start
+    push_tok(tk, cx, 1, start, ln, keyword_id(src, start, ln), 0)
+}
+
+def scan_string(src: str, mut tk: Array[int, 786432], mut cx: Ctx) -> None {
+    n: int = len(src)
+    quote: int = bytes_at(src, cx.pos)
+    cx.pos += 1
+    start: int = cx.pos
+    mut esc: int = 0
+    mut closed: int = 0
+    while cx.pos < n {
+        cc: int = bytes_at(src, cx.pos)
+        if cc == 10 {
+            break
+        }
+        if cc == 92 {
+            esc = 1
+            cx.pos += 2
+        } else if cc == quote {
+            closed = 1
+            break
+        } else {
+            cx.pos += 1
+        }
+    }
+    if closed == 0 {
+        report(cx, "unterminated string literal")
+        return
+    }
+    ln: int = cx.pos - start
+    cx.pos += 1
+    push_tok(tk, cx, 4, start, ln, 0, esc)
+}
+
+def scan_op(src: str, mut tk: Array[int, 786432], mut cx: Ctx) -> None {
+    n: int = len(src)
+    c: int = bytes_at(src, cx.pos)
+    mut c2: int = 0
+    if cx.pos + 1 < n {
+        c2 = bytes_at(src, cx.pos + 1)
+    }
+    mut op: int = 0
+    mut width: int = 1
+    mut c3: int = 0
+    if cx.pos + 2 < n {
+        c3 = bytes_at(src, cx.pos + 2)
+    }
+    if c == 42 and c2 == 42 and c3 == 61 {
+        op = 42
+        width = 3
+    } else if c == 47 and c2 == 47 and c3 == 61 {
+        op = 43
+        width = 3
+    } else if c == 60 and c2 == 60 and c3 == 61 {
+        op = 37
+        width = 3
+    } else if c == 62 and c2 == 62 and c3 == 61 {
+        op = 38
+        width = 3
+    } else if c == 47 and c2 == 47 {
+        op = 20
+        width = 2
+    } else if c == 42 and c2 == 42 {
+        op = 21
+        width = 2
+    } else if c == 61 and c2 == 61 {
+        op = 22
+        width = 2
+    } else if c == 33 and c2 == 61 {
+        op = 23
+        width = 2
+    } else if c == 60 and c2 == 61 {
+        op = 24
+        width = 2
+    } else if c == 62 and c2 == 61 {
+        op = 25
+        width = 2
+    } else if c == 45 and c2 == 62 {
+        op = 26
+        width = 2
+    } else if c == 43 and c2 == 61 {
+        op = 27
+        width = 2
+    } else if c == 45 and c2 == 61 {
+        op = 28
+        width = 2
+    } else if c == 42 and c2 == 61 {
+        op = 29
+        width = 2
+    } else if c == 47 and c2 == 61 {
+        op = 30
+        width = 2
+    } else if c == 37 and c2 == 61 {
+        op = 31
+        width = 2
+    } else if c == 60 and c2 == 60 {
+        op = 35
+        width = 2
+    } else if c == 62 and c2 == 62 {
+        op = 36
+        width = 2
+    } else if c == 38 and c2 == 61 {
+        op = 39
+        width = 2
+    } else if c == 124 and c2 == 61 {
+        op = 40
+        width = 2
+    } else if c == 94 and c2 == 61 {
+        op = 41
+        width = 2
+    } else {
+        op = op1_code(c)
+    }
+    if op == 0 {
+        report(cx, "character is not part of Vela")
+        return
+    }
+    # Track how many ( or [ are open: newlines are insignificant inside those,
+    # so a long call or array literal may be laid out over several lines.
+    # Braces deliberately do not count — a newline inside a block separates
+    # statements, which is exactly what replacing indentation buys us.
+    if op == 9 or op == 14 {
+        cx.aux += 1
+    } else if op == 10 or op == 15 {
+        if cx.aux > 0 {
+            cx.aux -= 1
+        }
+    }
+    push_tok(tk, cx, 5, cx.pos, width, op, 0)
+    cx.pos += width
+}
+
+# ---------------------------------------------------------------------------
+# the lexer
+
+def lex(src: str, mut tk: Array[int, 786432], mut tkf: Array[float, 65536],
+        mut cx: Ctx) -> None {
+    n: int = len(src)
+    # A byte-order mark is a writing artefact, not part of the program: several
+    # Windows tools add one, and refusing to lex those files would be
+    # strictness in the wrong place.  The cursor is moved past it rather than
+    # the text being trimmed, so every offset still addresses the real source.
+    if n >= 3 and bytes_at(src, 0) == 239 and bytes_at(src, 1) == 187 {
+        if bytes_at(src, 2) == 191 {
+            cx.pos = 3
+        }
+    }
+    while cx.pos < n and cx.err == 0 {
+        c: int = bytes_at(src, cx.pos)
+        if c == 10 {
+            # the NEWLINE belongs to the line it ends, so it is pushed before
+            # the line counter moves on
+            if cx.aux == 0 and cx.ntok > 0 {
+                if tk_kind(tk, cx.ntok - 1) != 6 {
+                    push_tok(tk, cx, 6, cx.pos, 1, 0, 0)
+                }
+            }
+            cx.pos += 1
+            cx.line += 1
+        } else if c == 32 or c == 9 {
+            cx.pos += 1
+        } else if c == 13 {
+            # a carriage return is whitespace: a file written on Windows must
+            # lex exactly the same as one written with plain newlines
+            cx.pos += 1
+        } else if c == 35 {
+            while cx.pos < n and bytes_at(src, cx.pos) != 10 {
+                cx.pos += 1
+            }
+        } else if c == 92 {
+            if cx.pos + 1 < n and bytes_at(src, cx.pos + 1) == 10 {
+                cx.pos += 2
+                cx.line += 1
+            } else {
+                report(cx, "stray backslash")
+            }
+        } else if is_digit(c) {
+            scan_number(src, tk, tkf, cx)
+        } else if is_alpha(c) {
+            scan_name(src, tk, cx)
+        } else if c == 34 or c == 39 {
+            before: int = cx.ntok
+            scan_string(src, tk, cx)
+            # `"a" "b"` is implicit concatenation in Python and a silent bug
+            # everywhere it is allowed — a missing comma usually — so Vela
+            # refuses it.  The check belongs here and not in the parser: it is
+            # about two *tokens*, the refusal points at the second one, and stage
+            # 0 makes it here too (lexer.py:214).
+            if cx.err == 0 and before > 0 {
+                if tk_kind(tk, before - 1) == 4 {
+                    report(cx, "adjacent string literals are not allowed")
+                }
+            }
+        } else {
+            scan_op(src, tk, cx)
+        }
+    }
+    if cx.err == 1 {
+        return
+    }
+    if cx.ntok > 0 {
+        if tk_kind(tk, cx.ntok - 1) != 6 {
+            push_tok(tk, cx, 6, cx.pos, 1, 0, 0)
+        }
+    }
+    push_tok(tk, cx, 9, cx.pos, 0, 0, 0)
+}
+
+# ---------------------------------------------------------------------------
+# driver
+
+def dump_tokens(tk: Array[int, 786432], mut cx: Ctx) -> None {
+    mut i: int = 0
+    while i < cx.ntok {
+        emit_int(tk_kind(tk, i))
+        emit_str(" ")
+        emit_int(tk_line(tk, i))
+        emit_str(" ")
+        emit_int(tk_ival(tk, i))
+        emit_str(" ")
+        emit_int(tk_off(tk, i))
+        emit_str(" ")
+        emit_int(tk_len(tk, i))
+        emit_nl()
+        i += 1
+    }
+}
+
+def main() -> None {
+    if argc() < 3 {
+        warn_str("usage: vela <lex|count> <file.vel>")
+        warn_nl()
+        return
+    }
+    mode: str = arg(1)
+    path: str = arg(2)
+    src: str = read_text(path)
+    if len(src) == 0 {
+        warn_str("vela: cannot read ")
+        warn_str(path)
+        warn_nl()
+        return
+    }
+    mut tk: Array[int, 786432]
+    mut tkf: Array[float, 65536]
+    mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0)
+    lex(src, tk, tkf, cx)
+    if cx.err == 1 {
+        # the diagnostic has already been written to stderr; stop with a
+        # non-zero status so a caller can tell a failed run from a clean one
+        panic("the front end stopped after an error")
+    }
+    if mode == "lex" {
+        dump_tokens(tk, cx)
+        return
+    }
+    emit_str("tokens ")
+    emit_int(cx.ntok)
+    emit_nl()
+}

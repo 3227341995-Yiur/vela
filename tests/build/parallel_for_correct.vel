@@ -1,0 +1,11 @@
+def main() -> None {
+    mut out: Array[int, 100] = [0]
+    parallel for i in range(0, 100) {
+        out[i] = i * i
+    }
+    mut s: int = 0
+    for i in range(0, 100) {
+        s += out[i]
+    }
+    print(s)
+}

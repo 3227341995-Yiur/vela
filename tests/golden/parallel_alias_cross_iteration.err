@@ -1,0 +1,2 @@
+vela: safety error: 'parallel for' reads 'a' at an index other than the one it writes (written on line 18, read on line 18), so one iteration could read what another is writing
+  at tests/probes/parallel_alias_cross_iteration.vel:18

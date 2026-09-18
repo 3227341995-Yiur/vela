@@ -1,0 +1,2 @@
+vela: safety error: 'print' inside a 'parallel for' would interleave output unpredictably
+  at tests/build/check_cases/parallel_print.vel:5

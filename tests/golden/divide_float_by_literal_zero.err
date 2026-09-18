@@ -1,0 +1,2 @@
+vela: safety error: float division by constant zero
+  at tests/build/check_cases/divide_float_by_literal_zero.vel:3

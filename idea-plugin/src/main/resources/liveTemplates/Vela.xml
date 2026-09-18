@@ -1,0 +1,92 @@
+<!--
+  The live templates a Vela programmer actually types.
+
+  Every one is bound to the "VELA" context (`context="VELA"`), which is the context
+  `VelaTemplateContextType` registers and which answers "in context" only for a
+  file whose name ends in `.vel` or `.vela`.  That is what stops `forr` expanding
+  in a Kotlin or Python buffer: the platform asks the context, and the context asks
+  the file name.  The list of suffixes is not repeated here — it lives in
+  `VelaFileType.EXTENSIONS`.
+
+  `toReformat="false"` on purpose.  The template text already carries the layout
+  the formatter produces (four spaces, `{` on the statement's line), and not
+  reformatting keeps template insertion independent of the formatter: a template
+  that silently reformatted the rest of the file would be a surprising amount of
+  work for one keystroke.
+
+  No postfix templates.  A postfix template earns its place when a *type
+  expression* can be appended to an existing expression (`x.notNull`, `arr.for`),
+  and Vela has nothing of the kind: no null-safe operators, no lambda-appending
+  constructs, and the only suffix a value takes is `: T`, which is a declaration
+  rather than a transformation.  Adding one would be ceremony.
+-->
+<templateSet group="Vela">
+
+  <!-- `def name(a: T) -> R {` — the shape SPEC.md writes every function in. -->
+  <template name="defn"
+            value="def $name$($arg$: $argtype$) -&gt; $ret$ {&#10;    $END$&#10;}"
+            description="function with a return type"
+            toReformat="false" toShortenFQNames="false" context="VELA">
+    <variable name="name" expression="" defaultValue="f" alwaysStopAt="true"/>
+    <variable name="arg" expression="" defaultValue="a" alwaysStopAt="true"/>
+    <variable name="argtype" expression="" defaultValue="int" alwaysStopAt="true"/>
+    <variable name="ret" expression="" defaultValue="int" alwaysStopAt="true"/>
+  </template>
+
+  <!-- The entry point every runnable .vel file has: `def main() -> None {`. -->
+  <template name="main"
+            value="def main() -&gt; None {&#10;    $END$&#10;}"
+            description="the program's entry point"
+            toReformat="false" toShortenFQNames="false" context="VELA"/>
+
+  <!-- struct with a method.  SPEC.md §5: fields are `name: T`, a method takes
+       `self: S`, and fields may not be arrays. -->
+  <template name="struct"
+            value="struct $Name$ {&#10;    $field$: $fieldtype$&#10;&#10;    def $method$(self: $Name$, $arg$: $argtype$) -&gt; $ret$ {&#10;        $END$&#10;    }&#10;}"
+            description="struct with one field and one method"
+            toReformat="false" toShortenFQNames="false" context="VELA">
+    <variable name="Name" expression="" defaultValue="Vec2" alwaysStopAt="true"/>
+    <variable name="field" expression="" defaultValue="x" alwaysStopAt="true"/>
+    <variable name="fieldtype" expression="" defaultValue="float" alwaysStopAt="true"/>
+    <variable name="method" expression="" defaultValue="get_x" alwaysStopAt="true"/>
+    <variable name="arg" expression="" defaultValue="k" alwaysStopAt="true"/>
+    <variable name="argtype" expression="" defaultValue="float" alwaysStopAt="true"/>
+    <variable name="ret" expression="" defaultValue="float" alwaysStopAt="true"/>
+  </template>
+
+  <!-- `for i in range(0, n)` — the only loop form Vela has (SPEC.md §6/§7: a loop
+       is over a range, so the iteration space is known). -->
+  <template name="forr"
+            value="for i in range(0, $n$) {&#10;    $END$&#10;}"
+            description="for i in range(0, n)"
+            toReformat="false" toShortenFQNames="false" context="VELA">
+    <variable name="n" expression="" defaultValue="n" alwaysStopAt="true"/>
+  </template>
+
+  <template name="whilee"
+            value="while $cond$ {&#10;    $END$&#10;}"
+            description="while loop"
+            toReformat="false" toShortenFQNames="false" context="VELA">
+    <variable name="cond" expression="" defaultValue="i &lt; n" alwaysStopAt="true"/>
+  </template>
+
+  <!-- `pass` in the else branch is legal Vela and does nothing (SPEC.md §3: "a
+       block may be empty; pass is also accepted and means the same"), so the
+       expanded template compiles before it is edited. -->
+  <template name="ifel"
+            value="if $cond$ {&#10;    $END$&#10;} else {&#10;    pass&#10;}"
+            description="if / else"
+            toReformat="false" toShortenFQNames="false" context="VELA">
+    <variable name="cond" expression="" defaultValue="cond" alwaysStopAt="true"/>
+  </template>
+
+  <!-- A parallel loop: `parallel for i in range(0, n)` (SPEC.md §7 — the loop must
+       be a range loop, and every call inside it must be to a `pure def`). -->
+  <template name="parfor"
+            value="parallel for i in range(0, $n$) {&#10;    $END$&#10;}"
+            description="parallel for over a range (calls inside must be pure)"
+            toReformat="false" toShortenFQNames="false" context="VELA">
+    <variable name="n" expression="" defaultValue="n" alwaysStopAt="true"/>
+  </template>
+
+</templateSet>

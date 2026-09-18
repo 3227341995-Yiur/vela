@@ -1,0 +1,18 @@
+# Refusal: a struct argument.
+#
+# A struct value has no C spelling Vela can promise: C would need the layout to
+# match a prototype the user never wrote, and Vela's own structs are its own
+# business (a `mut` struct parameter is a pointer in the back end, a value is
+# not).  `ck_etype` leaves a struct value's kind unknown on purpose — it cannot
+# spell the struct's *name* — so this is the one place the boundary asks for the
+# bare word "struct", which is all the message needs.
+struct P {
+    x: int
+}
+
+extern c def abs(x: i32) -> i32
+
+def main() -> None {
+    mut p: P = P(1)
+    print(abs(p))
+}

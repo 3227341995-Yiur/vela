@@ -1,0 +1,2 @@
+vela: type error: 'extern c' argument to 'abs' has type struct, but parameter 'x' has type i32
+  at tests/probes/extern_struct_argument.vel:17

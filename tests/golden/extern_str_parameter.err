@@ -1,0 +1,2 @@
+vela: type error: 'extern c' parameter 's' has type str
+  at tests/build/extern/reject_str_parameter.vel:8

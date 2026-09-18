@@ -1,0 +1,7 @@
+struct P {
+    x: int
+}
+
+def main() -> None {
+    print(P(1).x)
+}

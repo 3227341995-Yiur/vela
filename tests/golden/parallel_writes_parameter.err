@@ -1,0 +1,2 @@
+vela: safety error: 'parallel for' writes to 'a', which is not a mutable array local to this function
+  at tests/build/check_cases/parallel_writes_parameter.vel:2

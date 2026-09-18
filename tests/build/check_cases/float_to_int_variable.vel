@@ -1,0 +1,5 @@
+def main() -> None {
+    mut a: int = 5
+    mut f: float = 1.5
+    a = a + f
+}

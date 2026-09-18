@@ -1,0 +1,6 @@
+def main() -> None {
+    s: str = "x"
+    while s {
+        print("no")
+    }
+}

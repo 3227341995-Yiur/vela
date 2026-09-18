@@ -1,0 +1,13 @@
+# Refusal: a `u8` parameter and a constant that does not fit it.
+#
+# This is the other side of the one implicit conversion: the value is visible
+# (`ck_foldable`), and 300 does not survive a trip through `unsigned char`, so
+# the program is refused with the number in the message rather than truncated in
+# the C compiler.  A constant of 200 in the same position is accepted — see
+# extern_constant_fits_declared_kind.vel, which is the half of the pair that must
+# keep working.
+extern c def double_byte(x: u8) -> i32
+
+def main() -> None {
+    print(double_byte(300))
+}

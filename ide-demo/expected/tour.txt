@@ -1,0 +1,6 @@
+p = 3 -4
+p.manhattan() = 7
+q = 13 -3
+describe(q) = 173
+sum(out) = 72
+out[7] = 16

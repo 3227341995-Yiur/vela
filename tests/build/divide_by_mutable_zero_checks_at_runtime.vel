@@ -1,0 +1,6 @@
+def main() -> None {
+    mut z: int = 0
+    z = 0
+    mut a: int = 5
+    a = a // z
+}

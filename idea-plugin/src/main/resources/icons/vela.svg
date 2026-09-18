@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The Vela file icon, 16x16, drawn as a "V" whose right stroke becomes the end
+  of a proof: the language's one claim is that the compiler *proves* things
+  (bounds, overflows, race-freedom) instead of trusting the programmer, so the
+  mark is a V with a tick in it rather than a letter in a box.
+
+  Kept as SVG so it scales with the IDE's HiDPI setting; IntelliJ reads SVG icons
+  directly through IconLoader.  Colours are the language's own two: a deep
+  indigo body and a cyan accent, which stay legible on both the light and the
+  dark editor background.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <rect x="0.5" y="0.5" width="15" height="15" rx="3.5"
+        fill="#2B2D5C" stroke="#6C7BFF" stroke-width="1"/>
+  <path d="M3.6 4.2 L7.1 11.2 L10.2 5.2"
+        fill="none" stroke="#EDEFFF" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M6.1 12.6 L7.6 14.1 L11.6 10.1"
+        fill="none" stroke="#4ADEDE" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

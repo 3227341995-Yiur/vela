@@ -1,0 +1,57 @@
+# tour.vel — the file to try the editor features on.  See README.md.
+#
+# What is here on purpose, one thing per feature:
+#
+#   * `struct Point` with two methods  -> structure view, methods, `.name()` calls
+#   * `scale` / `describe` / `moved`   -> parameters, so parameter info and hover
+#                                         have something true to show
+#   * `describe` calls `scale`         -> go to declaration has a target
+#   * `mut n: int = 8`                 -> a mutable local, shadowing nothing
+#   * one `parallel for` (SPEC.md §7)  -> out[i] = a[i] * 2, legal: the written
+#                                         array `out` is a local mut array, it is
+#                                         indexed by the single loop index, and
+#                                         the array read (`a`) is a different one
+struct Point {
+    x: int
+    y: int
+
+    def manhattan(self: Point) -> int {
+        return abs(self.x) + abs(self.y)
+    }
+
+    def moved(self: Point, dx: int, dy: int) -> Point {
+        return Point(self.x + dx, self.y + dy)
+    }
+}
+
+def scale(v: int, factor: int) -> int {
+    return v * factor
+}
+
+def describe(p: Point) -> int {
+    return scale(p.manhattan(), 10) + p.x
+}
+
+def main() -> None {
+    mut p: Point = Point(3, -4)
+    print("p =", p.x, p.y)
+    print("p.manhattan() =", p.manhattan())
+
+    mut q: Point = p.moved(10, 1)
+    print("q =", q.x, q.y)
+    print("describe(q) =", describe(q))
+
+    mut n: int = 8
+    mut a: Array[int, 8] = [1, 2, 3, 4, 5, 6, 7, 8]
+    mut out: Array[int, 8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    parallel for i in range(0, n) {
+        out[i] = a[i] * 2
+    }
+
+    mut sum: int = 0
+    for i in range(0, n) {
+        sum += out[i]
+    }
+    print("sum(out) =", sum)
+    print("out[7] =", out[7])
+}

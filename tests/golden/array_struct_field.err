@@ -1,0 +1,2 @@
+vela: type error: field 'data' may not be an array
+  at tests/build/check_cases/array_struct_field.vel:0

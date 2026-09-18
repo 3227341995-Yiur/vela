@@ -1,0 +1,21 @@
+# parallel_alias_cross_iteration — the loop-carried dependence a `parallel for`
+# body may not contain.  This program must be REFUSED.
+#
+# `a[i]` is written by iteration `i` and `a[i - 1]` is read by it — the element its
+# neighbour is writing.  Before the aliasing rule existed this compiled to
+# `#pragma omp parallel for` and gave a different answer on every run: measured,
+# **nine distinct wrong values in twenty runs** (3, 7, 11, 15, 19, 27, 31, 51, 55)
+# while the interpreter printed the correct 63.  Scaled to two million elements it
+# printed 124999 / 249999 / 374999 / 499999 where the answer is 1999999.
+#
+# The rule that refuses it is the language-level form of what Rust's
+# `par_iter_mut` enforces by construction: an iteration gets its own element and
+# cannot reach another iteration's.  The refusal names the array and both lines.
+
+def main() -> None {
+    mut a: Array[int, 64]
+    parallel for i in range(1, 64) {
+        a[i] = a[i - 1] + 1
+    }
+    print(a[63])
+}

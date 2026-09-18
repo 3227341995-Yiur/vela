@@ -1,0 +1,27 @@
+# parallel_alias_read_only — the shape every parallel benchmark in this project
+# uses, and it must keep compiling: `out` is written, `a` is only read.
+#
+# The aliasing rule constrains only arrays the body *writes*.  An array nobody
+# writes may be read at any index, by any thread, because a thread may read
+# anything no thread is writing — so `a[i]` here costs nothing and the loop still
+# becomes a real `#pragma omp parallel for`.
+#
+# This is the case that would catch the rule becoming too strict: a language that
+# refused this would be unusable for the thing `parallel for` exists for.
+
+def main() -> None {
+    mut n: int = 8
+    mut a: Array[int, 8]
+    mut out: Array[int, 8]
+    for i in range(0, n) {
+        a[i] = i
+    }
+    parallel for i in range(0, n) {
+        out[i] = a[i] * 2
+    }
+    mut total: int = out[0]
+    for i in range(1, n) {
+        total += out[i]
+    }
+    print(total, out[7])
+}

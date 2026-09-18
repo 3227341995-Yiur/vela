@@ -1,0 +1,2 @@
+vela: type error: this expression statement has no effect
+  at tests/build/check_cases/useless_expression_statement.vel:4

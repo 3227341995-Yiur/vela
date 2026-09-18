@@ -1,0 +1,4 @@
+@echo off
+call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
+set VSLANG=1033
+call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1 && cl /nologo /std:c11 /utf-8 /O2 /I "C:\Users\lu\Downloads\vela\selfhost/../runtime" "C:\Users\lu\AppData\Local\Temp\dsh-4DvovY\velaprobe\t.c" /Fe:"C:\Users\lu\AppData\Local\Temp\dsh-4DvovY\velaprobe\t.exe" /Fo:"C:\Users\lu\AppData\Local\Temp\dsh-4DvovY\velaprobe\t.obj" 1>&2

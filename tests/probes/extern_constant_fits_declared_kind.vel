@@ -1,0 +1,16 @@
+# The one implicit conversion Vela has, applied at the boundary: an int
+# *constant* whose value fits the declared integer kind.
+#
+# `-7` is an `int` — a unary minus around a literal, not a negative literal — and
+# the parameter is an `i32` (C's `int`).  The constant is accepted because
+# `ck_fits_kind` can prove the value survives the conversion, which is the same
+# test `i32 + 1` passes: no *value* is ever converted silently, and a literal is
+# not a value, it is a number the compiler can read.  The same test is what
+# refuses `abs(some_int_variable)` (extern_int_variable_for_i32.vel) and a
+# constant too large for its parameter (extern_u8_argument_out_of_range.vel).
+extern c def abs(x: i32) -> i32
+
+def main() -> None {
+    print("abs(-7) =", abs(-7))
+    print("abs(9) =", abs(9))
+}

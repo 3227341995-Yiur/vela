@@ -1,0 +1,2 @@
+vela: panic: this value cannot be printed
+  at tests/build/extern/extern_c_probe.vel:18

@@ -1,0 +1,17 @@
+# Refusal: an argument whose kind comes from a *call*.
+#
+# `half()` returns a `float`, and the checker knows that without the type pool
+# because every declaration's packed return kind is filed in the node table
+# before any body is walked (`ck_record_decls`, slot `NT_TY`).  So `abs(half())`
+# is refused here rather than becoming `abs(0)` in C: the answer was written down
+# one file above, and a boundary that could not read it would be quietest exactly
+# where it is most needed.
+def half() -> float {
+    return 0.5
+}
+
+extern c def abs(x: i32) -> i32
+
+def main() -> None {
+    print(abs(half()))
+}

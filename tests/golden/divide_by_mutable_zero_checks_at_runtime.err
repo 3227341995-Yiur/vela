@@ -1,0 +1,2 @@
+vela: panic: division by zero
+  at tests/build/divide_by_mutable_zero_checks_at_runtime.vel:5

@@ -1,0 +1,12 @@
+# Where a declaration sits must not decide the verdict.
+#
+# `main` is checked before the `extern c` line is reached, so the call site rule
+# reads the type a *declaration* filed before any body was walked
+# (`ck_record_decls`): a file's order is not a fact about the program, and an
+# argument rule that depended on it would refuse the same call in one file and
+# accept it in another.
+def main() -> None {
+    print("abs(-7) =", abs(-7))
+}
+
+extern c def abs(x: i32) -> i32

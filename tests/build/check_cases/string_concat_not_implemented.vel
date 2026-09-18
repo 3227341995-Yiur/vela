@@ -1,0 +1,6 @@
+def main() -> None {
+    a: str = "x"
+    b: str = "y"
+    c: str = a + b
+    print(c)
+}

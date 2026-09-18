@@ -1,0 +1,12 @@
+def helper() -> int {
+    print("side effect")
+    return 1
+}
+
+pure def bad() -> int {
+    return helper()
+}
+
+def main() -> None {
+    print(bad())
+}

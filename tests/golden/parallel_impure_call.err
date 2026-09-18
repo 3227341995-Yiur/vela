@@ -1,0 +1,2 @@
+vela: safety error: call to impure function 'log_it' inside 'parallel for'
+  at tests/build/check_cases/parallel_impure_call.vel:9

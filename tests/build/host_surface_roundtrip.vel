@@ -1,0 +1,32 @@
+# host_surface_roundtrip — what the compiler asks of its host, end to end.
+#
+# This is a new case, not a restored one: the original `host_surface` was lost
+# with the corpus (see the note above its manifest lines) and its text survives
+# nowhere.  What it covered is covered here instead, with text written on purpose:
+# the five builtins a self-hosting compiler cannot do without, driven through a
+# real round trip rather than one call each.
+#
+#   write_text   writes a file, and says whether it worked
+#   read_text    reads it back, and gives "" for a file that is not there
+#   len          on a string, so the round trip is checked by length and content
+#   env          a variable that is set, and one that is not ("" — never a panic)
+#   concat       the only way to build a string, since `+` on strings is refused
+#
+# The output is fixed on purpose: a case whose output depends on the environment
+# would be a case that fails on somebody else's machine.  Everything
+# environment-dependent is *printed as a boolean* instead of as its value.
+
+def main() -> None {
+    mut path: str = concat(env("TEMP"), "/vela_host_surface_roundtrip.txt")
+    mut text: str = "the host surface, round tripped\n"
+    mut wrote: bool = write_text(path, text)
+    print("wrote:", wrote)
+    mut back: str = read_text(path)
+    print("same length:", len(back) == len(text))
+    print("same bytes:", back == text)
+    print("missing file is empty:", len(read_text(concat(path, ".nope"))) == 0)
+    print("env unset is empty:", len(env("VELA_NO_SUCH_VARIABLE_AT_ALL")) == 0)
+    print("env PATH is set:", len(env("PATH")) > 0)
+    print("argc is at least one:", argc() >= 1)
+    print("concat length:", len(concat("abc", "de")))
+}

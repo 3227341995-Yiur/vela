@@ -1,0 +1,2 @@
+vela: type error: 'extern c' parameter 'p' has type struct
+  at tests/probes/extern_struct_parameter.vel:12

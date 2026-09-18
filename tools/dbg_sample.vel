@@ -1,0 +1,23 @@
+# tools/dbg_sample.vel — the program tools/dbg_test.ps1 debugs.  It is the
+# smallest program that exercises every command in the protocol: a function
+# call to step into and out of, a loop to step around, and a local that changes
+# value so that `vars` has something to be wrong about.
+#
+# Line numbers matter to the driver script (it sets breakpoints on this file's
+# own lines), so adding a line above them means updating dbg_test.ps1 too.
+def add(a: int, b: int) -> int {
+    c: int = a + b
+    return c
+}
+
+def main() -> None {
+    mut total: int = 0
+    mut i: int = 0
+    while i < 3 {
+        total = add(total, i)
+        i += 1
+    }
+    emit_str("total ")
+    emit_int(total)
+    emit_nl()
+}

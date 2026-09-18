@@ -1,0 +1,6 @@
+def main() -> None {
+    print("tab:\there")
+    print("nl:\nsecond")
+    print("quote:\"q\" backslash:\\")
+    print(len("\n"), len("\\n"))
+}

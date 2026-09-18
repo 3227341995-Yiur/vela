@@ -1,0 +1,25 @@
+# parallel_alias_same_index — an iteration reading the element it is writing is
+# legal, which is the whole difference between this case and the refused one.
+#
+# `a[i] = a[i] + 1` reads exactly the element the same iteration writes, so no
+# other iteration can be involved and the result does not depend on the schedule.
+# The rule compares the read's index expression with the write's, using the same
+# notion of "the identical expression" the write rule already used — so `a[i] += 2`
+# is the same statement in a shorter spelling.
+#
+# This case exists because the obvious over-correction is to refuse every read of
+# a written array, which would make `a[i] = a[i] + 1` illegal and `parallel for`
+# useless for anything that accumulates into its own slot.
+
+def main() -> None {
+    mut n: int = 1
+    mut a: Array[int, 4]
+    a[0] = 2
+    parallel for i in range(0, n) {
+        a[i] = a[i] + 1
+    }
+    parallel for i in range(0, n) {
+        a[i] += 2
+    }
+    print(a[0])
+}

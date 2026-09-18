@@ -1,0 +1,2 @@
+vela: safety error: shift by constant 99 is out of range 0..63
+  at tests/build/check_cases/shift_out_of_range.vel:3

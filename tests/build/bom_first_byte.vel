@@ -1,0 +1,31 @@
+﻿# bom_first_byte — a source file whose first three bytes are EF BB BF.
+#
+# This is a new case, not a restored one: the original `bom_check` was lost with
+# the corpus and its text survives nowhere (see the note above its manifest lines
+# in tests/cases.txt).  It is here because the property is worth one case on its
+# own — a file that begins with a UTF-8 byte-order mark must lex, parse, check and
+# run exactly like the same file without one, and the BOM must not end up part of
+# the first token.
+#
+# The BOM is the very first character of this file, before the `#` above these
+# lines, and it is invisible in every editor that understands it.  Two things are
+# being asserted by the program below, and one by the file itself:
+#
+#   * the file itself: it is a legal Vela program *with* a BOM in front, so the
+#     lexer must skip the mark rather than reject it;
+#   * `len` of a string literal declared here is unaffected by the file's
+#     encoding — the mark belongs to the file, never to a token;
+#   * arithmetic and printing work normally, so the run-mode golden is an ordinary
+#     program's output rather than anything encoding-shaped.
+#
+# A UTF-8 BOM is three bytes, so a reader counting bytes would see this file three
+# bytes longer than the same text without one.  That is the whole point: the
+# count is a property of the file, and the language must not see it at all.
+
+def main() -> None {
+    mut n: int = 6
+    mut s: str = "bom"
+    print(n * 7)
+    print(len(s))
+    print(s, n)
+}

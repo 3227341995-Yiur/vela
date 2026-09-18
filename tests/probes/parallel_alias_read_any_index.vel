@@ -1,0 +1,23 @@
+# parallel_alias_read_any_index — a read of an array the loop does NOT write may
+# use any index at all, including one unrelated to the loop variable.
+#
+# The rule is about *written* arrays.  `a` is read-only in this body, so `a[0]` is
+# as legal as `a[i]`, and each iteration gets the same value — which is what makes
+# this shape safe rather than merely tolerated.
+
+def main() -> None {
+    mut n: int = 6
+    mut a: Array[int, 4]
+    mut out: Array[int, 6]
+    for k in range(0, 4) {
+        a[k] = k * 10
+    }
+    parallel for i in range(0, n) {
+        out[i] = a[0] + i
+    }
+    mut total: int = 0
+    for i in range(0, n) {
+        total += out[i]
+    }
+    print(total, out[5])
+}

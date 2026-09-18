@@ -1,0 +1,15 @@
+# Refusal probe: two things that must not be accepted across the boundary.
+#
+#  * `Array[int, 4]` is storage whose length Vela owns: returning one would hand
+#    C memory that Vela releases, and C has no way to know the length anyway.
+#  * `str` as a *return* is the same problem in the other direction: a `char *`
+#    coming back has no length, so Vela could not make a `str` of it.
+#
+# One file each so the compiler reports the first refusal rather than the second
+# one hiding behind it (only the first error is ever printed).
+extern c def first_of(a: Array[int, 4]) -> int
+extern c def name() -> str
+
+def main() -> None {
+    print("unreachable")
+}

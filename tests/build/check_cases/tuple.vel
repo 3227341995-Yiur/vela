@@ -1,0 +1,5 @@
+
+def main() -> None {
+    p: int = (1, 2)
+    print(p)
+}

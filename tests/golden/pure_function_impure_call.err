@@ -1,0 +1,2 @@
+vela: type error: a 'pure' function may not call 'helper', which is not declared 'pure'
+  at tests/build/check_cases/pure_function_impure_call.vel:7

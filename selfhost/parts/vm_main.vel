@@ -1,0 +1,906 @@
+# ---------------------------------------------------------------------------
+# selfhost/parts/vm_main.vel — the driver of the self-hosted front end.
+#
+# One command, one mode per stage, so that a disagreement about a program can be
+# pointed at exactly one of them:
+#
+#   lex    dump the token stream (kind, line, value, offset, length)
+#   count  how many tokens the file has
+#   parse  print the syntax tree in the canonical dump format
+#   nodes  the raw node pool, ten words per node
+#   check  resolve and judge, and refuse the program if it is not allowed to exist
+#   emit-c write the C11 the program compiles to
+#   build  emit the C and hand it to the host's C compiler
+#   run    resolve, check and then *execute* the program, with no C compiler
+#          and no Python anywhere in the loop
+#   debug  the same interpreter, stopped, with commands read from a file
+#
+# `check` is not an extra service the front end offers — the same line this file
+# has always taken: a back end that emitted C for a program the checker would
+# refuse would be a back end that lost the language's promises on the way to C,
+# so `emit-c`, `run` and `build` all call `ck_module` first.
+#
+# The stages are compared to nothing but the recorded goldens now:
+# `tests/cases.txt` holds this compiler's `lex`/`parse`/`emit-c` digests, its
+# refusals and its output to `tests/golden/`.  The Python front end this driver
+# used to be held against — and the differential suites that did the holding —
+# were deleted with it in stage 4 (`DESIGN.md` §7).
+
+def dump_tokens(tk: Array[int, 786432], cx: Ctx) -> None {
+    mut i: int = 0
+    while i < cx.ntok {
+        emit_int(tk_kind(tk, i))
+        emit_str(" ")
+        emit_int(tk_line(tk, i))
+        emit_str(" ")
+        emit_int(tk_ival(tk, i))
+        emit_str(" ")
+        emit_int(tk_off(tk, i))
+        emit_str(" ")
+        emit_int(tk_len(tk, i))
+        emit_nl()
+        i += 1
+    }
+}
+
+def usage() -> None {
+    warn_str("usage: vela <lex|count|parse|nodes|emit-c|run|check|debug|build> <file.vel>")
+    warn_nl()
+    warn_str("  lex    dump the token stream")
+    warn_nl()
+    warn_str("  count  print how many tokens the file has")
+    warn_nl()
+    warn_str("  parse  print the syntax tree in the canonical dump format")
+    warn_nl()
+    warn_str("  nodes  print the raw node pool (index kind a b c d line flags nx e f)")
+    warn_nl()
+    warn_str("  emit-c print the C11 this program compiles to")
+    warn_nl()
+    warn_str("  run    interpret the program")
+    warn_nl()
+    warn_str("  check  refuse the program if it is not allowed to exist")
+    warn_nl()
+    warn_str("  debug  interpret the program under the protocol debugger:")
+    warn_nl()
+    warn_str("         vela debug <file.vel> <cmddir> [arg...]")
+    warn_nl()
+    warn_str("         events on stdout, commands in <cmddir>/cmd.NNN (DESIGN.md 10)")
+    warn_nl()
+    warn_str("  build  emit the C and hand it to the host's C compiler")
+    warn_nl()
+}
+
+# The raw pool, one line per node, in index order.  The canonical dump shows the
+# tree as it should be read; this shows the ten words it is actually made of —
+# two words per number, which is what a disagreement about a chain or a
+# terminator has to be debugged against.
+def dump_nodes(nd: Array[int, 655360], n: int) -> None {
+    mut i: int = 0
+    while i < n {
+        emit_int(i)
+        mut k: int = 0
+        while k < 10 {
+            emit_str(" ")
+            emit_int(nd[i * 10 + k])
+            k += 1
+        }
+        emit_nl()
+        i += 1
+    }
+}
+
+# ---------------------------------------------------------------------- build
+#
+# `vm.exe build file.vel` is the self-hosted compiler's own driver: the C comes
+# from this same compiler re-entered in `emit-c` mode (so the back end keeps one
+# output target — stdout — and the shell does the redirecting), and the host's C
+# compiler does the rest.  Three host calls make that possible and no more:
+# `concat` to name a file, `run_command` to start a compiler, `env` to ask which
+# host this is and which C compiler the user wants.  None of the three hands back
+# a pointer, a handle, or a capability that outlives the call.
+
+def quoted(s: str) -> str {
+    return concat(concat("\"", s), "\"")
+}
+
+def find_in(s: str, needle: str) -> int {
+    n: int = len(needle)
+    if n == 0 {
+        return 0
+    }
+    mut i: int = 0
+    while i + n <= len(s) {
+        if substr(s, i, i + n) == needle {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+# Does the C this compiler just wrote need OpenMP?  The answer decides whether
+# the host's C compiler is asked for it, and the question is put to the *file*
+# rather than to the user: asking unconditionally would make every binary —
+# including one that has never heard of `parallel for` — depend on MSVC's OpenMP
+# runtime, and never asking would leave every `parallel for` on one core while
+# the language said otherwise.
+def needs_openmp(cfile: str) -> bool {
+    return find_in(read_text(cfile), "#pragma omp") >= 0
+}
+
+# `hello.vel` -> `hello`, so the artifacts land beside the source under the name
+# a C compiler expects.  Nothing is searched for: a `.vel` suffix is stripped or
+# the name is used as it stands.
+def strip_vel(path: str) -> str {
+    n: int = len(path)
+    if n > 4 {
+        if substr(path, n - 4, n) == ".vel" {
+            return substr(path, 0, n - 4)
+        }
+    }
+    return path
+}
+
+# A file exists when it can be read and has bytes: `read_text` is the whole of
+# the host's file surface, so this is the whole of the probe.
+def exists(path: str) -> bool {
+    if len(path) == 0 {
+        return False
+    }
+    return len(read_text(path)) > 0
+}
+
+# ------------------------------------------------------------------ path parts
+#
+# The C a build hands to cl.exe includes `runtime/vela_runtime.h`, and for a long
+# time the driver handed cl the *relative* string `runtime` — which only resolves
+# when the caller happens to be standing in the repository root.  Every editor,
+# script and user outside the root therefore could not build anything: opening the
+# IDE on `vela\tests` was enough to turn every run into
+#
+#     control_flow.c(5): fatal error C1083: cannot open include file: 'vela_runtime.h'
+#     vela: panic: build: no C compiler on this host could build the emitted C
+#
+# The header has to be found from something that does not move with the caller's
+# working directory, and the one thing that never moves is the compiler itself:
+# `arg(0)` is the executable that is running.  These are the four text
+# operations that needs, and there is no `rfind` in the language (link_selfhost.vel
+# says so in the same words), so a path is scanned from its far end by shrinking
+# the candidate from the right.
+
+def last_sep(s: str) -> int {
+    mut n: int = len(s)
+    while n > 0 {
+        c: int = bytes_at(s, n - 1)
+        if c == 47 { return n - 1 }
+        if c == 92 { return n - 1 }
+        n -= 1
+    }
+    return 0 - 1
+}
+
+# The directory part of a path, without a trailing separator.  A bare name with
+# no separator at all keeps the `.` the caller meant by it.
+def dir_of(s: str) -> str {
+    at: int = last_sep(s)
+    if at < 0 {
+        return "."
+    }
+    return substr(s, 0, at)
+}
+
+# Drop one trailing separator, so that `C:\root\` and `C:\root` join the same way.
+def rstrip_sep(s: str) -> str {
+    n: int = len(s)
+    if n == 0 {
+        return s
+    }
+    c: int = bytes_at(s, n - 1)
+    if c == 47 {
+        return substr(s, 0, n - 1)
+    }
+    if c == 92 {
+        return substr(s, 0, n - 1)
+    }
+    return s
+}
+
+def join(a: str, b: str) -> str {
+    return concat(concat(rstrip_sep(a), "/"), b)
+}
+
+# The separator the path itself already uses, so a joined path reads like a path
+# and not like a mixture.  A path with no separator (a bare name) gets the
+# host's, which on Windows is the backslash a reader expects.
+def sep_of(s: str) -> str {
+    mut n: int = len(s)
+    while n > 0 {
+        c: int = bytes_at(s, n - 1)
+        if c == 47 { return "/" }
+        if c == 92 { return "\\" }
+        n -= 1
+    }
+    return "/"
+}
+
+# One directory up, computed *as text*.  This is not tidiness: cl.exe does not
+# resolve `..` inside an `/I` directory — measured, both `dir/..` and `dir\..`
+# fail with C1083 for a header that is really there, while the same directory
+# spelled out works.  A walk that hands cl a `..` is therefore a walk that finds
+# the runtime and then cannot use it, which is exactly how the first version of
+# this fix failed its own test.
+def parent_of(dir: str) -> str {
+    d: str = rstrip_sep(dir)
+    n: int = len(d)
+    if n == 0 {
+        return "."
+    }
+    if n == 1 {
+        if bytes_at(d, 0) == 47 { return "/" }
+        return d
+    }
+    if d == ".." {
+        return ".."
+    }
+    at: int = last_sep(d)
+    if at < 0 {
+        return "."
+    }
+    if at == 0 {
+        return substr(d, 0, 1)
+    }
+    if at == 2 {
+        # `C:\build` -> `C:\`, not the bare drive `C:`, which names whatever
+        # directory happens to be current on that drive
+        if bytes_at(d, 1) == 58 {
+            if substr(d, 1, 2) == ":\\" {
+                return substr(d, 0, 3)
+            }
+        }
+    }
+    return substr(d, 0, at)
+}
+
+def join_with(a: str, b: str) -> str {
+    if len(a) == 0 {
+        return b
+    }
+    return concat(concat(rstrip_sep(a), sep_of(a)), b)
+}
+
+# The directory the running compiler lives in.  `arg(0)` is whatever the caller
+# typed, so it can be absolute, relative, or a bare name the host resolved on
+# PATH.  That is exactly why it cannot be used raw: with no separator in it there
+# is nothing to walk up, and joining a runtime directory onto `vm.exe` would
+# produce a path relative to the caller's working directory — the same bug one
+# level down.  The answer is `"."`, which makes the candidates below `./runtime`
+# and `./../runtime`: the caller's directory, which is what a bare name means.
+def exe_dir() -> str {
+    me: str = arg(0)
+    if len(me) == 0 {
+        return "."
+    }
+    if last_sep(me) < 0 {
+        return "."
+    }
+    return rstrip_sep(dir_of(me))
+}
+
+# Does this directory hold the header itself?
+#
+# It asks the question the contract asks: `rt` — the 4th argument, `VELA_RUNTIME`,
+# and the bare `runtime` literal the driver has always passed — is the directory
+# that *contains* `vela_runtime.h`, because that is exactly what cl's `-I` takes.
+#
+# This function used to test `dir/runtime/vela_runtime.h` while `find_runtime`
+# returned `dir`, so the two halves of one contract disagreed by exactly one
+# directory.  Measured cost, from `tools\build.ps1` step 2:
+#
+#     vela: build: runtime C:\...\vela\selfhost\build/../.. (vela_runtime.h found)
+#     cl ... /I "C:\...\vela\selfhost\build/../.." tools/link_selfhost.c
+#     tools/link_selfhost.c(5): fatal error C1083: cannot open include file:
+#         'vela_runtime.h': No such file or directory
+#
+# The include directory was the repository root, one level above the file it was
+# looking for — and the driver printed "found" while doing it, because the *probe*
+# had looked in the right place and the *value* was the wrong one.
+def has_runtime(dir: str) -> bool {
+    if len(dir) == 0 {
+        return False
+    }
+    return exists(join_with(dir, "vela_runtime.h"))
+}
+
+def on_windows() -> bool {
+    return len(env("OS")) > 0
+}
+
+# Where `runtime/vela_runtime.h` is, resolved so that a build does not depend on
+# where the caller is standing.  The order is the whole design:
+#
+#   1. an explicit runtime directory — the 4th argument, or `VELA_RUNTIME` — wins
+#      because it is the one answer a user typed on purpose;
+#   2. the compiler's own location, walking up from its directory, because the
+#      compiler is the only thing on the command line that is pinned to the tree;
+#   3. the relative literal `runtime`, unchanged, because a build from the root
+#      has always worked and must keep working byte for byte.
+#
+# Nothing here is a new success path.  When none of the three holds the loop
+# returns `runtime`, which is what the driver passed before — so a host with no
+# runtime anywhere still fails with cl's own C1083, exactly as it did.
+def find_runtime(exe: str) -> str {
+    want: str = env("VELA_RUNTIME")
+    if has_runtime(want) {
+        return want
+    }
+    mut base: str = exe_dir()
+    mut up: int = 0
+    # Three levels is enough for every layout this tree has: `selfhost\build` and
+    # `selfhost` both sit at most two under the root, which is where a checkout
+    # keeps `runtime`.
+    while up < 3 {
+        # A checkout keeps the header in `<root>/runtime`, so the place to look is
+        # `base/runtime`; a compiler installed *inside* that directory has it right
+        # there, so `base` is asked too.  Both are asked at every level, because
+        # which one answers depends on where the compiler was put, not on how many
+        # levels up it is.
+        if has_runtime(join_with(base, "runtime")) {
+            return join_with(base, "runtime")
+        }
+        if has_runtime(base) {
+            return base
+        }
+        base = join(base, "..")
+        up += 1
+    }
+    return "runtime"
+}
+
+# `cmd.exe /c` has a documented quirk: unless the command line is exactly one
+# quoted executable, it strips the first quote character and the last one.  Every
+# command this driver builds quotes both its program and its arguments (paths can
+# contain spaces), so on Windows the whole command needs one more pair around it
+# or the executable name arrives with a stray quote and nothing is found.
+def shell(c: str) -> str {
+    if on_windows() {
+        return concat(concat("\"", c), "\"")
+    }
+    return c
+}
+
+# The function number a name was filed under, or -1.  `find_main` in eval.vel
+# asks the same question of the name `main`; this asks it of a name given here,
+# because the debug driver's exit event has to be reached by the number the
+# resolver handed out — Vela 0.1 has no function values to pass instead.
+def find_function(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+                  name: str) -> int {
+    h: int = intern(name)
+    mut f: int = 0
+    while f < vm.nfn {
+        d: int = ft_get(mem, f, FT_DEF())
+        if nd[d * 10 + 1] == h {
+            if ft_get(mem, f, FT_OWNER()) < 0 {
+                return f
+            }
+        }
+        f += 1
+    }
+    return -1
+}
+
+# The locations MSVC actually installs into, in the order stage 0 probes them
+# (`VELA_VCVARS` first, so a user with an unusual install can just say so).  The
+# point of a driver is that a build needs no configuration.
+def find_vcvars() -> str {
+    want: str = env("VELA_VCVARS")
+    if exists(want) {
+        return want
+    }
+    if exists("C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat") {
+        return "C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat"
+    }
+    if exists("C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat") {
+        return "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat"
+    }
+    if exists("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat") {
+        return "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
+    }
+    if exists("C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat") {
+        return "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
+    }
+    if exists("C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat") {
+        return "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat"
+    }
+    if exists("C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat") {
+        return "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
+    }
+    return ""
+}
+
+def vcvars_prefix(vcv: str) -> str {
+    if len(vcv) == 0 {
+        return ""
+    }
+    return concat(concat("call ", quoted(vcv)), " >nul 2>&1 && ")
+}
+
+def msvc_build(self: str, vcv: str, cfile: str, exe: str, obj: str, rt: str,
+               omp: bool) -> int {
+    mut c: str = vcvars_prefix(vcv)
+    # `cl.exe` starts two helpers that outlive it: `vctip.exe` (the telemetry
+    # client) and `mspdbsrv.exe` (a PDB server).  They are detached, they inherit
+    # the handles of whatever started them, and they sit there for minutes or
+    # hours.  On this project that is not a curiosity — it is the reason the whole
+    # session died twice.  The harness that runs our commands tracks children in a
+    # Windows job object and refuses to complete while that job is not empty, so
+    # one build leaving `vctip.exe` alive makes *every* subsequent command fail:
+    #
+    #     Error: subprocess-local: Windows Job runner exited with exit code 1
+    #     before proving its managed range empty
+    #
+    # measured after `tools\build.ps1` finished, with `vctip.exe` (started 01:57,
+    # pid 28724) still in the process table and the shell dead from then on.
+    # `VSCMD_SKIP_SENDTELEMETRY` is the documented switch that stops the telemetry
+    # client being started at all, which is better than killing it afterwards.
+    # `mspdbsrv` is not started by these flags in the first place: it appears with
+    # a PDB switch, and this command line passes `/Fe:` and `/Fo:` only.
+    c = concat(c, "set VSCMD_SKIP_SENDTELEMETRY=1 && ")
+    # `/utf-8` because `runtime/vela_runtime.h` is UTF-8 and cl otherwise reads it
+    # under the console code page: on a Chinese Windows install that is cp936, and
+    # every build scolded the user with
+    #
+    #     warning C4819: the file contains a character that cannot be represented
+    #     in the current code page (936)
+    #
+    # for a header that is not wrong.  A warning that fires on every correct build
+    # is a warning that teaches people to ignore warnings.
+    c = concat(c, "cl /nologo /std:c11 /utf-8 /O2")
+    if omp {
+        c = concat(c, " /openmp")
+    }
+    c = concat(c, " /I ")
+    c = concat(c, quoted(rt))
+    c = concat(c, " ")
+    c = concat(c, quoted(cfile))
+    c = concat(c, " /Fe:")
+    c = concat(c, quoted(exe))
+    c = concat(c, " /Fo:")
+    c = concat(c, quoted(obj))
+    # cl.exe writes its diagnostics to *stdout*, not stderr.  Left alone, a build
+    # that fails therefore puts the only message that explains why into the
+    # caller's stdout, while this driver's own failure message goes to stderr and
+    # says nothing about the error — which is how `error C3014` (the pragma was
+    # not followed by the loop) and `error C3015` (OpenMP 2.0 wants the induction
+    # variable already declared) stayed invisible behind `'cc' is not recognized`
+    # for a whole debugging cycle.
+    #
+    # `1>&2` hands cl's stdout to this process's stderr, which is where both the
+    # test suite and a reader of the build report look for the reason a build
+    # failed.  It is a handle duplication rather than a file on purpose: cl.exe
+    # spawns a detached vctip.exe that inherits — and holds for minutes or hours —
+    # any file its output was redirected into, so a capture file here would be
+    # unopenable on the next build of the same source.  Duplicating a handle
+    # leaves nothing behind to be held.
+    c = concat(c, " 1>&2")
+    return run_cc(self, vcv, c)
+}
+
+# cl.exe speaks the host's language — on this machine, Chinese, in the OEM code
+# page, which arrives at every capture as mojibake (`璇ユ枃浠跺寘鍚?...` for the
+# C4819 warning above, `鏃犳硶鎵撳紑鍖呭惈鏂囦欢` for a missing header).  A
+# diagnostic nobody can read is a diagnostic nobody has, and Vela's own messages
+# are English, so the child is asked for English with `VSLANG=1033`.
+#
+# It is set *for the child* and nowhere else, through a batch file, because Vela
+# has no way to set an environment variable (SPEC §8: three host calls, none of
+# them `setenv`) and this must not leak into the user's session.  `cmd.exe /d`
+# skips the AutoRun hooks a user may have installed, and `set` before the call is
+# what makes the assignment reach cl: `vcvars64.bat` sets PATH, LIB and friends
+# but never VSLANG, so `call` leaves this one alone.
+# `cl.exe` starts `vctip.exe` (its telemetry client) and `mspdbsrv.exe` (a PDB
+# server) as *detached* processes.  They outlive the compiler by minutes or hours
+# and inherit its handles, and on this project that is not a tidiness problem — it
+# is why the session died eleven times.
+#
+# Measured mechanism: the harness that runs our commands tracks children in a
+# Windows job object and refuses to complete while that job is not empty, so once
+# one build leaves a `vctip.exe` alive, every later command fails with
+#
+#     Error: subprocess-local: Windows Job runner exited with exit code 1
+#     before proving its managed range empty
+#
+# and only restarting the host clears it.  Two long background jobs — a 467 MB
+# download and a test-suite run — were killed mid-flight that way, and the suite
+# is the worst case: it builds about thirty programs, so the helpers accumulate
+# faster than any cleanup at the end of a script can reap them.  `tools\build.ps1`
+# and `tools\smoke.ps1` clean up after themselves; a script that *drives the suite*
+# cannot, because it never gets that far.
+#
+# So the driver reaps them itself, immediately after the compiler it started has
+# exited.  That is the only place that can guarantee one build leaves nothing
+# behind, and it is a workaround for a measured environment limitation rather than
+# something a compiler should have to do: `VSCMD_SKIP_SENDTELEMETRY=1` was tried
+# first and did **not** stop the helper appearing (measured: a build with the
+# switch set still left a `vctip`, which `build.ps1`'s cleanup then reported).
+# Both commands are silent and their failure is ignored — not finding a process
+# that should not exist is not a build error.
+def reap_helpers() -> None {
+    run_command("taskkill /f /im vctip.exe >nul 2>&1")
+    run_command("taskkill /f /im mspdbsrv.exe >nul 2>&1")
+}
+
+def run_cc(self: str, vcv: str, c: str) -> int {
+    # The command is written down before it is run, and left next to the build:
+    # "which include path did it actually use?" is the first question every
+    # failure of this kind asks, and an assurance that the answer is right is not
+    # an answer.  It goes to stderr, so the file stays readable in a report.
+    log: str = concat(strip_vel(self), "_cc_cmd.txt")
+    warn_str("vela: build: ")
+    warn_str(c)
+    warn_nl()
+    if not write_text(log, concat(c, "\n")) {
+        warn_str("vela: build: could not write the command log ")
+        warn_str(log)
+        warn_nl()
+    }
+    bat: str = concat(strip_vel(self), "_cc.bat")
+    mut text: str = "@echo off\r\n"
+    if len(vcv) > 0 {
+        text = concat(text, concat(concat("call ", quoted(vcv)), " >nul 2>&1\r\n"))
+    }
+    text = concat(text, "set VSLANG=1033\r\n")
+    text = concat(text, c)
+    text = concat(text, "\r\n")
+    if not write_text(bat, text) {
+        # no batch file, no English: fall back to running the command directly
+        # rather than failing a build over a diagnostic's language
+        return run_command(shell(c))
+    }
+    mut rc: int = run_command(shell(bat))
+    reap_helpers()
+    return rc
+}
+
+def other_cc() -> str {
+    cc: str = env("VELA_CC")
+    if len(cc) == 0 {
+        return "cc"
+    }
+    return cc
+}
+
+def other_build(self: str, cc: str, cfile: str, exe: str, rt: str,
+                omp: bool) -> int {
+    mut c: str = concat(cc, " -O2 -std=c11")
+    if omp {
+        c = concat(c, " -fopenmp")
+    }
+    c = concat(c, " -I ")
+    c = concat(c, quoted(rt))
+    c = concat(c, " ")
+    c = concat(c, quoted(cfile))
+    c = concat(c, " -o ")
+    c = concat(c, quoted(exe))
+    return run_cc(self, "", c)
+}
+
+def write_c(self: str, path: str, cfile: str) -> None {
+    mut c: str = concat(quoted(self), " emit-c ")
+    c = concat(c, quoted(path))
+    c = concat(c, " > ")
+    c = concat(c, quoted(cfile))
+    if run_command(shell(c)) != 0 {
+        panic("build: this compiler could not write the C for that file")
+    }
+    if not exists(cfile) {
+        panic("build: the C file was not written")
+    }
+}
+
+def base_name(path: str) -> str {
+    n: int = last_sep(path)
+    if n < 0 {
+        return path
+    }
+    return substr(path, n + 1, len(path))
+}
+
+# A name that is unique per **source path**, not per file name.
+#
+# Keying the scratch directory by the base name was wrong, and the measurement that
+# showed it took a while to find: the corpus holds the same file name in two
+# directories (`tests/build/x.vel` and `tests/build/check_cases/x.vel`), so those two
+# builds shared one `.c` and one `.obj` — and since `cl.exe` leaves a detached helper
+# holding any file it touched, the *second* build of that name failed with an error
+# the suite could report only as "could not be built", while the same file built and
+# ran perfectly by hand.  Five cases failed that way, and none of them was a compiler
+# bug.
+#
+# `\`, `/` and `:` become `_`, so the result is one path component on Windows and on
+# POSIX alike.  There is no `replace` in the language, so this walks the string;
+# paths are short and it runs once per build.
+def flat_name(path: str) -> str {
+    mut out: str = ""
+    mut i: int = 0
+    while i < len(path) {
+        c: int = bytes_at(path, i)
+        if c == 92 or c == 47 or c == 58 {
+            out = concat(out, "_")
+        } else {
+            out = concat(out, substr(path, i, i + 1))
+        }
+        i += 1
+    }
+    return out
+}
+
+# Where a build's *intermediate* files go.
+#
+# They are not the product and they do not belong in the directory the reader is
+# working in: `vm.exe build hello.vel` must leave `hello.exe` and nothing else.
+# Vela emits C as its code-generation backend, and that C is a detail of this
+# implementation, not an artifact of the user's program — so it is written under
+# the system temp directory along with the object file, under a directory named
+# after the source **path** (see `flat_name`) so that two builds cannot collide.
+#
+# Creating the directory is the one thing the host has to do: SPEC §8 lists the
+# host surface and it has no `mkdir`, so this goes through `run_command`, which is
+# the same call the C compiler itself is started with.  Its failure is not fatal
+# here — a directory that does not exist makes the C write fail, and that failure
+# names the path it could not write.
+def build_scratch(path: str, ext: str) -> str {
+    mut t: str = env("TEMP")
+    if len(t) == 0 {
+        t = env("TMP")
+    }
+    if len(t) == 0 {
+        t = "."
+    }
+    d: str = concat(concat(t, "\\vela-build\\"), flat_name(path))
+    if on_windows() {
+        run_command(concat(concat("mkdir ", quoted(d)), " >nul 2>&1"))
+    } else {
+        run_command(concat("mkdir -p ", quoted(d)))
+    }
+    return concat(d, ext)
+}
+
+def do_build(self: str, path: str, rt: str) -> None {
+    stem: str = strip_vel(path)
+    # The product is the executable, and it goes beside its source.  The C file and
+    # the object file go to the scratch directory above; before this they were
+    # written next to the program, which meant that building a Vela file left a C
+    # file in the reader's directory and made "is this a Vela project?" a question
+    # about somebody else's language.
+    exe: str = concat(stem, ".exe")
+    cfile: str = build_scratch(path, ".c")
+    obj: str = build_scratch(path, ".obj")
+    write_c(self, path, cfile)
+    # the back end knows whether it emitted an OpenMP pragma; the driver asks the
+    # file, so a program without a `parallel for` is built without OpenMP
+    omp: bool = needs_openmp(cfile)
+    # Where the runtime is, resolved once, here, so that a build works from any
+    # directory.  An explicit answer wins; otherwise the compiler's own location
+    # is walked up; failing both, the relative literal is what it always was, and
+    # a host with no runtime anywhere fails exactly as loudly as before.
+    mut dir: str = rt
+    if len(dir) == 0 {
+        dir = find_runtime(self)
+    }
+    # say it, so that nobody has to guess which include path a build used
+    warn_str("vela: build: runtime ")
+    warn_str(dir)
+    if has_runtime(dir) {
+        warn_str(" (vela_runtime.h found)")
+    } else {
+        warn_str(" (no vela_runtime.h here - the C compiler will say so)")
+    }
+    warn_nl()
+    mut rc: int = 1
+    mut cl_tried: bool = False
+    if on_windows() {
+        vcv: str = find_vcvars()
+        # did we actually put the question to cl.exe?  Only "yes" makes the
+        # fallback below the wrong thing to do (see there)
+        cl_tried = len(vcv) > 0
+        rc = msvc_build(self, vcv, cfile, exe, obj, dir, omp)
+    }
+    if rc != 0 {
+        if not cl_tried {
+            # No MSVC on this host (or not Windows at all): let a POSIX C compiler
+            # try, which is also the only path on Linux and macOS.
+            #
+            # This is deliberately *not* a second opinion when cl.exe was present
+            # and refused the C.  A Windows host with MSVC installed has no `cc`,
+            # so all this fallback could do there is replace cl's diagnostic —
+            # now on stderr, above — with `'cc' is not recognized as an internal
+            # or external command`, which names the wrong problem and hides the
+            # right one.  A user with MinGW and no MSVC still reaches it.
+            rc = other_build(self, other_cc(), cfile, exe, dir, omp)
+        }
+    }
+    if rc != 0 {
+        # say *which* file the compiler refused: the message above it is the C
+        # compiler's own, and this is the line that ties the two together
+        warn_str("vela: build: the C compiler refused ")
+        warn_str(cfile)
+        warn_nl()
+        panic("build: no C compiler on this host could build the emitted C")
+    }
+    if not exists(exe) {
+        panic("build: the C compiler reported success but wrote no executable")
+    }
+    emit_str("built ")
+    emit_str(exe)
+    if omp {
+        emit_str("  (with OpenMP)")
+    }
+    emit_nl()
+}
+
+def main() -> None {
+    if argc() < 3 {
+        usage()
+        panic("the front end needs a mode and a file")
+    }
+    mode: str = arg(1)
+    path: str = arg(2)
+    src: str = read_text(path)
+    if len(src) == 0 {
+        warn_str("vela: cannot read ")
+        warn_str(path)
+        warn_nl()
+        panic("the front end could not read the file")
+    }
+
+    mut tk: Array[int, 786432]
+    mut tkf: Array[float, 65536]
+    mut nd: Array[int, 655360]
+    mut ty: Array[int, 262144]
+    mut flt: Array[float, 65536]
+    mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0)
+
+    lex(src, tk, tkf, cx)
+    if cx.err == 1 {
+        # the diagnostic is already on stderr; stop with a non-zero status so a
+        # caller can tell a refused file from an accepted one
+        panic("the front end stopped after an error")
+    }
+
+    if mode == "lex" {
+        dump_tokens(tk, cx)
+        return
+    }
+    if mode == "count" {
+        emit_str("tokens ")
+        emit_int(cx.ntok)
+        emit_nl()
+        return
+    }
+    if mode == "parse" {
+        cx.ti = 0
+        parse_module(src, tk, tkf, nd, ty, flt, cx)
+        if cx.err == 1 {
+            panic("the front end stopped after an error")
+        }
+        dump_module(src, nd, ty, flt)
+        return
+    }
+    if mode == "nodes" {
+        cx.ti = 0
+        parse_module(src, tk, tkf, nd, ty, flt, cx)
+        if cx.err == 1 {
+            panic("the front end stopped after an error")
+        }
+        dump_nodes(nd, cx.ni)
+        return
+    }
+    if mode == "emit-c" {
+        cx.ti = 0
+        parse_module(src, tk, tkf, nd, ty, flt, cx)
+        if cx.err == 1 {
+            panic("the front end stopped after an error")
+        }
+        mut mem2: Array[int, 3741696]
+        mut vm2: VM = vm_new()
+        resolve_module(nd, ty, mem2, path, vm2)
+        # the verdicts before the code: `check` is not a separate service the
+        # front end offers, it is a step this front end takes, and a back end
+        # that emitted C for a program the checker would refuse would be a back
+        # end that lost the language's promises on the way to C
+        ck_module(nd, ty, mem2, path, vm2)
+        emit_program(nd, ty, flt, src, path, mem2, vm2)
+        return
+    }
+    if mode == "run" {
+        cx.ti = 0
+        parse_module(src, tk, tkf, nd, ty, flt, cx)
+        if cx.err == 1 {
+            panic("the front end stopped after an error")
+        }
+        mut mem: Array[int, 3741696]
+        mut fmem: Array[float, 786432]
+        mut ipool: Array[int, 2097152]
+        mut fpool: Array[float, 1048576]
+        mut bpool: Array[u8, 33554432]
+        mut vm: VM = vm_new()
+        resolve_module(nd, ty, mem, path, vm)
+        ck_module(nd, ty, mem, path, vm)
+        # the empty string is the directory argument `debug` fills in: `run` is
+        # the same interpreter with no session, so nothing ever reads it
+        run_main(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, "", vm)
+        return
+    }
+    if mode == "debug" {
+        # `vm.exe debug FILE CMDDIR arg...`: the same resolve, check and run as
+        # `run`, with the vm told to stop.  Nothing about the program changes:
+        # the arena, the pools and `run_main` are the same calls in the same
+        # order, and the only new thing on the command line is the directory the
+        # driver leaves its command files in — which is not passed on to the
+        # program (`arg`/`argc` skip it, eval.vel B_ARG).
+        #
+        # The directory is required rather than defaulted: a debugger with no
+        # way to hear a command would block forever on the first stop, and the
+        # honest version of that is to refuse the command line.
+        if argc() < 4 {
+            usage()
+            panic("debug needs a command directory: vela debug FILE <cmddir>")
+        }
+        cx.ti = 0
+        parse_module(src, tk, tkf, nd, ty, flt, cx)
+        if cx.err == 1 {
+            panic("the front end stopped after an error")
+        }
+        mut mem4: Array[int, 3741696]
+        mut fmem4: Array[float, 786432]
+        mut ipool4: Array[int, 2097152]
+        mut fpool4: Array[float, 1048576]
+        mut bpool4: Array[u8, 33554432]
+        mut vm4: VM = vm_new()
+        resolve_module(nd, ty, mem4, path, vm4)
+        ck_module(nd, ty, mem4, path, vm4)
+        # the exit event has to be a *function*, and this compiler cannot hand
+        # one over: Vela 0.1 has no function types, so `run_main` is given the
+        # number `dbg_exit` was filed under and looks it up in the same table
+        # every other call goes through
+        vm4.after_main = find_function(nd, mem4, vm4, "dbg_exit")
+        # The one bit that says a session is wanted.  `run_main` cannot infer it
+        # from `dir` being non-empty (a `run` of a program with arguments has an
+        # empty directory and no session either way) and it cannot infer it from
+        # `after_main` (that is a function number, and 0 is a real function), so
+        # the driver says so, here, once.
+        vm4.dbg_on = 1
+        run_main(nd, ty, mem4, fmem4, flt, ipool4, fpool4, bpool4, src, path,
+                 arg(3), vm4)
+        return
+    }
+    if mode == "check" {
+        cx.ti = 0
+        parse_module(src, tk, tkf, nd, ty, flt, cx)
+        if cx.err == 1 {
+            panic("the front end stopped after an error")
+        }
+        mut mem3: Array[int, 3741696]
+        mut vm3: VM = vm_new()
+        resolve_module(nd, ty, mem3, path, vm3)
+        ck_module(nd, ty, mem3, path, vm3)
+        emit_str("ok")
+        emit_nl()
+        return
+    }
+    if mode == "build" {
+        # The 4th argument is the runtime directory, and an *empty* one means
+        # "work it out": `find_runtime` then resolves it from the compiler's own
+        # location, so `vm.exe build C:\anywhere\x.vel` works from any directory.
+        # A caller who passes a directory still gets exactly that directory, which
+        # is why the old behaviour is unchanged for them.
+        mut rt: str = ""
+        if argc() >= 4 {
+            rt = arg(3)
+        }
+        do_build(arg(0), path, rt)
+        return
+    }
+    usage()
+    panic("unknown mode")
+}

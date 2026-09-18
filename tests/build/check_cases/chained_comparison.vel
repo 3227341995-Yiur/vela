@@ -1,0 +1,7 @@
+
+def main() -> None {
+    n: int = 3
+    if 0 < n < 10 {
+        print("no")
+    }
+}

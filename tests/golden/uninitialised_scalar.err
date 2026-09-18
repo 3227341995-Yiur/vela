@@ -1,0 +1,2 @@
+vela: type error: 'x' is declared without an initialiser
+  at tests/build/check_cases/uninitialised_scalar.vel:2

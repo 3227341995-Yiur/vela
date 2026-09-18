@@ -1,0 +1,2 @@
+vela: syntax error: function 'f' has no return type annotation
+  at line 2

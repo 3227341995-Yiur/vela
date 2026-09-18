@@ -1,0 +1,2 @@
+vela: safety error: cannot assign to 'x': it was declared immutable
+  at tests/build/check_cases/immutable_rebind.vel:3

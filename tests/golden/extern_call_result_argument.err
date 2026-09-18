@@ -1,0 +1,2 @@
+vela: type error: 'extern c' argument to 'abs' has type float, but parameter 'x' has type i32
+  at tests/probes/extern_call_result_argument.vel:16

@@ -1,0 +1,2 @@
+vela: type error: function 'f' may finish without returning int
+  at tests/build/check_cases/missing_return.vel:1

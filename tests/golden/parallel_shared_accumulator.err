@@ -1,0 +1,2 @@
+vela: safety error: 'parallel for' accumulates into 'total', which is shared across iterations
+  at tests/build/check_cases/parallel_shared_accumulator.vel:4

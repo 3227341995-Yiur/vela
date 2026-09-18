@@ -1,0 +1,3 @@
+def helper() -> None {
+    print(1)
+}

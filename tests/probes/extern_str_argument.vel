@@ -1,0 +1,12 @@
+# Refusal: a `str` argument.
+#
+# A Vela `str` is a length plus a pointer into Vela's own string region, not a
+# `char *`: a C `int` parameter would take the pointer's low half and print a
+# number, and C would say nothing at all (a warning at most).  The declaration
+# rule already refuses a `str` *parameter*; this is the same promise at the call
+# site, which is where a reader is most likely to make the mistake.
+extern c def abs(x: i32) -> i32
+
+def main() -> None {
+    print(abs("x"))
+}

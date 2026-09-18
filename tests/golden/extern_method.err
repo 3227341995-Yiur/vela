@@ -1,0 +1,2 @@
+vela: type error: 'extern c' parameter 'self' has type struct
+  at tests/probes/extern_method.vel:12

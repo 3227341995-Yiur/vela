@@ -1,0 +1,2 @@
+vela: type error: 'while' condition must be bool, got str
+  at tests/build/check_cases/truthiness_string.vel:3

@@ -1,0 +1,21 @@
+struct Vec2 {
+    x: float
+    y: float
+
+    def dot(self: Vec2, o: Vec2) -> float {
+        return self.x * o.x + self.y * o.y
+    }
+
+    def scale(mut self: Vec2, k: float) -> None {
+        self.x = self.x * k
+        self.y = self.y * k
+    }
+}
+
+def main() -> None {
+    mut p: Vec2 = Vec2(3.0, 4.0)
+    q: Vec2 = Vec2(1.0, 2.0)
+    print(p.dot(q))
+    p.scale(2.0)
+    print(p.x, p.y)
+}

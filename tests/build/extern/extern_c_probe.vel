@@ -1,0 +1,25 @@
+# Stage 5: calling the C library from Vela.
+#
+# Kept out of the oracle corpus on purpose.  `tests/build/*.vel` is compared
+# against stage 0 by `diff_check`, `diff_run` and `diff_emit`, and stage 0
+# predates `extern c` — it can only say "syntax error" about this file, which
+# says nothing about whether the feature works.  So the probe lives one
+# directory deeper, where those suites do not look, and is checked against what
+# the C library actually computes.
+#
+# The declaration *is* the prototype: `i32` is how a C `int` is spelled exactly,
+# `u8` a C `unsigned char`, `float` a C `double`, `int` a C `long long`.  A
+# declaration that does not match the C function is a bug the user can write;
+# Vela spells out exactly what was declared and nothing more.
+extern c def abs(x: i32) -> i32
+extern c pure def sqrt(x: float) -> float
+
+def main() -> None {
+    print("abs(-7) =", abs(-7))
+    print("abs(9) =", abs(9))
+    mut s: float = 0.0
+    for i in range(0, 64) {
+        s = s + sqrt(to_float(i))
+    }
+    print("sum sqrt =", to_int(s))
+}

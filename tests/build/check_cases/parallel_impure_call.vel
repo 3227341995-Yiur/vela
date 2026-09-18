@@ -1,0 +1,11 @@
+def log_it(x: int) -> int {
+    print("side effect")
+    return x
+}
+
+def main() -> None {
+    mut a: Array[int, 64] = [0]
+    parallel for i in range(0, 64) {
+        a[i] = log_it(i)
+    }
+}

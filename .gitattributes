@@ -1,0 +1,17 @@
+# Keep every byte of this repository the way it was written.
+#
+# Two corpus cases are *about* bytes rather than about text:
+#
+#   crlf_check      a source file whose line endings are CR LF, not LF
+#   bom_check       a source file whose first three bytes are EF BB BF
+#
+# Git's line-ending normalisation would rewrite those files in the working tree on
+# checkout, which would silently change what those cases test — and the same
+# normalisation turns a diff of the corpus into noise, in a project whose whole
+# evidence culture is "show the measurement".
+#
+# `-text` on everything disables the conversion for every file, so what is
+# committed is what was written, byte for byte.  No file here needs the opposite
+# treatment: the Vela sources, the goldens, the emitted C that is tracked (the
+# bootstrap `selfhost/build/vm.c`), and the PowerShell tools all work as they are.
+* -text

@@ -1,0 +1,2 @@
+vela: type error: 'if' condition must be bool, got int
+  at tests/build/check_cases/truthiness.vel:3

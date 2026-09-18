@@ -1,0 +1,9 @@
+def main() -> None {
+    mut it: int = 0
+    mut acc: int = 0
+    while it < 1000 {
+        acc += it
+        it += 1
+    }
+    print(it, acc)
+}

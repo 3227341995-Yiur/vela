@@ -1,0 +1,13 @@
+# Refusal: a `str` *result*.
+#
+# The other direction of the same boundary: a `char *` coming back has no length,
+# so Vela could not make a `str` of it without inventing one (a NUL scan, which a
+# C function is free to make lie).  The existing refusal probe in
+# `tests/build/extern/reject_non_scalar.vel` mentions a `str` result in its
+# comment but never reaches the rule, because its array parameter is refused
+# first and only the first verdict is ever printed; this file reaches it.
+extern c def name() -> str
+
+def main() -> None {
+    print("unreachable")
+}

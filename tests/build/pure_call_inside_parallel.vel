@@ -1,0 +1,11 @@
+pure def sq(x: int) -> int {
+    return x * x
+}
+
+def main() -> None {
+    mut out: Array[int, 64] = [0]
+    parallel for i in range(0, 64) {
+        out[i] = sq(i)
+    }
+    print(out[7], out[63])
+}

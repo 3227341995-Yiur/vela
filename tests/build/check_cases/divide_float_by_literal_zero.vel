@@ -1,0 +1,4 @@
+def main() -> None {
+    mut x: float = 1.0
+    x = x / 0.0
+}

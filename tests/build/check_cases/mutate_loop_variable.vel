@@ -1,0 +1,5 @@
+def main() -> None {
+    for i in range(0, 10) {
+        i += 1
+    }
+}

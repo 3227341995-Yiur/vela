@@ -1,0 +1,11 @@
+def main() -> None {
+    mut xs: Array[int, 16] = [1, 2, 3]
+    for i in range(0, len(xs)) {
+        xs[i] = xs[i] + 1
+    }
+    mut s: int = 0
+    for i in range(0, len(xs)) {
+        s += xs[i]
+    }
+    print(s, len(xs))
+}

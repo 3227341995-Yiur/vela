@@ -1,0 +1,26 @@
+def main() -> None {
+    mut a: Array[float, 262144] = [0.0]
+    mut b: Array[float, 262144] = [0.0]
+    mut c: Array[float, 262144] = [0.0]
+    for i in range(0, 262144) {
+        a[i] = to_float(i % 7) * 0.5 + 1.0
+        b[i] = to_float(i % 11) * 0.25 + 2.0
+    }
+    t0: float = now()
+    parallel for i in range(0, 512) {
+        for j in range(0, 512) {
+            mut s: float = 0.0
+            for k in range(0, 512) {
+                s += a[i * 512 + k] * b[k * 512 + j]
+            }
+            c[i * 512 + j] = s
+        }
+    }
+    t1: float = now()
+    mut sum: float = 0.0
+    for i in range(0, 262144) {
+        sum += c[i]
+    }
+    print("checksum", to_int(sum))
+    print("seconds", t1 - t0)
+}

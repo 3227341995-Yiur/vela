@@ -1,0 +1,12 @@
+# Refusal probe: `str` may not cross into C.
+#
+# A Vela `str` is a length plus a pointer into Vela's own string region, not a
+# `char *`.  Passing one to a C function would mean inventing an ABI (a
+# NUL-terminated copy, whose length C would then be free to misread), and
+# inventing an ABI is exactly how a safe language stops being one.  So the
+# declaration is refused where it is written, not discovered later at the boundary.
+extern c def strlen(s: str) -> int
+
+def main() -> None {
+    print(strlen("hello"))
+}

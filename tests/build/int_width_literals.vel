@@ -1,0 +1,7 @@
+def main() -> None {
+    mut b: u8 = 200
+    b += 55
+    print(b)
+    mut w: i32 = 2147483647
+    print(w)
+}

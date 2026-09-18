@@ -1,0 +1,13 @@
+# A declaration nothing calls is not a dependency.
+#
+# The emitted C carries the prototype `void vela_probe_unreached(int32_t);` and
+# no call, so the linker never looks for the symbol: a program may name a C
+# function it does not have, and the compiler is not in the business of
+# demanding the library.  This is also where a `-> None` result is exercised
+# without a real `void` C function, of which the CRT offers none Vela can spell
+# exactly (`srand` takes `unsigned int`, `exit` ends the program).
+extern c def vela_probe_unreached(x: i32) -> None
+
+def main() -> None {
+    print("the declaration is never called")
+}

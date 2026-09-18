@@ -1,0 +1,2877 @@
+# ---------------------------------------------------------------------------
+# selfhost/parts/eval.vel — the tree-walking evaluator.
+#
+# A value is a cell: four ints (tag, a, b, c) and one float, in one pool for the
+# whole program.  Cells 0 .. CELL_STACK_MAX are the stack — temporaries and
+# frame slots, released by cursor — and HEAP0 .. CELL_HEAP_MAX are the heap for
+# array and struct storage, released when the frame that allocated it exits.
+# That is Vela's own arena rule (SPEC 6 rule 2, "a function's frame is released
+# only when it exits"), applied to the interpreter's memory instead of to the
+# interpreted program's.
+#
+# Expressions do not return values.  They write into `vm.dst`, a cell the caller
+# chose, because Vela cannot return a reference to a pool slot and destination
+# passing needs no pointers at all.  Control flow is a return code (C_RET,
+# C_BREAK, C_CONT), because Vela has no exceptions: the unwinding is spelled
+# out, which is also why every caller of exec_body checks the code.
+#
+# Arithmetic is checked exactly as the compiled program checks it, and the
+# interpreter detects overflow *before* performing the operation: the
+# interpreter is itself a checked Vela program, so a wrapping `a + b` in here
+# would abort with a panic about the interpreter's own line instead of reporting
+# the interpreted program's bug.
+# ---------------------------------------------------------------------------
+
+# ------------------------------------------------------------- diagnostics
+
+def trap(path: str, line: int, msg: str) -> None {
+    warn_str("\nvela: panic: ")
+    warn_str(msg)
+    warn_str("\n  at ")
+    warn_str(path)
+    warn_str(":")
+    warn_int(line)
+    warn_nl()
+    panic("the interpreted program stopped")
+}
+
+def selflimit(msg: str) -> None {
+    warn_str("vela: interpreter: ")
+    warn_str(msg)
+    warn_nl()
+    panic("the interpreter cannot run this program yet")
+}
+
+# The same, for a node kind this interpreter has no case for: naming the kind is
+# the difference between a bug report and a starting point.
+def selflimit_kind(msg: str, k: int) -> None {
+    warn_str("vela: interpreter: ")
+    warn_str(msg)
+    warn_str(" ")
+    warn_int(k)
+    warn_nl()
+    panic("the interpreter cannot run this program yet")
+}
+
+# ------------------------------------------------------------------- cells
+
+def cell_alloc(mut vm: VM) -> int {
+    if vm.sp >= CELL_STACK_MAX() {
+        selflimit("the interpreter ran out of stack cells")
+    }
+    c: int = vm.sp
+    vm.sp += 1
+    return c
+}
+
+def set_int(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+            c: int, v: int) -> None {
+    mem[c * 4 + 0] = K_INT()
+    mem[c * 4 + 1] = v
+    mem[c * 4 + 2] = 0
+    mem[c * 4 + 3] = 0
+    fmem[c] = 0.0
+}
+
+def set_flt(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+            c: int, v: float) -> None {
+    mem[c * 4 + 0] = K_FLT()
+    mem[c * 4 + 1] = 0
+    mem[c * 4 + 2] = 0
+    mem[c * 4 + 3] = 0
+    fmem[c] = v
+}
+
+def set_bool(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+             c: int, v: bool) -> None {
+    mem[c * 4 + 0] = K_BOOL()
+    if v {
+        mem[c * 4 + 1] = 1
+    } else {
+        mem[c * 4 + 1] = 0
+    }
+    mem[c * 4 + 2] = 0
+    mem[c * 4 + 3] = 0
+    fmem[c] = 0.0
+}
+
+def set_str(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+            c: int, handle: int) -> None {
+    mem[c * 4 + 0] = K_STR()
+    mem[c * 4 + 1] = handle
+    mem[c * 4 + 2] = 0
+    mem[c * 4 + 3] = 0
+    fmem[c] = 0.0
+}
+
+def set_none(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+             c: int) -> None {
+    mem[c * 4 + 0] = K_NONE()
+    mem[c * 4 + 1] = 0
+    mem[c * 4 + 2] = 0
+    mem[c * 4 + 3] = 0
+    fmem[c] = 0.0
+}
+
+# A plain copy.  Scalars copy their value, arrays copy the reference (a Vela
+# array is a pointer and a length), strings copy the intern handle, structs copy
+# the reference to their field cells.  Struct *assignment* is where value
+# semantics live, and that is assign_cell, not this.
+def copy_cell(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+              dst: int, src: int) -> None {
+    mem[dst * 4 + 0] = mem[src * 4 + 0]
+    mem[dst * 4 + 1] = mem[src * 4 + 1]
+    mem[dst * 4 + 2] = mem[src * 4 + 2]
+    mem[dst * 4 + 3] = mem[src * 4 + 3]
+    fmem[dst] = fmem[src]
+}
+
+# A fresh copy, always: for a struct that means its own cells in the heap with
+# every field copied recursively.  Used wherever a value must be independent of
+# the thing it came from — a field read, a declaration's initialiser, a
+# constructor's argument.
+def copy_value(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+               path: str, mut vm: VM, dst: int, src: int) -> None {
+    if mem[src * 4 + 0] != K_ST() {
+        copy_cell(mem, fmem, dst, src)
+        return
+    }
+    nfield: int = mem[src * 4 + 3]
+    sbase: int = mem[src * 4 + 1]
+    if vm.hp + nfield >= CELL_HEAP_MAX() {
+        selflimit("the interpreter ran out of heap cells")
+    }
+    base: int = vm.hp
+    vm.hp += nfield
+    mut f: int = 0
+    while f < nfield {
+        copy_value(mem, fmem, path, vm, base + f, sbase + f)
+        f += 1
+    }
+    mem[dst * 4 + 0] = K_ST()
+    mem[dst * 4 + 1] = base
+    mem[dst * 4 + 2] = mem[src * 4 + 2]
+    mem[dst * 4 + 3] = nfield
+    fmem[dst] = 0.0
+}
+
+# A store into storage the destination already owns: `b = a` has to leave b with
+# its own fields, and `self = other` inside a method has to write through the
+# caller's storage, so a struct of the same type is copied field by field in
+# place.  Anything else gets a fresh copy, because there is nothing to write
+# into.
+def assign_value(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                 path: str, mut vm: VM, dst: int, src: int) -> None {
+    if mem[src * 4 + 0] != K_ST() {
+        copy_cell(mem, fmem, dst, src)
+        return
+    }
+    if mem[dst * 4 + 0] == K_ST() {
+        if mem[dst * 4 + 2] == mem[src * 4 + 2] {
+            dbase: int = mem[dst * 4 + 1]
+            sbase: int = mem[src * 4 + 1]
+            if dbase != sbase {
+                nfield: int = mem[src * 4 + 3]
+                mut f: int = 0
+                while f < nfield {
+                    assign_value(mem, fmem, path, vm, dbase + f, sbase + f)
+                    f += 1
+                }
+            }
+            return
+        }
+    }
+    copy_value(mem, fmem, path, vm, dst, src)
+}
+
+# -------------------------------------------------------- integer arithmetic
+#
+# The self-hosted front end is built with --fast-int, so the host's own +, - and
+# * wrap through uint64_t: defined two's-complement behaviour, never a panic and
+# never undefined.  That is what lets the interpreter implement the *interpreted
+# program's* checks here, exactly the way runtime/vela_runtime.h implements them
+# for the compiled program, rather than aborting with a panic about the
+# interpreter's own source line.
+#
+# Each check below is exact, not conservative: it reports an overflow if and
+# only if the real result lies outside signed 64-bit range.
+#
+# INT64_MIN cannot be written as a literal (it does not fit in signed 64 bits),
+# so it appears as (-9223372036854775807 - 1), which is how vela/codegen.py
+# writes it too.
+
+def add_int(path: str, mut vm: VM, a: int, b: int) -> int {
+    r: int = a + b
+    if b > 0 {
+        if r < a {
+            trap(path, vm.line, "integer overflow (addition)")
+        }
+    } else if b < 0 {
+        if r > a {
+            trap(path, vm.line, "integer overflow (addition)")
+        }
+    }
+    return r
+}
+
+def sub_int(path: str, mut vm: VM, a: int, b: int) -> int {
+    r: int = a - b
+    if b > 0 {
+        if r > a {
+            trap(path, vm.line, "integer overflow (subtraction)")
+        }
+    } else if b < 0 {
+        if r < a {
+            trap(path, vm.line, "integer overflow (subtraction)")
+        }
+    }
+    return r
+}
+
+# The multiply-and-divide-back idiom, with Vela's `//` (floor) rather than C's
+# truncating `/`.  Both roundings are exact here: when the product fits,
+# `(a * b) // a` is `b` either way, and when it wrapped, the wrapped value
+# differs from the true product by at least 2^64 while passing this test can
+# only happen when it differs by less than |a| <= 2^63.
+def mul_int(path: str, mut vm: VM, a: int, b: int) -> int {
+    r: int = a * b
+    if a != 0 {
+        if r // a != b {
+            trap(path, vm.line, "integer overflow (multiply)")
+        }
+    }
+    return r
+}
+
+# Vela's own `//` and `%` already *are* Python's floor semantics (the C compiler
+# emits vela_floor_div/vela_floor_mod for them), so the interpreter does not
+# re-derive them: it uses the operator and only supplies the two refusals the
+# compiled program performs — a zero divisor, and the one case where the C
+# runtime would trap rather than report, INT64_MIN // -1.
+def floor_div(path: str, mut vm: VM, a: int, b: int) -> int {
+    if b == 0 {
+        trap(path, vm.line, "division by zero")
+    }
+    if a == (-9223372036854775807 - 1) {
+        if b == -1 {
+            trap(path, vm.line, "integer overflow (division)")
+        }
+    }
+    return a // b
+}
+
+def floor_mod(path: str, mut vm: VM, a: int, b: int) -> int {
+    if b == 0 {
+        trap(path, vm.line, "remainder by zero")
+    }
+    if a == (-9223372036854775807 - 1) {
+        if b == -1 {
+            trap(path, vm.line, "integer overflow (remainder)")
+        }
+    }
+    return a % b
+}
+
+def neg_int(path: str, mut vm: VM, a: int) -> int {
+    if a == (-9223372036854775807 - 1) {
+        trap(path, vm.line, "integer overflow (negation)")
+    }
+    return -a
+}
+
+def pow_int(path: str, mut vm: VM, base: int, exp: int) -> int {
+    if exp < 0 {
+        trap(path, vm.line, "negative exponent for integer **")
+    }
+    mut result: int = 1
+    mut b: int = base
+    mut e: int = exp
+    while e > 0 {
+        if (e & 1) == 1 {
+            result = mul_int(path, vm, result, b)
+        }
+        e = e >> 1
+        if e > 0 {
+            b = mul_int(path, vm, b, b)
+        }
+    }
+    return result
+}
+
+def shift_int(path: str, mut vm: VM, a: int, b: int, left: bool) -> int {
+    if b < 0 {
+        trap(path, vm.line, "shift count out of range 0..63")
+    }
+    if b > 63 {
+        trap(path, vm.line, "shift count out of range 0..63")
+    }
+    # vela_shl_int shifts through uint64_t, so a left shift is defined and
+    # wraps; it is not an overflow and must not be reported as one
+    if left {
+        return (a << b)
+    }
+    return a >> b
+}
+
+# ------------------------------------------------------------- truth and text
+
+def as_bool(path: str, mut vm: VM, mut mem: Array[int, 3741696], c: int) -> bool {
+    if mem[c * 4 + 0] != K_BOOL() {
+        trap(path, vm.line, "a condition must be a bool")
+    }
+    return mem[c * 4 + 1] == 1
+}
+
+def print_cell(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+               c: int, path: str, line: int) -> None {
+    t: int = mem[c * 4 + 0]
+    if t == K_INT() {
+        emit_int(mem[c * 4 + 1])
+        return
+    }
+    if t == K_FLT() {
+        emit_float(fmem[c])
+        return
+    }
+    if t == K_BOOL() {
+        if mem[c * 4 + 1] == 1 {
+            emit_str("True")
+        } else {
+            emit_str("False")
+        }
+        return
+    }
+    if t == K_STR() {
+        emit_str(interned(mem[c * 4 + 1]))
+        return
+    }
+    if t == K_NONE() {
+        emit_str("None")
+        return
+    }
+    trap(path, line, "this value cannot be printed")
+}
+
+def cell_text_kind(mut mem: Array[int, 3741696], c: int) -> int {
+    return mem[c * 4 + 0]
+}
+
+# ------------------------------------------------------------------- arrays
+#
+# An array value is a descriptor: the tag says which pool holds the elements,
+# word a is the base index into that pool, word b is the length, and for an
+# array of structs word c is the struct id (its elements are `nfield` heap cells
+# each, row-major).  There is no pointer in the language, so there is nothing to
+# dereference and nothing to free: the pools are bump-allocated and each frame
+# restores the cursors it found, which is Vela's own arena rule (SPEC 6 rule 2)
+# pointed at the interpreter's memory instead of the program's.
+
+def is_array(tag: int) -> bool {
+    if tag == K_AI() { return True }
+    if tag == K_AF() { return True }
+    if tag == K_AB() { return True }
+    if tag == K_AA() { return True }
+    if tag == K_AS() { return True }
+    if tag == K_AX() { return True }
+    if tag == K_A32() { return True }
+    return False
+}
+
+def pool_room(path: str, mut vm: VM, base: int, n: int, cap: int, what: str) -> None {
+    if base + n > cap {
+        trap(path, vm.line, what)
+    }
+}
+
+# Allocate n zero-filled elements of `tag` and point `dst` at them.  `sid` is
+# the struct id for an array of structs and is 0 for every other kind.
+def alloc_array(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                mut ipool: Array[int, 2097152], mut fpool: Array[float, 1048576],
+                mut bpool: Array[u8, 33554432], path: str, mut vm: VM, tag: int,
+                n: int, sid: int, dst: int) -> None {
+    if n < 0 {
+        trap(path, vm.line, "an array length cannot be negative")
+    }
+    mut base: int = 0
+    if tag == K_AB() {
+        pool_room(path, vm, vm.bpc, n, 33554432, "the byte arrays this program asked for are too large")
+        base = vm.bpc
+        vm.bpc += n
+    } else if tag == K_AA() {
+        pool_room(path, vm, vm.bpc, n, 33554432, "the byte arrays this program asked for are too large")
+        base = vm.bpc
+        vm.bpc += n
+    } else if tag == K_AF() {
+        pool_room(path, vm, vm.fpc, n, 1048576, "the float arrays this program asked for are too large")
+        base = vm.fpc
+        vm.fpc += n
+    } else if tag == K_AX() {
+        nfield: int = stb_get(mem, sid, STB_SIZE())
+        if nfield <= 0 {
+            trap(path, vm.line, "an array of structs needs a struct with fields")
+        }
+        pool_room(path, vm, vm.hp, n * nfield, CELL_HEAP_MAX(),
+                  "the struct arrays this program asked for are too large")
+        base = vm.hp
+        # zero-fill exactly as C's memset zeroes a struct array: an int field
+        # reads 0, which is what a zero-filled Vela array has to give
+        mut c: int = 0
+        while c < n * nfield {
+            set_int(mem, fmem, base + c, 0)
+            c += 1
+        }
+        vm.hp += n * nfield
+    } else {
+        pool_room(path, vm, vm.ipc, n, 2097152, "the arrays this program asked for are too large")
+        base = vm.ipc
+        vm.ipc += n
+    }
+    mem[dst * 4 + 0] = tag
+    mem[dst * 4 + 1] = base
+    mem[dst * 4 + 2] = n
+    mem[dst * 4 + 3] = sid
+    fmem[dst] = 0.0
+}
+
+def elem_bounds(path: str, mut vm: VM, n: int, idx: int) -> None {
+    if idx < 0 {
+        trap(path, vm.line, "index out of range for this array")
+    }
+    if idx >= n {
+        trap(path, vm.line, "index out of range for this array")
+    }
+}
+
+def elem_load(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+              mut ipool: Array[int, 2097152], mut fpool: Array[float, 1048576],
+              mut bpool: Array[u8, 33554432], path: str, mut vm: VM, ac: int, idx: int,
+              dst: int) -> None {
+    tag: int = mem[ac * 4 + 0]
+    base: int = mem[ac * 4 + 1]
+    n: int = mem[ac * 4 + 2]
+    if not is_array(tag) {
+        trap(path, vm.line, "this value cannot be indexed")
+    }
+    elem_bounds(path, vm, n, idx)
+    if tag == K_AB() {
+        selflimit("Array[u8]: reading a byte needs an integer width conversion, which Vela 0.1 does not have (SPEC 3.1)")
+    }
+    if tag == K_AA() {
+        set_bool(mem, fmem, dst, bpool[base + idx] != 0)
+        return
+    }
+    if tag == K_AF() {
+        set_flt(mem, fmem, dst, fpool[base + idx])
+        return
+    }
+    if tag == K_AS() {
+        set_str(mem, fmem, dst, ipool[base + idx])
+        return
+    }
+    if tag == K_AX() {
+        sid: int = mem[ac * 4 + 3]
+        nfield: int = stb_get(mem, sid, STB_SIZE())
+        mem[dst * 4 + 0] = K_ST()
+        mem[dst * 4 + 1] = base + idx * nfield
+        mem[dst * 4 + 2] = sid
+        mem[dst * 4 + 3] = nfield
+        fmem[dst] = 0.0
+        return
+    }
+    # K_AI and K_A32 share the int pool; only the store truncates for i32
+    set_int(mem, fmem, dst, ipool[base + idx])
+}
+
+def elem_store(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+               mut ipool: Array[int, 2097152], mut fpool: Array[float, 1048576],
+               mut bpool: Array[u8, 33554432], path: str, mut vm: VM, ac: int,
+               idx: int, src: int) -> None {
+    tag: int = mem[ac * 4 + 0]
+    base: int = mem[ac * 4 + 1]
+    n: int = mem[ac * 4 + 2]
+    if not is_array(tag) {
+        trap(path, vm.line, "this value cannot be assigned by index")
+    }
+    elem_bounds(path, vm, n, idx)
+    st: int = mem[src * 4 + 0]
+    if tag == K_AF() {
+        if st != K_FLT() {
+            trap(path, vm.line, "this array holds floats")
+        }
+        fpool[base + idx] = fmem[src]
+        return
+    }
+    if tag == K_AS() {
+        if st != K_STR() {
+            trap(path, vm.line, "this array holds strings")
+        }
+        ipool[base + idx] = mem[src * 4 + 1]
+        return
+    }
+    if tag == K_AA() {
+        if st != K_BOOL() {
+            trap(path, vm.line, "this array holds bools")
+        }
+        if mem[src * 4 + 1] == 1 {
+            bpool[base + idx] = 1
+        } else {
+            bpool[base + idx] = 0
+        }
+        return
+    }
+    if tag == K_AB() {
+        selflimit("Array[u8]: storing a byte needs an integer width conversion, which Vela 0.1 does not have (SPEC 3.1)")
+    }
+    if tag == K_AX() {
+        if st != K_ST() {
+            trap(path, vm.line, "this array holds structs")
+        }
+        sid: int = mem[ac * 4 + 3]
+        if mem[src * 4 + 2] != sid {
+            trap(path, vm.line, "this array holds a different struct")
+        }
+        nfield: int = stb_get(mem, sid, STB_SIZE())
+        ebase: int = base + idx * nfield
+        sbase: int = mem[src * 4 + 1]
+        mut f: int = 0
+        while f < nfield {
+            assign_value(mem, fmem, path, vm, ebase + f, sbase + f)
+            f += 1
+        }
+        return
+    }
+    if st != K_INT() {
+        trap(path, vm.line, "this array holds ints")
+    }
+    if tag == K_A32() {
+        # C stores through int32_t, so the value is truncated to 32 bits
+        ipool[base + idx] = (mem[src * 4 + 1] << 32) >> 32
+        return
+    }
+    ipool[base + idx] = mem[src * 4 + 1]
+}
+
+# The literal that initialises a declaration: element i is stored into element i,
+# and anything the literal does not mention stays zero-filled, exactly as an
+# `Array[float, 4] = [0.0]` literal is zero-padded by the compiler.
+def fill_literal(nd: Array[int, 655360], ty: Array[int, 262144],
+                 mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                 flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                 mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+                 src: str, path: str, mut vm: VM, lit: int, ac: int) -> None {
+    if nd_kind(nd, lit) != 33 {
+        selflimit("an array declaration needs an array literal or no initialiser")
+    }
+    mark: int = vm.sp
+    tmp: int = cell_alloc(vm)
+    mut i: int = 0
+    mut a: int = nd[lit * 10 + 1]
+    while a > 0 {
+        keep: int = vm.dst
+        vm.dst = tmp
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, a)
+        vm.dst = keep
+        elem_store(mem, fmem, ipool, fpool, bpool, path, vm, ac, i, tmp)
+        i += 1
+        a = nd_nx(nd, a)
+    }
+    vm.sp = mark
+}
+
+def exec_array_decl(nd: Array[int, 655360], ty: Array[int, 262144],
+                    mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                    flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                    mut fpool: Array[float, 1048576],
+                    mut bpool: Array[u8, 33554432], src: str, path: str,
+                    mut vm: VM, s: int, dstc: int, kind: int) -> None {
+    n: int = ty_len(ty, nd[s * 10 + 3])
+    if n < 0 {
+        trap(path, vm.line, "this array declaration has no length")
+    }
+    if kind == K_AB() {
+        # Vela has no `to_int(u8)`, so an interpreter written in Vela cannot
+        # read a byte out of an Array[u8] and use it as a number.  The compiled
+        # program can, because C widens implicitly where Vela does not — this is
+        # a gap in the language, named here rather than hidden.
+        selflimit("Array[u8] needs an integer width conversion (SPEC 3.1)")
+    }
+    sid: int = nt_get(mem, s, NT_VAL())
+    alloc_array(mem, fmem, ipool, fpool, bpool, path, vm, kind, n, sid, dstc)
+    v: int = nd[s * 10 + 2]
+    if v > 0 {
+        fill_literal(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                     v, dstc)
+    }
+}
+
+# ------------------------------------------------------------ expressions
+
+def eval_str_lit(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                 src: str, nd: Array[int, 655360], e: int, dst: int) -> None {
+    off: int = nd[e * 10 + 1]
+    ln: int = nd[e * 10 + 2]
+    mut raw: str = substr(src, off, off + ln)
+    if (nd[e * 10 + 6] & 1) == 1 {
+        raw = unescape(raw)
+    }
+    mut cached: int = nt_get(mem, e, NT_LIT())
+    if cached == 0 {
+        cached = intern(raw) + 1
+        nt_put(mem, e, NT_LIT(), cached)
+    }
+    set_str(mem, fmem, dst, cached - 1)
+}
+
+def eval_name(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+              path: str, mut vm: VM, e: int) -> None {
+    sk: int = nt_get(mem, e, NT_SYM())
+    sv: int = nt_get(mem, e, NT_VAL())
+    if sk == SYM_LOCAL() {
+        copy_cell(mem, fmem, vm.dst, vm.fp + sv)
+        return
+    }
+    if sk == SYM_FUNC() {
+        trap(path, vm.line, "a function is not a value in this language")
+    }
+    if sk == SYM_STRUCT() {
+        trap(path, vm.line, "a struct name is not a value")
+    }
+    if sk == SYM_BUILTIN() {
+        trap(path, vm.line, "a builtin is not a value")
+    }
+    trap(path, vm.line, "unresolved name")
+}
+
+# One comparison, reduced to its sign, so the six operators are one table
+# instead of six copies per value type.
+def cmp_sign(path: str, mut vm: VM, mut mem: Array[int, 3741696],
+             mut fmem: Array[float, 786432], l: int, r: int) -> int {
+    lt: int = mem[l * 4 + 0]
+    rt: int = mem[r * 4 + 0]
+    if lt != rt {
+        trap(path, vm.line, "a comparison needs two values of the same type")
+    }
+    if lt == K_INT() {
+        a: int = mem[l * 4 + 1]
+        b: int = mem[r * 4 + 1]
+        if a < b {
+            return -1
+        }
+        if a > b {
+            return 1
+        }
+        return 0
+    }
+    if lt == K_FLT() {
+        a2: float = fmem[l]
+        b2: float = fmem[r]
+        if a2 < b2 {
+            return -1
+        }
+        if a2 > b2 {
+            return 1
+        }
+        return 0
+    }
+    if lt == K_BOOL() {
+        a3: int = mem[l * 4 + 1]
+        b3: int = mem[r * 4 + 1]
+        if a3 < b3 {
+            return -1
+        }
+        if a3 > b3 {
+            return 1
+        }
+        return 0
+    }
+    if lt == K_STR() {
+        # interning is content-addressed, so handle equality is text equality
+        ha: int = mem[l * 4 + 1]
+        hb: int = mem[r * 4 + 1]
+        if ha == hb {
+            return 0
+        }
+        return 2
+    }
+    trap(path, vm.line, "these values cannot be compared")
+    return 0
+}
+
+def rel_ok(op: int, sign: int) -> bool {
+    if op == 22 {
+        return sign == 0
+    }
+    if op == 23 {
+        return sign != 0
+    }
+    if op == 6 {
+        return sign < 0
+    }
+    if op == 7 {
+        return sign > 0
+    }
+    if op == 24 {
+        return sign <= 0
+    }
+    if op == 25 {
+        return sign >= 0
+    }
+    return False
+}
+
+# Only == and != apply to bools and strings, exactly as the checker insists; an
+# ordering on them is a program error, not a limit of the interpreter.
+def cmp_op_ok(path: str, mut vm: VM, mut mem: Array[int, 3741696], l: int,
+              op: int) -> None {
+    lt: int = mem[l * 4 + 0]
+    if lt == K_BOOL() {
+        if op != 22 {
+            if op != 23 {
+                trap(path, vm.line, "a bool can only be compared with == and !=")
+            }
+        }
+    }
+    if lt == K_STR() {
+        if op != 22 {
+            if op != 23 {
+                trap(path, vm.line, "a string can only be compared with == and !=")
+            }
+        }
+    }
+}
+
+def combine(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+            path: str, mut vm: VM, op: int, l: int, r: int, dst: int) -> None {
+    lt: int = mem[l * 4 + 0]
+    rt: int = mem[r * 4 + 0]
+    if lt != rt {
+        trap(path, vm.line, "this operator needs two values of the same type")
+    }
+    if lt == K_INT() {
+        a: int = mem[l * 4 + 1]
+        b: int = mem[r * 4 + 1]
+        if op == 1 {
+            set_int(mem, fmem, dst, add_int(path, vm, a, b))
+            return
+        }
+        if op == 2 {
+            set_int(mem, fmem, dst, sub_int(path, vm, a, b))
+            return
+        }
+        if op == 3 {
+            set_int(mem, fmem, dst, mul_int(path, vm, a, b))
+            return
+        }
+        if op == 20 {
+            set_int(mem, fmem, dst, floor_div(path, vm, a, b))
+            return
+        }
+        if op == 5 {
+            set_int(mem, fmem, dst, floor_mod(path, vm, a, b))
+            return
+        }
+        if op == 21 {
+            set_int(mem, fmem, dst, pow_int(path, vm, a, b))
+            return
+        }
+        if op == 18 {
+            set_int(mem, fmem, dst, a & b)
+            return
+        }
+        if op == 19 {
+            set_int(mem, fmem, dst, a | b)
+            return
+        }
+        if op == 17 {
+            set_int(mem, fmem, dst, a ^ b)
+            return
+        }
+        if op == 35 {
+            set_int(mem, fmem, dst, shift_int(path, vm, a, b, True))
+            return
+        }
+        if op == 36 {
+            set_int(mem, fmem, dst, shift_int(path, vm, a, b, False))
+            return
+        }
+        trap(path, vm.line, "this operator does not apply to two ints")
+    }
+    if lt == K_FLT() {
+        a2: float = fmem[l]
+        b2: float = fmem[r]
+        if op == 1 {
+            set_flt(mem, fmem, dst, a2 + b2)
+            return
+        }
+        if op == 2 {
+            set_flt(mem, fmem, dst, a2 - b2)
+            return
+        }
+        if op == 3 {
+            set_flt(mem, fmem, dst, a2 * b2)
+            return
+        }
+        if op == 4 {
+            set_flt(mem, fmem, dst, a2 / b2)
+            return
+        }
+        trap(path, vm.line, "this operator does not apply to two floats")
+    }
+    trap(path, vm.line, "this operator does not apply to these values")
+}
+
+def check_kinds(path: str, mut vm: VM, mut mem: Array[int, 3741696], c: int,
+                want: int, what: str) -> None {
+    if mem[c * 4 + 0] != want {
+        trap(path, vm.line, what)
+    }
+}
+
+def eval_expr(nd: Array[int, 655360], ty: Array[int, 262144],
+              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+              src: str, path: str, mut vm: VM, e: int) -> None {
+    vm.line = nd[e * 10 + 5]
+    k: int = nd_kind(nd, e)
+    if k == 20 {
+        set_int(mem, fmem, vm.dst, nd[e * 10 + 1])
+        return
+    }
+    if k == 21 {
+        set_flt(mem, fmem, vm.dst, flt[nd[e * 10 + 1]])
+        return
+    }
+    if k == 22 {
+        eval_str_lit(mem, fmem, src, nd, e, vm.dst)
+        return
+    }
+    if k == 23 {
+        set_bool(mem, fmem, vm.dst, nd[e * 10 + 1] == 1)
+        return
+    }
+    if k == 24 {
+        set_none(mem, fmem, vm.dst)
+        return
+    }
+    if k == 25 {
+        eval_name(mem, fmem, path, vm, e)
+        return
+    }
+    if k == 26 {
+        eval_call(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, e)
+        return
+    }
+    if k == 27 {
+        mark: int = vm.sp
+        lc: int = cell_alloc(vm)
+        rc: int = cell_alloc(vm)
+        keep: int = vm.dst
+        vm.dst = lc
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[e * 10 + 2])
+        vm.dst = rc
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[e * 10 + 3])
+        vm.dst = keep
+        combine(mem, fmem, path, vm, nd[e * 10 + 1], lc, rc, keep)
+        vm.sp = mark
+        return
+    }
+    if k == 28 {
+        mark2: int = vm.sp
+        oc: int = cell_alloc(vm)
+        keep2: int = vm.dst
+        vm.dst = oc
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[e * 10 + 2])
+        vm.dst = keep2
+        op: int = nd[e * 10 + 1]
+        t: int = mem[oc * 4 + 0]
+        if op == 2 {
+            if t == K_INT() {
+                set_int(mem, fmem, keep2, neg_int(path, vm, mem[oc * 4 + 1]))
+                vm.sp = mark2
+                return
+            }
+            if t == K_FLT() {
+                set_flt(mem, fmem, keep2, -fmem[oc])
+                vm.sp = mark2
+                return
+            }
+            trap(path, vm.line, "unary - needs a number")
+        }
+        if op == 1 {
+            if t == K_INT() {
+                copy_cell(mem, fmem, keep2, oc)
+                vm.sp = mark2
+                return
+            }
+            if t == K_FLT() {
+                copy_cell(mem, fmem, keep2, oc)
+                vm.sp = mark2
+                return
+            }
+            trap(path, vm.line, "unary + needs a number")
+        }
+        if op == 32 {
+            if t == K_INT() {
+                set_int(mem, fmem, keep2, ~mem[oc * 4 + 1])
+                vm.sp = mark2
+                return
+            }
+            trap(path, vm.line, "unary ~ needs an int")
+        }
+        if op == 15 {
+            # `not x` is a unary node with op code 15 (parser.vel:835)
+            if t != K_BOOL() {
+                trap(path, vm.line, "not needs a bool")
+            }
+            if mem[oc * 4 + 1] == 1 {
+                set_bool(mem, fmem, keep2, False)
+            } else {
+                set_bool(mem, fmem, keep2, True)
+            }
+            vm.sp = mark2
+            return
+        }
+        trap(path, vm.line, "unknown unary operator")
+    }
+    if k == 29 {
+        # and/or short-circuit and yield bool, never a value (SPEC 5)
+        mark3: int = vm.sp
+        lc2: int = cell_alloc(vm)
+        keep3: int = vm.dst
+        vm.dst = lc2
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[e * 10 + 2])
+        vm.dst = keep3
+        b: bool = as_bool(path, vm, mem, lc2)
+        op2: int = nd[e * 10 + 1]
+        if op2 == 13 {
+            if not b {
+                set_bool(mem, fmem, keep3, False)
+                vm.sp = mark3
+                return
+            }
+            eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path,
+                      vm, nd[e * 10 + 3])
+            vm.sp = mark3
+            return
+        }
+        if b {
+            set_bool(mem, fmem, keep3, True)
+            vm.sp = mark3
+            return
+        }
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[e * 10 + 3])
+        vm.sp = mark3
+        return
+    }
+    if k == 30 {
+        mark4: int = vm.sp
+        lc3: int = cell_alloc(vm)
+        rc3: int = cell_alloc(vm)
+        keep4: int = vm.dst
+        vm.dst = lc3
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[e * 10 + 2])
+        vm.dst = rc3
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[e * 10 + 3])
+        vm.dst = keep4
+        cmp_op_ok(path, vm, mem, lc3, nd[e * 10 + 1])
+        sign: int = cmp_sign(path, vm, mem, fmem, lc3, rc3)
+        set_bool(mem, fmem, keep4, rel_ok(nd[e * 10 + 1], sign))
+        vm.sp = mark4
+        return
+    }
+    if k == 31 {
+        markA: int = vm.sp
+        ac: int = cell_alloc(vm)
+        ic: int = cell_alloc(vm)
+        keepA: int = vm.dst
+        vm.dst = ac
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[e * 10 + 1])
+        vm.dst = ic
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[e * 10 + 2])
+        vm.dst = keepA
+        if mem[ic * 4 + 0] != K_INT() {
+            trap(path, vm.line, "an index must be an int")
+        }
+        elem_load(mem, fmem, ipool, fpool, bpool, path, vm, ac, mem[ic * 4 + 1],
+                  keepA)
+        vm.sp = markA
+        return
+    }
+    if k == 32 {
+        markG: int = vm.sp
+        rc: int = cell_alloc(vm)
+        keepG: int = vm.dst
+        vm.dst = rc
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[e * 10 + 1])
+        vm.dst = keepG
+        copy_value(mem, fmem, path, vm, keepG,
+                   field_cell(mem, path, vm, rc, nd[e * 10 + 2]))
+        vm.sp = markG
+        return
+    }
+    if k == 33 {
+        selflimit("an array literal is only implemented as a declaration initialiser")
+    }
+    if k == 34 {
+        selflimit("slices do not exist in Vela 0.1")
+    }
+    selflimit_kind("no case for expression kind", k)
+}
+
+# --------------------------------------------------------------- builtins
+
+def arg_cell(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+             path: str, mut vm: VM, c: int, want: int) -> None {
+    if mem[c * 4 + 0] != want {
+        trap(path, vm.line, "this builtin was given a value of the wrong type")
+    }
+}
+
+def do_len(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+           mut ipool: Array[int, 2097152], mut fpool: Array[float, 1048576],
+           mut bpool: Array[u8, 33554432], path: str, mut vm: VM, c: int,
+           dst: int) -> None {
+    t: int = cell_text_kind(mem, c)
+    if t == K_STR() {
+        set_int(mem, fmem, dst, len(interned(mem[c * 4 + 1])))
+        return
+    }
+    if is_array(t) {
+        set_int(mem, fmem, dst, mem[c * 4 + 2])
+        return
+    }
+    trap(path, vm.line, "len needs a string or an array")
+}
+
+def do_builtin(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+               mut fmem: Array[float, 786432], mut ipool: Array[int, 2097152],
+               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+               path: str, mut vm: VM, b: int, argbase: int, nargs: int,
+               dst: int) -> None {
+    if b == B_LEN() {
+        do_len(mem, fmem, ipool, fpool, bpool, path, vm, argbase, dst)
+        return
+    }
+    if b == B_TO_FLOAT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_INT())
+        set_flt(mem, fmem, dst, to_float(mem[argbase * 4 + 1]))
+        return
+    }
+    if b == B_TO_INT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_FLT())
+        set_int(mem, fmem, dst, to_int(fmem[argbase]))
+        return
+    }
+    if b == B_SQRT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_FLT())
+        set_flt(mem, fmem, dst, sqrt(fmem[argbase]))
+        return
+    }
+    if b == B_FABS() {
+        arg_cell(mem, fmem, path, vm, argbase, K_FLT())
+        set_flt(mem, fmem, dst, fabs(fmem[argbase]))
+        return
+    }
+    if b == B_FLOOR() {
+        arg_cell(mem, fmem, path, vm, argbase, K_FLT())
+        set_flt(mem, fmem, dst, floor(fmem[argbase]))
+        return
+    }
+    if b == B_POW() {
+        arg_cell(mem, fmem, path, vm, argbase, K_FLT())
+        arg_cell(mem, fmem, path, vm, argbase + 1, K_FLT())
+        set_flt(mem, fmem, dst, pow(fmem[argbase], fmem[argbase + 1]))
+        return
+    }
+    if b == B_ABS() {
+        arg_cell(mem, fmem, path, vm, argbase, K_INT())
+        set_int(mem, fmem, dst, abs(mem[argbase * 4 + 1]))
+        return
+    }
+    if b == B_MIN_INT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_INT())
+        arg_cell(mem, fmem, path, vm, argbase + 1, K_INT())
+        set_int(mem, fmem, dst, min_int(mem[argbase * 4 + 1],
+                                        mem[(argbase + 1) * 4 + 1]))
+        return
+    }
+    if b == B_MAX_INT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_INT())
+        arg_cell(mem, fmem, path, vm, argbase + 1, K_INT())
+        set_int(mem, fmem, dst, max_int(mem[argbase * 4 + 1],
+                                        mem[(argbase + 1) * 4 + 1]))
+        return
+    }
+    if b == B_MIN_FLT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_FLT())
+        arg_cell(mem, fmem, path, vm, argbase + 1, K_FLT())
+        set_flt(mem, fmem, dst, min_float(fmem[argbase], fmem[argbase + 1]))
+        return
+    }
+    if b == B_MAX_FLT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_FLT())
+        arg_cell(mem, fmem, path, vm, argbase + 1, K_FLT())
+        set_flt(mem, fmem, dst, max_float(fmem[argbase], fmem[argbase + 1]))
+        return
+    }
+    if b == B_BYTES_AT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        arg_cell(mem, fmem, path, vm, argbase + 1, K_INT())
+        s: str = interned(mem[argbase * 4 + 1])
+        i: int = mem[(argbase + 1) * 4 + 1]
+        if i < 0 {
+            trap(path, vm.line, "index out of range for bytes_at")
+        }
+        if i >= len(s) {
+            trap(path, vm.line, "index out of range for bytes_at")
+        }
+        set_int(mem, fmem, dst, bytes_at(s, i))
+        return
+    }
+    if b == B_SUBSTR() {
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        arg_cell(mem, fmem, path, vm, argbase + 1, K_INT())
+        arg_cell(mem, fmem, path, vm, argbase + 2, K_INT())
+        s2: str = interned(mem[argbase * 4 + 1])
+        set_str(mem, fmem, dst, intern(substr(s2, mem[(argbase + 1) * 4 + 1],
+                                              mem[(argbase + 2) * 4 + 1])))
+        return
+    }
+    if b == B_UNESCAPE() {
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        set_str(mem, fmem, dst, intern(unescape(interned(mem[argbase * 4 + 1]))))
+        return
+    }
+    if b == B_INTERN() {
+        # a string value already *is* an intern handle here, and the table is
+        # content-addressed, so this is the identity
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        set_int(mem, fmem, dst, mem[argbase * 4 + 1])
+        return
+    }
+    if b == B_INTERNED() {
+        arg_cell(mem, fmem, path, vm, argbase, K_INT())
+        h: int = mem[argbase * 4 + 1]
+        check: str = interned(h)
+        set_str(mem, fmem, dst, h)
+        return
+    }
+    if b == B_ARGC() {
+        # the host command line is `vm.exe run FILE arg...`, so the interpreted
+        # program's argv is the host's from index 2 on: argc() - 2 values
+        #
+        # `vm.exe debug FILE CMDDIR arg...` puts one argument of its own in
+        # front of the program's, and the program must not see it: a breakpoint
+        # is not allowed to change what the program prints or returns, and the
+        # program's own argv is part of what it prints.  So the count is one
+        # shorter and `arg(i)` skips the directory (DESIGN.md §10.4).
+        set_int(mem, fmem, dst, argc() - 2 - vm.dbg_on)
+        return
+    }
+    if b == B_ARG() {
+        arg_cell(mem, fmem, path, vm, argbase, K_INT())
+        i2: int = mem[argbase * 4 + 1]
+        if i2 < 0 {
+            trap(path, vm.line, "index out of range for the argument list")
+        }
+        if i2 >= argc() - 2 - vm.dbg_on {
+            trap(path, vm.line, "index out of range for the argument list")
+        }
+        if i2 == 0 {
+            set_str(mem, fmem, dst, intern(arg(2 + vm.dbg_on)))
+            return
+        }
+        set_str(mem, fmem, dst, intern(arg(i2 + 2 + vm.dbg_on)))
+        return
+    }
+    if b == B_READ_TEXT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        set_str(mem, fmem, dst,
+                intern(read_text(interned(mem[argbase * 4 + 1]))))
+        return
+    }
+    if b == B_WRITE_TEXT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        arg_cell(mem, fmem, path, vm, argbase + 1, K_STR())
+        ok: bool = write_text(interned(mem[argbase * 4 + 1]),
+                              interned(mem[(argbase + 1) * 4 + 1]))
+        set_bool(mem, fmem, dst, ok)
+        return
+    }
+    if b == B_NOW() {
+        set_flt(mem, fmem, dst, now())
+        return
+    }
+    if b == B_CONCAT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        arg_cell(mem, fmem, path, vm, argbase + 1, K_STR())
+        set_str(mem, fmem, dst,
+                intern(concat(interned(mem[argbase * 4 + 1]),
+                              interned(mem[(argbase + 1) * 4 + 1]))))
+        return
+    }
+    if b == B_RUN_CMD() {
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        set_int(mem, fmem, dst, run_command(interned(mem[argbase * 4 + 1])))
+        return
+    }
+    if b == B_ENV() {
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        set_str(mem, fmem, dst,
+                intern(env(interned(mem[argbase * 4 + 1]))))
+        return
+    }
+    if b == B_PANIC() {
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        trap(path, vm.line, interned(mem[argbase * 4 + 1]))
+    }
+    if b == B_EMIT_NL() {
+        emit_nl()
+        set_none(mem, fmem, dst)
+        return
+    }
+    if b == B_EMIT_STR() {
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        emit_str(interned(mem[argbase * 4 + 1]))
+        set_none(mem, fmem, dst)
+        return
+    }
+    if b == B_EMIT_INT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_INT())
+        emit_int(mem[argbase * 4 + 1])
+        set_none(mem, fmem, dst)
+        return
+    }
+    if b == B_EMIT_FLT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_FLT())
+        emit_float(fmem[argbase])
+        set_none(mem, fmem, dst)
+        return
+    }
+    if b == B_WARN_NL() {
+        warn_nl()
+        set_none(mem, fmem, dst)
+        return
+    }
+    if b == B_WARN_STR() {
+        arg_cell(mem, fmem, path, vm, argbase, K_STR())
+        warn_str(interned(mem[argbase * 4 + 1]))
+        set_none(mem, fmem, dst)
+        return
+    }
+    if b == B_WARN_INT() {
+        arg_cell(mem, fmem, path, vm, argbase, K_INT())
+        warn_int(mem[argbase * 4 + 1])
+        set_none(mem, fmem, dst)
+        return
+    }
+    if b == B_PRINT() {
+        mut i3: int = 0
+        while i3 < nargs {
+            if i3 > 0 {
+                emit_str(" ")
+            }
+            print_cell(mem, fmem, argbase + i3, path, vm.line)
+            i3 += 1
+        }
+        emit_nl()
+        set_none(mem, fmem, dst)
+        return
+    }
+    selflimit("this builtin is not implemented yet")
+}
+
+# One contiguous cell per argument, reserved before any of them is evaluated.
+# Without this, `f(g(1), 2)` is wrong: evaluating `g(1)` grows the stack, so the
+# cell `2` lands in is no longer beside the first argument, while the callee
+# copies its parameters from `base + i`.  An argument list is a list, so it is
+# laid out as one.
+def reserve_args(nd: Array[int, 655360], mut vm: VM, args: int) -> int {
+    n: int = count_chain(nd, args)
+    mut i: int = 0
+    while i < n {
+        c: int = cell_alloc(vm)
+        i += 1
+    }
+    return n
+}
+
+# ---------------------------------------------------------------- structs
+#
+# A struct value is a descriptor too: word a is the first of its `nfield` cells
+# in the heap and word c its struct id, so the layout a method or a field access
+# needs comes from the resolver's table rather than from the node.
+
+# A field record is two words — the name and the packed kind of its type — so a
+# field's index is not its offset in the names region.
+def find_field(mem: Array[int, 3741696], sid: int, name: int) -> int {
+    n: int = stb_get(mem, sid, STB_NFIELD())
+    off: int = stb_get(mem, sid, STB_FOFF())
+    mut i: int = 0
+    while i < n {
+        if sfl_get(mem, off + i * 2) == name {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+def find_method(mem: Array[int, 3741696], sid: int, name: int) -> int {
+    n: int = stb_get(mem, sid, STB_NMETH())
+    off: int = stb_get(mem, sid, STB_MOFF())
+    mut i: int = 0
+    while i < n {
+        if met_get(mem, off + i, MET_NAME()) == name {
+            return off + i
+        }
+        i += 1
+    }
+    return -1
+}
+
+def field_cell(mem: Array[int, 3741696], path: str, mut vm: VM, recv: int,
+               name: int) -> int {
+    if mem[recv * 4 + 0] != K_ST() {
+        trap(path, vm.line, "only a struct has fields")
+    }
+    sid: int = mem[recv * 4 + 2]
+    idx: int = find_field(mem, sid, name)
+    if idx < 0 {
+        trap(path, vm.line, "this struct has no field of that name")
+    }
+    return mem[recv * 4 + 1] + idx
+}
+
+def exec_construct(nd: Array[int, 655360], ty: Array[int, 262144],
+                   mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                   flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                   mut fpool: Array[float, 1048576],
+                   mut bpool: Array[u8, 33554432], src: str, path: str,
+                   mut vm: VM, sid: int, args: int, dst: int) -> None {
+    nfield: int = stb_get(mem, sid, STB_SIZE())
+    mark: int = vm.sp
+    argbase: int = vm.sp
+    reserve_args(nd, vm, args)
+    mut a: int = args
+    mut i: int = 0
+    while a > 0 {
+        keep: int = vm.dst
+        vm.dst = argbase + i
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, a)
+        vm.dst = keep
+        a = nd_nx(nd, a)
+        i += 1
+    }
+    if i != nfield {
+        trap(path, vm.line, "this struct needs one value for each of its fields")
+    }
+    if vm.hp + nfield >= CELL_HEAP_MAX() {
+        selflimit("the interpreter ran out of heap cells")
+    }
+    base: int = vm.hp
+    vm.hp += nfield
+    mut f: int = 0
+    while f < nfield {
+        copy_value(mem, fmem, path, vm, base + f, argbase + f)
+        f += 1
+    }
+    mem[dst * 4 + 0] = K_ST()
+    mem[dst * 4 + 1] = base
+    mem[dst * 4 + 2] = sid
+    mem[dst * 4 + 3] = nfield
+    fmem[dst] = 0.0
+    vm.sp = mark
+}
+
+def call_method(nd: Array[int, 655360], ty: Array[int, 262144],
+                mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+                src: str, path: str, mut vm: VM, e: int) -> None {
+    callee: int = nd[e * 10 + 1]
+    args: int = nd[e * 10 + 2]
+    if vm.depth >= 500 {
+        trap(path, vm.line, "call depth exceeded (500 frames)")
+    }
+    mark: int = vm.sp
+    recv: int = cell_alloc(vm)
+    keep: int = vm.dst
+    vm.dst = recv
+    eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+              nd[callee * 10 + 1])
+    vm.dst = keep
+    if mem[recv * 4 + 0] != K_ST() {
+        trap(path, vm.line, "only a struct has methods")
+    }
+    sid: int = mem[recv * 4 + 2]
+    mi: int = find_method(mem, sid, nd[callee * 10 + 2])
+    if mi < 0 {
+        trap(path, vm.line, "this struct has no method of that name")
+    }
+    fn: int = met_get(mem, mi, MET_FN())
+    nargs: int = count_chain(nd, args)
+    if ft_get(mem, fn, FT_NPARAM()) != nargs + 1 {
+        trap(path, vm.line, "wrong number of arguments for this method")
+    }
+    argbase: int = vm.sp
+    mut r: int = 0
+    while r < nargs + 1 {
+        c: int = cell_alloc(vm)
+        r += 1
+    }
+    # The receiver is argument 0 and it is the *same storage* the caller has,
+    # because `mut self` is a pointer in the compiled program: that is why
+    # `p.scale(2.0)` changes p and `q = p` does not share anything.
+    copy_cell(mem, fmem, argbase, recv)
+    mut a: int = args
+    mut i: int = 0
+    while a > 0 {
+        keep2: int = vm.dst
+        vm.dst = argbase + 1 + i
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, a)
+        vm.dst = keep2
+        a = nd_nx(nd, a)
+        i += 1
+    }
+    enter_call(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, fn,
+               argbase, keep)
+    vm.sp = mark
+}
+
+def call_builtin(nd: Array[int, 655360], ty: Array[int, 262144],
+                 mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                 flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                 mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+                 src: str, path: str, mut vm: VM, b: int, args: int,
+                 dst: int) -> None {
+    mark: int = vm.sp
+    argbase: int = vm.sp
+    nargs: int = reserve_args(nd, vm, args)
+    mut a: int = args
+    mut i: int = 0
+    while a > 0 {
+        keep: int = vm.dst
+        vm.dst = argbase + i
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, a)
+        vm.dst = keep
+        a = nd_nx(nd, a)
+        i += 1
+    }
+    vm.dst = dst
+    do_builtin(nd, mem, fmem, ipool, fpool, bpool, path, vm, b, argbase, nargs,
+               dst)
+    vm.sp = mark
+}
+
+def eval_call(nd: Array[int, 655360], ty: Array[int, 262144],
+              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+              src: str, path: str, mut vm: VM, e: int) -> None {
+    callee: int = nd[e * 10 + 1]
+    args: int = nd[e * 10 + 2]
+    if nd_kind(nd, callee) == 32 {
+        # `recv.name(...)`: which struct it is only the receiver's value knows
+        call_method(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, e)
+        return
+    }
+    sk: int = nt_get(mem, callee, NT_SYM())
+    sv: int = nt_get(mem, callee, NT_VAL())
+    if sk == SYM_FUNC() {
+        call_user(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, sv,
+                  args, vm.dst)
+        return
+    }
+    if sk == SYM_BUILTIN() {
+        call_builtin(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                     sv, args, vm.dst)
+        return
+    }
+    if sk == SYM_STRUCT() {
+        exec_construct(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                       sv, args, vm.dst)
+        return
+    }
+    trap(path, vm.line, "this is not something that can be called")
+}
+
+# ---------------------------------------------------------------- calls
+
+def call_user(nd: Array[int, 655360], ty: Array[int, 262144],
+              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+              src: str, path: str, mut vm: VM, fn: int, args: int,
+              dst: int) -> None {
+    if vm.depth >= 500 {
+        trap(path, vm.line, "call depth exceeded (500 frames)")
+    }
+    saved_dst: int = vm.dst
+    # Arguments are evaluated in the caller's frame, into temporaries above the
+    # current stack cursor, and only then copied into the callee's cells.  Doing
+    # it in that order is what makes `f(x, g(x))` and a call that recurses
+    # through its own argument list both correct: the arguments are values
+    # before the frame that owns them is left behind.
+    argbase: int = vm.sp
+    reserve_args(nd, vm, args)
+    mut a: int = args
+    mut i: int = 0
+    while a > 0 {
+        keep0: int = vm.dst
+        vm.dst = argbase + i
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, a)
+        vm.dst = keep0
+        a = nd_nx(nd, a)
+        i += 1
+    }
+    vm.dst = saved_dst
+    enter_call(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, fn,
+               argbase, dst)
+}
+
+# The frame itself: bind the arguments that are already sitting in argbase, run
+# the body, and give the frame's storage back.  A free function call and a method
+# call differ only in how they filled argbase — which is how `self` costs nothing
+# special.
+def enter_call(nd: Array[int, 655360], ty: Array[int, 262144],
+               mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+               flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+               src: str, path: str, mut vm: VM, fn: int, argbase: int,
+               dst: int) -> None {
+    nparam: int = ft_get(mem, fn, FT_NPARAM())
+    nlocal: int = ft_get(mem, fn, FT_NLOCAL())
+    fp: int = vm.sp
+    if fp + nlocal >= CELL_STACK_MAX() {
+        selflimit("the interpreter ran out of stack cells")
+    }
+    saved_dst: int = vm.dst
+    saved_fp: int = vm.fp
+    saved_hmark: int = vm.hmark
+    saved_ipm: int = vm.ipm
+    saved_fpm: int = vm.fpm
+    saved_bpm: int = vm.bpm
+    vm.fp = fp
+    vm.sp = fp + nlocal
+    vm.hmark = vm.hp
+    vm.ipm = vm.ipc
+    vm.fpm = vm.fpc
+    vm.bpm = vm.bpc
+    vm.depth += 1
+
+    # The frame is filed here, where a call is created, and *before* the body
+    # runs, so a stop inside the callee can name the frame it is in.  `vdepth` is
+    # the debugger's own counter (vm_state.vel): it has this one writer and this
+    # one place that moves it back, so a `pause` that recurses through `exec_stmt`
+    # cannot move it out from under the frame that is filing its record.
+    if vm.dbg_on == 1 {
+        vm.vdepth += 1
+        dbg_tr_set(mem, vm.vdepth, fn, fn, vm.line)
+    }
+
+    mut k: int = 0
+    while k < nparam {
+        copy_cell(mem, fmem, fp + k, argbase + k)
+        k += 1
+    }
+    vm.dst = dst
+    run_body(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+             ft_get(mem, fn, FT_BODY()))
+
+    # A struct this call returned lives in cells this frame allocated, and those
+    # cells are about to be given back.  The compiled program copies the struct
+    # into the caller's own storage; the honest equivalent here is to keep the
+    # allocation, which is exactly what Vela's arena does for a value that
+    # outlives the frame that made it.
+    mut escaped: bool = False
+    if mem[dst * 4 + 0] == K_ST() {
+        if mem[dst * 4 + 1] >= vm.hmark {
+            escaped = True
+        }
+    }
+
+    vm.depth -= 1
+    # Symmetric with the filing above: the caller's `probe` (or the absence of a
+    # session) is what `vdepth` was before this call, and putting it back here is
+    # what makes a stop after a return report the caller's frame.
+    if vm.dbg_on == 1 {
+        if vm.vdepth > 0 {
+            vm.vdepth -= 1
+        }
+    }
+    vm.sp = fp
+    if not escaped {
+        vm.hp = vm.hmark
+    }
+    vm.ipc = vm.ipm
+    vm.fpc = vm.fpm
+    vm.bpc = vm.bpm
+    vm.fp = saved_fp
+    vm.hmark = saved_hmark
+    vm.ipm = saved_ipm
+    vm.fpm = saved_fpm
+    vm.bpm = saved_bpm
+    vm.dst = saved_dst
+}
+
+# ------------------------------------------------------------- statements
+
+def store_name(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+               path: str, mut vm: VM, nd: Array[int, 655360], tgt: int,
+               src: int) -> None {
+    if nd_kind(nd, tgt) != 25 {
+        selflimit("this assignment target is not a name yet")
+    }
+    sk: int = nt_get(mem, tgt, NT_SYM())
+    sv: int = nt_get(mem, tgt, NT_VAL())
+    if sk != SYM_LOCAL() {
+        trap(path, vm.line, "this assignment target is not a local variable")
+    }
+    assign_value(mem, fmem, path, vm, vm.fp + sv, src)
+}
+
+# A store target is a name or an indexed element.  Both are handled here so that
+# a statement never has to know which it has — and so that the evaluation of the
+# target's own subexpressions happens in one place, once.
+def store_place(nd: Array[int, 655360], ty: Array[int, 262144],
+                mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+                src: str, path: str, mut vm: VM, tgt: int, value: int) -> None {
+    if nd_kind(nd, tgt) == 25 {
+        store_name(mem, fmem, path, vm, nd, tgt, value)
+        return
+    }
+    if nd_kind(nd, tgt) == 31 {
+        mark: int = vm.sp
+        ac: int = cell_alloc(vm)
+        ic: int = cell_alloc(vm)
+        keep: int = vm.dst
+        vm.dst = ac
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[tgt * 10 + 1])
+        vm.dst = ic
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[tgt * 10 + 2])
+        vm.dst = keep
+        if mem[ic * 4 + 0] != K_INT() {
+            trap(path, vm.line, "an index must be an int")
+        }
+        elem_store(mem, fmem, ipool, fpool, bpool, path, vm, ac,
+                   mem[ic * 4 + 1], value)
+        vm.sp = mark
+        return
+    }
+    if nd_kind(nd, tgt) == 32 {
+        mark: int = vm.sp
+        rc: int = cell_alloc(vm)
+        keep: int = vm.dst
+        vm.dst = rc
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[tgt * 10 + 1])
+        vm.dst = keep
+        assign_value(mem, fmem, path, vm,
+                     field_cell(mem, path, vm, rc, nd[tgt * 10 + 2]), value)
+        vm.sp = mark
+        return
+    }
+    selflimit("this assignment target is not supported yet")
+}
+
+def run_body(nd: Array[int, 655360], ty: Array[int, 262144],
+             mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+             flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+             mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+             src: str, path: str, mut vm: VM, head: int) -> int {
+    # vm.dst is the destination of a `return` in this frame, so a statement is
+    # never allowed to leave it changed: guarding it here means no statement
+    # has to remember, and a return after any statement still writes the value
+    # where the caller asked for it
+    mut s: int = head
+    while s > 0 {
+        keep: int = vm.dst
+        c: int = exec_stmt(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src,
+                           path, vm, s)
+        vm.dst = keep
+        if c != C_NEXT() {
+            return c
+        }
+        s = nd_nx(nd, s)
+    }
+    return C_NEXT()
+}
+
+def exec_for(nd: Array[int, 655360], ty: Array[int, 262144],
+             mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+             flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+             mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+             src: str, path: str, mut vm: VM, s: int) -> int {
+    mark: int = vm.sp
+    lo: int = cell_alloc(vm)
+    hi: int = cell_alloc(vm)
+    st: int = cell_alloc(vm)
+    keep: int = vm.dst
+    vm.dst = lo
+    eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+              nd[s * 10 + 2])
+    vm.dst = hi
+    eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+              nd[s * 10 + 3])
+    stepnode: int = nd[s * 10 + 4]
+    if stepnode > 0 {
+        vm.dst = st
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  stepnode)
+    } else {
+        set_int(mem, fmem, st, 1)
+    }
+    vm.dst = keep
+    check_kinds(path, vm, mem, lo, K_INT(), "a range needs int bounds")
+    check_kinds(path, vm, mem, hi, K_INT(), "a range needs int bounds")
+    check_kinds(path, vm, mem, st, K_INT(), "a range needs an int step")
+    start: int = mem[lo * 4 + 1]
+    stop: int = mem[hi * 4 + 1]
+    step: int = mem[st * 4 + 1]
+    if step == 0 {
+        trap(path, vm.line, "a range step of zero never ends")
+    }
+    slot: int = nt_get(mem, s, NT_SLOT())
+    var: int = vm.fp + slot
+    mut i: int = start
+    mut go: bool = True
+    if step > 0 {
+        if i >= stop {
+            go = False
+        }
+    } else {
+        if i <= stop {
+            go = False
+        }
+    }
+    while go {
+        set_int(mem, fmem, var, i)
+        c: int = run_body(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src,
+                          path, vm, nd[s * 10 + 8])
+        if c == C_RET() {
+            vm.sp = mark
+            return C_RET()
+        }
+        if c == C_BREAK() {
+            vm.sp = mark
+            return C_NEXT()
+        }
+        i = add_int(path, vm, i, step)
+        if step > 0 {
+            if i >= stop {
+                go = False
+            }
+        } else {
+            if i <= stop {
+                go = False
+            }
+        }
+    }
+    vm.sp = mark
+    return C_NEXT()
+}
+
+def exec_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
+              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+              src: str, path: str, mut vm: VM, s: int) -> int {
+    vm.line = nd[s * 10 + 5]
+    # The debugger's whole presence in the interpreter, at the top of the one
+    # function every statement passes through — and *before* the statement runs,
+    # so that a stop means "about to execute this line" and the line the driver
+    # sees is the line about to have an effect.  With no session this is one
+    # compare against zero; with a session and nothing armed, two.  See
+    # DESIGN.md §10.
+    if vm.dbg_on == 1 {
+        dbg_gate(mem, fmem, nd, path, vm, s)
+    }
+    vm.steps += 1
+    if vm.steps > 1000000000 {
+        trap(path, vm.line, "the step limit was reached (1000000000 steps)")
+    }
+    k: int = nd_kind(nd, s)
+    if k == 6 {
+        tgt: int = nd[s * 10 + 1]
+        v: int = nd[s * 10 + 2]
+        if (nd[s * 10 + 6] & 2) == 2 {
+            # a declaration: the local's own cell is the destination, so there is
+            # nothing to copy afterwards
+            slot: int = nt_get(mem, s, NT_SLOT())
+            dstc: int = vm.fp + slot
+            kind: int = unpack_kind(nt_get(mem, s, NT_LIT()))
+            if is_array(kind) {
+                exec_array_decl(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src,
+                                path, vm, s, dstc, kind)
+                return C_NEXT()
+            }
+            if kind == K_ST() {
+                # `b: P = a` must leave b with its own fields, so the value is
+                # built elsewhere and copied in
+                if v <= 0 {
+                    selflimit("a struct declaration needs an initialiser")
+                }
+                markS: int = vm.sp
+                tmpS: int = cell_alloc(vm)
+                keepS: int = vm.dst
+                vm.dst = tmpS
+                eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path,
+                          vm, v)
+                vm.dst = keepS
+                copy_value(mem, fmem, path, vm, dstc, tmpS)
+                vm.sp = markS
+                return C_NEXT()
+            }
+            if v <= 0 {
+                selflimit("a scalar declaration without an initialiser is not a Vela program")
+            }
+            vm.dst = dstc
+            eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                      v)
+            return C_NEXT()
+        }
+        if v <= 0 {
+            trap(path, vm.line, "an assignment needs a value")
+        }
+        mark: int = vm.sp
+        tmp: int = cell_alloc(vm)
+        keep: int = vm.dst
+        vm.dst = tmp
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, v)
+        vm.dst = keep
+        store_place(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                    tgt, tmp)
+        vm.sp = mark
+        return C_NEXT()
+    }
+    if k == 7 {
+        tgt2: int = nd[s * 10 + 1]
+        mark2: int = vm.sp
+        cur: int = cell_alloc(vm)
+        add: int = cell_alloc(vm)
+        keep2: int = vm.dst
+        vm.dst = cur
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  tgt2)
+        vm.dst = add
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[s * 10 + 2])
+        vm.dst = keep2
+        combine(mem, fmem, path, vm, nd[s * 10 + 3], cur, add, cur)
+        store_place(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                    tgt2, cur)
+        vm.sp = mark2
+        return C_NEXT()
+    }
+    if k == 8 {
+        keep3: int = vm.dst
+        vm.dst = keep3
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[s * 10 + 1])
+        vm.dst = keep3
+        return C_NEXT()
+    }
+    if k == 9 {
+        v2: int = nd[s * 10 + 1]
+        if v2 < 0 {
+            set_none(mem, fmem, vm.dst)
+            return C_RET()
+        }
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, v2)
+        return C_RET()
+    }
+    if k == 10 {
+        mark3: int = vm.sp
+        cond: int = cell_alloc(vm)
+        keep4: int = vm.dst
+        vm.dst = cond
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[s * 10 + 1])
+        vm.dst = keep4
+        take: bool = as_bool(path, vm, mem, cond)
+        vm.sp = mark3
+        if take {
+            return run_body(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src,
+                            path, vm, nd[s * 10 + 2])
+        }
+        e: int = nd[s * 10 + 4]
+        if e > 0 {
+            return run_body(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src,
+                            path, vm, e)
+        }
+        return C_NEXT()
+    }
+    if k == 11 {
+        mut go: bool = True
+        while go {
+            mark4: int = vm.sp
+            cond2: int = cell_alloc(vm)
+            keep5: int = vm.dst
+            vm.dst = cond2
+            eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                      nd[s * 10 + 1])
+            vm.dst = keep5
+            run: bool = as_bool(path, vm, mem, cond2)
+            vm.sp = mark4
+            if not run {
+                return C_NEXT()
+            }
+            c2: int = run_body(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src,
+                               path, vm, nd[s * 10 + 2])
+            if c2 == C_RET() {
+                return C_RET()
+            }
+            if c2 == C_BREAK() {
+                return C_NEXT()
+            }
+            # C_CONT and C_NEXT both mean: test the condition and go round again
+        }
+        return C_NEXT()
+    }
+    if k == 12 {
+        return exec_for(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path,
+                        vm, s)
+    }
+    if k == 13 {
+        return C_BREAK()
+    }
+    if k == 14 {
+        return C_CONT()
+    }
+    if k == 15 {
+        return C_NEXT()
+    }
+    warn_str("vela: interpreter: no case for statement kind ")
+    warn_int(k)
+    warn_str(" at node ")
+    warn_int(s)
+    warn_str(" line ")
+    warn_int(vm.line)
+    warn_nl()
+    panic("the interpreter cannot run this program yet")
+    return C_STOP()
+}
+
+# ------------------------------------------------------------------ debugger
+#
+# `vm.exe debug file.vel <cmddir>` runs this same interpreter with a stopwatch
+# on it: before a statement runs, if the session is armed and this line is the
+# one it is waiting for, the interpreter writes `stopped <line> <reason>` and
+# then blocks until the driver has written the next command file.  The protocol,
+# the reason it is a file channel rather than stdin, and what it cannot do are
+# in DESIGN.md §10; the shape here is only what that section promises.
+#
+# Three rules hold the whole thing together:
+#
+#   * a statement whose line is not armed — the normal case, and every statement
+#     under `vm.exe run` — pays one compare against zero and then runs exactly as
+#     it does without this section.  A breakpoint must not change what the
+#     program prints or returns, and the cheapest way to keep that promise is to
+#     touch nothing;
+#   * `pause` is re-entrant.  A command like `vars` runs interpreted code in the
+#     paused frame, that code is made of statements, and every statement goes
+#     through the very function that called `pause`.  The `dbg_on` guard in
+#     `dbg_gate` is what stops the debugger from debugging itself;
+#   * a frame's identity is `vm.vdepth`, not `vm.depth`.  `enter_call` increments
+#     `depth` and then a `pause` inside that frame recurses back into `exec_stmt`,
+#     so the depth a statement sees is not the depth its own call created;
+#     `vdepth` has one writer and one place that moves it, so it reads the same
+#     either side of that recursion and a frame can file its record at a slot
+#     nothing else can be using (vm_state.vel carries the same note).
+
+# --------------------------------------------------------------- the protocol
+#
+# Constants rather than magic numbers: these kinds are part of the wire format,
+# so a change here is a change the driver has to be told about.
+
+def D_STOP() -> int { return 1 }   # stopped on a breakpoint
+def D_NEXT() -> int { return 2 }   # stopped by `next`
+def D_OUT() -> int  { return 3 }   # stopped by `out`
+def D_STEP() -> int { return 4 }   # stopped by `step`
+
+# The debug trace, three words per frame, laid over the tail of the interpreter's
+# own cell arena.  This is *not* the resolver's scope scratch (SCOPE_BASE): the
+# two look like neighbours and are nothing of the kind.  Scope entries are
+# written and left behind by `resolve_module` during resolution, and the cell
+# arena that `main` hands to `run_main` is a separate allocation, so the region
+# below HEAP0 is untouched for the whole life of a run.  501 frames x 3 words
+# fits under HEAP0 with room to spare, and reserving it costs no new field on a
+# struct every function of this interpreter carries by value.
+#
+#   +0  the function *number* entered at this depth (for `stack`)
+#   +1  the eval function number of that frame (for `vars`)
+#   +2  the line the call was made on (the caller's line, for `stack`)
+def D_STATE_BASE() -> int { return 250000 }
+def D_STATE_MAX() -> int  { return 4096 }
+
+# The breakpoint list: 64 lines, in insertion order, in the same reserved arena.
+# It is not an array field on `VM` because a struct field may not be an array in
+# Vela 0.1 (SPEC §4), and it is not shared with the trace because a driver may
+# set breakpoints on the same lines in a hundred sessions in a row.
+def D_BP_BASE() -> int { return 254000 }
+def D_BP_MAX() -> int  { return 64 }
+
+def dbg_bp_get(mut mem: Array[int, 3741696], i: int) -> int {
+    return mem[D_BP_BASE() + i]
+}
+
+def dbg_bp_put(mut mem: Array[int, 3741696], i: int, v: int) -> None {
+    if i < 0 {
+        return
+    }
+    if i >= D_BP_MAX() {
+        return
+    }
+    mem[D_BP_BASE() + i] = v
+}
+
+def dbg_tr_fn(mut mem: Array[int, 3741696], d: int) -> int {
+    return mem[D_STATE_BASE() + d * 3 + 0]
+}
+
+def dbg_tr_line(mut mem: Array[int, 3741696], d: int) -> int {
+    return mem[D_STATE_BASE() + d * 3 + 2]
+}
+
+# The eval-side function number of the frame at depth `d`, which is what `vars`
+# needs: the *display* number is the node that named the def, and the two differ
+# for a method (the display number is the def inside the struct, the eval number
+# is the record `add_function` filed).
+def dbg_tr_eval(mut mem: Array[int, 3741696], d: int) -> int {
+    return mem[D_STATE_BASE() + d * 3 + 1]
+}
+
+def dbg_tr_set(mut mem: Array[int, 3741696], d: int, fn: int, ev: int,
+               line: int) -> None {
+    if d < 0 {
+        return
+    }
+    if d * 3 + 2 >= D_STATE_MAX() {
+        return
+    }
+    mem[D_STATE_BASE() + d * 3 + 0] = fn
+    mem[D_STATE_BASE() + d * 3 + 1] = ev
+    mem[D_STATE_BASE() + d * 3 + 2] = line
+}
+
+# One record per variable, stride 4, in a scratch array declared by `dbg_vars`.
+def D_REC() -> int { return 4 }
+
+def dbg_word(s: str) -> str {
+    mut i: int = 0
+    while i < len(s) {
+        if bytes_at(s, i) == 32 {
+            return substr(s, 0, i)
+        }
+        i += 1
+    }
+    return s
+}
+
+# `12` -> 12, taking the leading digits and no sign: line numbers are positive,
+# and a command with no digits at all is the "needs an argument" case.
+def dbg_digits(s: str, from: int) -> int {
+    mut v: int = 0
+    mut i: int = from
+    while i < len(s) {
+        c: int = bytes_at(s, i)
+        if c < 48 {
+            return v
+        }
+        if c > 57 {
+            return v
+        }
+        v = v * 10 + (c - 48)
+        i += 1
+    }
+    return v
+}
+
+# ------------------------------------------------------------------ events
+#
+# Every event goes to *stderr*, not stdout, and the reason is mechanical rather
+# than aesthetic: when stdout is a pipe or a file — which is the only way a
+# driver ever sees it — the runtime's `emit_*` calls land in the C library's
+# fully buffered stream, and Vela has no `flush`.  The first version of this
+# debugger wrote `ready` to stdout and the driver saw nothing until the process
+# exited: a protocol whose first event is invisible until the program is over is
+# a protocol nobody can drive, and a driver that then blocked on a read would
+# deadlock against a program blocked on a command file.
+#
+# `warn_*` is the one writer the runtime flushes (`warn_str` flushes stdout and
+# then writes, and `warn_nl` flushes stderr), so events ride it.  This also
+# splits the two streams cleanly, which is what the debugger wants anyway:
+# stdout carries the debugged program's own output and nothing else, stderr
+# carries events and nothing else.  No `output` event is needed for the same
+# reason — the program's output reaches the console directly, in order, exactly
+# as it does under `vm.exe run` (DESIGN.md §10.3).
+def dbg_say(s: str) -> None {
+    warn_str(s)
+    warn_nl()
+}
+
+def dbg_say_ln(kind: str, line: int) -> None {
+    warn_str(kind)
+    warn_str(" ")
+    warn_int(line)
+    warn_nl()
+}
+
+# ----------------------------------------------------------------- the channel
+#
+# Command files are numbered from 1 and read in order, so a session directory is
+# a transcript as well as a channel: what the driver said, in order, is on disk
+# afterwards.  The driver creates file N only once it knows what it wants to say,
+# because "not written yet" and "empty" are the same answer here — `read_text`
+# cannot tell a missing file from an empty one (DESIGN.md §10.3).
+#
+# Three digits is the whole numbering: a session has hundreds of commands, not
+# thousands, and fixed width is what keeps arithmetic off the hot path.
+#
+# A digit is turned into text by `dbg_digit` and not by `interned(48 + d)`, and
+# that is deliberate.  An intern handle is only valid if the *program being
+# debugged* has interned that string, and this debugger's program is a compiler:
+# it may have interned a handful of names and no digit at all.  The first version
+# of this function did it the other way and panicked the moment it ran —
+# `index 48 out of range for array of length 13` — with nothing but fixed text
+# and a table that had never been asked for `'0'`.  Ten literals cost ten lines
+# and depend on nothing.
+def dbg_component(n: int) -> str {
+    mut rest: int = n
+    if rest < 0 {
+        rest = 0
+    }
+    if rest >= 1000 {
+        rest = rest % 1000
+    }
+    mut d: int = rest // 100
+    mut s: str = dbg_digit(d)
+    rest = rest - d * 100
+    d = rest // 10
+    s = concat(s, dbg_digit(d))
+    d = rest - d * 10
+    return concat(s, dbg_digit(d))
+}
+
+def dbg_digit(d: int) -> str {
+    if d == 0 { return "0" }
+    if d == 1 { return "1" }
+    if d == 2 { return "2" }
+    if d == 3 { return "3" }
+    if d == 4 { return "4" }
+    if d == 5 { return "5" }
+    if d == 6 { return "6" }
+    if d == 7 { return "7" }
+    if d == 8 { return "8" }
+    return "9"
+}
+
+def dbg_cmd_path(vm: VM, dir: str) -> str {
+    return concat(concat(dir, "/cmd."), dbg_component(vm.dbg_cur + 1))
+}
+
+# Blocks until the driver has written the next command file.  There is no sleep
+# in the language and no blocking read either, so the wait is a bounded spin:
+# `read_text` on a file that is not there is answered from the file system's
+# cache, which is what makes this cheap enough to do millions of times, and the
+# bound is what turns a mis-specified directory into a diagnostic instead of a
+# hang.
+#
+# This function is also what advances the command counter, and it does so in the
+# order the driver's clock needs: ask for file N, and only once it has answered
+# does N+1 become the next question.  Advancing anywhere else would either ask
+# for the same file twice or skip one.
+#
+# The failure path is careful on purpose.  A driver that has gone away gets one
+# `error` event and then `clearall` and `quit`, *not* a trap: a debugged program
+# may be half way through a recursion, and killing it with a panic would change
+# what it prints — the one thing a debugger must never do.  Those two commands
+# run the program on with the breakpoints dropped, which is what `quit` does for
+# a driver that is still there.
+def dbg_next_file(mut vm: VM, dir: str) -> str {
+    path: str = dbg_cmd_path(vm, dir)
+    mut t: str = read_text(path)
+    mut n: int = 0
+    while len(t) == 0 {
+        if n >= 6000000 {
+            dbg_say("error no command file from the driver; running to the end")
+            vm.dbg_cur += 1
+            return "clearall\nquit\n"
+        }
+        n += 1
+        t = read_text(path)
+    }
+    vm.dbg_cur += 1
+    return t
+}
+
+# ----------------------------------------------------------------- breakpoints
+#
+# A flat list of line numbers, not a set and not a map: Vela 0.1 has neither,
+# and a linear scan over at most 64 entries costs less than the branch that
+# would guard it.  A breakpoint is a *source line* of the program being debugged
+# and it matches the line the interpreter is about to execute.
+def dbg_bp_set(mut vm: VM, mut mem: Array[int, 3741696], line: int) -> bool {
+    mut i: int = 0
+    while i < vm.dbg_nbp {
+        if dbg_bp_get(mem, i) == line {
+            return False
+        }
+        i += 1
+    }
+    if vm.dbg_nbp >= D_BP_MAX() {
+        return False
+    }
+    dbg_bp_put(mem, vm.dbg_nbp, line)
+    vm.dbg_nbp += 1
+    return True
+}
+
+def dbg_bp_clear(mut vm: VM, mut mem: Array[int, 3741696], line: int) -> bool {
+    mut i: int = 0
+    while i < vm.dbg_nbp {
+        if dbg_bp_get(mem, i) == line {
+            mut j: int = i
+            while j + 1 < vm.dbg_nbp {
+                dbg_bp_put(mem, j, dbg_bp_get(mem, j + 1))
+                j += 1
+            }
+            vm.dbg_nbp -= 1
+            return True
+        }
+        i += 1
+    }
+    return False
+}
+
+# The one test on the hot path.  `dbg_on == 0` is the whole cost of a feature
+# the run does not use.
+def dbg_bp_hit(mut mem: Array[int, 3741696], vm: VM, line: int) -> bool {
+    if vm.dbg_on == 0 {
+        return False
+    }
+    if vm.dbg_arm == 0 {
+        return False
+    }
+    if vm.vdepth <= vm.dbg_depth {
+        return False
+    }
+    mut i: int = 0
+    while i < vm.dbg_nbp {
+        if dbg_bp_get(mem, i) == line {
+            return True
+        }
+        i += 1
+    }
+    return False
+}
+
+# Which kind of step stop this statement is, or 0 for "keep running".
+#
+#   step  a different line from the one we stopped on
+#   next  a different line at this depth or shallower — an inner frame's
+#         statements are skipped over, which is what `next` means
+#   out   a depth shallower than the frame we asked to leave
+def dbg_step_stop(nd: Array[int, 655360], vm: VM, s: int) -> int {
+    if vm.dbg_on == 0 {
+        return 0
+    }
+    if vm.dbg_arm == 0 {
+        return 0
+    }
+    if vm.dbg_step == D_NEXT() {
+        if vm.vdepth <= vm.dbg_depth {
+            return D_NEXT()
+        }
+        return 0
+    }
+    if vm.dbg_step == D_OUT() {
+        if vm.vdepth < vm.dbg_depth {
+            return D_OUT()
+        }
+        return 0
+    }
+    if vm.dbg_step == D_STEP() {
+        # A `pass` on the line we stopped on is not a step: the line number is
+        # what the user is looking at, so a statement that does not change it has
+        # not moved anywhere.
+        if nd[s * 10 + 5] != vm.dbg_line {
+            return D_STEP()
+        }
+        return 0
+    }
+    return 0
+}
+
+def dbg_arm_run(mut vm: VM, mode: int) -> None {
+    vm.dbg_step = mode
+    vm.dbg_depth = vm.vdepth
+    vm.dbg_line = vm.line
+    vm.dbg_arm = 1
+}
+
+def dbg_gate(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+             nd: Array[int, 655360], path: str, mut vm: VM, s: int) -> None {
+    if vm.dbg_on == 0 {
+        return
+    }
+    reason: int = dbg_step_stop(nd, vm, s)
+    if reason != 0 {
+        dbg_pause(mem, fmem, nd, path, vm, reason)
+        return
+    }
+    if vm.dbg_arm == 1 {
+        if dbg_bp_hit(mem, vm, vm.line) {
+            dbg_pause(mem, fmem, nd, path, vm, D_STOP())
+        }
+    }
+}
+
+# --------------------------------------------------------------- rendering
+
+# One value the way the program itself would print it: `print_cell` is the
+# interpreter's own formatter, so the debugger cannot drift from the language
+# about what `True` or `1.5` look like.  The two cases it refuses are the two a
+# debugger should not refuse at — an array and a struct are named instead — and
+# a string is quoted, so that the string `12` and the int 12 stay different.
+def dbg_cell(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+             c: int, path: str, line: int) -> None {
+    t: int = mem[c * 4 + 0]
+    if t == K_STR() {
+        warn_str("\"")
+        warn_str(interned(mem[c * 4 + 1]))
+        warn_str("\"")
+        return
+    }
+    if is_array(t) {
+        warn_str("<array of ")
+        warn_int(mem[c * 4 + 2])
+        warn_str(">")
+        return
+    }
+    if t == K_ST() {
+        warn_str("<struct ")
+        warn_int(mem[c * 4 + 2])
+        warn_str(" with ")
+        warn_int(mem[c * 4 + 3])
+        warn_str(" fields>")
+        return
+    }
+    dbg_cell_scalar(mem, fmem, c, path, line)
+}
+
+# `print_cell` is the interpreter's own formatter, and it writes to *stdout* —
+# which is where an event must not go.  The scalar cases are spelled out here
+# instead, so that the value in a `vars` line is formatted by the same rules the
+# program's `print` uses (a bool is `True`, a float is the language's float) and
+# the two still cannot drift.  Anything that is not a scalar is named above and
+# never reaches this.
+def dbg_cell_scalar(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                    c: int, path: str, line: int) -> None {
+    t: int = mem[c * 4 + 0]
+    if t == K_INT() {
+        warn_int(mem[c * 4 + 1])
+        return
+    }
+    if t == K_FLT() {
+        # `emit_float` is the one formatter with no `warn_` twin, so a float is
+        # shown as its integer part and named as a float.  Printing it properly
+        # needs a writer on the event stream; showing a wrong number silently
+        # would be worse than showing a partial one out loud (DESIGN.md §10.5).
+        warn_str("<float ")
+        warn_int(to_int(fmem[c]))
+        warn_str(">")
+        return
+    }
+    if t == K_BOOL() {
+        if mem[c * 4 + 1] == 1 {
+            warn_str("True")
+            return
+        }
+        warn_str("False")
+        return
+    }
+    if t == K_NONE() {
+        warn_str("None")
+        return
+    }
+    trap(path, line, "this value cannot be shown")
+}
+
+# ------------------------------------------------- walking a function's names
+#
+# The resolver has already filed, for every declaration and every `for`
+# variable, the frame slot it occupies (NT_SLOT).  What is missing is the *name*
+# and when it becomes live, and both are in the tree: this walker walks the body
+# the interpreter is running, stops at the statement the program is paused on,
+# and collects the bindings that line has reached.  Nothing is cached between
+# pauses and no new table is built at run time — the walk happens only when a
+# driver asks for `vars`, and it is over one function's statements.
+#
+# A name is carried as two intern handles and joined once, because a run-time
+# `str` is a handle into a fixed table; that is what lets the debugger show a
+# name without asking the table for anything new.
+def dbg_mark(mut recs: Array[int, 8192], mut n: int, decl: int, slot: int,
+             mem: Array[int, 3741696], nd: Array[int, 655360]) -> None {
+    if slot < 0 {
+        return
+    }
+    if n * D_REC() + 3 >= 8192 {
+        return
+    }
+    tgt: int = nd[decl * 10 + 1]
+    if nd_kind(nd, tgt) != 25 {
+        return
+    }
+    h: int = nd[tgt * 10 + 1]
+    s: str = interned(h)
+    # slot + 1, so that 0 can mean "not a binding here": a declaration is never
+    # at slot -1, and a parameter at slot 0 is still a real variable
+    recs[n * D_REC() + 0] = slot + 1
+    recs[n * D_REC() + 1] = intern(substr(s, 0, 1))
+    recs[n * D_REC() + 2] = intern(substr(s, 1, len(s)))
+    recs[n * D_REC() + 3] = nd[decl * 10 + 5]
+    n += 1
+}
+
+def dbg_walk_body(mut recs: Array[int, 8192], mut n: int,
+                  mem: Array[int, 3741696], nd: Array[int, 655360], head: int,
+                  upto: int) -> None {
+    mut s: int = head
+    while s > 0 {
+        if nd[s * 10 + 5] >= upto {
+            return
+        }
+        k: int = nd_kind(nd, s)
+        if k == 6 {
+            if (nd[s * 10 + 6] & 2) == 2 {
+                dbg_mark(recs, n, s, nt_get(mem, s, NT_SLOT()), mem, nd)
+            }
+        }
+        if k == 12 {
+            dbg_mark(recs, n, s, nt_get(mem, s, NT_SLOT()), mem, nd)
+            dbg_walk_body(recs, n, mem, nd, nd[s * 10 + 8], upto)
+        }
+        if k == 10 {
+            dbg_walk_body(recs, n, mem, nd, nd[s * 10 + 2], upto)
+            if nd[s * 10 + 4] > 0 {
+                dbg_walk_body(recs, n, mem, nd, nd[s * 10 + 4], upto)
+            }
+        }
+        if k == 11 {
+            dbg_walk_body(recs, n, mem, nd, nd[s * 10 + 2], upto)
+        }
+        s = nd_nx(nd, s)
+    }
+}
+
+def dbg_walk_decls(mut recs: Array[int, 8192], mut n: int,
+                   mem: Array[int, 3741696], nd: Array[int, 655360], f: int,
+                   upto: int) -> None {
+    mut p: int = ft_get(mem, f, FT_PARAM())
+    while p > 0 {
+        if n * D_REC() + 3 < 8192 {
+            h: int = nd[p * 10 + 1]
+            s: str = interned(h)
+            recs[n * D_REC() + 0] = -1   # a parameter is live for the whole body
+            recs[n * D_REC() + 1] = intern(substr(s, 0, 1))
+            recs[n * D_REC() + 2] = intern(substr(s, 1, len(s)))
+            recs[n * D_REC() + 3] = 0
+            n += 1
+        }
+        p = nd_nx(nd, p)
+    }
+    dbg_walk_body(recs, n, mem, nd, ft_get(mem, f, FT_BODY()), upto)
+}
+
+# A parameter's record carries -1, which means "its slot is its index in the
+# parameter list": the resolver lays parameters down from 0 in the order the
+# source declares them, so the p-th parameter is slot p and needs no lookup.
+def dbg_dump_vars(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                  nd: Array[int, 655360], path: str, mut vm: VM) -> None {
+    if vm.vdepth > vm.dbg_depth {
+        # an inner frame's storage is real, but its binding names belong to a
+        # body this debugger is not walking; inventing them would be the one lie
+        # a debugger must not tell
+        dbg_say("variables only available in the stopped frame")
+        return
+    }
+    f: int = vm.dbg_fn
+    if f < 0 {
+        dbg_say("locals 0")
+        return
+    }
+    mut recs: Array[int, 8192]
+    mut n: int = 0
+    dbg_walk_decls(recs, n, mem, nd, f, vm.line)
+    mut shown: int = 0
+    mut i: int = 0
+    while i < n {
+        if recs[i * D_REC() + 0] != 0 {
+            shown += 1
+        }
+        i += 1
+    }
+    warn_str("locals ")
+    warn_int(shown)
+    warn_nl()
+    mut i2: int = 0
+    while i2 < n {
+        s1: int = recs[i2 * D_REC() + 0]
+        if s1 != 0 {
+            warn_str("local ")
+            warn_str(interned(recs[i2 * D_REC() + 1]))
+            warn_str(interned(recs[i2 * D_REC() + 2]))
+            warn_str(" = ")
+            dbg_cell(mem, fmem, vm.fp + s1 - 1, path, vm.line)
+            warn_nl()
+        }
+        i2 += 1
+    }
+}
+
+# Frame 0 is `main`: `run_main` calls it directly, so there is no call site to
+# record a line for and no function number in the trace to look up.
+def dbg_fn_name(mem: Array[int, 3741696], nd: Array[int, 655360], f: int) -> str {
+    if f < 0 {
+        return "<main>"
+    }
+    if f >= 8000 {
+        return "<main>"
+    }
+    d: int = ft_get(mem, f, FT_DEF())
+    if d <= 0 {
+        return "<main>"
+    }
+    return interned(nd[d * 10 + 1])
+}
+
+def dbg_dump_stack(mem: Array[int, 3741696], nd: Array[int, 655360],
+                   vm: VM) -> None {
+    warn_str("stack ")
+    warn_int(vm.vdepth - vm.dbg_depth + 1)
+    warn_nl()
+    mut d: int = vm.vdepth
+    while d >= vm.dbg_depth {
+        warn_int(d)
+        warn_str(" ")
+        if d == 0 {
+            # the frame `main` itself: no call site, so no caller's line
+            warn_int(1)
+        } else {
+            warn_int(dbg_tr_line(mem, d))
+        }
+        warn_str(" ")
+        mut f: int = -1
+        if d > 0 {
+            f = dbg_tr_fn(mem, d)
+        }
+        warn_str(dbg_fn_name(mem, nd, f))
+        warn_nl()
+        d -= 1
+    }
+}
+
+# ------------------------------------------------------------------ commands
+#
+# Every command returns 1 for "give me the next command" and 0 for "start
+# running again", which is the whole of the state machine: `pause` loops while
+# commands keep saying 1, and returns to the interpreter the moment one says 0.
+def dbg_cmd(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+            nd: Array[int, 655360], path: str, mut vm: VM, line: str) -> int {
+    w: str = dbg_word(line)
+    if w == "break" {
+        if len(line) > 5 {
+            n: int = dbg_digits(line, 6)
+            if n > 0 {
+                dbg_bp_set(vm, mem, n)
+                warn_str("breakpoint ")
+                warn_int(n)
+                warn_nl()
+                return 1
+            }
+        }
+        dbg_say("error break needs a line number")
+        return 1
+    }
+    if w == "clear" {
+        if len(line) > 5 {
+            n2: int = dbg_digits(line, 6)
+            if n2 > 0 {
+                dbg_bp_clear(vm, mem, n2)
+                warn_str("cleared ")
+                warn_int(n2)
+                warn_nl()
+                return 1
+            }
+        }
+        dbg_say("error clear needs a line number")
+        return 1
+    }
+    if w == "clearall" {
+        mut i: int = 0
+        while i < vm.dbg_nbp {
+            warn_str("cleared ")
+            warn_int(dbg_bp_get(mem, i))
+            warn_nl()
+            i += 1
+        }
+        vm.dbg_nbp = 0
+        return 1
+    }
+    if w == "stack" {
+        dbg_dump_stack(mem, nd, vm)
+        return 1
+    }
+    if w == "vars" {
+        dbg_dump_vars(mem, fmem, nd, path, vm)
+        return 1
+    }
+    if w == "step" {
+        dbg_arm_run(vm, D_STEP())
+        return 0
+    }
+    if w == "next" {
+        dbg_arm_run(vm, D_NEXT())
+        return 0
+    }
+    if w == "out" {
+        dbg_arm_run(vm, D_OUT())
+        return 0
+    }
+    if w == "run" {
+        dbg_arm_run(vm, 0)
+        return 0
+    }
+    if w == "continue" {
+        dbg_arm_run(vm, 0)
+        return 0
+    }
+    if w == "quit" {
+        vm.dbg_arm = 0
+        vm.dbg_step = 0
+        return 0
+    }
+    if w == "help" {
+        dbg_say("commands: break <line> | clear <line> | clearall | run | continue | step | next | out | stack | vars | quit")
+        return 1
+    }
+    dbg_say("error unknown command")
+    return 1
+}
+
+# ----------------------------------------------------------------- the pause
+
+def dbg_pause(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+              nd: Array[int, 655360], path: str, mut vm: VM,
+              reason: int) -> None {
+    warn_str("stopped ")
+    warn_int(vm.line)
+    warn_str(" ")
+    dbg_reason(reason)
+    warn_nl()
+    vm.dbg_arm = 0
+    vm.dbg_line = vm.line
+    vm.dbg_depth = vm.vdepth
+    # which function's body `vars` should walk: the frame that filed a record at
+    # this depth, which is the frame the program is stopped in
+    vm.dbg_fn = -1
+    if vm.vdepth > 0 {
+        vm.dbg_fn = dbg_tr_eval(mem, vm.vdepth)
+    }
+    mut go: int = 1
+    while go == 1 {
+        dbg_say("ready")
+        t: str = dbg_next_file(vm, vm.dbg_dir)
+        go = dbg_lines(mem, fmem, nd, path, vm, t)
+    }
+}
+
+# The reasons are fixed words: the event is written as pieces so that no text is
+# built on the pause path at all.
+def dbg_reason(reason: int) -> None {
+    if reason == D_STOP() {
+        warn_str("breakpoint")
+        return
+    }
+    if reason == D_NEXT() {
+        warn_str("next")
+        return
+    }
+    if reason == D_OUT() {
+        warn_str("out")
+        return
+    }
+    warn_str("step")
+}
+
+def dbg_lines(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+              nd: Array[int, 655360], path: str, mut vm: VM, text: str) -> int {
+    mut pos: int = 0
+    mut i: int = 0
+    while i < len(text) {
+        if bytes_at(text, i) == 10 {
+            ln: str = dbg_rstrip(substr(text, pos, i))
+            if len(ln) > 0 {
+                if dbg_cmd(mem, fmem, nd, path, vm, ln) == 0 {
+                    return 0
+                }
+            }
+            pos = i + 1
+        }
+        i += 1
+    }
+    ln2: str = dbg_rstrip(substr(text, pos, len(text)))
+    if len(ln2) > 0 {
+        if dbg_cmd(mem, fmem, nd, path, vm, ln2) == 0 {
+            return 0
+        }
+    }
+    # the command counter moved when this file was read, in `dbg_next_file`
+    return 1
+}
+
+def dbg_rstrip(s: str) -> str {
+    mut e: int = len(s)
+    while e > 0 {
+        c: int = bytes_at(s, e - 1)
+        if c == 32 {
+            e -= 1
+        } else if c == 9 {
+            e -= 1
+        } else if c == 13 {
+            e -= 1
+        } else {
+            return substr(s, 0, e)
+        }
+    }
+    return substr(s, 0, 0)
+}
+
+# ----------------------------------------------------------------- the session
+
+def dbg_session(mut vm: VM, dir: str) -> None {
+    vm.dbg_on = 1
+    vm.dbg_dir = dir
+    vm.dbg_nbp = 0
+    vm.dbg_cur = 0
+    vm.dbg_step = 0
+    vm.dbg_arm = 1
+    vm.dbg_fn = -1
+    vm.dbg_line = 0
+    vm.dbg_depth = 0
+    vm.vdepth = 0
+}
+
+# One command from the driver before the program has run at all, so that a
+# breakpoint can be set before line 1 instead of only at the first stop.
+def dbg_start(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+              nd: Array[int, 655360], path: str, mut vm: VM) -> None {
+    mut go: int = 1
+    while go == 1 {
+        dbg_say("ready")
+        t: str = dbg_next_file(vm, vm.dbg_dir)
+        go = dbg_lines(mem, fmem, nd, path, vm, t)
+    }
+}
+
+# The event that says the run is over.  It is a function number in
+# `vm.after_main` rather than a call because Vela 0.1 has no function values:
+# `run_main` cannot be handed a callback, it is handed the id of this function
+# and looks it up in the table it already has.  The five parameters are the
+# interpreter's own calling convention and none of them is read here — the event
+# is a constant, and the run's own exit status is the process's, not this line's.
+def dbg_exit(nd: Array[int, 655360], ty: Array[int, 262144],
+             mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+             flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+             mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+             src: str, path: str, mut vm: VM) -> None {
+    dbg_say("exited 0")
+}
+
+# ---------------------------------------------------------------- entry point
+
+def find_main(mut mem: Array[int, 3741696], mut vm: VM,
+              nd: Array[int, 655360]) -> int {
+    m: int = intern("main")
+    mut f: int = 0
+    while f < vm.nfn {
+        d: int = ft_get(mem, f, FT_DEF())
+        if nd[d * 10 + 1] == m {
+            if ft_get(mem, f, FT_OWNER()) < 0 {
+                return f
+            }
+        }
+        f += 1
+    }
+    return -1
+}
+
+def run_main(nd: Array[int, 655360], ty: Array[int, 262144],
+             mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+             flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+             mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+             src: str, path: str, dir: str, mut vm: VM) -> None {
+    fn: int = find_main(mem, vm, nd)
+    if fn < 0 {
+        fail(path, 1, "this program has no `def main() -> None`")
+    }
+    if ft_get(mem, fn, FT_NPARAM()) != 0 {
+        fail(path, nd_line(nd, ft_get(mem, fn, FT_DEF())),
+             "main takes no arguments")
+    }
+    # A debug session is set up once, at the one place a program starts, and a
+    # driver gets one command file *before* line 1 runs so that a breakpoint can
+    # be set up front.  `main` is called at depth 0 with no call site of its own,
+    # so its frame needs no trace record — frame 0 is known to be the entry
+    # point by construction, and `vars` at depth 0 says `locals 0` rather than
+    # walking a body it was never told about.
+    if vm.dbg_on == 1 {
+        dbg_session(vm, dir)
+        dbg_start(mem, fmem, nd, path, vm)
+    }
+    dst: int = cell_alloc(vm)
+    call_user(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, fn, -1,
+              dst)
+    # The end of the run is an *event* to a driver, not the absence of one.
+    # Which function that is has to be a table id because Vela 0.1 has no
+    # function values, so `after_main` is filed by whoever starts a session.
+    # The guard is `dbg_on`, not `after_main >= 0`: a session that was never
+    # started leaves `after_main` at its zero value, and function 0 is a real
+    # function in this table.
+    if vm.after_main >= 0 {
+        if vm.dbg_on == 1 {
+            dbg_call_name(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path,
+                          vm, vm.after_main)
+        }
+    }
+}
+
+# Calling a function by the number the driver filed, with no arguments: the
+# debugger's own exit event is the only use, and the interpreter has no other
+# way to reach one — this is what `vm.after_main` buys.
+def dbg_call_name(nd: Array[int, 655360], ty: Array[int, 262144],
+                  mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                  flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                  mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+                  src: str, path: str, mut vm: VM, fn: int) -> None {
+    dst: int = cell_alloc(vm)
+    call_user(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, fn, -1,
+              dst)
+}

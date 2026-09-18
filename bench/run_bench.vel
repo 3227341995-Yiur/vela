@@ -1,0 +1,545 @@
+# bench/run_bench.vel — compile and time every variant, with no Python anywhere.
+#
+# This used to be bench/run_bench.py, and it was the last Python file in the tree
+# after stage 0 was deleted.  A repository that states performance numbers has to
+# be able to reproduce them, and it has to do it in the language it is about — so
+# the harness is a Vela program now.
+#
+# The honesty rules are the same ones the Python harness followed, because they
+# are what make the numbers worth reading:
+#
+#   * both sides use the same back-end compiler (MSVC /O2) and the same algorithm
+#   * every time reported is measured *inside* the program (`now()` around the
+#     loop), not process wall time, so process startup flatters neither side
+#   * best, median and worst of N runs are all shown — the median is the headline
+#     and the spread is not hidden
+#   * every answer is checked against the value that variant must produce: a fast
+#     wrong answer is a failure, not a result
+#   * nothing is dropped because it makes Vela look bad
+#
+#     selfhost\build\vm.exe build bench\run_bench.vel && bench\run_bench.exe
+#     bench\run_bench.exe 7                    # seven repetitions instead of five
+#
+# What is *not* here any more: the `--fast-int` sieve variant.  The self-hosted
+# compiler always emits checked arithmetic, so that variant would need a switch in
+# its driver that does not exist yet — and inventing one inside the harness would
+# be measuring something the harness quietly changed.  The checked variant, which
+# is the one the README's table quotes, is here.
+
+struct Run {
+    mut ncap: int
+    mut nbad: int
+}
+
+# ---------------------------------------------------------------- host plumbing
+
+def q(s: str) -> str {
+    return concat("\"", concat(s, "\""))
+}
+
+# Backslashes, for the two places this harness calls a cmd *builtin*.  Every
+# ordinary program on Windows takes forward slashes happily — cl.exe, vm.exe,
+# the benchmarks themselves — but `copy` and `del` read "/" as the start of a
+# switch, so `copy /y "bench/a.exe" "bench/build/b.exe"` reports "0 file(s)
+# copied.  The system cannot find the file specified." about a file that is
+# right there.  One translation, and the reason written down.
+def bs(p: str) -> str {
+    mut out: str = ""
+    mut i: int = 0
+    while i < len(p) {
+        if bytes_at(p, i) == 47 {
+            out = concat(out, "\\")
+        } else {
+            out = concat(out, substr(p, i, i + 1))
+        }
+        i += 1
+    }
+    return out
+}
+
+def shell(c: str) -> str {
+    if len(env("OS")) > 0 {
+        return concat("\"", concat(c, "\""))
+    }
+    return c
+}
+
+def cap(n: int, step: str, ext: str) -> str {
+    return concat(concat("bench/build/_b_", concat(fmt_int(n), "_")),
+                  concat(step, ext))
+}
+
+# One capture, one file.  `cl.exe` starts detached helper processes that inherit
+# the handle of whatever it was redirected into; a reused name is then locked for
+# as long as they live (see tests/run_tests.vel, where this cost an evening).
+def run_capture(mut r: Run, cmd: str, step: str) -> int {
+    r.ncap += 1
+    outpath: str = cap(r.ncap, step, ".out")
+    errpath: str = cap(r.ncap, step, ".err")
+    write_text(outpath, "!")
+    write_text(errpath, "!")
+    mut c: str = cmd
+    c = concat(c, " > ")
+    c = concat(c, q(outpath))
+    c = concat(c, " 2>> ")
+    c = concat(c, q(errpath))
+    return run_command(shell(c))
+}
+
+def captured(mut r: Run, step: str) -> str {
+    return read_text(cap(r.ncap, step, ".out"))
+}
+
+def captured_err(mut r: Run, step: str) -> str {
+    return read_text(cap(r.ncap, step, ".err"))
+}
+
+def exists(path: str) -> bool {
+    return len(read_text(path)) > 0
+}
+
+# ------------------------------------------------------------------ text tools
+
+def find(s: str, needle: str) -> int {
+    n: int = len(needle)
+    if n == 0 {
+        return 0
+    }
+    if n > len(s) {
+        return 0 - 1
+    }
+    mut i: int = 0
+    while i + n <= len(s) {
+        if substr(s, i, i + n) == needle {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+def parse_int(s: str) -> int {
+    mut v: int = 0
+    mut i: int = 0
+    while i < len(s) {
+        c: int = bytes_at(s, i)
+        if c >= 48 {
+            if c <= 57 {
+                v = v * 10 + (c - 48)
+            }
+        }
+        i += 1
+    }
+    return v
+}
+
+def fmt_int(v: int) -> str {
+    if v == 0 {
+        return "0"
+    }
+    mut digits: str = ""
+    mut x: int = v
+    while x > 0 {
+        d: int = x % 10
+        digits = concat(substr("0123456789", d, d + 1), digits)
+        x = x // 10
+    }
+    return digits
+}
+
+# `seconds 0.2299` out of a program's output.  The digits are parsed by hand
+# because the language has no string-to-float conversion — a deliberate omission
+# (there is no locale, no exponent syntax and no NaN to argue about) that a
+# harness simply has to live with.
+def number_after(text: str, key: str) -> int {
+    at: int = find(text, key)
+    if at < 0 {
+        return 0 - 1
+    }
+    mut i: int = at + len(key)
+    while i < len(text) {
+        c: int = bytes_at(text, i)
+        if c != 32 {
+            break
+        }
+        i += 1
+    }
+    mut v: int = 0
+    while i < len(text) {
+        c: int = bytes_at(text, i)
+        if c < 48 {
+            break
+        }
+        if c > 57 {
+            break
+        }
+        v = v * 10 + (c - 48)
+        i += 1
+    }
+    return v
+}
+
+# The fraction of a seconds line, as millionths, so a time can be held in an int
+# without a float parser: "0.2299" -> 229900.
+def micros_after(text: str, key: str) -> int {
+    at: int = find(text, key)
+    if at < 0 {
+        return 0 - 1
+    }
+    mut i: int = at + len(key)
+    while i < len(text) {
+        c: int = bytes_at(text, i)
+        if c != 32 {
+            break
+        }
+        i += 1
+    }
+    mut whole: int = 0
+    while i < len(text) {
+        c: int = bytes_at(text, i)
+        if c < 48 {
+            break
+        }
+        if c > 57 {
+            break
+        }
+        whole = whole * 10 + (c - 48)
+        i += 1
+    }
+    mut frac: int = 0
+    mut scale: int = 100000
+    if i < len(text) {
+        if bytes_at(text, i) == 46 {
+            i += 1
+            while i < len(text) {
+                c: int = bytes_at(text, i)
+                if c < 48 {
+                    break
+                }
+                if c > 57 {
+                    break
+                }
+                if scale > 0 {
+                    frac += (c - 48) * scale
+                    scale = scale // 10
+                }
+                i += 1
+            }
+        }
+    }
+    return whole * 1000000 + frac
+}
+
+def micros_str(us: int) -> str {
+    mut frac: int = us % 1000000
+    mut lead: str = ""
+    if frac < 100000 {
+        lead = concat(lead, "0")
+    }
+    if frac < 10000 {
+        lead = concat(lead, "0")
+    }
+    if frac < 1000 {
+        lead = concat(lead, "0")
+    }
+    if frac < 100 {
+        lead = concat(lead, "0")
+    }
+    if frac < 10 {
+        lead = concat(lead, "0")
+    }
+    return concat(concat(fmt_int(us // 1000000), "."), concat(lead, fmt_int(frac)))
+}
+
+def pad(s: str, w: int) -> str {
+    mut out: str = s
+    while len(out) < w {
+        out = concat(out, " ")
+    }
+    return out
+}
+
+def padl(s: str, w: int) -> str {
+    mut out: str = s
+    while len(out) < w {
+        out = concat(" ", out)
+    }
+    return out
+}
+
+def say(s: str) -> None {
+    emit_str(s)
+    emit_nl()
+}
+
+# ------------------------------------------------------------------- building
+
+def find_vcvars() -> str {
+    want: str = env("VELA_VCVARS")
+    if exists(want) {
+        return want
+    }
+    if exists("C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat") {
+        return "C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat"
+    }
+    if exists("C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat") {
+        return "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat"
+    }
+    if exists("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat") {
+        return "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
+    }
+    if exists("C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat") {
+        return "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat"
+    }
+    return ""
+}
+
+# The C++ twin of a benchmark.  It is built by a batch file rather than a command
+# line because `cmd.exe` eats a quote at each end of a command that starts with
+# one, and a script has a different problem: it has none.
+def build_cpp(mut r: Run, name: str, src: str, restrict: bool, omp: bool) -> bool {
+    mut flags: str = "/nologo /std:c++20 /O2 /EHsc"
+    if restrict {
+        flags = concat(flags, " /DRESTRICT")
+    }
+    if omp {
+        flags = concat(flags, " /DUSE_OMP /openmp")
+    }
+    mut bat: str = "call "
+    bat = concat(bat, concat(q(find_vcvars()), " >nul 2>&1\r\n"))
+    bat = concat(bat, "cd /d \"bench/build\"\r\ncl ")
+    bat = concat(bat, flags)
+    bat = concat(bat, " \"../")
+    bat = concat(bat, src)
+    bat = concat(bat, "\" /Fe:\"")
+    bat = concat(bat, concat(name, ".exe"))
+    bat = concat(bat, "\" /Fo:\"")
+    bat = concat(bat, concat(name, ".obj"))
+    bat = concat(bat, "\"\r\n")
+    if not write_text("bench/build/_cpp.bat", bat) {
+        say(concat("could not write bench/build/_cpp.bat", ""))
+        return False
+    }
+    mut rc: int = run_capture(r, concat(concat("cmd /c ", q("bench\\build\\_cpp.bat")), ""), "cpp")
+    if rc != 0 {
+        if not exists(concat("bench/build/", concat(name, ".exe"))) {
+            say(concat(concat("  build failed: ", name), captured_err(r, "cpp")))
+            return False
+        }
+    }
+    return True
+}
+
+# The compiler that builds the Vela side.  `VELA_SELF` wins; when it is unset this
+# panics rather than falling back to a relative path, for the reason the test suite
+# learned the hard way and this harness then learned again the first time it was
+# run on this machine (2026-09-19): `run_capture` wraps the command in a quote pair
+# for cmd.exe's sake, and with a *forward slash* path cmd.exe splits at the first
+# `/` and answers
+#
+#     'selfhost' is not recognized as an internal or external command
+#
+# so the compiler never starts.  Every Vela-side variant then reports "the Vela
+# side did not build", with the driver's own harmless first line as the only
+# explanation, and the numbers look like a compiler defect instead of a quoting
+# accident.  `tools\bench.ps1` sets the variable; `README.md` says so too.
+def cli() -> str {
+    s: str = env("VELA_SELF")
+    if len(s) > 0 {
+        return s
+    }
+    panic("run_bench needs VELA_SELF: an absolute path to the compiler, because the relative fallback does not survive cmd quoting (tools\\bench.ps1 sets it)")
+    return "selfhost\\build\\vm.exe"
+}
+
+def build_vela(mut r: Run, name: str, src: str) -> bool {
+    mut rc: int = run_capture(r, concat(concat(q(cli()), " build "), q(src)), "vela")
+    if rc != 0 {
+        say(concat(concat("  build failed: ", name), captured_err(r, "vela")))
+        return False
+    }
+    # `vm.exe build bench/x.vel` writes bench/x.exe; the harness wants every
+    # binary in one place, named after the variant
+    mut stem: str = src
+    if len(stem) > 4 {
+        if substr(stem, len(stem) - 4, len(stem)) == ".vel" {
+            stem = substr(stem, 0, len(stem) - 4)
+        }
+    }
+    if not exists(concat(stem, ".exe")) {
+        say(concat("  no binary after building ", name))
+        return False
+    }
+    # No shell() wrapper here, and no redirection: `shell()` adds a quote pair
+    # around the whole command, which is what a *quoted program path* needs and
+    # what a cmd builtin like `copy` must not have — cmd then reads the leading
+    # quote as the start of a program name and refuses.
+    mut cpy: str = concat(concat("copy /y ", q(bs(concat(stem, ".exe")))),
+                          concat(" ", q(bs(concat("bench/build/", concat(name, ".exe"))))))
+    mut rc2: int = run_command(cpy)
+    if rc2 != 0 {
+        # Say exactly what failed, because "0 file(s) copied" on a file the
+        # harness has just read is a question about where this is running from.
+        say(concat("  could not copy: ", cpy))
+        say(concat("  bytes readable at that path: ",
+                   fmt_int(len(read_text(concat(stem, ".exe"))))))
+        say("  working directory, as the shell sees it:")
+        run_command("cd")
+        return False
+    }
+    return True
+}
+
+# ------------------------------------------------------------------ measuring
+
+def sort_ins(mut v: Array[float, 16], n: int) -> None {
+    mut i: int = 1
+    while i < n {
+        cur: float = v[i]
+        mut j: int = i - 1
+        while j >= 0 {
+            if v[j] <= cur {
+                break
+            }
+            v[j + 1] = v[j]
+            j -= 1
+        }
+        v[j + 1] = cur
+        i += 1
+    }
+}
+
+# Run the binary `reps` times and report the spread.  `want` is the answer the
+# variant must print (its checksum, its prime count); a mismatch is reported and
+# counted, never averaged away.
+def measure(mut r: Run, label: str, exe: str, reps: int, want: int) -> int {
+    mut times: Array[float, 16] = [0.0]
+    mut answer: int = 0 - 1
+    mut i: int = 0
+    while i < reps {
+        mut rc: int = run_capture(r, q(exe), "run")
+        txt: str = captured(r, "run")
+        if rc != 0 {
+            say(concat(concat("  FAIL  ", label), concat("  exited non-zero: ", captured_err(r, "run"))))
+            r.nbad += 1
+            return 0 - 1
+        }
+        us: int = micros_after(txt, "seconds")
+        if us < 0 {
+            say(concat(concat("  FAIL  ", label), "  printed no seconds line"))
+            r.nbad += 1
+            return 0 - 1
+        }
+        times[i] = to_float(us) / 1000000.0
+        mut got: int = number_after(txt, "checksum")
+        if got < 0 {
+            got = number_after(txt, "primes")
+        }
+        if got >= 0 {
+            answer = got
+        }
+        i += 1
+    }
+    sort_ins(times, reps)
+    best: float = times[0]
+    worst: float = times[reps - 1]
+    med: float = times[reps // 2]
+    mut row: str = concat("  ", pad(label, 26))
+    row = concat(row, padl(micros_str(to_int(best * 1000000.0)), 11))
+    row = concat(row, padl(micros_str(to_int(med * 1000000.0)), 11))
+    row = concat(row, padl(micros_str(to_int(worst * 1000000.0)), 11))
+    row = concat(row, concat("  ", fmt_int(answer)))
+    say(row)
+    if answer < 0 {
+        say(concat("      !! ", concat(label, " printed no answer at all")))
+        r.nbad += 1
+    } else {
+        if answer != want {
+            say(concat(concat("      !! ", label), concat(concat(" printed ", fmt_int(answer)),
+                                                         concat(concat(", not ", fmt_int(want)), ""))))
+            r.nbad += 1
+        }
+    }
+    return to_int(med * 1000000.0)
+}
+
+# ---------------------------------------------------------------------- main
+
+def main() -> None {
+    mut reps: int = 5
+    if argc() >= 2 {
+        reps = parse_int(arg(1))
+        if reps <= 0 {
+            reps = 5
+        }
+        if reps > 16 {
+            reps = 16
+        }
+    }
+
+    say("run_bench: MSVC /O2 both sides, times measured inside each program")
+    say(concat(concat("           ", fmt_int(reps)), " repetitions per variant"))
+    say("")
+
+    mut r: Run = Run(0, 0)
+    say("--- building")
+    if not build_cpp(r, "mm_cpp_naive", "matmul.cpp", False, False) {
+        panic("run_bench: the C++ side did not build")
+    }
+    if not build_cpp(r, "mm_cpp_restr", "matmul.cpp", True, False) {
+        panic("run_bench: the C++ side did not build")
+    }
+    if not build_cpp(r, "mm_cpp_omp", "matmul.cpp", True, True) {
+        panic("run_bench: the C++ side did not build")
+    }
+    if not build_cpp(r, "mb_cpp_naive", "mandelbrot.cpp", False, False) {
+        panic("run_bench: the C++ side did not build")
+    }
+    if not build_cpp(r, "mb_cpp_omp", "mandelbrot.cpp", False, True) {
+        panic("run_bench: the C++ side did not build")
+    }
+    if not build_cpp(r, "sv_cpp", "sieve.cpp", False, False) {
+        panic("run_bench: the C++ side did not build")
+    }
+    if not build_vela(r, "mm_vela_serial", "bench/matmul_serial.vel") {
+        panic("run_bench: the Vela side did not build")
+    }
+    if not build_vela(r, "mm_vela_omp", "bench/matmul.vel") {
+        panic("run_bench: the Vela side did not build")
+    }
+    if not build_vela(r, "mb_vela_omp", "bench/mandelbrot.vel") {
+        panic("run_bench: the Vela side did not build")
+    }
+    if not build_vela(r, "sv_vela_checked", "bench/sieve.vel") {
+        panic("run_bench: the Vela side did not build")
+    }
+    say("")
+
+    say("--- matmul 512x512 f64")
+    measure(r, "C++ serial", "bench/build/mm_cpp_naive.exe", reps, 1090512707)
+    measure(r, "C++ restrict", "bench/build/mm_cpp_restr.exe", reps, 1090512707)
+    measure(r, "Vela serial", "bench/build/mm_vela_serial.exe", reps, 1090512707)
+    measure(r, "C++ restrict+omp", "bench/build/mm_cpp_omp.exe", reps, 1090512707)
+    measure(r, "Vela parallel", "bench/build/mm_vela_omp.exe", reps, 1090512707)
+    say("")
+
+    say("--- mandelbrot 1600x1200")
+    measure(r, "C++ serial", "bench/build/mb_cpp_naive.exe", reps, 50187647)
+    measure(r, "C++ omp", "bench/build/mb_cpp_omp.exe", reps, 50187647)
+    measure(r, "Vela parallel", "bench/build/mb_vela_omp.exe", reps, 50187647)
+    say("")
+
+    say("--- sieve n = 20e6")
+    measure(r, "C++ unchecked ints", "bench/build/sv_cpp.exe", reps, 1270607)
+    measure(r, "Vela checked ints", "bench/build/sv_vela_checked.exe", reps, 1270607)
+    say("")
+
+    run_command("del /q \"bench\\build\\_b_*\" > nul 2>&1")
+    if r.nbad > 0 {
+        say(concat(fmt_int(r.nbad), " variant(s) disagreed with the answer they must produce"))
+        panic("run_bench: the numbers above are not trustworthy")
+    }
+    say("every variant printed the answer it must: the numbers are comparable")
+    say(concat(concat(concat("columns: best / median / worst of ", fmt_int(reps)),
+                      " runs, and the answer"), ""))
+}

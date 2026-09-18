@@ -1,0 +1,451 @@
+# ---------------------------------------------------------------------------
+# selfhost/parts/vm_state.vel — the interpreter's state, and its layout.
+#
+# Vela has no globals and a struct may not hold an array, so every pool the
+# interpreter needs is threaded through the call graph as a `mut` parameter and
+# every cursor lives in one struct of ints.  That is not a workaround for a
+# missing feature, it is the only shape the language permits — the same shape
+# DESIGN.md 7.1 describes for the parser:
+#
+#     mem    one int pool, cut into regions by the MEM_* offsets below:
+#              [MEM_CELLS, MEM_NT)     value cells, stride 4 (tag, a, b, c)
+#              [MEM_NT, MEM_FT)        node table, stride 4, one record per AST node
+#              [MEM_FT, MEM_STB)       function table, stride 8
+#              [MEM_STB, MEM_SFLD)     struct table, stride 6
+#              [MEM_SFLD, MEM_MET)     field name handles, per struct
+#              [MEM_MET, MEM_SIZE)     method records, stride 4
+#     fmem   the float half of a cell: cell c's float lives at fmem[c]
+#     ipool  element storage for Array[int] and Array[str] (str = intern handle)
+#     fpool  element storage for Array[float]
+#     bpool  element storage for Array[u8] and Array[bool], one byte each — a
+#            20 MB sieve buffer must cost 20 MB, not 160 MB
+#
+# A value is a *cell*: four ints plus one float, all of them always written, so
+# there is nothing to keep in sync by hand.  `vm.dst` is the cell an expression
+# must write its result into, which is why no eval function returns a value —
+# returning an index into a pool is not something Vela can do safely, and
+# destination passing needs no pointers at all.
+#
+# Cells 0 .. CELL_STACK_MAX are the stack (temporaries and locals, released by
+# cursor); cells HEAP0 .. CELL_HEAP_MAX are the heap (array and struct storage,
+# released when the frame that allocated it exits).  The resolver keeps its
+# scope stack in the tail of the stack region, which it owns before the
+# interpreter starts.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------- value kinds
+
+def K_BAD() -> int  { return 0 }    # never set: the zero-filled arena value
+def K_INT() -> int  { return 1 }
+def K_FLT() -> int  { return 2 }
+def K_BOOL() -> int { return 3 }
+def K_STR() -> int  { return 4 }
+def K_NONE() -> int { return 5 }
+def K_AI() -> int   { return 6 }    # Array[int]
+def K_AF() -> int   { return 7 }    # Array[float]
+def K_AB() -> int   { return 8 }    # Array[u8]
+def K_AS() -> int   { return 9 }    # Array[str]: ipool holds intern handles
+def K_AA() -> int   { return 10 }   # Array[bool], packed one byte each
+def K_AX() -> int   { return 11 }   # Array[struct]: heap cells, row-major
+def K_ST() -> int   { return 12 }   # struct value
+def K_I32() -> int  { return 13 }   # the element kind i32 (stored 32-bit wide)
+def K_A32() -> int  { return 14 }   # Array[i32]
+def K_U8() -> int   { return 15 }   # the element kind u8 (an array tag is K_AB)
+
+# ------------------------------------------------------------- mem cell words
+
+def W_TAG() -> int { return 0 }
+def W_A() -> int   { return 1 }
+def W_B() -> int   { return 2 }
+def W_C() -> int   { return 3 }
+
+# The stack region stops short of HEAP0 to leave room for the resolver's scope
+# stack, which lives in the cells between the two: a program the size of this
+# front end has a few hundred global names before a single body is resolved, so
+# the scope region has to scale with the program, not with its nesting depth.
+def CELL_STACK_MAX() -> int { return 200000 }   # cells 0 .. 199999 are the stack
+def HEAP0() -> int { return 262144 }            # the heap starts at this cell
+def CELL_HEAP_MAX() -> int { return 786432 }
+
+def MEM_CELLS() -> int { return 0 }
+def MEM_NT() -> int { return 3145728 }
+def MEM_FT() -> int { return 3670016 }
+def MEM_STB() -> int { return 3702784 }
+def MEM_SFLD() -> int { return 3708928 }
+def MEM_MET() -> int { return 3725312 }
+def MEM_SIZE() -> int { return 3741696 }
+
+def SCOPE_BASE() -> int { return 800000 }       # words; the resolver's scratch
+def SCOPE_MAX() -> int { return 62000 }         # entries of stride 4
+
+def POOL_INT() -> int { return 2097152 }        # Array[int, 2097152]
+def POOL_FLT() -> int { return 1048576 }
+def POOL_BYTE() -> int { return 33554432 }
+def CELLS_FLT() -> int { return CELL_HEAP_MAX() }
+
+# A binding has to carry two facts to the back end in one word: what kind of
+# value it is, and — for an array — how long it is, because `len(a)` is a
+# compile-time constant in C and an index check needs the same number.  A kind is
+# 1..15, so the length lives above it: `kind + length * 256`.
+def pack_kind(kind: int, n: int) -> int {
+    if n <= 0 {
+        return kind
+    }
+    return kind + n * 256
+}
+
+def unpack_kind(packed: int) -> int {
+    return packed & 255
+}
+
+# Bits 8..39 are the array length or the struct id; bit 40 says the binding is a
+# pointer in C, which is what a `mut` struct parameter is (the same rule the
+# stage-0 emitter follows: `T*` for `mut self`, `const T*` otherwise).
+def unpack_len(packed: int) -> int {
+    return (packed >> 8) & 1073741823
+}
+
+def pack_ptr(packed: int) -> int {
+    return packed + 1099511627776
+}
+
+def is_ptr_binding(packed: int) -> bool {
+    return ((packed >> 40) & 1) == 1
+}
+
+# Mutability rides one bit higher, in the checker's own scope entries: the bit the
+# back end already reads (40) means "this struct binding is a pointer in C" for
+# `mut` *parameters*, which is a different question from "may this binding be
+# assigned to".  Bit 41 sits past both masks — `unpack_len` reads bits 8..37,
+# `unpack_kind` the low byte — so neither reader has to know this exists.
+def MUT_BIT() -> int {
+    return 2199023255552
+}
+
+def pack_mut(packed: int) -> int {
+    return packed + MUT_BIT()
+}
+
+def is_mut_binding(packed: int) -> bool {
+    return (packed & MUT_BIT()) != 0
+}
+
+# One more bit, one row up, for the checker's own entries: bit 42 marks a
+# *parameter*.  The parallel proof has to tell a local array from a parameter,
+# because a parameter may alias another array and two aliases race — and the
+# scope stack is the only place that difference survives, since both are locals
+# to the resolver and both carry the same kind.  Same reasoning as MUT_BIT: past
+# every mask the back end reads (`unpack_kind` the low byte, `unpack_len` bits
+# 8..37, `is_ptr_binding` bit 40, `is_mut_binding` bit 41), so no existing reader
+# has to know it exists.
+def PARAM_BIT() -> int {
+    return 4398046511104
+}
+
+def pack_param(packed: int) -> int {
+    return packed + PARAM_BIT()
+}
+
+def is_param_binding(packed: int) -> bool {
+    return (packed & PARAM_BIT()) != 0
+}
+
+# The element kind of an array kind.  Nested arrays do not exist in Vela 0.1, so
+# this is total.
+def elem_kind_of(ak: int) -> int {
+    if ak == K_AI() { return K_INT() }
+    if ak == K_A32() { return K_I32() }
+    if ak == K_AF() { return K_FLT() }
+    if ak == K_AB() { return K_U8() }
+    if ak == K_AA() { return K_BOOL() }
+    if ak == K_AS() { return K_STR() }
+    if ak == K_AX() { return K_ST() }
+    return K_BAD()
+}
+
+# ------------------------------------------------------------ node table words
+
+def NT_SLOT() -> int { return 0 }   # declaration / for-variable frame slot, -1
+def NT_SYM() -> int { return 1 }    # a name node's binding kind
+def NT_VAL() -> int { return 2 }    # its payload (slot, function, struct, builtin)
+def NT_LIT() -> int { return 3 }    # literal cache: intern handle + 1, else 0
+def NT_TY() -> int { return 4 }     # static type of an expression
+                                    # (packed kind: kind + n * 256)
+def NT_NEED() -> int { return 5 }   # which runtime checks this node needs
+def NT_LO() -> int { return 6 }     # interval low, for int expressions
+def NT_HI() -> int { return 7 }     # interval high
+
+
+# binding kinds, the same numbers as SYM_* on the scope stack
+def SYM_LOCAL() -> int  { return 1 }
+def SYM_FUNC() -> int   { return 2 }
+def SYM_STRUCT() -> int { return 3 }
+def SYM_BUILTIN() -> int { return 4 }
+
+# -------------------------------------------------------- function table words
+
+def FT_DEF() -> int { return 0 }
+def FT_OWNER() -> int { return 1 }   # struct id, or -1 for a free function
+def FT_NPARAM() -> int { return 2 }
+def FT_NLOCAL() -> int { return 3 }
+def FT_RETTY() -> int { return 4 }
+def FT_PARAM() -> int { return 5 }
+def FT_BODY() -> int { return 6 }
+def FT_PURE() -> int { return 7 }
+
+# ---------------------------------------------------------- struct table words
+
+def STB_NAME() -> int { return 0 }
+def STB_NFIELD() -> int { return 1 }
+def STB_FOFF() -> int { return 2 }   # start of this struct's names in sfl
+def STB_NMETH() -> int { return 3 }
+def STB_MOFF() -> int { return 4 }   # start of this struct's methods in met
+def STB_SIZE() -> int { return 5 }   # cells an instance occupies
+
+# ---------------------------------------------------------- method table words
+
+def MET_STRUCT() -> int { return 0 }
+def MET_NAME() -> int { return 1 }
+def MET_FN() -> int { return 2 }
+def MET_MUTSELF() -> int { return 3 }   # 1 when the receiver is `mut self`
+
+# ---------------------------------------------------------------- builtin ids
+#
+# One numbering, shared by the resolver (name handle -> id) and the evaluator
+# (id -> work), for the same reason the op codes are shared: two tables that
+# must agree are one table written twice.
+#
+# A builtin is not a value in this language — there is no function type — so a
+# bare name that is neither a local, a function nor a struct is either a
+# builtin or an error, and this is the list that decides.
+
+def B_PRINT() -> int     { return 1 }
+def B_EMIT_STR() -> int  { return 2 }
+def B_EMIT_INT() -> int  { return 3 }
+def B_EMIT_FLT() -> int  { return 4 }
+def B_EMIT_NL() -> int   { return 5 }
+def B_WARN_STR() -> int  { return 6 }
+def B_WARN_INT() -> int  { return 7 }
+def B_WARN_NL() -> int   { return 8 }
+def B_LEN() -> int       { return 9 }
+def B_TO_FLOAT() -> int  { return 10 }
+def B_TO_INT() -> int    { return 11 }
+def B_SQRT() -> int      { return 12 }
+def B_FABS() -> int      { return 13 }
+def B_FLOOR() -> int     { return 14 }
+def B_POW() -> int       { return 15 }
+def B_ABS() -> int       { return 16 }
+def B_MIN_INT() -> int   { return 17 }
+def B_MAX_INT() -> int   { return 18 }
+def B_MIN_FLT() -> int   { return 19 }
+def B_MAX_FLT() -> int   { return 20 }
+def B_BYTES_AT() -> int  { return 21 }
+def B_SUBSTR() -> int    { return 22 }
+def B_UNESCAPE() -> int  { return 23 }
+def B_INTERN() -> int    { return 24 }
+def B_INTERNED() -> int  { return 25 }
+def B_ARGC() -> int      { return 26 }
+def B_ARG() -> int       { return 27 }
+def B_READ_TEXT() -> int { return 28 }
+def B_WRITE_TEXT() -> int { return 29 }
+def B_PANIC() -> int     { return 30 }
+def B_NOW() -> int       { return 31 }
+def B_CONCAT() -> int    { return 32 }
+def B_RUN_CMD() -> int   { return 33 }
+def B_ENV() -> int       { return 34 }
+
+# The element kind of an Array record decides which pool holds its elements.
+# Nested arrays are refused rather than silently mis-stored: Vela 0.1 has no
+# shape to express them and the evaluator would have to invent one.
+
+def arr_kind_of(ek: int) -> int {
+    if ek == K_I32() { return K_A32() }
+    if ek == K_INT() { return K_AI() }
+    if ek == K_FLT() { return K_AF() }
+    if ek == K_U8() { return K_AB() }
+    if ek == K_BOOL() { return K_AA() }
+    if ek == K_STR() { return K_AS() }
+    if ek == K_ST() { return K_AX() }
+    return K_BAD()
+}
+
+# ------------------------------------------------------------- control codes
+#
+# exec_* functions return one of these instead of carrying an exception, which
+# Vela does not have.  4 unwinds every frame: the interpreter has stopped and
+# nothing below may keep running.
+
+def C_NEXT() -> int { return 0 }
+def C_RET() -> int  { return 1 }
+def C_BREAK() -> int { return 2 }
+def C_CONT() -> int  { return 3 }
+def C_STOP() -> int  { return 4 }
+
+# ------------------------------------------------------------------ the state
+
+struct VM {
+    nfn: int        # functions registered by the resolver
+    nstruct: int    # structs registered by the resolver
+    nglob: int      # scope entries that are global (a function's scope base)
+    scn: int        # scope stack cursor (resolver only)
+    nlocal: int     # frame slots the function being resolved has so far
+    sfln: int       # field-name cursor into the sfl region (resolver only)
+    metn: int       # method-record cursor into the met region (resolver only)
+    sp: int         # stack cell cursor (interpreter)
+    hp: int         # heap cell cursor (interpreter)
+    ipc: int        # int/str element pool cursor
+    fpc: int        # float element pool cursor
+    bpc: int        # byte (u8/bool) element pool cursor
+    ipm: int        # int/str pool mark for the current frame
+    fpm: int        # float pool mark
+    bpm: int        # byte pool mark
+    fp: int         # base cell of the current frame
+    hmark: int      # heap cursor to restore when this frame exits
+    dst: int        # cell the current expression must write into
+    ctrl: int       # C_NEXT / C_RET / C_BREAK / C_CONT / C_STOP
+    line: int       # line of the statement being executed, for diagnostics
+    depth: int      # interpreted call depth
+    steps: int      # interpreted steps taken, against a budget
+    cret: int       # packed return type of the function the checker is inside
+    cpure: int      # 1 when the checker is inside a `pure def`
+    # --- debug mode (see DESIGN.md §10) -------------------------------------
+    #
+    # `vm.depth` counts interpreted calls, but it is *not* the frame identity a
+    # debugger needs: `enter_call` increments it and a `pause` inside that frame
+    # recurses back into `exec_stmt`, so the depth a statement sees is not the
+    # depth its own call created.  `vdepth` is a second counter with one writer
+    # and one place that moves it, so it reads the same before and after the
+    # recursive `pause` and every frame can file its record at `vdepth`.
+    #
+    # `after_main` is a function *number* (the id `add_function` hands out), not
+    # a function value: Vela 0.1 has no function types and no closures, so
+    # `run_main` cannot be handed a callback.  It is only ever read while
+    # `dbg_on` is 1, because the zero value of an int is 0 and function 0 is a
+    # real function in this table.
+    #
+    # These are `int` and not a nested struct of their own on purpose: every one
+    # of them is a scalar, the whole set costs a struct that is already passed by
+    # value twenty-four ints, and Vela 0.1 struct fields may not be arrays — the
+    # breakpoint list and the debug trace live in reserved arena cells instead
+    # (eval.vel, D_*).
+    vdepth: int      # debug: frame identity, moved only by enter_call
+    after_main: int  # debug: function to call when `main` returns, or -1
+    dbg_on: int      # debug: 1 while this vm is running a debug session
+    dbg_arm: int     # debug: 1 while a stop is wanted, 0 while commands are read
+    dbg_step: int    # debug: 0 run, D_STEP / D_NEXT / D_OUT (see eval.vel)
+    dbg_depth: int   # debug: the vdepth a step was asked for at
+    dbg_line: int    # debug: the line the last stop reported
+    dbg_fn: int      # debug: eval function number of the stopped frame, or -1
+    dbg_nbp: int     # debug: how many breakpoints are set
+    dbg_cur: int     # debug: the highest command file number read
+    dbg_dir: str     # debug: the command directory, "" when not a session
+}
+
+def vm_new() -> VM {
+    # hp starts at HEAP0, not 0: cell 0 is the first stack cell, and a heap that
+    # began there would write struct fields over the interpreter's own frame
+    #
+    # The constructor is positional, so the debug fields have to be counted out:
+    # vdepth is the 25th field, after_main the 26th, and the directory the last
+    # of 35.  An empty string is the honest "no session" directory — paths in
+    # this project's own tooling are ASCII, and `dbg_on` is what decides whether
+    # the field is read at all.
+    return VM(0, 0, 0, 0, 0, 0, 0, 0, HEAP0(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "")
+}
+
+# ------------------------------------------------------------- small accessors
+#
+# These exist so the offsets above appear in one place each.  They are inlined
+# by the C compiler, so the extra call costs nothing at run time.
+
+def cell_w(mem: Array[int, 3741696], c: int, k: int) -> int {
+    return mem[c * 4 + k]
+}
+
+def cell_set(mut mem: Array[int, 3741696], c: int, k: int, v: int) -> None {
+    mem[c * 4 + k] = v
+}
+
+def tag_of(mem: Array[int, 3741696], c: int) -> int {
+    return mem[c * 4 + W_TAG()]
+}
+
+def nt_get(mem: Array[int, 3741696], n: int, k: int) -> int {
+    return mem[MEM_NT() + n * 8 + k]
+}
+
+def nt_put(mut mem: Array[int, 3741696], n: int, k: int, v: int) -> None {
+    mem[MEM_NT() + n * 8 + k] = v
+}
+
+def ft_get(mem: Array[int, 3741696], f: int, k: int) -> int {
+    return mem[MEM_FT() + f * 8 + k]
+}
+
+def ft_put(mut mem: Array[int, 3741696], f: int, k: int, v: int) -> None {
+    mem[MEM_FT() + f * 8 + k] = v
+}
+
+def stb_get(mem: Array[int, 3741696], s: int, k: int) -> int {
+    return mem[MEM_STB() + s * 6 + k]
+}
+
+def stb_put(mut mem: Array[int, 3741696], s: int, k: int, v: int) -> None {
+    mem[MEM_STB() + s * 6 + k] = v
+}
+
+def sfl_get(mem: Array[int, 3741696], i: int) -> int {
+    return mem[MEM_SFLD() + i]
+}
+
+def sfl_put(mut mem: Array[int, 3741696], i: int, v: int) -> None {
+    mem[MEM_SFLD() + i] = v
+}
+
+def met_get(mem: Array[int, 3741696], m: int, k: int) -> int {
+    return mem[MEM_MET() + m * 4 + k]
+}
+
+def met_put(mut mem: Array[int, 3741696], m: int, k: int, v: int) -> None {
+    mem[MEM_MET() + m * 4 + k] = v
+}
+
+# ------------------------------------------------------------- node accessors
+#
+# Stride 10, as selfhost/AST.md documents: kind, a, b, c, (d), line, flags, nx,
+# e, f.  Word 4 (`d`) is dead in the parser and is the for-loop's step for a
+# `for` node, so nothing here reads it.
+
+def nd_kind(nd: Array[int, 655360], n: int) -> int {
+    return nd[n * 10 + 0]
+}
+
+def nd_w(nd: Array[int, 655360], n: int, k: int) -> int {
+    return nd[n * 10 + k]
+}
+
+def nd_line(nd: Array[int, 655360], n: int) -> int {
+    return nd[n * 10 + 5]
+}
+
+def nd_nx(nd: Array[int, 655360], n: int) -> int {
+    return nd[n * 10 + 7]
+}
+
+# --------------------------------------------------------------- type records
+#
+# Stride 4: kind (always 1), base name handle, element type index or -1,
+# array length or -1.  `Array[int, 8]` is a record named "Array" whose element
+# is an `int` record and whose length is 8.
+
+def ty_base(ty: Array[int, 262144], t: int) -> int {
+    return ty[t * 4 + 1]
+}
+
+def ty_elem(ty: Array[int, 262144], t: int) -> int {
+    return ty[t * 4 + 2]
+}
+
+def ty_len(ty: Array[int, 262144], t: int) -> int {
+    return ty[t * 4 + 3]
+}

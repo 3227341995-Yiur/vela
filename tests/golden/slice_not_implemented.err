@@ -1,0 +1,2 @@
+vela: type error: slices are not implemented in Vela 0.1
+  at tests/build/check_cases/slice_not_implemented.vel:3

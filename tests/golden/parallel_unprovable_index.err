@@ -1,0 +1,2 @@
+vela: safety error: cannot prove that 'parallel for' writes 'a' to distinct elements
+  at tests/build/check_cases/parallel_unprovable_index.vel:4

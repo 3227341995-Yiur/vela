@@ -1,0 +1,2 @@
+vela: type error: 'extern c' function 'name' may not return str
+  at tests/probes/extern_str_result.vel:9
