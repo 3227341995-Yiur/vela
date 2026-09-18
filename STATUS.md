@@ -31,7 +31,7 @@ wedge.
 
 | what | command | result |
 |---|---|---|
-| the toolchain builds and promotes itself | `powershell -ExecutionPolicy Bypass -File tools\build.ps1` | `RESULT: ok`; fixpoint `6B6C0522CAD4DCE1`, 834810 bytes, seed/gen-1/gen-2 **byte-identical** |
+| the toolchain builds and promotes itself | `powershell -ExecutionPolicy Bypass -File tools\build.ps1` | `RESULT: ok`; fixpoint `15EAE445780BAA58`, 754867 bytes, seed / gen-1 / gen-2 **byte-identical** — and the check now reads a file the driver actually writes (see §5) |
 | the tree is alive, and portable | `powershell -ExecutionPolicy Bypass -File tools\smoke.ps1` | `RESULT: ok` — build+run, **build from a directory outside the repository**, and compiled == interpreted, including a panic |
 | the suite, all of it | `tools\refreeze.ps1` then `tests\run_tests.exe` (with `VELA_SELF` absolute) | **190 passed, 0 failed (of 190 cases, 245 captures)**, exit 0 |
 | the `parallel for` aliasing rule | `vm.exe check tests\probes\parallel_alias_*.vel` | the cross-iteration read is **refused**; the four legal shapes still emit `#pragma omp` |
@@ -39,7 +39,7 @@ wedge.
 | the IDEA plugin | `powershell -ExecutionPolicy Bypass -File idea-plugin\build-offline.ps1` | **`RESULT: PASS`**, exit 0: 32 Kotlin sources compile, `dist\vela-idea-plugin-0.1.3.zip` (240277 B), every structural/bytecode/platform/registration/linkage/behavioural check green, version discipline agreeing in four places |
 | LLVM/Clang for the native backend | `powershell -ExecutionPolicy Bypass -File tools\get-llvm.ps1` | installed, **`clang version 23.1.1`**, `llc.exe` and `lld-link.exe` present, at `C:\Users\lu\Downloads\llvm\clang+llvm-23.1.1-x86_64-pc-windows-msvc\bin\` |
 | LLVM backend, milestone M1 | `powershell -ExecutionPolicy Bypass -File tools\llvm-m1.ps1` | **met**: one program by three paths — interpreter, C backend, and hand-written LLVM IR linked by `clang-cl` — all print **identical bytes** (`RESULT: ok`, exit 0).  The datalayout, the triple and the MSVC struct ABI were read out of clang's own output, not remembered |
-| the benchmarks | `powershell -ExecutionPolicy Bypass -File tools\bench.ps1 -Reps 7` | **the "faster than C++" claim is currently false and now has a measured cause**: serial matmul loses 5×, parallel matmul 6.6×, sieve 1.5×, mandelbrot ties.  See §4 — the emitter writes every index expression twice |
+| the benchmarks | `powershell -ExecutionPolicy Bypass -File tools\bench.ps1 -Reps 7` | frozen in `bench/RESULTS.md` against this compiler: serial matmul **0.543 s** against the C++ twin's **0.224 s** (2.4×, was 5× before the emitter fix), parallel matmul 0.068 s against 0.022 s (3.1×, was 6.6×), sieve 1.5× against an explicitly *unchecked* C++ row, mandelbrot a tie to the microsecond (0.011950 s both), and `parallel for` still really parallel (8.0× from 1 to 16 threads, one checksum at every count).  "Faster than C++" is still not established; see §4 |
 
 ## 3. Written, and not verified
 
@@ -93,12 +93,12 @@ wedge.
   | nothing checked | 0.181 |
   | the C++ twin | 0.213 |
 
-  So there are **two** levers, in order: the emitter writes every index expression
-  **twice** (worth 0.51 s — halving the program's time), and after that the checked
-  index arithmetic (`vela_mul_range` + `vela_add_range`) is ~0.37 s, which is ~68%
-  of what remains.  The bounds check itself is ~0.04 s.  The first lever is an
-  emitter fix and was in progress at the time of writing; the second is exactly what
-  `selfhost/ELISION_PLAN.md` is for, and this table is its justification.
+  So there are **two** levers, in order: the emitter wrote every index expression
+  **twice** (worth 0.51 s — halving the program's time; **done**, 1.058 s → 0.543 s),
+  and after that the checked index arithmetic (`vela_mul_range` + `vela_add_range`) is
+  ~0.37 s, which is ~68% of what remains.  The bounds check itself is ~0.04 s.  The
+  second lever is exactly what `selfhost/ELISION_PLAN.md` is for, and this table is
+  its justification — it is the work that decides the "faster than C++" claim.
 
   **Correction, because the first version of this paragraph was wrong.**  It said
   "the checks cost almost nothing, the duplication is the whole story", quoting a
@@ -137,9 +137,26 @@ Every one of these was invisible to reading:
 - `runtime/vela_llvm_runtime.c` used `bool` in C without `<stdbool.h>`: MSVC's C
   mode tolerates it, clang does not (`error: unknown type name 'bool'`).  Found by
   the M1 probe, which is exactly why M1 exists before an emitter.
-- The C emitter writes **every array index expression twice** — the defect behind
-  the lost "faster than C++" claim, measured at 5–6.6× on the matmul benchmarks and
-  quantified by controlled experiment (see §4).
+- The C emitter wrote **every array index expression twice** — the defect behind the
+  lost "faster than C++" claim, measured at 5–6.6× on the matmul benchmarks and
+  quantified by controlled experiment (see §4).  **Fixed**: the index goes into a
+  statement-scoped temporary and is computed once; serial matmul 1.058 s → 0.543 s,
+  the emitted compiler 850572 → 754867 bytes, no check removed.  The fix's first cut
+  had a race — the temporary was declared at function scope, so inside `parallel for`
+  all threads shared one variable and one thread's index subscripted another's store;
+  `tests/probes/parallel_alias_nested_rowmajor.vel` failed and printed `1 1`.  The
+  declaration is now per statement, in the innermost block, which OpenMP makes private.
+- **`tools\build.ps1`'s fixpoint step was reading a file nothing writes.**  It looked
+  for `%TEMP%\vela-build\vm.vel.c` and copied it over `selfhost\vm.c` as the seed, but
+  the driver stopped writing that name when the scratch key became the *whole* source
+  path (`build_scratch`/`flat_name` → `selfhost_vm.vel.c`).  A stale `vm.vel.c` from
+  03:05:47 was still on disk, so the step kept promoting an artefact of an earlier
+  generation and the "byte-identical fixpoint" it reported was measured against that
+  artefact.  The name is now computed from the driver's own rule, the file is deleted
+  before the build, a missing file is a failure with the scratch listing printed, and
+  the source path is spelled once (`selfhost/vm.vel`) because the spelling is embedded
+  in every emitted file/line literal — `selfhost\vm.vel` emits 758641 bytes against
+  `selfhost/vm.vel`'s 754867 for the same program.
 - The benchmark harness itself could not run: `bench/run_bench.vel` spawned
   `selfhost/build/vm.exe` with forward slashes and no absolute path, so cmd.exe
   split at the first `/`, the compiler never started, and the failure read as "the

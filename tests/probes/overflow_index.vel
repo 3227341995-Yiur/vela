@@ -1,0 +1,12 @@
+# tests/probes/overflow_index.vel — the arithmetic check on an index still fires.
+#
+# Computing the index once must not quietly turn the checked `*` into C's own
+# wrapping `*`: the index expression is evaluated once *as the same checked
+# expression it was*, so the overflow check panics with the line the index is
+# written on and never reaches the bounds check.
+def main() -> None {
+    mut a: Array[int, 4] = [0]
+    mut i: int = 4
+    mut big: int = 9223372036854775807
+    print(a[i * big])
+}

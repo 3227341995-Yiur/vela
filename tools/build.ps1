@@ -241,25 +241,48 @@ if ($failed) { Say ''; Say 'build FAILED at step 2'; Write-Report; exit 1 }
 # this it stayed the binary built from the *previous* source — one generation
 # behind the tree, quietly.  A build that leaves the compiler behind the source is
 # a build whose results are about the wrong program.
-Step '3/6  build the compiler with the compiler' { & $vmExe build selfhost/vm.vel } | Out-Null
+# The source the compiler is built from, named once and used by both this step and
+# the fixpoint below, because the *spelling* of this path is embedded in the emitted
+# C: every `vela_bounds_check(..., "selfhost/vm.vel", 14)` carries it, so two builds
+# that spell it differently produce two different files that mean the same thing.
+# Measured 2026-09-19: `selfhost/vm.vel` emits 754867 bytes, `selfhost\vm.vel` emits
+# 758641 — same line count, same program, different literals.
+$selfSource = 'selfhost/vm.vel'
+
+# Where the driver puts the emitted C, by its own rule: `build_scratch`/`flat_name`
+# in `parts/vm_main.vel` replace every `:`, `\` or `/` in the path **as given** with
+# `_` and append `.c`, so this source lands in `selfhost_vm.vel.c`.
+#
+# This step used to look for `vm.vel.c`, which the driver stopped writing when the
+# scratch key became the whole path (it used to be the base name, which collided for
+# two same-named sources in different directories).  Measured: `vm.vel.c` was still on
+# disk from 03:05:47 — written by the older driver — while the current one was writing
+# `selfhost_vm.vel.c`, so the "fixpoint" compared generation 2 against an artefact of
+# an earlier generation, and the seed it promoted was that same stale file.  A check
+# that reads a file nothing writes is not a check.
+$scratchDir = Join-Path $env:TEMP 'vela-build'
+$scratchC = Join-Path $scratchDir (($selfSource -replace '[:\\/]', '_') + '.c')
+Remove-Item -LiteralPath $scratchC -Force -ErrorAction SilentlyContinue
+
+Step '3/6  build the compiler with the compiler' { & $vmExe build $selfSource } | Out-Null
 if (-not $failed) {
     Head '      promote what the compiler wrote'
     $gen2C = Join-Path $root 'selfhost\vm.c'
     $gen2Exe = Join-Path $root 'selfhost\vm.exe'
     # `build` no longer writes the emitted C beside the source: the language's own
     # rule is that a build must not leave another language's file in the directory
-    # holding the program, so the C and the object file go to
-    # `<TEMP>\vela-build\<source name>`. The executable stays beside the source,
-    # which is why this step's binary was already correct while this file was not.
-    # Measured: with the C taken from the stale file, the fixpoint failed by exactly
-    # the banner comment (8 lines of 11285) even though the compiler had converged —
-    # `%TEMP%\vela-build\vm.vel.c` already had the hash the fixpoint was looking for.
-    $scratchC = Join-Path (Join-Path $env:TEMP 'vela-build') 'vm.vel.c'
+    # holding the program, so the C and the object file go to the scratch.  The
+    # executable stays beside the source, which is why this step's binary was already
+    # correct while this file was not.
     if (Test-Path -LiteralPath $scratchC) {
         Copy-Item -LiteralPath $scratchC -Destination $gen2C -Force
-        Say "    selfhost\vm.c <- vela-build\vm.vel.c ($((Get-Item -LiteralPath $gen2C).Length) bytes)"
+        Say "    selfhost\vm.c <- vela-build\$($scratchC | Split-Path -Leaf) ($((Get-Item -LiteralPath $gen2C).Length) bytes)"
     } else {
         Say "    !! the driver wrote no $scratchC, so the fixpoint has nothing fresh to compare"
+        Say "       the newest emitted files in $scratchDir are:"
+        Get-ChildItem -LiteralPath $scratchDir -Filter *.c -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 5 |
+            ForEach-Object { Say ("         " + $_.Name) }
         $failed = $true
     }
     $pairs = @(
@@ -306,7 +329,7 @@ if (-not (Test-Path -LiteralPath $gen2Exe)) {
     $failed = $true
 } else {
     Step '5/6  fixpoint: generation 2 re-emits the compiler' {
-        & cmd.exe /c "`"$gen2Exe`" emit-c selfhost/vm.vel > `"$gen2Out`" 2> nul"
+        & cmd.exe /c "`"$gen2Exe`" emit-c $selfSource > `"$gen2Out`" 2> nul"
     } | Out-Null
     if (-not $failed) {
         Head '      does generation 2 write what generation 1 wrote?'

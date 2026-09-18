@@ -56,6 +56,15 @@
 /tests/run_tests.exe
 /tests/run_tests.obj
 
+# the linked compiler source and its backup.  `tools/link_selfhost.vel` builds
+# `selfhost/vm.vel` out of `selfhost/vela.vel` plus `selfhost/parts/*.vel`, and
+# `selfhost/vm.vel.before-link` is what it keeps for diagnosis.  Both are products of
+# a 400 KB concatenation, so tracking them turns every edit to a part into a diff of
+# the whole compiler; `tools\build.ps1` step 2 regenerates them before anything reads
+# them.
+/selfhost/vm.vel
+/selfhost/vm.vel.before-link
+
 # the compiler's build directory: keep vm.c and promote results, ignore the rest
 /selfhost/build/*.obj
 /selfhost/build/_*

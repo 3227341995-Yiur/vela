@@ -1,0 +1,13 @@
+# tests/probes/oob_write.vel — a store one past the end of an array.
+#
+# A store cannot carry its own check: a comma expression is not an lvalue in C,
+# so the check is a statement in front of the store and the index temporary is
+# assigned *inside* that check.  The store then subscripts with the same
+# temporary, which is why this file exists — the read probe does not exercise
+# that shape.
+def main() -> None {
+    mut a: Array[int, 4] = [0]
+    mut i: int = 9
+    a[i] = 1
+    print(a[0])
+}

@@ -1,0 +1,22 @@
+# tests/probes/oob_cond.vel — an index inside a loop condition.
+#
+# This is the shape that decides which temporaries the emitter may use.  The
+# condition of a `while` is evaluated on every iteration, so the index has to be
+# computed on every iteration too: that is why the temporary is *assigned* at the
+# point of use — `(vela_bounds_check((t = EXPR), len, file, line), a[t])` — and
+# only *declared* before the loop.
+#
+# A temporary that were assigned once, in front of the `while`, would be stale
+# here: a[0] is zeroed on the first iteration, so the loop would end and print 1
+# instead of panicking on the second test of the condition.
+def main() -> None {
+    mut a: Array[int, 4] = [1]
+    mut i: int = 0
+    mut n: int = 0
+    while a[i] > 0 {
+        a[i] = 0
+        n += 1
+        i += 4
+    }
+    print(n)
+}

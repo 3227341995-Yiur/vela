@@ -1129,15 +1129,13 @@ def emit_assign(nd: Array[int, 655360], ty: Array[int, 262144],
 # The left-hand side of an assignment.  It cannot be `emit_expr`: a read of an
 # indexed element is a comma expression, and a comma expression is not an lvalue
 # in C, so a store emits the element directly and relies on the check that was
-# hoisted in front of the statement.
+# hoisted in front of the statement — which is also what assigned the index
+# temporary the store then subscripts with.
 def emit_lvalue(nd: Array[int, 655360], ty: Array[int, 262144],
                 flt: Array[float, 65536], src: str, path: str,
                 mem: Array[int, 3741696], mut vm: VM, tgt: int) -> None {
     if nd_kind(nd, tgt) == 31 {
-        emit_expr(nd, ty, flt, src, path, mem, vm, nd[tgt * 10 + 1])
-        emit_str("[")
-        emit_expr(nd, ty, flt, src, path, mem, vm, nd[tgt * 10 + 2])
-        emit_str("]")
+        emit_index_place(nd, ty, flt, src, path, mem, vm, tgt)
         return
     }
     if nd_kind(nd, tgt) == 32 {
@@ -1150,13 +1148,17 @@ def emit_lvalue(nd: Array[int, 655360], ty: Array[int, 262144],
 
 # The bounds check for an indexed target, as a statement.  The array is always a
 # name — Vela has no arrays of arrays and no functions returning arrays — so its
-# length is known from the binding.
+# length is known from the binding.  The check carries the index temporary's
+# assignment, because a store cannot: in C the subscript comes after the check
+# and has to read the same one value, not re-evaluate the index.
 def emit_index_check(nd: Array[int, 655360], ty: Array[int, 262144],
                      flt: Array[float, 65536], src: str, path: str,
                      mem: Array[int, 3741696], mut vm: VM, tgt: int) -> None {
-    emit_str("vela_bounds_check(")
+    emit_str("vela_bounds_check((")
+    emit_index_temp(tgt)
+    emit_str(" = ")
     emit_expr(nd, ty, flt, src, path, mem, vm, nd[tgt * 10 + 2])
-    emit_str(", ")
+    emit_str("), ")
     emit_int(unpack_len(expr_packed(nd, ty, mem, vm, nd[tgt * 10 + 1])))
     emit_location(path, nd_line(nd, tgt))
     emit_str(")")
@@ -1212,7 +1214,9 @@ def emit_augassign(nd: Array[int, 655360], ty: Array[int, 262144],
     } else {
         trap(path, line, "this augmented operator is not implemented in the back end")
     }
-    emit_expr(nd, ty, flt, src, path, mem, vm, tgt)
+    # the left operand is the element, spelled from the same temporary the store
+    # uses: `a[i] += x` must not compute `i` a third time
+    emit_lvalue(nd, ty, flt, src, path, mem, vm, tgt)
     emit_str(", ")
     emit_expr(nd, ty, flt, src, path, mem, vm, v)
     if op == 1 {
@@ -1494,6 +1498,9 @@ def emit_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
               mem: Array[int, 3741696], mut vm: VM, s: int,
               indent: int) -> None {
     k: int = nd_kind(nd, s)
+    # this statement's index temporaries, in the block that is about to hold it —
+    # see index temporaries for why they may not be hoisted any further
+    emit_index_decls(nd, s, indent)
     emit_indent(indent)
     if k == 6 {
         if (nd[s * 10 + 6] & 2) == 2 {
@@ -1602,6 +1609,193 @@ def emit_body(nd: Array[int, 655360], ty: Array[int, 262144],
     }
 }
 
+# ------------------------------------------------------- index temporaries
+#
+# An index used to be written twice — once as the argument of the bounds check and
+# once as the subscript — and cl /O2 does not merge the two, so every element
+# access computed its index arithmetic and re-ran its overflow checks twice.
+# Measured (bench/matmul_serial.vel, 512x512 f64, MSVC /O2, the same checksum
+# 1090512707 in every variant): 1.058s as this back end emitted it, 0.547s with
+# the index computed once and every check still in place, 0.177s with the index
+# arithmetic unchecked, 0.181s with no checks at all.  So the duplicate index was
+# a 2x loss by itself and the `vela_*_range` calls on the index are the cost that
+# remains — consuming the checker's interval proofs (ELISION_PLAN.md) is that
+# work, not this one.
+#
+# An index is now computed once, into a temporary of its own, and that one value
+# is both the subject of the check and the subscript:
+#
+#     (vela_bounds_check((vl_ix_41 = EXPR), 262144, "bench\\m.vel", 14), vl_a[vl_ix_41])
+#
+# The name comes from the node's own id, so nothing maps a node to a temporary
+# and this stays a streaming emitter (see the header): one index node always
+# spells one name, and two accesses in one expression are two nodes and therefore
+# two temporaries — no sharing, so no reordering.
+#
+# The declaration goes in front of the statement that uses the index; only the
+# *assignment* stays at the point of use.  That is what makes the shape work
+# everywhere: an index inside a condition must be recomputed on every evaluation
+# of that condition, and a comma expression that assigns before it checks does
+# exactly that, while a declaration hoisted in front of the statement would be
+# stale the second time round for anything that assigns it once.
+#
+# The *block* the declaration stands in is part of the fix, not tidiness.  Inside
+# a `parallel for`, OpenMP shares what is declared outside the region and makes
+# private what is declared inside it: a temporary declared at the top of the
+# function is one variable all threads write, and the index one thread checks is
+# then the index another thread's store subscripts with.  Measured on
+# tests/probes/parallel_alias_nested_rowmajor.vel: with the declarations at the
+# top of the function the compiled program printed 1 1 on one run and something
+# else on the next.
+def emit_index_temp(node: int) -> None {
+    emit_str("vl_ix_")
+    emit_int(node)
+}
+
+# The index temporaries one statement needs, declared in front of it.  Nothing
+# here walks a statement's *body*: every statement in that body declares its own,
+# and the block a declaration stands in is not a matter of taste — inside a
+# `parallel for`, OpenMP makes a variable declared in the region private to the
+# thread and one declared outside it shared, and a shared index temporary is a
+# race the checker cannot see.  It did see the array; it cannot see a
+# compiler-made variable.  Measured: with the declarations hoisted to the top of
+# the function, tests/probes/parallel_alias_nested_rowmajor.vel — `m[i * 8 + j] =
+# m[i * 8 + j] + 1` inside `parallel for` — printed 1 1 on one run and something
+# else on the next, which is exactly what a shared temporary does.
+#
+# A node this walk misses would be an undeclared identifier in the emitted C,
+# which cl refuses: the loud kind of wrong, never a silently shared or stale
+# temporary.
+def emit_index_decls(nd: Array[int, 655360], s: int, indent: int) -> None {
+    k: int = nd_kind(nd, s)
+    if k == 6 {
+        # assignment or declaration: the target may be an index (a store) and the
+        # value may read one; an array declaration's literal is at +2 as well
+        emit_index_decls_expr(nd, nd[s * 10 + 1], indent)
+        emit_index_decls_expr(nd, nd[s * 10 + 2], indent)
+        return
+    }
+    if k == 7 {
+        emit_index_decls_expr(nd, nd[s * 10 + 1], indent)
+        emit_index_decls_expr(nd, nd[s * 10 + 2], indent)
+        return
+    }
+    if k == 8 {
+        emit_index_decls_expr(nd, nd[s * 10 + 1], indent)
+        return
+    }
+    if k == 9 {
+        emit_index_decls_expr(nd, nd[s * 10 + 1], indent)
+        return
+    }
+    if k == 10 {
+        # the if and every `else if` after it, because all of their conditions are
+        # evaluated at this one statement and every one of them needs a temporary
+        # in this block
+        mut e: int = s
+        while e > 0 {
+            emit_index_decls_expr(nd, nd[e * 10 + 1], indent)
+            e = nd[e * 10 + 4]
+            if e > 0 {
+                if nd_kind(nd, e) != 10 {
+                    # the else branch is a statement list, and those statements
+                    # declare their own
+                    e = 0
+                }
+            }
+        }
+        return
+    }
+    if k == 11 {
+        emit_index_decls_expr(nd, nd[s * 10 + 1], indent)
+        return
+    }
+    if k == 12 {
+        # the range's start, stop and step are evaluated once, in front of the
+        # loop, so an index among them is this statement's and not the body's
+        emit_index_decls_expr(nd, nd[s * 10 + 2], indent)
+        emit_index_decls_expr(nd, nd[s * 10 + 3], indent)
+        emit_index_decls_expr(nd, nd[s * 10 + 4], indent)
+        return
+    }
+    # break, continue and the empty statement hold no expressions
+}
+
+def emit_index_decls_list(nd: Array[int, 655360], head: int,
+                          indent: int) -> None {
+    mut a: int = head
+    while a > 0 {
+        emit_index_decls_expr(nd, a, indent)
+        a = nd_nx(nd, a)
+    }
+}
+
+def emit_index_decls_expr(nd: Array[int, 655360], e: int, indent: int) -> None {
+    if e <= 0 {
+        return
+    }
+    k: int = nd_kind(nd, e)
+    if k == 31 {
+        emit_indent(indent)
+        emit_str("int64_t ")
+        emit_index_temp(e)
+        emit_str(";\n")
+        emit_index_decls_expr(nd, nd[e * 10 + 1], indent)
+        emit_index_decls_expr(nd, nd[e * 10 + 2], indent)
+        return
+    }
+    if k == 26 {
+        # a call: the callee (a name, or a field node carrying a receiver) and the
+        # argument list.  The node slots the emitter does *not* treat as
+        # expressions are the field-name handle of a field and the opcode of an
+        # operator, and neither is walked here.
+        emit_index_decls_expr(nd, nd[e * 10 + 1], indent)
+        emit_index_decls_list(nd, nd[e * 10 + 2], indent)
+        return
+    }
+    if k == 27 {
+        emit_index_decls_expr(nd, nd[e * 10 + 2], indent)
+        emit_index_decls_expr(nd, nd[e * 10 + 3], indent)
+        return
+    }
+    if k == 28 {
+        emit_index_decls_expr(nd, nd[e * 10 + 2], indent)
+        return
+    }
+    if k == 29 {
+        emit_index_decls_expr(nd, nd[e * 10 + 2], indent)
+        emit_index_decls_expr(nd, nd[e * 10 + 3], indent)
+        return
+    }
+    if k == 30 {
+        emit_index_decls_expr(nd, nd[e * 10 + 2], indent)
+        emit_index_decls_expr(nd, nd[e * 10 + 3], indent)
+        return
+    }
+    if k == 32 {
+        # the field name at +2 is an interned handle, not a node
+        emit_index_decls_expr(nd, nd[e * 10 + 1], indent)
+        return
+    }
+    if k == 33 {
+        emit_index_decls_list(nd, nd[e * 10 + 1], indent)
+        return
+    }
+    # literals, booleans and names hold no expressions
+}
+
+# The element a store or an augmented assignment is about: the array, and the one
+# temporary the hoisted check already assigned.  Never the index expression a
+# second time — that is the whole point of the temporary.
+def emit_index_place(nd: Array[int, 655360], ty: Array[int, 262144],
+                     flt: Array[float, 65536], src: str, path: str,
+                     mem: Array[int, 3741696], mut vm: VM, tgt: int) -> None {
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[tgt * 10 + 1])
+    emit_str("[")
+    emit_index_temp(tgt)
+    emit_str("]")
+}
+
 # ---------------------------------------------------------------- expressions
 
 def emit_expr(nd: Array[int, 655360], ty: Array[int, 262144],
@@ -1667,16 +1861,19 @@ def emit_expr(nd: Array[int, 655360], ty: Array[int, 262144],
         return emit_cmp(nd, ty, flt, src, path, mem, vm, e)
     }
     if k == 31 {
-        # `(check, element)` — a comma expression, so a read needs no hoisting
-        emit_str("(vela_bounds_check(")
+        # `(check, element)`, with the index computed once: the temporary is both
+        # the value the check tests and the subscript (see index temporaries)
+        emit_str("(vela_bounds_check((")
+        emit_index_temp(e)
+        emit_str(" = ")
         emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
-        emit_str(", ")
+        emit_str("), ")
         emit_int(unpack_len(expr_packed(nd, ty, mem, vm, nd[e * 10 + 1])))
         emit_location(path, nd_line(nd, e))
         emit_str("), ")
         emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 1])
         emit_str("[")
-        emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+        emit_index_temp(e)
         emit_str("])")
         return elem_kind_of(unpack_kind(expr_packed(nd, ty, mem, vm,
                                                     nd[e * 10 + 1])))

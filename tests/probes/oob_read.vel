@@ -1,0 +1,16 @@
+# tests/probes/oob_read.vel — a read one past the end of an array.
+#
+# The back end computes an index once now, into a temporary of its own, and both
+# the bounds check and the subscript read that one value.  What must not move is
+# the check: it still runs before the access, with this file and the line the
+# index is written on.  A probe rather than a `run` case in tests/cases.txt,
+# because the thing to compare is the panic text — file and line — and a case
+# whose golden is a panic has to be re-frozen whenever the emitter changes shape.
+#
+#     selfhost\build\vm.exe run tests/probes/oob_read.vel
+#     selfhost\build\vm.exe build tests/probes/oob_read.vel && tests\probes\oob_read.exe
+def main() -> None {
+    mut a: Array[int, 4] = [0]
+    mut i: int = 4
+    print(a[i])
+}
