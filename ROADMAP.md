@@ -154,27 +154,40 @@ and the benchmark harness finally runnable (`tools\bench.ps1`):
 | variant, all of them printing the same answer | seconds (best / median) |
 |---|---|
 | serial matmul 512², Vela as the emitter writes it | 1.058 / 1.066 |
-| the same emitted C, index hoisted into one temporary | **0.176 / 0.179** |
-| the same, with the bounds and arithmetic checks also removed | 0.178 / 0.182 |
+| the same emitted C, index hoisted into one temporary | 0.550 |
+| the same, with the bounds check also removed | 0.514 |
+| index unchecked, bounds check kept | 0.177 |
+| nothing checked | 0.181 |
 | the C++ twin | 0.212 / 0.213 |
 
 The emitter writes every array index expression twice — once inside
 `vela_bounds_check(...)` and once inside the subscript — and the index expression
 is itself `vela_mul_range` + `vela_add_range`, so the checked arithmetic runs twice
-per element access and MSVC /O2 does not merge the two copies.  That single defect
-is the whole 6×.
+per element access and MSVC /O2 does not merge the two copies.  That is worth
+0.51 s of the 1.06 s.
 
-Three consequences, in order of importance:
+**The table is a correction, and worth reading as one.**  The first version of this
+section put the hand-edited variant at 0.176 s and concluded that the checks cost
+nothing — but that variant had hoisted *unchecked* index arithmetic while keeping
+only the bounds check, so its label ("index hoisted, checks kept") did not describe
+what it measured, and the conclusion was false.  Isolating the same cost a second
+time gave the five-row split above.  Three consequences, in order of importance:
 
 1. **The fix is the emitter computing each index once** (a temporary, the way the
    hand-edited C above does).  Acceptance: the benchmark's Vela serial matmul at
-   **0.6 s or better** with its answer unchanged, `tools\refreeze.ps1` still
-   `RESULT: green` at 190/190, the fixpoint still byte-identical, and an
-   out-of-bounds probe still panicking with the same message and line.
-2. **The checks are not the cost.**  Removing them changes the time by less than the
-   noise floor, so `selfhost/ELISION_PLAN.md` is worth less than it looked — it stays
-   correct and still worth doing, but it is not where the 6× is.
-3. **A claim is only as good as the last measurement.**  This row of the README said
+   **0.6 s or better** — expected to land at ~0.55 s, so the bar is a floor and not
+   a goal — with its answer unchanged, `tools\refreeze.ps1` still `RESULT: green` at
+   190/190, the fixpoint still byte-identical, and an out-of-bounds probe still
+   panicking with the same message and line.
+2. **After that fix, the checked index arithmetic is the largest remaining cost**:
+   0.550 s down to 0.177 s if the `vela_mul_range`/`vela_add_range` calls on the
+   index go away, which is ~68% of what is left and the difference between losing to
+   the C++ twin and beating it.  That is what `selfhost/ELISION_PLAN.md` is for, and
+   this table is its justification — the plan is worth doing *after* step 1, not
+   instead of it.
+3. **The bounds check itself is cheap** (~0.04 s), so the `NF_NO_BOUNDS` half of the
+   elision plan is the smaller half; `NF_NO_OVERFLOW` is where the time is.
+4. **A claim is only as good as the last measurement.**  This row of the README said
    "wins on serial matmul" for a day while the emitted code was, in fact, six times
    slower than the hand-written variant.  The harness is now one command, so the
    number is cheap to re-take; take it before quoting it.

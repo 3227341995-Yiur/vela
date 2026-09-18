@@ -32,6 +32,10 @@
 /bench/*.c
 /selfhost/*.c
 /selfhost/llvm/*.c
+# ... except the ones a person wrote.  `phase2_spike.c` is hand-written evidence
+# that the in-process LLVM path works, not output from a build, and the blanket
+# rule above swallowed it once already.
+!/selfhost/llvm/phase2_spike.c
 /tests/probes/*.c
 /runtime/_*.c
 /tests/build/**/*.c

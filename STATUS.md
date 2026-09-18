@@ -81,16 +81,32 @@ wedge.
 - **"Faster than C++" is not established.**  Re-measured today, with the runtime's
   checks finally working: serial matmul 512² **1.058 s** against the C++ twin's
   **0.213 s** (5×), parallel matmul 0.128 s against 0.019 s (6.6×), sieve 0.0196 s
-  against 0.0129 s, mandelbrot a tie.  The cause is measured, not guessed, and it is
-  one defect: the C emitter writes **every index expression twice**, once inside the
-  bounds check and once inside the subscript, so `vela_mul_range`/`vela_add_range`
-  run twice per element access and MSVC /O2 does not merge them.  A hand-edited copy
-  of the same emitted C, with the index hoisted into one temporary, runs matmul in
-  **0.176 s** — faster than the C++ twin — and removing the checks as well changes
-  nothing measurable (0.178 s).  So: the checks are not the cost, the duplication
-  is; the fix is in the emitter and is in progress, and the elision work
-  (`selfhost/ELISION_PLAN.md`) is a *different* and smaller opportunity than the
-  plan assumed.
+  against 0.0129 s, mandelbrot a tie.  The cause is measured, not guessed, and the
+  measurement has a corrected version worth reading twice:
+
+  | variant of the same emitted C (all printing 1090512707) | seconds |
+  |---|---|
+  | as the compiler emits it today | 1.058 |
+  | index hoisted into a temporary, arithmetic still checked | 0.550 |
+  | the same, bounds check also removed | 0.514 |
+  | index unchecked, bounds check kept | 0.177 |
+  | nothing checked | 0.181 |
+  | the C++ twin | 0.213 |
+
+  So there are **two** levers, in order: the emitter writes every index expression
+  **twice** (worth 0.51 s — halving the program's time), and after that the checked
+  index arithmetic (`vela_mul_range` + `vela_add_range`) is ~0.37 s, which is ~68%
+  of what remains.  The bounds check itself is ~0.04 s.  The first lever is an
+  emitter fix and was in progress at the time of writing; the second is exactly what
+  `selfhost/ELISION_PLAN.md` is for, and this table is its justification.
+
+  **Correction, because the first version of this paragraph was wrong.**  It said
+  "the checks cost almost nothing, the duplication is the whole story", quoting a
+  hand-edited variant that was labelled "index computed once, checks kept" but had
+  hoisted *unchecked* arithmetic while keeping only the bounds check.  The label did
+  not describe the variant, and the conclusion drawn from it was therefore false.
+  A second measurement, taken independently while isolating the same cost, produced
+  the table above and the true split.  Labels on experiments are load-bearing.
 - The repository still has **no version control**.  `git.exe` exists on this
   machine; nothing has been committed because nothing has been initialised.
 

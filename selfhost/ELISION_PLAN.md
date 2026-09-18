@@ -154,13 +154,28 @@ and has the emitter **ignore** them, which is a change with no behaviour at all.
    re-frozen with the new numbers and the date and compiler they were taken with.
    If the parallel gap does not close, the table says so and the claim stays
    unproven.
-5. **Know what this is worth before starting it.**  Measured 2026-09-19: removing
-   the bounds and arithmetic checks from the same emitted C moved serial matmul from
-   0.176 s to 0.178 s — inside the noise.  The 6× that was missing came from the
-   emitter writing every index expression **twice**, which is an emitter fix, not an
-   analysis one (see `ROADMAP.md`, "The emitter's index duplication").  The plan
-   above is still right and still worth doing; it is no longer the largest item on
-   the list, and it must not be sold as the fix for the lost performance claim.
+5. **This is the second lever, and it is the big one — but it is second.**  Measured
+   2026-09-19, on the same emitted C, all variants printing 1090512707:
+
+   | variant | seconds |
+   |---|---|
+   | as the emitter writes it | 1.058 |
+   | index hoisted into a temporary, arithmetic still checked | 0.550 |
+   | index unchecked, bounds check kept | 0.177 |
+   | nothing checked | 0.181 |
+   | the C++ twin | 0.213 |
+
+   Two things follow.  First, the emitter currently writes every index expression
+   **twice**, and fixing that (a separate piece of work, in the emitter) is what takes
+   1.058 s to 0.550 s.  Second, *after* that fix, the checked index arithmetic is
+   0.550 → 0.177, i.e. **~68% of what remains** — this plan's whole reason to exist,
+   and the difference between losing to the C++ twin and beating it.  The bounds check
+   itself is only ~0.04 s of that, so `NF_NO_OVERFLOW` on index arithmetic is the half
+   that pays, and `NF_NO_BOUNDS` is the smaller half.
+   (An earlier version of this item claimed the checks cost nothing and that this plan
+   was therefore worth less than it looked.  That claim came from a hand-edited variant
+   labelled "checks kept" that had in fact hoisted *unchecked* arithmetic, so the label
+   did not describe the measurement.  The table above replaced it.)
 
 ## Acceptance tests, written as cases
 

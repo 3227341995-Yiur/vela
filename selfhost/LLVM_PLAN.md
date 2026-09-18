@@ -46,6 +46,25 @@ measured facts rather than opinions:
 | the shared library | `bin\LLVM-C.dll` | 74,159,616 B |
 | the linker | `bin\lld-link.exe` | — |
 
+**And the C API was not just inventoried, it was run.**  `selfhost/llvm/phase2_spike.c`
+is a hand-written spike in the same spirit as M1: it initializes the X86 target,
+builds a module for the host triple, emits one function `main` that returns the
+constant 42, and writes a COFF object with `LLVMTargetMachineEmitToFile`.  Measured
+on this machine:
+
+```
+host triple: x86_64-pc-windows-msvc
+wrote object: C:\...\vela-phase2\out.obj        330 B
+lld-link /entry:main /subsystem:console out.obj /out:out.exe
+out.exe   ->   exit code 42
+```
+
+So the whole in-process path works here: `cl` compiles the spike against
+`include\llvm-c\Core.h` and links `LLVM-C.lib`; at run time `LLVM-C.dll` must be
+beside the program (or on `PATH`), exactly as a Rust toolchain needs its own
+libraries.  Nothing in that path writes C or IR text, and the object file went to a
+scratch directory.  Phase 2 is therefore an engineering problem, not a research one.
+
 So the shipping path can be: **LLVM-C inside the process** builds the module, writes
 `%TEMP%\vela-build\<flattened>\<stem>.obj`, and `lld-link` links that with
 `vela_llvm_runtime.obj` into `<stem>.exe` **beside the source — and that is the only
