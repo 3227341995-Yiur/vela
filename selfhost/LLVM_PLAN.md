@@ -32,9 +32,32 @@ measured facts rather than opinions:
 
 | phase | what it delivers | what is still needed on the machine |
 |---|---|---|
-| **1** | `vm.exe emit-llvm f.vel` writes `f.ll`; `clang-cl` (or `llc` + a linker) turns it into `f.exe` | an LLVM toolchain binary. **`clang` is itself a C compiler**, so this phase replaces MSVC with LLVM; it does *not* remove the C-compiler dependency |
-| **2** | `runtime/vela_llvm_shim.c` exposes a scalar interface over `llvm-c`; `libLLVM` is linked into `vm.exe`, which then writes `.obj` itself | a linker (`lld`) |
+| **1** | `vm.exe emit-llvm f.vel` writes `f.ll` **into the build scratch, never beside the source**; `clang-cl` (or `llc` + a linker) turns it into `f.exe` | an LLVM toolchain binary. **`clang` is itself a C compiler**, so this phase replaces MSVC with LLVM; it does *not* remove the C-compiler dependency |
+| **2** | `runtime/vela_llvm_shim.c` exposes a scalar interface over `llvm-c`; `libLLVM` is linked into `vm.exe`, which then writes **an object file** itself — no C text, no IR text, nothing in the user's directory | a linker (`lld-link`, which ships with the LLVM package we already have) |
 | **later** | our own COFF/PE writer, so linking needs nothing external | nothing |
+
+**Phase 2 is not speculative: the pieces were inventoried on this machine**
+(2026-09-19, LLVM 23.1.1 as unpacked by `tools\get-llvm.ps1`):
+
+| what | where | size |
+|---|---|---|
+| the C API headers | `include\llvm-c\Core.h`, `BitWriter.h`, `Target.h`, … | — |
+| the import library | `lib\LLVM-C.lib` | 299,868 B |
+| the shared library | `bin\LLVM-C.dll` | 74,159,616 B |
+| the linker | `bin\lld-link.exe` | — |
+
+So the shipping path can be: **LLVM-C inside the process** builds the module, writes
+`%TEMP%\vela-build\<flattened>\<stem>.obj`, and `lld-link` links that with
+`vela_llvm_runtime.obj` into `<stem>.exe` **beside the source — and that is the only
+file the user ever sees**, which is the north star's actual requirement.  No MSVC, no
+`cl.exe`, no `clang.exe`, no `.c`, no `.ll` anywhere the user looks.  The one
+remaining external thing is a linker, which is exactly what Rust needs too.
+
+Phase 1 stays in the plan for what it is worth: it proved the IR shapes, the module
+header and the MSVC struct ABI with hand-written IR (M1) and it is the honest way to
+build an emitter incrementally, because a text `.ll` can be read and diffed.  But it
+must **not** ship a `.ll` beside a user's source; the C backend already moved its
+intermediates into `%TEMP%` for this reason, and phase 1 follows the same rule.
 
 The C backend **stays**. It is the only backend the corpus currently verifies
 end to end, and it stays verified: every phase above is additive, and `build`
@@ -49,11 +72,15 @@ vm.exe build-llvm <file.vel> [rtobj]  # emit-llvm, then clang-cl the .ll + the r
 
 - The runtime object is built once, and by the LLVM-side driver:
   `clang-cl /c runtime/vela_llvm_runtime.c /Fo<dir>\vela_llvm_runtime.obj`.
-- Output paths follow the C backend's rule exactly: `<stem>.ll`, `<stem>.obj`,
-  `<stem>.exe` **beside the source**, independent of the working directory. The
-  C backend's history here is worth remembering: it used to depend on being run
-  from the repository root, and every failure that produced was a user
-  wondering why their program would not build.
+- Output paths follow the C backend's rule, which is: **the executable lands beside
+  the source and nothing else does**.  The `.ll` and the `.obj` go to
+  `%TEMP%\vela-build\<flattened path of the source>\`, the same scratch the C backend
+  already uses, and for the same reason — the north star for this project is that
+  `vm.exe build x.vel` leaves `x.exe` and no other language's file in the user's
+  directory.  The C backend's history here is worth remembering twice: it used to
+  depend on being run from the repository root (every failure that produced was a
+  user wondering why their program would not build), and it used to write `.c` and
+  `.obj` next to the user's source, which is the thing phase 1 must not reintroduce.
 - `parallel for` on the LLVM backend is **refused with a message naming the
   reason**, not silently serialised and not silently dropped. LLVM IR has no
   OpenMP; emitting the runtime ABI (`__kmpc_fork_call`) is real work and is

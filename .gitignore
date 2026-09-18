@@ -82,6 +82,12 @@
 !/selfhost/build/vm.c
 /tests/run_tests.c
 
+# the C-compiler driver's own scratch, which `tools\build.ps1` writes for
+# diagnosability: `vm.exe_cc.bat` and `vm.exe_cc_cmd.txt` are regenerated on every
+# build, and two of them were committed in the first commit by accident
+/selfhost/build/*.bat
+/selfhost/build/*.txt
+
 # agents' scratch files: `_`-prefixed, wherever they were working.  These are
 # not evidence and not source -- 45 files named `_ovf_child_NN.txt` from one
 # overflow study had been sitting in `runtime\` since the day it ran.
