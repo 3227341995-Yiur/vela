@@ -94,13 +94,24 @@ if ($LASTEXITCODE -eq 0 -and (Test-Path 'examples\hello.exe')) {
 }
 
 # --------------------------------------------- 3. the same from elsewhere
-# The build must not depend on where the caller is standing.  This was a real
-# defect: the include directory came out one level too high, so every build from
-# any directory but the root died with
-# `fatal error C1083: cannot open include file: 'vela_runtime.h'` — which is what
-# the user saw when their IDE ran a program.
-Step 'build the same file from a directory outside the repository root'
-$tmp = Join-Path $root '.work\smoke'
+# Two things are checked here, and the second one is the project's north star.
+#
+# (a) The build must not depend on where the caller is standing.  This was a real
+#     defect: the include directory came out one level too high, so every build from
+#     any directory but the root died with
+#     `fatal error C1083: cannot open include file: 'vela_runtime.h'` — which is what
+#     the user saw when their IDE ran a program.
+#
+# (b) `vm.exe build x.vel` must leave `x.exe` in the user's directory and **nothing
+#     else**: no `.c`, no `.obj`, no `.ll`, no `.pdb`.  That is the whole point of a
+#     language whose product is its own output, and it is the kind of property that
+#     decays silently — the C backend wrote all four of those beside the source until
+#     the scratch directory moved into %TEMP%, and the plan for the LLVM backend had
+#     the same mistake written into it (`<stem>.ll` beside the source) until this
+#     check existed.
+Step 'build from outside the repository, and count what it leaves behind'
+$tmp = Join-Path $env:TEMP 'vela-smoke-userdir'
+Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 Copy-Item $hello (Join-Path $tmp 'hello.vel') -Force
 Push-Location $tmp
@@ -111,6 +122,15 @@ if ($code -eq 0 -and (Test-Path (Join-Path $tmp 'hello.exe'))) {
     Ok 'exit 0, and the executable lands beside its source'
 } else {
     Bad "exit $code — the include path is still relative to the caller"
+}
+$allowed = @('hello.vel', 'hello.exe')
+$strays = @(Get-ChildItem -LiteralPath $tmp -File | Where-Object { $allowed -notcontains $_.Name })
+if ($strays.Count -eq 0) {
+    Ok "the user's directory holds exactly $($allowed -join ' and ') — no other language's file"
+} else {
+    $names = ($strays | ForEach-Object { $_.Name }) -join ', '
+    Bad "the build left $($strays.Count) file(s) beside the source that are not the executable: $names"
+    foreach ($s in $strays) { Say ("        " + $s.Name + "  " + $s.Length + " B") }
 }
 
 # ------------------------------------------------------- 4. checked arithmetic
