@@ -1,8 +1,27 @@
 # The LLVM backend — scope, interface, and what we will not claim
 
-Status: **phase 1 not started**. This file is the contract the work is done
-against, written before the code so that the hard parts are decided once instead
-of guessed at per agent.
+Status: this file is the contract the work is done against, written before the
+code so that the hard parts are decided once instead of guessed at per agent.
+**Its decisions age well; its self-descriptions do not**, so the state is here as
+measurements and the rest of the file is read as a dated ledger.  Measured
+2026-09-20 01:30, on the tree as it then stood:
+
+| what | measured now |
+|---|---|
+| `tools\link_selfhost.vel` | `part_count() == 10`; `llvm_shim.vel` is part **6**, `emit_llvm.vel` part **7** |
+| `selfhost\parts\` | **10** files on disk, the same set as the linker's list |
+| `selfhost\vm.vel` (linked) | 14 645 lines / 520 297 bytes |
+| the driver's new modes | `selfhost\parts\vm_main.vel` — `emit-llvm` at :1148, `build-llvm` at :1164 |
+| the shim | `runtime\vela_llvm_shim.{c,h}` 62 378 / 28 203 bytes, **64** functions, **55** declared in Vela |
+| the emitter | `selfhost\parts\emit_llvm.vel`, 73 064 bytes / 1631 lines |
+| LLVM on this machine | 23.1.1 under `C:\Users\lu\Downloads\llvm\clang+llvm-23.1.1-x86_64-pc-windows-msvc\` — **on disk, not on `PATH`** |
+| `vela_llvm_runtime.obj` | **does not exist yet**, so `build-llvm` cannot run end to end: `vm_main.vel:978` panics and says exactly that |
+
+The paragraphs below keep the tense they were written in, on purpose — they are
+the record of what was decided before the code, and where one of them reads as
+"not started" or "not here", it was true then.  **Where a claim in this file and a
+measurement disagree, the measurement is right**, and the paragraph should be
+corrected rather than trusted.
 
 ## Why this exists at all
 
@@ -166,12 +185,17 @@ now reads:
 parts: 9 on disk, 9 in the linker's list, the same set
 ```
 
-**Step 2 is closed** with: the guard line above; the linked compiler at 12687 lines /
-436910 bytes passing `vm.exe check selfhost\vm.vel` (`ok`); and `tools\build.ps1` reaching
+**Step 2 is closed** with: the guard line above; the linked compiler passing
+`vm.exe check selfhost\vm.vel` (`ok`); and `tools\build.ps1` reaching
 `RESULT: ok` with a byte-identical fixpoint over three generations
-(`0A6A273C5328A435`, 758020 bytes each).  `tools\smoke.ps1` is green as well, so the
-compiler that carries the 55 declarations still builds and runs programs, and the `.exe`
-is still the only file it leaves in a user's directory.
+(`0A6A273C5328A435`, 758020 bytes each).  `tools\smoke.ps1` was green as well, so
+the compiler that carries the 55 declarations still built and ran programs, and
+the `.exe` was still the only file it left in a user's directory.
+The numbers in that paragraph are the ones that commit measured — **9 parts,
+12687 lines / 436910 bytes** — and the status block at the top of this file
+carries what the tree says now, because `emit_llvm.vel` was registered as part 7
+after this was written.  The guard line printed above is likewise that commit's
+output.
 
 Two consequences worth naming before step 3 leans on them.  `vm.exe` is **not** yet linked
 against `LLVM-C.lib`, and it builds anyway: nothing calls the 55 yet, so the linker never
@@ -314,10 +338,16 @@ same case list the suite does. A backend that is fast and wrong is not a backend
    The slice also found the first real portability defect in the LLVM runtime:
    `runtime/vela_llvm_runtime.c` used `bool` in C without `<stdbool.h>`, which MSVC's
    C mode tolerates and clang does not (`error: unknown type name 'bool'`).
-   Still missing from M1's description: `build-llvm` itself.  There is no emitter
-   yet, so `vm.exe build-llvm` does not exist and the M1 evidence is produced by a
-   PowerShell driver that hands a hand-written `.ll` to `clang-cl`.  Writing the
-   emitter is M2's work, and the M2 list below is unchanged.
+   Still missing from M1's description: `build-llvm` itself.  *When this was
+   written* there was no emitter, so `vm.exe build-llvm` did not exist and the M1
+   evidence was produced by a PowerShell driver that handed a hand-written `.ll`
+   to `clang-cl`.  Measured 2026-09-20, the emitter exists
+   (`selfhost\parts\emit_llvm.vel`, 73 064 bytes / 1631 lines, registered as part
+   7) and `build-llvm` is a mode in the driver (`vm_main.vel:1164`) — but it still
+   cannot run end to end, because `vela_llvm_runtime.obj` is not written yet
+   (`vm_main.vel:978` panics and names it).  So **M2 is not claimed here**: the M2
+   list below is unchanged, and a milestone counts as closed when a differential
+   run is behind it, not when an emitter compiles.
 2. **M2** — arithmetic with checks, `if`/`elif`/`else`, `while`, `for i in range`.
    Evidence: differential runs including an overflow case that must panic with the
    same message on both backends.
@@ -345,8 +375,14 @@ same case list the suite does. A backend that is fast and wrong is not a backend
 
 ## What the feasibility probe found on this machine (measured, 2026-09-19)
 
-**There is no LLVM compiler here.** That is the first fact of this workstream, and
-it is an install step rather than a design problem:
+**There is no LLVM compiler here.** *Read this as the 2026-09-19 snapshot it is,
+kept because the reasoning in it is what mattered: LLVM was an install step rather
+than a design problem, and `tools\get-llvm.ps1` was then written and run.  LLVM
+23.1.1 is on disk now, under
+`C:\Users\lu\Downloads\llvm\clang+llvm-23.1.1-x86_64-pc-windows-msvc\`, and still
+**not on `PATH`** — which is a fact the driver has to deal with, not a missing
+install.*  That was the first fact of this workstream, and it was an install step
+rather than a design problem:
 
 - Visual Studio 2022 Build Tools lives at
   `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools` — the `(x86)`
