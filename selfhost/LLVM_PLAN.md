@@ -21,7 +21,28 @@ measurements and the rest of the file is read as a dated ledger.  Measured
 | **the whole `run` corpus, three ways** (measured, same day, twice — the second run after the arena work landed) | all **23** `run` cases in `tests/cases.txt`, each built and run three ways and compared by output hash and exit code. **First run: 4 match, 19 refused. Second run: 7 match, 16 refused.** **0 gave a wrong answer in either run** — that number is the one that matters, and it has not moved: the backend either agrees to the byte or refuses out loud. The three that started matching are `arrays_and_len_folding`, `array_zero_filled` and **`hello`**, i.e. the shipped example now compiles on this backend. The refusals that remain are an enumerable list rather than a mystery: **`parallel for` 6** (refused *deliberately*: LLVM IR has no OpenMP, and a loop that says it is parallel and runs serially is the one failure mode this project promised never to ship), **builtins other than `print` and `len` of an array 3**, **struct parameter or local 2**, **`len` of a `str` and `str` comparison 2**, **in-place update of one value kind 1**, **`and`/`or` short-circuit 1** |
 | **what it still refuses** | an **array** is refused with the reason, not approximated: `vela_arena_alloc` is `static` in `runtime/vela_runtime.h`, so the emitted IR has no symbol to call. `examples\hello.vel` declares one, so the shipped example does not compile on this backend yet |
 
-The paragraphs below keep the tense they were written in, on purpose — they are
+**An install is three files, and one of them is not optional.** `vm.exe` carries
+libLLVM inside it, so `LLVM-C.dll` is a **load-time** dependency: measured
+2026-09-20, a copy of `vm.exe` in a directory without the DLL **does not start at
+all** — exit `0xC0000135` (`STATUS_DLL_NOT_FOUND`), before `main`, with nothing on
+either stream that names LLVM.  Every later check would then fail naming the wrong
+problem.  `tools\smoke.ps1` asserts that the DLL and `vela_llvm_runtime.obj` sit
+beside the compiler for exactly that reason, and `tools\build.ps1` copies both and
+refuses to finish without the DLL.  The shipping path is otherwise intact and
+measured from a directory that is not the repository: `vm.exe build p.vel` exits 0,
+the executable runs, and the user's directory holds `p.vel` and `p.exe` and
+nothing else.
+
+**The alternative is measured rather than assumed.**  The unpacked LLVM package
+ships **99 static archives over 1 MB** in `lib\` — `LLVMCodeGen.lib` is
+24,471,254 B and `LLVMAnalysis.lib` is 15,509,928 B — so the compiler could link
+the components it needs **statically** and have no load-time dependency at all, at
+the cost of a `vm.exe` tens of megabytes larger.  Neither option is chosen here.
+What is recorded is that the choice exists, that the current one fails *silently*
+when the DLL is missing, and that `rustc` ships its own libraries in the same
+shape, so "library beside the compiler" is a precedent and not a shortcut.
+
+ — they are
 the record of what was decided before the code, and where one of them reads as
 "not started" or "not here", it was true then.  **Where a claim in this file and a
 measurement disagree, the measurement is right**, and the paragraph should be
