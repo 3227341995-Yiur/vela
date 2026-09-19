@@ -41,13 +41,22 @@
 #              the same line, and the assertion that they *are* the same is the
 #              point of most of these rows); `pragma: yes` adds the OpenMP
 #              requirement on the emitted C.
-#   violation  a two-sided row for a hole: `check` must refuse (check_exit, and
-#              check_msg when the row has one), and *both* front ends must still do
-#              something at run time — run_exit/run_msg/run_out and
-#              native_exit/native_msg/native_out.  This is what lets a hole be
-#              stated as "the checker is silent, and here is what each front end
-#              does anyway" instead of as prose.  `native_exit 2` with an empty
-#              native_msg means the C compiler refuses the emitted C.
+#   violation  a two-sided row for a hole, and the two sides answer different
+#              questions.  `check_exit`/`check_msg` are the ASSERTION: what the rule
+#              requires of `vm.exe check` — a refusal, with that message.  If check
+#              does not do it, the promise is broken and the row is a hole
+#              (`FAIL-as-expected`); if check does do it, the hole is shut and the
+#              row reports `CLOSED`, which the tally counts in a column of its own.
+#              The run and native columns are then the RECORD of what each front end
+#              used to do with a program the checker should have refused — carried
+#              because they are the measurement that made the case, printed with the
+#              row, and never a verdict: once the checker refuses the program there
+#              is no run of it left to observe, so the recording going stale is the
+#              fix working and is reported as a `note`, not as a reason.
+#   diverge    both front ends must each print their column, and the two must
+#              differ.  This is for a documented gap where *the measurement is the
+#              assertion* (SPEC.md §3.1's untypechecked call, and the narrowing it
+#              allows), so it fails loudly if the two ever agree again.
 #
 # name | file | mode | check_exit | check_msg | run_exit | run_msg | native_exit | native_msg | native_out | run_out | pragma | xfail | promise | note
 
@@ -168,7 +177,7 @@ escape_no_global_state | escape_no_global_state.vel | check | 2 | a top-level st
 # checker should refuse, and what each front end does with it anyway.
 hole_cmp_bool_bool | hole_cmp_bool_bool.vel | violation | 2 | operator '<' cannot be applied to bool and bool | 2 | a bool can only be compared with == and != | 0 | | False | | | yes | SPEC 3.1 / DESIGN 7.5 | `True < False` accepted; the interpreter refuses it, the compiled program answers False |
 hole_cmp_bool_int | hole_cmp_bool_int.vel | violation | 2 | operator '<' mixes bool and int | 2 | a bool can only be compared with == and != | 0 | | False | | | yes | SPEC 3.1 / DESIGN 7.5 | `True < 1` accepted; the interpreter refuses it, the compiled program answers False |
-hole_cmp_int_float | hole_cmp_int_float.vel | violation | 2 | operator '<' mixes float and int | 2 | a comparison needs two values of the same type | 0 | | True | | | yes | SPEC 3.1 / DESIGN 7.5 | `x < y` for int x, float y accepted; the interpreter refuses it; compiled False-answer risk |
+hole_cmp_int_float | hole_cmp_int_float.vel | violation | 2 | operator '<' mixes int and float | 2 | a comparison needs two values of the same type | 0 | | True | | | yes | SPEC 3.1 / DESIGN 7.5 | `x < y` for int x, float y accepted; source order int-then-float, per tests/golden/float_to_int_variable.err (`a + f`, a: int) and implicit_int_to_float.err (`x + 1`, x: float) |
 hole_cmp_str_int | hole_cmp_str_int.vel | violation | 2 | operator '<' cannot be applied to str and int | 2 | a string can only be compared with == and != | 2 | | | | | yes | SPEC 3.1 / DESIGN 7.5 | `"a" < 1` accepted; the interpreter refuses it and the C compiler refuses the emitted C |
 hole_unary_neg_bool | hole_unary_neg_bool.vel | violation | 2 | operator '-' cannot be applied to bool | 2 | unary - needs a number | 0 | | True | | | yes | SPEC 3.1 / DESIGN 7.5 | `-b` on a bool accepted; the interpreter refuses it, the compiled program prints 1 as True |
 hole_unary_neg_str | hole_unary_neg_str.vel | violation | 2 | operator '-' cannot be applied to str | 2 | unary - needs a number | 2 | | | | | yes | SPEC 3.1 / DESIGN 7.5 | `-s` on a str accepted; the C compiler refuses the emitted C |

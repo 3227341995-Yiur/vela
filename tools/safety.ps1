@@ -6,7 +6,7 @@
 # time and which must keep compiling.  This script is how those sentences become
 # something a person can run.
 #
-#   pwsh -File tools\safety.ps1                 # every case
+#   pwsh -File tools\safety.ps1                 # every case (no arguments needed)
 #   pwsh -File tools\safety.ps1 -Only bounds_*  # cases whose name matches
 #   pwsh -File tools\safety.ps1 -Skip hole_*,probe_*
 #   pwsh -File tools\safety.ps1 -NoXfail        # only the promises it keeps
@@ -20,15 +20,23 @@
 #
 # WHAT IT MEASURES AGAINST, AND WHY THAT MATTERS
 #
-# The compiler is copied ONCE per invocation, before any case runs, into
-# `%TEMP%\vela-safety\frozen\vm.exe`, and every case runs against that copy.  The
+# With no arguments the harness copies the compiler ONCE, before any case runs,
+# into `%TEMP%\vela-safety\frozen\vm.exe` (creating the directory itself, and
+# copying `LLVM-C.dll` beside it), and every case runs against that copy.  The
 # copy's SHA256 and byte size are printed first and again at the end.  The reason
 # is not tidiness: this repository's compiler is rebuilt while the corpus is being
-# worked on (it happened twice during the session these cases were written, and
+# worked on (it happened five times in the session these cases were written, and
 # once mid-run — a build that overwrote `vm.exe` under this script made a case
 # report `build exit=-1`), so a run whose cases were judged by two different
 # compilers proves nothing about either.  The copy is the record, and `-FrozenVm`
 # pins an older one when a recorded number has to be reproduced.
+#
+# (A bug lived here, and is worth naming because it broke exactly the promise this
+# header makes: `$FrozenVm` was defaulted *before* the "is it pinned" test, so the
+# copy branch was dead code and `-FrozenVm` was silently required, while the header
+# still said a no-argument run freezes a copy.  Both modes are now exercised:
+# deleting `frozen\` and running with no arguments copies and prints
+# `copied once from ...`, and `-FrozenVm <path>` still uses that file in place.)
 #
 # `vm.exe` needs its own directory back: the build of 2026-09-20 links against
 # `LLVM-C.dll`, so the DLL is copied beside the frozen compiler too.  Without it
@@ -37,8 +45,18 @@
 #
 # The hash this harness was written and last run against, for comparison:
 #
-#     SHA256  67ACF63B7DD3A5249E2FE3B1F015D5DB4D4C4032FEFB464F12F86F519F903D8A
-#     size    770560 bytes   (selfhost\build\vm.exe, 2026-09-20 01:4x)
+#     SHA256  AD4A997B132728449D91D789E5CFC26A8A82CAAD466B41F78AC3C5041FBE73D0
+#     size    795136 bytes   (selfhost\build\vm.exe, 2026-09-20 02:52)
+#
+# The measurements in `SAFETY.md` were taken against that build, with two earlier
+# builds pinned beside it for the before/after comparison (`-FrozenVm`):
+#
+#     67ACF63B7DD3A5249E2FE3B1F015D5DB4D4C4032FEFB464F12F86F519F903D8A / 770560
+#       — before the operator-table fix: the seven `hole_cmp_*` / `hole_unary_*`
+#         rows are holes, the tally says `10 xfail rows showing their violation`
+#       AD4A997B132728449D91D789E5CFC26A8A82CAAD466B41F78AC3C5041FBE73D0 / 795136
+#       — after it: the same seven rows read `CLOSED`, the tally says
+#         `3 xfail rows ... / 7 holes CLOSED`
 #
 # A different hash is not an error — another agent may have rebuilt the compiler —
 # but it means the numbers recorded in `SAFETY.md` were measured against a
@@ -112,34 +130,37 @@ $FrozenDir   = Join-Path $ScratchRoot 'frozen'
 $RunDir      = Join-Path $ScratchRoot 'run'
 $SourceVm    = Join-Path $Root 'selfhost\build\vm.exe'
 $SourceDll   = Join-Path $Root 'selfhost\build\LLVM-C.dll'
-$DefaultVm   = Join-Path $FrozenDir 'vm.exe'
-# `-FrozenVm` was already bound above, so the default is applied here rather than
-# in the param block: assigning to the parameter itself would overwrite a caller's
-# pinned compiler path, which is the one thing this switch exists to prevent.
-if (-not $FrozenVm) { $FrozenVm = $DefaultVm }
-
-New-Item -ItemType Directory -Force -Path $FrozenDir, $RunDir | Out-Null
+# `-FrozenVm` is a *pin*: when the caller names one, that file is used where it
+# lies.  When it is not named there is no path at all yet — the default below is
+# only a comment on where the copy will go, and the earlier bug here was exactly
+# this: assigning `$DefaultVm` into `$FrozenVm` before the "is it pinned" test made
+# `$FrozenVm` non-empty, so the copy branch became dead code and `-FrozenVm` was
+# silently required despite the header promising a no-argument run.
+$pinned = ($FrozenVm -ne '' -and $null -ne $FrozenVm)
 
 # --------------------------------------------------------- freeze the compiler
-if (-not (Test-Path $SourceVm)) {
-    Write-Host ("RESULT: no compiler at {0} — build it first" -f $SourceVm)
-    exit 1
-}
-if ($FrozenVm) {
+New-Item -ItemType Directory -Force -Path $FrozenDir, $RunDir | Out-Null
+
+if ($pinned) {
     # An explicit -FrozenVm is used as it stands: it is not copied, and its own
-    # directory is where its LLVM-C.dll has to be.  Reproduction of a recorded run
-    # is the point, so the hash is reported and the WARNING below decides whether
-    # it is the build this script's reference hash knows.
+    # directory is where its LLVM-C.dll has to be.  Reproducing a recorded run is
+    # the point, so the hash is reported and the reference-hash check below decides
+    # whether it is a build this script knows.
     if (-not (Test-Path $FrozenVm)) {
         Write-Host ('RESULT: -FrozenVm {0} does not exist' -f $FrozenVm)
         exit 1
     }
     $FrozenDir = Split-Path -Parent $FrozenVm
-    $pinned = $true
+    $frozenHow = 'pinned by -FrozenVm (used in place, nothing copied)'
 }
 else {
+    if (-not (Test-Path $SourceVm)) {
+        Write-Host ('RESULT: no compiler at {0} — build it first' -f $SourceVm)
+        exit 1
+    }
+    $FrozenVm = Join-Path $FrozenDir 'vm.exe'
     Copy-Item $SourceVm $FrozenVm -Force
-    $pinned = $false
+    $frozenHow = ('copied once from {0}' -f $SourceVm)
 }
 $hash = (Get-FileHash $FrozenVm -Algorithm SHA256).Hash
 $size = (Get-Item $FrozenVm).Length
@@ -151,18 +172,16 @@ $size = (Get-Item $FrozenVm).Length
 # DLL's size and timestamp are printed with the hash so a rebuilt DLL is visible;
 # it is not hashed, because hashing 74 MB on every invocation is not what this
 # script is for, and the compiler's own hash already anchors the run.
-if (Test-Path $SourceDll) {
-    if (-not $pinned) {
-        Copy-Item $SourceDll (Join-Path $FrozenDir 'LLVM-C.dll') -Force
-    }
-    $dll = Join-Path $FrozenDir 'LLVM-C.dll'
-    if (Test-Path $dll) {
-        $dllInfo = Get-Item $dll
-        $dllNote = ('{0} bytes, {1:yyyy-MM-dd HH:mm:ss}' -f $dllInfo.Length, $dllInfo.LastWriteTime)
-    }
-    else {
-        $dllNote = 'absent — this compiler may fail to start (exit -1073741515)'
-    }
+$dllBeside = Join-Path $FrozenDir 'LLVM-C.dll'
+if (-not $pinned -and (Test-Path $SourceDll)) {
+    Copy-Item $SourceDll $dllBeside -Force
+}
+if (Test-Path $dllBeside) {
+    $dllInfo = Get-Item $dllBeside
+    $dllNote = ('{0} bytes, {1:yyyy-MM-dd HH:mm:ss}' -f $dllInfo.Length, $dllInfo.LastWriteTime)
+}
+elseif ($pinned -and (Test-Path $SourceDll)) {
+    $dllNote = 'absent beside the pinned compiler — it may fail to start (exit -1073741515)'
 }
 else {
     $dllNote = 'absent (this compiler does not need one)'
@@ -174,9 +193,10 @@ Write-Host '====================================================================
 Write-Host ('frozen compiler : {0}' -f $FrozenVm)
 Write-Host ('                  SHA256 {0}' -f $hash)
 Write-Host ('                  size   {0} bytes' -f $size)
+Write-Host ('                  {0}' -f $frozenHow)
 Write-Host ('frozen runtime  : LLVM-C.dll beside it, {0}' -f $dllNote)
-Write-Host ('reference hash  : SHA256 67ACF63B7DD3A5249E2FE3B1F015D5DB4D4C4032FEFB464F12F86F519F903D8A / 770560 bytes')
-if ($hash -ne '67ACF63B7DD3A5249E2FE3B1F015D5DB4D4C4032FEFB464F12F86F519F903D8A') {
+Write-Host ('reference hash  : SHA256 AD4A997B132728449D91D789E5CFC26A8A82CAAD466B41F78AC3C5041FBE73D0 / 795136 bytes')
+if ($hash -ne 'AD4A997B132728449D91D789E5CFC26A8A82CAAD466B41F78AC3C5041FBE73D0') {
     Write-Host 'NOTE: this is not the compiler SAFETY.md''s numbers were measured against.'
     Write-Host '      The corpus is still valid; the recorded results in SAFETY.md are not.'
 }
@@ -372,7 +392,8 @@ if ($rows.Count -eq 0) {
 $passed = 0
 $failed = 0
 $xfailed = 0
-$xfailMissing = 0
+$closed = 0
+$behaviourChanged = 0
 $failures = @()
 $listed = 0
 
@@ -414,6 +435,13 @@ foreach ($row in $rows) {
     # on success and the diagnostic on failure, so it is only quoted when the build
     # did not succeed: 65 rows of compiler command lines bury the one that matters.
     $buildNote = ''
+    # Per-row state, reset here so no case can inherit another's: `$phaseObserved`
+    # and `$recordChanged` are the split between the promise assertion and the
+    # run-time recording, and a stale value would poison a verdict.
+    $recordChanged = $false
+    $phaseObserved = $null
+    $runPhase = $null
+    $nativePhase = $null
 
     switch ($row.mode) {
 
@@ -488,43 +516,101 @@ foreach ($row in $rows) {
         }
 
         'violation' {
-            # A hole, two-sided: the checker must do the wrong thing the row names,
-            # and both front ends must then do what the row records.
+            # A hole, split in two.  The promise columns (`check_exit`, `check_msg`)
+            # are the ASSERTION: what the rule requires of `check`.  Observed to be
+            # broken, the row is a hole (`FAIL-as-expected`); observed to hold, the
+            # hole is SHUT (`CLOSED`) and that is a first-class result — the tally
+            # has a column for it, and closing a hole can never look like "another
+            # kind of failure".  Whatever either front end does with a program the
+            # checker should have refused is a RECORD, printed with the row and
+            # never a verdict, because it is the pre-fix behaviour by construction:
+            # `hole_cmp_bool_int` is admitted, the interpreter panics about it and
+            # the compiled program answers `False`; once the checker refuses the
+            # program there is no runtime left to record, and that is the fix
+            # working, not the case breaking.
             $c = Invoke-Vm 'check' $caseFile
             $actual = ('check exit={0} stdout="{1}" stderr={2}' -f $c.code, $c.stdout.Trim(), (Get-FirstBlock $c.stderr))
-            if ($c.code -ne $cExit) { Add-Failure $problems ('expected check exit {0}, got {1}' -f $cExit, $c.code) }
-            if (-not (Test-Contains $c.stderr $row.checkMsg)) { Add-Failure $problems ('check stderr lacks "{0}"' -f $row.checkMsg) }
-            $i = Invoke-Vm 'run' $caseFile
-            $actual += (' || run exit={0} stdout="{1}" stderr={2}' -f $i.code, $i.stdout.Trim(), (Get-FirstBlock $i.stderr))
-            if ($i.code -ne $rExit) { Add-Failure $problems ('expected run to exit {0}, got {1}' -f $rExit, $i.code) }
-            if ($row.runMsg.Length -gt 0) {
-                if (-not (Test-Contains $i.stderr $row.runMsg)) { Add-Failure $problems ('run stderr lacks "{0}"' -f $row.runMsg) }
+            $checkOk = ($c.code -eq $cExit)
+            if ($checkOk -and $row.checkMsg.Length -gt 0 -and -not (Test-Contains $c.stderr $row.checkMsg)) {
+                $checkOk = $false
             }
-            if ($row.runOut.Length -gt 0) {
-                if (-not (Test-OneLine $i.stdout $row.runOut)) { Add-Failure $problems ('expected run to print "{0}", got "{1}"' -f $row.runOut, $i.stdout.Trim()) }
-            }
-            $b = Invoke-Build $caseFile
-            if ($b.code -ne 0) {
-                $actual += (' | build exit={0} (the emitted C does not compile)' -f $b.code)
-                if ($nExit -eq 0) {
-                    Add-Failure $problems ('the program must compile, but build exited {0}' -f $b.code)
-                    $buildNote = (Get-FirstBlock $b.stderr)
-                }
-            }
-            elseif (-not (Test-Path $b.exe)) {
-                Add-Failure $problems 'build reported success but wrote no executable'
+            if ($checkOk) {
+                if ($c.stdout.Trim().Length -ne 0) { $checkOk = $false }
             }
             else {
-                $p = Invoke-Program $b.exe
-                $actual += (' | program exit={0} stdout="{1}" stderr={2}' -f $p.code, $p.stdout.Trim(), (Get-FirstBlock $p.stderr))
-                if ($p.code -ne $nExit) { Add-Failure $problems ('expected the compiled program to exit {0}, got {1}' -f $nExit, $p.code) }
-                if ($row.nativeMsg.Length -gt 0) {
-                    if (-not (Test-Contains $p.stderr $row.nativeMsg)) { Add-Failure $problems ('compiled stderr lacks "{0}"' -f $row.nativeMsg) }
+                Add-Failure $problems ('the promise is not kept: expected check exit {0}, got {1}' -f $cExit, $c.code)
+                if ($row.checkMsg.Length -gt 0 -and -not (Test-Contains $c.stderr $row.checkMsg)) {
+                    Add-Failure $problems ('check stderr lacks "{0}"' -f $row.checkMsg)
                 }
-                if ($row.nativeOut.Length -gt 0) {
-                    if (-not (Test-OneLine $p.stdout $row.nativeOut)) { Add-Failure $problems ('expected the compiled program to print "{0}", got "{1}"' -f $row.nativeOut, $p.stdout.Trim()) }
+                if ($c.code -eq $cExit -and $c.stdout.Trim().Length -ne 0) {
+                    Add-Failure $problems 'wrote to stdout while being refused'
                 }
             }
+
+            $i = Invoke-Vm 'run' $caseFile
+            $recRun = ('run exit={0} stdout="{1}"{2}' -f $i.code, $i.stdout.Trim(),
+                $(if ((Get-FirstBlock $i.stderr).Length -gt 0) { ' stderr=' + (Get-FirstBlock $i.stderr) } else { '' }))
+            $recNative = 'not built (the checker refuses the program)'
+            $nativePhase = $null
+            if ($checkOk) {
+                # The promise holds, so the checker refuses the program: `build`
+                # would only run the same checker again and fail at exit 2, which is
+                # the checker *working*.  Building it here was this function's first
+                # bug — it turned every closed hole into `the program must compile,
+                # but build exited 2`, i.e. exactly the "another kind of failure"
+                # this mode was rewritten to stop producing.  Nothing is built when
+                # there is nothing the checker should have let through.
+                $recNative = 'not built (the checker refuses the program, which is the promise)'
+            }
+            else {
+                $b = Invoke-Build $caseFile
+                if ($b.code -ne 0) {
+                    $recNative = if ($b.code -eq 2) { 'build refused (the checker refuses the program)' } else { ('build exit={0}' -f $b.code) }
+                    if ($nExit -eq 0) {
+                        Add-Failure $problems ('the program must compile, but build exited {0}' -f $b.code)
+                        $buildNote = (Get-FirstBlock $b.stderr)
+                    }
+                }
+                elseif (-not (Test-Path $b.exe)) {
+                    Add-Failure $problems 'build reported success but wrote no executable'
+                }
+                else {
+                    $p = Invoke-Program $b.exe
+                    $recNative = ('program exit={0} stdout="{1}"{2}' -f $p.code, $p.stdout.Trim(),
+                        $(if ((Get-FirstBlock $p.stderr).Length -gt 0) { ' stderr=' + (Get-FirstBlock $p.stderr) } else { '' }))
+                    $nativePhase = @($p.code, $p.stdout.Trim(), $p.stderr)
+                    if ($nExit -eq 0) {
+                        if ($p.code -ne 0) { Add-Failure $problems ('the program must compile, but it exited {0}' -f $p.code) }
+                        if ($row.nativeOut.Length -gt 0 -and -not (Test-OneLine $p.stdout $row.nativeOut)) {
+                            Add-Failure $problems ('expected the compiled program to print "{0}", got "{1}"' -f $row.nativeOut, $p.stdout.Trim())
+                        }
+                    }
+                    else {
+                        if ($p.code -ne $nExit) { Add-Failure $problems ('expected the compiled program to exit {0}, got {1}' -f $nExit, $p.code) }
+                        if ($row.nativeMsg.Length -gt 0 -and -not (Test-Contains $p.stderr $row.nativeMsg)) {
+                            Add-Failure $problems ('compiled stderr lacks "{0}"' -f $row.nativeMsg)
+                        }
+                    }
+                }
+            }
+            $runPhase = @($i.code, $i.stdout.Trim(), $i.stderr)
+            # "Did the recording still describe reality?" — the exact exit code and
+            # stdout when the row recorded one.  Either answer is only ever a note:
+            # once the checker refuses the program there is no run of it left to
+            # observe, so the recording describes the pre-fix behaviour by design and
+            # its disappearance is the fix, not a failure.
+            $runtimeMatches = ($i.code -eq $rExit)
+            if ($runtimeMatches -and $row.runOut.Length -gt 0) { $runtimeMatches = (Test-OneLine $i.stdout $row.runOut) }
+            if ($checkOk -and $nativePhase -ne $null) {
+                if ($nativePhase[0] -ne $nExit) { $runtimeMatches = $false }
+                elseif ($row.nativeOut.Length -gt 0 -and -not (Test-OneLine $nativePhase[1] $row.nativeOut)) { $runtimeMatches = $false }
+            }
+            if ($checkOk -and -not $runtimeMatches) { $recordChanged = $true }
+            $phaseObserved = $checkOk
+            $actual = ('check exit={0} stdout="{1}"{2} || run exit={3} stdout="{4}" || native {5}' -f `
+                $c.code, $c.stdout.Trim(),
+                $(if ((Get-FirstBlock $c.stderr).Length -gt 0) { ' stderr=' + (Get-FirstBlock $c.stderr) } else { '' }),
+                $i.code, $i.stdout.Trim(), $recNative)
         }
 
         'diverge' {
@@ -557,14 +643,27 @@ foreach ($row in $rows) {
         }
     }
 
-    # An xfail row asserts the *violation*: it passes when the compiler does the
-    # wrong thing the row names, and is reported when the compiler starts doing the
-    # right thing, because then a SAFETY.md hole has been closed and the row is stale.
+    # The verdict.  For an xfail row the load-bearing question is whether the
+    # promise is still broken, not whether the pre-fix runtime recording still
+    # matches: a hole that gets CLOSED is a result to report (its own tally column),
+    # never "another kind of failure" — a harness that cannot see its own corpus get
+    # fixed is a harness that reports the same numbers before and after the fix.
     $isXfail = ($row.xfail -eq 'yes')
-    $violation = ($problems.Count -gt 0)
+    $verdictProblems = @($problems)
+    if ($isXfail) { $verdictProblems = @($problems | Where-Object { $_ -notlike 'runtime-record-changed*' }) }
+    $violation = ($verdictProblems.Count -gt 0)
     $state = if ($violation) { 'FAIL' } else { 'PASS' }
     if ($isXfail) {
-        if ($violation) { $state = 'FAIL-as-expected'; $xfailed++ } else { $state = 'UNEXPECTED-PASS'; $xfailMissing++ }
+        if ($violation) { $state = 'FAIL-as-expected'; $xfailed++ }
+        else { $state = 'CLOSED'; $closed++ }
+    }
+    elseif ($recordChanged) {
+        # Not an xfail row and the run-time answer moved: the promise assertion still
+        # holds, so this cannot be a silent pass, and it is not a promise failure
+        # either.  Loud, and in its own column.
+        $state = 'BEHAVIOUR-CHANGED'
+        $behaviourChanged++
+        $failures += $row
     }
     else {
         if ($violation) { $failed++ } else { $passed++ }
@@ -577,7 +676,11 @@ foreach ($row in $rows) {
         foreach ($ln in ($buildNote -split "`r?`n")) { if ($ln.Trim().Length -gt 0) { Write-Host ('    build : {0}' -f $ln.Trim()) } }
     }
     if ($violation) {
-        foreach ($p in $problems) { Write-Host ('    reason: {0}' -f $p) }
+        foreach ($p in $verdictProblems) { Write-Host ('    reason: {0}' -f $p) }
+    }
+    if ($recordChanged) {
+        $which = if ($isXfail) { 'the promise now holds, so this is the post-fix behaviour' } else { 'the run-time answer moved' }
+        Write-Host ('    note   : the run-time recording no longer matches — {0}; the promise assertion is unaffected' -f $which)
     }
     if ($row.promise.Length -gt 0 -or $row.note.Length -gt 0) {
         Write-Host ('    promise: {0}{1}' -f $row.promise, $(if ($row.note.Length -gt 0) { '  --  ' + $row.note } else { '' }))
@@ -596,15 +699,16 @@ Write-Host ''
 Write-Host '---------------------------------------------------------------------------'
 Write-Host ('frozen compiler : SHA256 {0} / {1} bytes' -f $hash, $size)
 Write-Host ('tally           : {0} passed, {1} failed' -f $passed, $failed)
-Write-Host ('                  xfail rows showing their violation: {0}' -f $xfailed)
-if ($xfailMissing -gt 0) {
-    Write-Host ('                  UNEXPECTED-PASS (a hole may have been closed): {0}' -f $xfailMissing)
+Write-Host ('                  xfail rows still showing their violation: {0}' -f $xfailed)
+Write-Host ('                  holes CLOSED (the promise now holds): {0}' -f $closed)
+if ($behaviourChanged -gt 0) {
+    Write-Host ('                  rows whose run-time recording moved: {0}' -f $behaviourChanged)
 }
 if ($failures.Count -gt 0) {
     Write-Host ''
-    Write-Host 'failing cases:'
+    Write-Host 'cases to look at:'
     foreach ($row in $failures) { Write-Host ('  {0}  ({1})' -f $row.name, $row.mode) }
 }
-$bad = ($failed -gt 0 -or $xfailMissing -gt 0)
+$bad = ($failed -gt 0 -or $behaviourChanged -gt 0)
 if ($bad) { Write-Host 'RESULT: FAIL' } else { Write-Host 'RESULT: PASS' }
 exit $(if ($bad) { 1 } else { 0 })
