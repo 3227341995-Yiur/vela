@@ -198,6 +198,38 @@ Step '    build the linker' { & $vmExe build tools/link_selfhost.vel } | Out-Nul
 if (-not $failed) {
     Step '    run the linker' { & $linker } | Out-Null
 }
+
+# Every part on disk must be in the linker's list, and nothing in the list may be
+# missing from disk.  This is not hypothetical: the plan for the LLVM backend adds
+# `selfhost\parts\llvm_shim.vel` (the `extern c` declarations that let the compiler
+# call its own code generator) and `emit_llvm.vel`, and a part that exists but is
+# never listed is **silently absent** from `selfhost/vm.vel` — the declarations
+# simply are not there, the build succeeds, and the failure surfaces later as an
+# undefined function in a file the author never thinks to look at.  A check that
+# costs a millisecond here is worth the afternoon it saves there.
+if (-not $failed) {
+    $partsDir = Join-Path $root 'selfhost\parts'
+    $linkerSource = Join-Path $root 'tools\link_selfhost.vel'
+    $onDisk = @(Get-ChildItem -LiteralPath $partsDir -Filter *.vel -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.Name } | Sort-Object)
+    $linkerText = Get-Content -LiteralPath $linkerSource -Raw
+    $listed = @([regex]::Matches($linkerText, 'return\s+"([a-z0-9_]+\.vel)"') |
+        ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    $notListed = @($onDisk | Where-Object { $listed -notcontains $_ })
+    $notOnDisk = @($listed | Where-Object { $onDisk -notcontains $_ })
+    if ($notListed.Count -eq 0 -and $notOnDisk.Count -eq 0) {
+        Say "    parts: $($onDisk.Count) on disk, $($listed.Count) in the linker's list, the same set"
+    } else {
+        if ($notListed.Count -gt 0) {
+            Say "    !! in selfhost\parts\ but not in tools\link_selfhost.vel's part_name(): $(($notListed) -join ', ')"
+            Say '       a part that is not listed is not in selfhost/vm.vel at all'
+        }
+        if ($notOnDisk.Count -gt 0) {
+            Say "    !! in the linker's list but not on disk: $(($notOnDisk) -join ', ')"
+        }
+        $failed = $true
+    }
+}
 if (-not $failed -and $before -gt 0) {
     $afterRaw = (& $vmExe count $vmVel 2>&1 | Out-String).Trim()
     $after = [int]($afterRaw -replace '\D', '')

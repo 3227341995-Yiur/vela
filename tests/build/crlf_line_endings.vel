@@ -1,0 +1,24 @@
+# crlf_line_endings — a source file whose newlines are CR LF, not LF.
+#
+# This is a NEW case, not a restored one: the original `crlf_check` was lost with
+# the corpus and its text survives nowhere (see the note above its manifest lines
+# in tests/cases.txt).  It exists because the property is worth a case of its own:
+# every newline in this file is CR LF, and the language must not care.
+#
+# Three things are being asserted:
+#
+#   * CR LF terminates a statement exactly as LF does;
+#   * a trailing comment ends at the CR, so the statement on the next line is not
+#     swallowed by it — a lexer that treats only LF as the end of a comment would
+#     fold that statement into the comment, and this file would print less;
+#   * a blank line is CR LF CR LF, and an empty line is not a statement.
+#
+# The program is deliberately ordinary, so its golden is ordinary output rather
+# than anything encoding-shaped: 42, then "crlf 6".
+
+def main() -> None {
+    mut n: int = 6   # this comment ends at the CR, three lines from the statement below
+
+    print(n * 7)
+    print("crlf", n)
+}

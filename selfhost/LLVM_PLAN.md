@@ -82,6 +82,57 @@ The C backend **stays**. It is the only backend the corpus currently verifies
 end to end, and it stays verified: every phase above is additive, and `build`
 keeps working exactly as it does today until a phase is finished and measured.
 
+### Wiring the shim into `vm.exe` — the plan, file by file
+
+The bridge already exists in the language: `extern c` declarations are parsed, resolved,
+checked and emitted today (`parser.vel:422`, `check.vel:2582`, `emit.vel:2122`), so the
+compiler can call the shim directly.  What matters is the **exact C types** those
+declarations produce, read out of `emit_ctype` (`emit.vel:177`) rather than assumed:
+
+| Vela | C in the emitted program |
+|---|---|
+| `int` | `int64_t` |
+| `float` | `double` |
+| `bool` | `bool` |
+| `str` | `vela_str` |
+| `i32` | `int32_t` |
+| `u8` | `uint8_t` |
+| `None` | `void` |
+
+So the shim's signatures are fixed by that table — there is no second convention to
+invent, and a `str` argument is the 16-byte struct whose MSVC ABI (passed by reference,
+returned through a hidden pointer) M1 already measured.
+
+The steps, in order, each ending with the evidence that closes it:
+
+1. **`runtime\vela_llvm_shim.{c,h}`** — the scalar C API over `llvm-c`.  Ends when a standalone
+   driver builds the M1 program through it and that output equals the other three paths
+   byte for byte (`tools\llvm-shim-probe.ps1`).
+2. **`selfhost\parts\llvm_shim.vel`** (new part) — the same API as `extern c def …` declarations,
+   and **`tools\link_selfhost.vel`'s part list must learn the new file**, or the declarations
+   never reach `selfhost/vm.vel`.  Ends when `vm.exe` still builds and the fixpoint still holds.
+3. **`selfhost\parts\emit_llvm.vel`** (new part) — the emitter: the same AST walk as `emit.vel`
+   with shim calls instead of C text.  In growing order: a call, a string literal and a constant
+   (what M1 proves), then `print`, then arithmetic with its checks, then `if`/`while`/`for i in
+   range`.  Ends when `vm.exe build-llvm examples\hello.vel` produces a running executable whose
+   output equals the interpreter's and the C backend's.
+4. **`selfhost\parts\vm_main.vel`** — two modes: `emit-llvm` (scratch `.ll` text, for reading and
+   diffing) and `build-llvm` (shim → `.obj` in `%TEMP%\vela-build\` → `lld-link` with
+   `vela_llvm_runtime.obj` → executable **beside the source and nothing else**).  `tools\smoke.ps1`
+   already asserts that last property, so smoke is what passes this step.
+5. **`tools\build.ps1`** — compile the shim, link it into `vm.exe` with `LLVM-C.lib`, and copy
+   `LLVM-C.dll` beside `vm.exe`.  From then on the compiler carries its own code generator, as
+   `rustc` carries LLVM; the DLL is the compiler's dependency in the compiler's own directory, and
+   nothing lands in a user's project.
+6. **`tests\run_llvm.vel`** — the differential harness the acceptance criterion calls for: for every
+   `run` case in `tests\cases.txt`, the interpreter's output, the C backend's and the LLVM
+   backend's must be identical byte for byte and all three must equal the recorded golden.  This is
+   what turns "the new backend is correct" into a fact, and it must pass **before** `build-llvm` is
+   allowed to become what `build` does.
+7. **Promotion and re-proof** — `build-llvm` becomes `build`, the C backend is demoted to `build-c`
+   for the differential test, and the fixpoint is re-established on the new backend: the compiler,
+   compiled by itself through LLVM, emitting the same object.  That is M7, and it is claimed last.
+
 ## Interface (phase 1)
 
 ```
