@@ -75,11 +75,11 @@ lex emit_part 573805515
 parse emit_part 802417987
 lex dump 35045974
 parse dump 147505748
-lex vm_main 659250566
-parse vm_main 504180608
-lex vm 601978742
-parse vm 186368853
-emit vm 797633503
+lex vm_main 379526881
+parse vm_main 291074328
+lex vm 178434326
+parse vm 763223061
+emit vm 959959288
 lex run_tests 48308088
 parse run_tests 522598157
 emit run_tests 512134324
