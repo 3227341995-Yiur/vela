@@ -1,0 +1,4 @@
+def main() -> None {
+    mut a: int = -9223372036854775807 - 1
+    print(abs(a))
+}

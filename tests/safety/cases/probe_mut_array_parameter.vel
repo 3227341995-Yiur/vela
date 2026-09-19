@@ -1,0 +1,9 @@
+def fill(mut a: Array[int, 4]) -> None {
+    a[0] = 99
+}
+
+def main() -> None {
+    mut a: Array[int, 4]
+    fill(a)
+    print(a[0])
+}

@@ -1,0 +1,14 @@
+struct Box {
+    mut v: int
+}
+
+def bump(mut b: Box) -> None {
+    b.v += 1
+}
+
+def main() -> None {
+    mut b: Box = Box(0)
+    b.v = 10
+    bump(b)
+    print(b.v)
+}

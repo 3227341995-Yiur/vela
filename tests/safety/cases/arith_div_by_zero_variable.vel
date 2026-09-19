@@ -1,0 +1,5 @@
+def main() -> None {
+    mut d: int = 0
+    mut x: int = 10
+    print(x // d)
+}

@@ -1,0 +1,193 @@
+# tests/safety/manifest.txt — what each `tests/safety/cases/*.vel` program MUST do.
+#
+# Written by hand from SPEC.md (§3.1, §4, §6, §7) and DESIGN.md (§1.2, §7.5)
+# *before* any of these cases was run.  Nothing here was recorded from the current
+# compiler: if a row disagrees with `tools/safety.ps1`'s output, the row is the
+# promise and the compiler is the defect.  The *measured* results live in SAFETY.md
+# §3, kept out of this file on purpose — a corpus recorded from the compiler is a
+# description of the bugs, not a test of the promises.
+#
+# Columns, `|` separated; `#` starts a comment and blank lines are ignored.  There
+# are 16 on every row; empty means "not asserted for this row".
+#
+#   name         the case, also the file's base name
+#   file         tests/safety/cases/<file>
+#   mode         `check` / `ok` / `native` / `run-ok` / `violation` (below)
+#   check_exit   `vm.exe check` must exit with this code
+#   check_msg    a substring its stderr must contain
+#   run_exit     `vm.exe run` must exit with this code
+#   run_msg      a substring its stderr must contain
+#   native_exit  the compiled program must exit with this code
+#   native_msg   a substring its stderr must contain
+#   native_out   the stdout line the compiled program must print (trimmed)
+#   run_out      the stdout line `vm.exe run` must print (trimmed)
+#   pragma       `yes` = the emitted C must contain `#pragma omp parallel for`
+#   xfail        `yes` = the case is expected to show its promise being *broken*.
+#                It then does not count as a failure; and if the compiler starts
+#                keeping the promise the row is reported UNEXPECTED-PASS, so the
+#                hole gets closed in SAFETY.md instead of rotting quietly here.
+#                Every xfail row is one hole in SAFETY.md §3.
+#   promise      the SPEC.md / DESIGN.md line this case holds the compiler to
+#   note         one line of prose for the row that needs it
+#
+# Modes:
+#   check      `vm.exe check` must refuse it: check_exit, check_msg, and nothing on
+#              stdout.  Nothing is built or run.
+#   ok         `vm.exe check` must accept it: exit 0, stdout `ok`, empty stderr.
+#   native     it must compile, the compiled program must stop with native_exit and
+#              native_msg, and `vm.exe run` must stop with run_exit and run_msg.
+#   run-ok     `vm.exe check` accepts; the compiled program and `vm.exe run` must
+#              each exit 0 and print their column, native_out and run_out (usually
+#              the same line, and the assertion that they *are* the same is the
+#              point of most of these rows); `pragma: yes` adds the OpenMP
+#              requirement on the emitted C.
+#   violation  a two-sided row for a hole: `check` must refuse (check_exit, and
+#              check_msg when the row has one), and *both* front ends must still do
+#              something at run time — run_exit/run_msg/run_out and
+#              native_exit/native_msg/native_out.  This is what lets a hole be
+#              stated as "the checker is silent, and here is what each front end
+#              does anyway" instead of as prose.  `native_exit 2` with an empty
+#              native_msg means the C compiler refuses the emitted C.
+#
+# name | file | mode | check_exit | check_msg | run_exit | run_msg | native_exit | native_msg | native_out | run_out | pragma | xfail | promise | note
+
+# --------------------------------------------------------------- 1. arithmetic
+# SPEC.md §6.5 "Integer arithmetic is checked for overflow, always" — a wrapped
+# answer is the failure this exists to prevent, so the promise is a panic.
+arith_overflow_add | arith_overflow_add.vel | native | 0 | | 2 | integer overflow (addition) | 2 | integer overflow (addition) | | | | | SPEC 6.5 | |
+arith_overflow_sub | arith_overflow_sub.vel | native | 0 | | 2 | integer overflow (subtraction) | 2 | integer overflow (subtraction) | | | | | SPEC 6.5 | |
+arith_overflow_mul | arith_overflow_mul.vel | native | 0 | | 2 | integer overflow (multiply) | 2 | integer overflow (multiply) | | | | | SPEC 6.5 | |
+arith_overflow_division | arith_overflow_division.vel | native | 0 | | 2 | integer overflow (division) | 2 | integer overflow (division) | | | | | SPEC 6.5 | |
+arith_overflow_negation | arith_overflow_negation.vel | native | 0 | | 2 | integer overflow (negation) | 2 | integer overflow (negation) | | | | | SPEC 6.5 | |
+arith_overflow_abs | arith_overflow_abs.vel | native | 0 | | 2 | integer overflow (negation) | 2 | integer overflow (negation) | | | | | SPEC 6.5 | |
+arith_overflow_pow | arith_overflow_pow.vel | native | 0 | | 2 | integer overflow (multiply) | 2 | integer overflow (multiply) | | | | | SPEC 6.5 | |
+arith_pow_negative_exponent | arith_pow_negative_exponent.vel | native | 0 | | 2 | negative exponent for integer ** | 2 | negative exponent for integer ** | | | | | SPEC 6.5 | |
+arith_shift_negative_variable | arith_shift_negative_variable.vel | native | 0 | | 2 | shift count out of range 0..63 | 2 | shift count out of range 0..63 | | | | | SPEC 6.5 | |
+arith_shift_64_variable | arith_shift_64_variable.vel | native | 0 | | 2 | shift count out of range 0..63 | 2 | shift count out of range 0..63 | | | | | SPEC 6.5 | |
+# SPEC.md §6.6 "Division by a constant zero is a compile error" (`/`, `//` and `%`).
+arith_div_by_const_zero | arith_div_by_const_zero.vel | check | 2 | division by constant zero | | | | | | | | | SPEC 6.6 | |
+arith_mod_by_const_zero | arith_mod_by_const_zero.vel | check | 2 | division by constant zero | | | | | | | | | SPEC 6.6 | |
+# SPEC.md §6.6 "a runtime divisor is checked" — the same bodies with a variable zero.
+arith_div_by_zero_variable | arith_div_by_zero_variable.vel | native | 0 | | 2 | division by zero | 2 | division by zero | | | | | SPEC 6.6 | |
+arith_mod_by_zero_variable | arith_mod_by_zero_variable.vel | native | 0 | | 2 | remainder by zero | 2 | remainder by zero | | | | | SPEC 6.6 | |
+# `x / 0.0`: SPEC.md §6.6 spells the integer forms only; the implementation refuses
+# the float-literal form too, and the reason is the checker's own note — IEEE would
+# answer an infinity or a nan, "which is almost never what the line meant".
+arith_float_div_by_literal_zero | arith_float_div_by_literal_zero.vel | check | 2 | float division by constant zero | | | | | | | | | SPEC 6.6 | |
+
+# ------------------------------------------------------------------- 2. bounds
+# SPEC.md §6.7 "A constant index that is provably out of range is a compile error".
+bounds_const_index_oob | bounds_const_index_oob.vel | check | 2 | constant index 4 is out of range for Array[int, 4] | | | | | | | | | SPEC 6.7 | |
+bounds_const_index_negative | bounds_const_index_negative.vel | check | 2 | constant index -1 is out of range for Array[int, 4] | | | | | | | | | SPEC 6.7 | |
+bounds_const_index_len2 | bounds_const_index_len2.vel | check | 2 | constant index 2 is out of range for Array[int, 2] | | | | | | | | | SPEC 6.7 | |
+bounds_const_index_len1 | bounds_const_index_len1.vel | check | 2 | constant index 1 is out of range for Array[int, 1] | | | | | | | | | SPEC 6.7 | |
+# SPEC.md §6.4 "Indexing is checked ... panics with file, line and reason".  The
+# interpreter words a bounds failure differently from the runtime (no index, no
+# length), so run_msg is spelled out per row.
+bounds_runtime_index_oob | bounds_runtime_index_oob.vel | native | 0 | | 2 | index out of range | 2 | index 4 out of range for array of length 4 | | | | | SPEC 6.4 | |
+bounds_runtime_index_negative | bounds_runtime_index_negative.vel | native | 0 | | 2 | index out of range | 2 | index -1 out of range for array of length 4 | | | | | SPEC 6.4 | |
+bounds_runtime_write_oob | bounds_runtime_write_oob.vel | native | 0 | | 2 | index out of range | 2 | index 9 out of range for array of length 4 | | | | | SPEC 6.4 | |
+bounds_zero_len_array_runtime | bounds_zero_len_array_runtime.vel | native | 0 | | 2 | index out of range | 2 | index 0 out of range for array of length 0 | | | | | SPEC 6.4 | |
+bounds_zero_len_array_write | bounds_zero_len_array_write.vel | native | 0 | | 2 | index out of range | 2 | index 0 out of range for array of length 0 | | | | | SPEC 6.4 | |
+# `a[0]` on `Array[int, 0]` cannot be in range, so §6.7 says compile error.  The
+# checker's constant-index rule returns early on a length of zero (check.vel:
+# `if ln <= 0 { return }`), so the program is accepted and only the run-time check
+# fires — both front ends do stop it, which is the second half of this row.
+bounds_zero_len_array_constant | bounds_zero_len_array_constant.vel | violation | 2 | constant index 0 is out of range for Array[int, 0] | 2 | index out of range | 2 | index 0 out of range for array of length 0 | | | | yes | SPEC 6.7 | the checker is silent; the run-time check is what catches it |
+
+# ------------------------------------------------------------ 3. memory shape
+# SPEC.md §6.3 "A function may not return its own array".
+memory_return_own_array | memory_return_own_array.vel | check | 2 | function 'make' returns Array[int, 4] | | | | | | | | | SPEC 6.3 | |
+memory_return_param_array | memory_return_param_array.vel | check | 2 | function 'ident' returns Array[int, 4] | | | | | | | | | SPEC 6.3 | |
+# SPEC.md §6.3 "str storage is either a literal or permanent host memory" — so these
+# two must still be accepted, and the string must still arrive intact.
+memory_return_str_binding | memory_return_str_binding.vel | run-ok | 0 | | 0 | | 0 | | hi | hi | | | SPEC 6.3 | |
+memory_return_substr | memory_return_substr.vel | run-ok | 0 | | 0 | | 0 | | he | he | | | SPEC 6.3 | |
+
+# -------------------------------------------------------------- 4. concurrency
+# SPEC.md §7: "an array the body writes may be read inside the same loop only at that
+# same index expression" — the cross-iteration read is the refusal.
+concurrency_cross_iteration_read_refused | concurrency_cross_iteration_read_refused.vel | check | 2 | reads 'a' at an index other than the one it writes | | | | | | | | | SPEC 7 | |
+concurrency_cross_iteration_bare_index | concurrency_cross_iteration_bare_index.vel | check | 2 | reads 'a' at an index other than the one it writes | | | | | | | | | SPEC 7 | |
+# the legal shapes must still be accepted, still answer the same from both front
+# ends, and still emit a real `#pragma omp parallel for` (SPEC §7, DESIGN §1.1).
+concurrency_read_any_index_legal | concurrency_read_any_index_legal.vel | run-ok | 0 | | 0 | | 0 | | 14 | 14 | yes | | SPEC 7 | |
+concurrency_same_index_legal | concurrency_same_index_legal.vel | run-ok | 0 | | 0 | | 0 | | 8 | 8 | yes | | SPEC 7 | |
+concurrency_linear_stride_legal | concurrency_linear_stride_legal.vel | run-ok | 0 | | 0 | | 0 | | 4 | 4 | yes | | SPEC 7 | |
+# a `parallel for` the proof cannot place is refused rather than emitted.
+concurrency_parallel_outer_rowmajor_refused | concurrency_parallel_outer_rowmajor_refused.vel | check | 2 | cannot prove that 'parallel for' writes 'out' to distinct elements | | | | | | | | | SPEC 7 | |
+concurrency_serial_outer_parallel_inner | concurrency_serial_outer_parallel_inner.vel | check | 2 | cannot prove that 'parallel for' writes 'out' to distinct elements | | | | | | | | | SPEC 7 | |
+# DESIGN.md §7.5's admitted narrowing: the interval environment for a `parallel for`
+# holds the loops *inside* the body, not the ones it is nested in.  Here the body
+# reads `a[i + j]` with `i` an *enclosing* loop's variable, so the rule that admits
+# the loop has no interval for `i` — the loop is admitted and the pragma emitted
+# anyway.  Both front ends agree on this program (28), and whether the shape is
+# actually unsound is discussed in SAFETY.md hole 5; this row only requires the
+# pragma to be real, so it cannot silently become a claim about race-freedom.
+concurrency_nested_outer_read_accepted | concurrency_nested_outer_read_accepted.vel | run-ok | 0 | | 0 | | 0 | | 28 | 28 | yes | | SPEC 7 | |
+
+# --------------------------------------------------------------- 5. strictness
+strict_immutability | strict_immutability.vel | check | 2 | cannot assign to 'x': it was declared immutable | | | | | | | | | SPEC 4.1 / 3.2 | |
+strict_no_truthiness | strict_no_truthiness.vel | check | 2 | condition must be bool, got int | | | | | | | | | SPEC 4 | |
+strict_useless_expression_statement | strict_useless_expression_statement.vel | check | 2 | this expression statement has no effect | | | | | | | | | SPEC 4.1 | |
+strict_no_implicit_conversion | strict_no_implicit_conversion.vel | check | 2 | mixes int and float | | | | | | | | | SPEC 3.1 | |
+strict_no_tuples | strict_no_tuples.vel | check | 2 | tuples are not supported | | | | | | | | | SPEC 4.1 | |
+strict_no_elif | strict_no_elif.vel | check | 2 | 'elif' is not part of Vela; write 'else if' | | | | | | | | | SPEC 4 | |
+# An ordinary Vela call is deliberately not type-checked — SPEC.md §3.1 says so in as
+# many words ("An ordinary Vela call is not type-checked either") — so both of these
+# are accepted, and the two front ends then answer the same source differently, which
+# §3.1 also names ("The interpreter is where the cost of that shows").  native_out is
+# the compiled answer, run_out the interpreted one; the row asserts both, so neither
+# side can drift without this case noticing.
+strict_call_int_into_float_param | strict_call_int_into_float_param.vel | run-ok | 0 | | 0 | | 0 | | 3.000000 | 3 | | | SPEC 3.1 | int into a float parameter: compiled C widens it, the interpreter does not |
+strict_call_float_into_int_param | strict_call_float_into_int_param.vel | run-ok | 0 | | 0 | | 0 | | 3 | 3.500000 | | | SPEC 3.1 | float into an int parameter: the compiled C truncates, the interpreter does not |
+# the explicit conversions, which must keep working and must agree.
+strict_to_int_explicit | strict_to_int_explicit.vel | run-ok | 0 | | 0 | | 0 | | 3 | 3 | | | SPEC 3.1 | |
+strict_to_float_explicit | strict_to_float_explicit.vel | run-ok | 0 | | 0 | | 0 | | 3.000000 | 3.000000 | | | SPEC 3.1 | |
+
+# ------------------------------------------ 6. escapes the language cannot write
+# SPEC.md §4.1: no nested functions, so no closure and nothing that outlives its
+# frame; the rest are the one-arena/no-`free` design (SPEC.md §6.1, §6.2) and "no
+# globals".  `escape_no_closures` is the positive singleton: a function that only
+# prints its own local is all the language lets you write.
+escape_nested_function_refused | escape_nested_function_refused.vel | check | 2 | nested functions are not supported | | | | | | | | | SPEC 4.1 | |
+escape_no_closures | escape_no_closures.vel | run-ok | 0 | | 0 | | 0 | | 1 | 1 | | | SPEC 4.1 | |
+escape_no_free_builtin | escape_no_free_builtin.vel | check | 2 | undeclared name 'free' | | | | | | | | | SPEC 6.1 | |
+escape_array_struct_field_refused | escape_array_struct_field_refused.vel | check | 2 | field 'a' may not be an array | | | | | | | | | SPEC 4 / 3 | |
+escape_no_global_state | escape_no_global_state.vel | check | 2 | a top-level statement must be a function or a struct | | | | | | | | | SPEC 6.2 | |
+
+# -------------------------------------------------------------------- 7. holes
+# Each row carries `xfail`, so the case must show its promise being broken and does
+# not count as a failure: the harness reports how many xfail rows still show their
+# violation, and shouts UNEXPECTED-PASS when one stops.  Every row here is ranked
+# and explained in SAFETY.md §3, and the measured numbers in that file come from
+# this harness's output.
+#
+# DESIGN.md §7.5: "the operator table is checked for binary operators, not yet for
+# unary ones or comparisons (`-x` on a string, `"a" < 1`)".  Seven rows: what the
+# checker should refuse, and what each front end does with it anyway.
+hole_cmp_bool_bool | hole_cmp_bool_bool.vel | violation | 2 | operator '<' cannot be applied to bool and bool | 2 | a bool can only be compared with == and != | 0 | | False | | | yes | SPEC 3.1 / DESIGN 7.5 | `True < False` accepted; the interpreter refuses it, the compiled program answers False |
+hole_cmp_bool_int | hole_cmp_bool_int.vel | violation | 2 | operator '<' mixes bool and int | 2 | a bool can only be compared with == and != | 0 | | False | | | yes | SPEC 3.1 / DESIGN 7.5 | `True < 1` accepted; the interpreter refuses it, the compiled program answers False |
+hole_cmp_int_float | hole_cmp_int_float.vel | violation | 2 | operator '<' mixes float and int | 2 | a comparison needs two values of the same type | 0 | | True | | | yes | SPEC 3.1 / DESIGN 7.5 | `x < y` for int x, float y accepted; the interpreter refuses it; compiled False-answer risk |
+hole_cmp_str_int | hole_cmp_str_int.vel | violation | 2 | operator '<' cannot be applied to str and int | 2 | a string can only be compared with == and != | 2 | | | | | yes | SPEC 3.1 / DESIGN 7.5 | `"a" < 1` accepted; the interpreter refuses it and the C compiler refuses the emitted C |
+hole_unary_neg_bool | hole_unary_neg_bool.vel | violation | 2 | operator '-' cannot be applied to bool | 2 | unary - needs a number | 0 | | True | | | yes | SPEC 3.1 / DESIGN 7.5 | `-b` on a bool accepted; the interpreter refuses it, the compiled program prints 1 as True |
+hole_unary_neg_str | hole_unary_neg_str.vel | violation | 2 | operator '-' cannot be applied to str | 2 | unary - needs a number | 2 | | | | | yes | SPEC 3.1 / DESIGN 7.5 | `-s` on a str accepted; the C compiler refuses the emitted C |
+hole_unary_not_int | hole_unary_not_int.vel | violation | 2 | operator 'not' cannot be applied to int | 2 | not needs a bool | 0 | | False | | | yes | SPEC 3.1 / DESIGN 7.5 | `not x` on an int accepted; the interpreter refuses it, the compiled program answers False |
+# DESIGN.md §7.5: "`mut` on a scalar parameter does not write through — a gap between
+# the implementation and SPEC.md:148".  The promise (SPEC.md:148) is that the callee
+# may write through, so both expected outputs are 11 and the measured 10 is the
+# violation the row exists to catch.  The two `probe_` twins are the control: `mut`
+# on a struct and on an array does write through in both front ends.
+hole_mut_scalar_parameter | hole_mut_scalar_parameter.vel | run-ok | 0 | | 0 | | 0 | | 11 | 11 | | yes | SPEC 3.2 line 148 | the callee's `n += 1` changes nothing at the call site: measured 10, promised 11 |
+probe_mut_struct_parameter | probe_mut_struct_parameter.vel | run-ok | 0 | | 0 | | 0 | | 11 | 11 | | | SPEC 3.2 line 148 | control: the struct twin does write through |
+probe_mut_array_parameter | probe_mut_array_parameter.vel | run-ok | 0 | | 0 | | 0 | | 99 | 99 | | | SPEC 3.2 line 148 | control: an array parameter does write through |
+# Two `extern c` declarations of one name with conflicting prototypes are accepted;
+# the emitted C declares both and the *last* one wins at the call site (measured on
+# extern_conflict_float_ok: the C carries `int64_t host_add(int64_t, int64_t);` and
+# `double host_add(double, double);` and the call is checked against the second).
+hole_extern_conflicting_prototypes | hole_extern_conflicting_prototypes.vel | check | 2 | conflicting declarations of 'host_add' | | | | | | | | yes | SPEC 12 | nothing refuses the second declaration; whichever landed last decides the call site |
+# SPEC.md §3.1: "A binding is not type-checked, and that is where the width question
+# stops" — a documented gap rather than a broken promise, but a silent one: the
+# compiled program narrows and the interpreter keeps the wide value.
+hole_narrowing_binding_i32 | hole_narrowing_binding_i32.vel | diverge | 0 | | 0 | | 0 | | 705032704 | 5000000000 | | | SPEC 3.1 | `mut x: i32 = big` truncates in C (705032704); the interpreter keeps 5000000000 |
+hole_narrowing_binding_u8 | hole_narrowing_binding_u8.vel | diverge | 0 | | 0 | | 0 | | 44 | 300 | | | SPEC 3.1 | `mut x: u8 = 300` wraps to 44 under the compiled front end; the interpreter keeps 300 |

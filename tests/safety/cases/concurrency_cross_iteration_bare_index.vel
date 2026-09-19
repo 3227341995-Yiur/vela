@@ -1,0 +1,10 @@
+def main() -> None {
+    mut a: Array[int, 8]
+    for i in range(0, 8) {
+        a[i] = i
+    }
+    parallel for i in range(0, 8) {
+        a[i] = a[i - 1] + 1
+    }
+    print(a[7])
+}

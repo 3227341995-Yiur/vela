@@ -1,0 +1,7 @@
+def wants(n: int) -> int {
+    return n
+}
+
+def main() -> None {
+    print(wants(3.5))
+}

@@ -1,0 +1,5 @@
+def main() -> None {
+    mut f: float = 3.0
+    mut n: int = to_int(f)
+    print(n)
+}

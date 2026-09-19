@@ -1,0 +1,40 @@
+# tests/probes/continue_in_for_range.vel -- `continue` inside `for i in range(...)`,
+# and the C back end's wrong answer to it.
+#
+# Measured by the leader on 2026-09-20, against `selfhost\build\vm.exe` (the
+# compiler that carries libLLVM, 785920 bytes):
+#
+#     vm.exe run  continue_in_for_range.vel      -> exit 0 in 58 ms, prints "survived"
+#     vm.exe build continue_in_for_range.vel
+#     continue_in_for_range.exe                  -> STILL RUNNING after 20 seconds,
+#                                                   killed; it never prints
+#
+# So a legal program that the interpreter finishes in 58 ms becomes a program that
+# never finishes, and the way a user meets it is `vm.exe build`, which is the
+# shipping path.  `parallel for` is refused when it cannot be proved race-free, and
+# a program the C back end gets wrong is the same class of promise broken: the
+# backend that is *used* must not compile a program into something that does not
+# terminate.
+#
+# Mechanism, from the C the back end emits: `for i in range(a, b)` is lowered to a
+# `while` with the increment as the last statement of the body, so C's `continue`
+# -- which jumps to the loop's condition, past the rest of the body -- skips the
+# increment.  `i` never advances and the loop never ends.  The same program through
+# `vm.exe build-llvm` terminates correctly: the LLVM emitter jumps to the increment
+# block, which is what the interpreter does.
+#
+# This is why "build-llvm replaces build" cannot be claimed yet, and it is the one
+# concrete counter-example to it: there is a program on which the two back ends
+# disagree, and the newer one is the correct one.
+#
+# The fix belongs in the C emitter (`selfhost/parts/emit.vel`): either put the
+# increment in the loop's own `for (...)` clause when the body contains `continue`,
+# or lower `continue` to `{ increment; continue; }` in the shapes that have one.
+# Whatever is chosen, this file must print "survived" through both back ends, and
+# the corpus must stay green.
+def main() -> None {
+    for i in range(0, 3) {
+        continue
+    }
+    print("survived")
+}

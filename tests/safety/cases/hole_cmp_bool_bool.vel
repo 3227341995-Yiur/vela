@@ -1,0 +1,3 @@
+def main() -> None {
+    print(True < False)
+}

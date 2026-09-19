@@ -1,0 +1,9 @@
+def ident(a: Array[int, 4]) -> Array[int, 4] {
+    return a
+}
+
+def main() -> None {
+    mut a: Array[int, 4]
+    a[0] = 7
+    print(ident(a)[0])
+}

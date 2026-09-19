@@ -1,0 +1,13 @@
+def main() -> None {
+    mut out: Array[int, 8]
+    for i in range(0, 4) {
+        parallel for j in range(0, 8) {
+            out[j] = (3 - i) * 100 + j
+        }
+    }
+    mut s: int = 0
+    for k in range(0, 8) {
+        s += out[k]
+    }
+    print(s)
+}

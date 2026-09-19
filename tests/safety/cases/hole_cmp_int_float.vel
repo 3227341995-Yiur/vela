@@ -1,0 +1,5 @@
+def main() -> None {
+    mut x: int = 1
+    mut y: float = 2.0
+    print(x < y)
+}

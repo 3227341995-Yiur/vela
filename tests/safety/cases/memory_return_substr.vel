@@ -1,0 +1,7 @@
+def head(s: str) -> str {
+    return substr(s, 0, 2)
+}
+
+def main() -> None {
+    print(head("hello"))
+}

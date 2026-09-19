@@ -1,0 +1,9 @@
+def bump(mut n: int) -> None {
+    n += 1
+}
+
+def main() -> None {
+    mut x: int = 10
+    bump(x)
+    print(x)
+}

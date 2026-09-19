@@ -1,0 +1,8 @@
+def make_adder() -> None {
+    mut n: int = 1
+    print(n)
+}
+
+def main() -> None {
+    make_adder()
+}

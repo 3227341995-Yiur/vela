@@ -1,0 +1,5 @@
+def main() -> None {
+    mut a: Array[int, 4]
+    free(a)
+    print(1)
+}

@@ -1,0 +1,7 @@
+def wants(f: float) -> float {
+    return f
+}
+
+def main() -> None {
+    print(wants(3))
+}

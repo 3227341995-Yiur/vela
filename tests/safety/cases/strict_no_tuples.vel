@@ -1,0 +1,4 @@
+def main() -> None {
+    mut t: int = (1, 2)
+    print(1)
+}

@@ -1,0 +1,18 @@
+def main() -> None {
+    mut a: Array[int, 32]
+    mut out: Array[int, 32]
+    for i in range(0, 16) {
+        a[i] = 1
+        a[i + 16] = 2
+    }
+    parallel for k in range(0, 16) {
+        for j in range(0, 4) {
+            out[k * 2 + j] = a[k + j]
+        }
+    }
+    mut s: int = 0
+    for i in range(0, 32) {
+        s += out[i]
+    }
+    print(s)
+}

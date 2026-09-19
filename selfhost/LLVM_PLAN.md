@@ -21,6 +21,36 @@ measurements and the rest of the file is read as a dated ledger.  Measured
 | **the whole `run` corpus, three ways** (measured, same day, twice — the second run after the arena work landed) | all **23** `run` cases in `tests/cases.txt`, each built and run three ways and compared by output hash and exit code. **First run: 4 match, 19 refused. Second run: 7 match, 16 refused.** **0 gave a wrong answer in either run** — that number is the one that matters, and it has not moved: the backend either agrees to the byte or refuses out loud. The three that started matching are `arrays_and_len_folding`, `array_zero_filled` and **`hello`**, i.e. the shipped example now compiles on this backend. The refusals that remain are an enumerable list rather than a mystery: **`parallel for` 6** (refused *deliberately*: LLVM IR has no OpenMP, and a loop that says it is parallel and runs serially is the one failure mode this project promised never to ship), **builtins other than `print` and `len` of an array 3**, **struct parameter or local 2**, **`len` of a `str` and `str` comparison 2**, **in-place update of one value kind 1**, **`and`/`or` short-circuit 1** |
 | **what it still refuses** | an **array** is refused with the reason, not approximated: `vela_arena_alloc` is `static` in `runtime/vela_runtime.h`, so the emitted IR has no symbol to call. `examples\hello.vel` declares one, so the shipped example does not compile on this backend yet |
 
+**Three constraints the emitter work measured, which this plan did not carry** —
+all three found by the back end's own first attempt at compiling the compiler:
+
+* the linked compiler's **first float literal must appear before token 65536**: the
+  lexer keeps a float's value at `tkf[cx.ntok - 1]` and `tkf` is
+  `Array[float, 65536]` (`selfhost/vela.vel:465`).  A `0.0` written at token 85263
+  killed **every** mode with `index 85262 out of range for array of length 65536`;
+* **never wrap a string literal in `unescape()`** when emitting it: both back ends
+  decode escapes as they emit, so a second decode eats the `\` byte (0x5C) and shifts
+  the table by one from byte 92 onward — measured as `len(unescape(tbl))` going
+  256 → 255 and `ModuleID` coming out as `MpevmfID`;
+* **arrays are a prerequisite of step 3, not a later nicety.**  They are what
+  `examples/hello.vel` needs, and they took exactly two new things:
+  `vela_llvm_arena_alloc` (a non-static wrapper over the arena) and
+  `vshim_build_gep`.  GEP deliberately does **not** check the index — one place
+  decides what out-of-range means, and that place is the runtime bounds check both
+  back ends call.
+
+**And one counter-example to step 6, found on the way.**  `continue` inside
+`for i in range(...)` skips the increment in the **C** back end, which lowers the loop
+to a `while` whose last statement is the increment, and C's `continue` jumps past the
+rest of the body.  Measured on 2026-09-20: `for i in range(0, 3) { continue }` —
+the interpreter prints `survived` in **58 ms**; the executable produced by
+**`vm.exe build` is still running after 20 seconds** and has to be killed; the
+executable produced by `build-llvm` terminates.  So there is now a program on which
+the two back ends disagree and **the newer one is the correct one**.  That is a
+reason to fix the C emitter before anything else, and a concrete reason `build-llvm`
+cannot replace `build` today.  `tests/probes/continue_in_for_range.vel` carries the
+reproduction.
+
 **An install is three files, and one of them is not optional.** `vm.exe` carries
 libLLVM inside it, so `LLVM-C.dll` is a **load-time** dependency: measured
 2026-09-20, a copy of `vm.exe` in a directory without the DLL **does not start at

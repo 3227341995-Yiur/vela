@@ -1,0 +1,5 @@
+def main() -> None {
+    mut big: int = 5000000000
+    mut x: i32 = big
+    print(x)
+}

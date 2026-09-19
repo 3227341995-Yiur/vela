@@ -1,0 +1,6 @@
+def main() -> None {
+    mut a: Array[int, 0]
+    mut i: int = 0
+    a[i] = 1
+    print(len(a))
+}

@@ -1,0 +1,7 @@
+struct Holder {
+    a: Array[int, 4]
+}
+
+def main() -> None {
+    print(1)
+}

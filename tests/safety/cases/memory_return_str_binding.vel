@@ -1,0 +1,8 @@
+def greet() -> str {
+    mut s: str = "hi"
+    return s
+}
+
+def main() -> None {
+    print(greet())
+}

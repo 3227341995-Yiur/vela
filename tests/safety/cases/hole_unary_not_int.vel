@@ -1,0 +1,4 @@
+def main() -> None {
+    mut x: int = 1
+    print(not x)
+}
