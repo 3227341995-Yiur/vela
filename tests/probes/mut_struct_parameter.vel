@@ -1,0 +1,54 @@
+# tests/probes/mut_struct_parameter.vel -- the contrast to
+# `mut_scalar_parameter.vel`, and the third case that belongs with them: a `mut`
+# parameter whose type is an array.
+#
+# Same compiler, same day, same two front ends.  Measured on
+# `selfhost\build\vm.exe` (634368 bytes), 2026-09-20:
+#
+#     vm.exe run mut_struct_parameter.vel
+#     vm.exe build mut_struct_parameter.vel && mut_struct_parameter.exe
+#
+#         struct field after free function: 2
+#         struct field after method: 12
+#         array parameter after fill: 42
+#
+# Every one of those writes lands, in both front ends, and the two paths agree
+# byte for byte -- so the rule this language actually implements is:
+#
+#     `mut` on a scalar  parameter  ->  a copy; the callee's writes are dropped
+#     `mut` on an array   parameter  ->  the callee writes the caller's storage
+#     `mut` on a struct   parameter  ->  the callee writes the caller's storage
+#     `mut self: S` in a method      ->  the callee writes the caller's storage
+#
+# The first line is the one `SPEC.md` §3 does not admit to, and the one
+# `selfhost/parts/check.vel` documents as a known implementation gap.  A checker
+# that trusted the spec would admit a program here and misbehave at the call
+# site, which is why this pair of files exists rather than a sentence.
+struct Box {
+    v: int
+
+    def bump(mut self: Box, k: int) -> None {
+        self.v = self.v + k
+    }
+}
+
+def bump_box(mut b: Box) -> None {
+    b.v = b.v + 1
+}
+
+def fill(mut a: Array[int, 2]) -> None {
+    a[0] = 42
+}
+
+def main() -> None {
+    mut b: Box = Box(1)
+    bump_box(b)
+    print("struct field after free function:", b.v)
+
+    b.bump(10)
+    print("struct field after method:", b.v)
+
+    mut a: Array[int, 2] = [5, 6]
+    fill(a)
+    print("array parameter after fill:", a[0])
+}

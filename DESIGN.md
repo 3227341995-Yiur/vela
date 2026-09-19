@@ -478,9 +478,28 @@ are different claims, and only the second one is true:
   flag can remove a check, and adding the elision back is the work of whoever
   takes the back end next.
 * **`mut` on a scalar parameter does not write through** — a gap between the
-  implementation and `SPEC.md:148`, in both front ends, so not a divergence
-  between them. `tests/probes/` holds the two-line proof of it and its struct
-  twin, which does write through.
+  implementation and `SPEC.md` §3 ("`mut` before a parameter means the callee may
+  write through it"), in both front ends, so not a divergence between them.
+  `tests/probes/mut_scalar_parameter.vel` is the proof and
+  `tests/probes/mut_struct_parameter.vel` the contrast; `selfhost/parts/check.vel`
+  cites both by name, and until 2026-09-20 **neither file existed** — the comment
+  pointed at nothing. Measured on `selfhost\build\vm.exe` (634368 bytes), with the
+  interpreter and the C backend printing identical bytes, exit 0 and no
+  diagnostic anywhere:
+
+  | passed to a `mut` parameter | written back? | measured |
+  |---|---|---|
+  | a scalar (`int`) | **no** — the callee has a copy | `scalar after bump: 1` (the promise is 2) |
+  | an array *element* (`a[0]` into `mut int`) | **no** — the same copy | `array element after bump: 5` (the promise is 6) |
+  | an array (`mut a: Array[int, 2]`) | yes — it is already a pointer | `array parameter after fill: 42` |
+  | a struct (`mut b: Box`, `mut self: Box`) | yes | `struct field after free function: 2`, `after method: 12` |
+
+  A dropped write is not a diagnostic in this compiler: it is a wrong number with
+  exit 0. And it is not confined to those probes — `vm.exe debug`'s `vars` command
+  counts a frame's locals through `mut n: int` parameters, so the count never
+  comes back and `vars` answers `locals 0` at a stop where the local is plainly in
+  scope (§10.6 records the mechanism). The debugger is the code that was written to
+  the specification; the implementation is what does not hold.
 * **The front end's pools are fixed arrays** (`selfhost/vela.vel`): 131 072
   tokens, 65 536 syntax nodes. Real programs are nowhere near them; the
   compiler's own source is, which is the honest reason the token pool was
@@ -917,12 +936,25 @@ are defects, and the third is a document that lied about which stream to read.
    interleaved `step`/`continue` cases that would break if the guard were simply
    deleted.
 
-2. **`vars` reports `locals 0`.** At a stop inside `main` where `i` is certainly
-   in scope (declared two lines above the breakpoint and read by the statement
-   that stopped), `vars` answers `locals 0` — measured twice, at two different
-   stops. The cause is not yet localized; `dbg_dump_vars` walks the frame record
-   filed by `dbg_tr_eval(mem, vm.vdepth)`, and the defect is either there or in
-   the record.
+2. **`vars` reports `locals 0`, and the cause is a language defect rather than a
+   debugger defect.** At a stop inside `main` where `i` is declared two lines
+   above the breakpoint and read by the statement that stopped, `vars` answers
+   `locals 0` — measured at two different stops. The mechanism is now localized,
+   by reading the call chain and then measuring the language primitive it depends
+   on: `dbg_dump_vars` (`eval.vel:2506`) starts `mut n: int = 0` and calls
+   `dbg_walk_decls(recs, n, ...)`, which calls `dbg_walk_body(recs, n, ...)`, which
+   calls `dbg_mark(recs, n, ...)` — and that is where the count is incremented,
+   `n += 1`. Every one of those is a `mut` **scalar** parameter, a write this
+   language drops (§7.5 carries the two probes and the measured table). So the
+   count never comes back, the reporting loop `while i < n` never runs once, and
+   the command prints what it believes: zero.
+
+   The fix therefore belongs to the language, not to the debugger — either `mut`
+   on a scalar parameter starts meaning what `SPEC.md` §3 says it means, or the
+   debugger stops relying on it. Both are real options and neither is chosen here.
+   What is now recorded is that a debugger was not the only code in this compiler
+   that would hit this, and that the primitive has a probe of its own so the next
+   attempt starts from a measurement instead of a paragraph.
 
 3. **The usage text names the wrong stream.** `vm_main.vel` prints "events on
    stdout"; with the two streams redirected to separate files, every event landed

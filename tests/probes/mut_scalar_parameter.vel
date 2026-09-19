@@ -1,0 +1,45 @@
+# tests/probes/mut_scalar_parameter.vel -- `mut` on a parameter whose type is a
+# scalar, and the two cases that look like they should differ from it and do not.
+#
+# `SPEC.md` §3 promises the opposite of what this file measures: "`mut` before a
+# parameter means the callee may write through it".  `selfhost/parts/check.vel`
+# records the gap in its own words -- a scalar parameter receives a *copy*, while
+# an array (already a pointer) and a struct do write through -- and cites this
+# file, and `mut_struct_parameter.vel` beside it, as the probes.  Neither file
+# existed until 2026-09-20; the comment pointed at nothing.
+#
+# Measured on `selfhost\build\vm.exe` (634368 bytes), 2026-09-20, both front ends,
+# identical output, exit 0, and no diagnostic anywhere:
+#
+#     vm.exe run mut_scalar_parameter.vel
+#     vm.exe build mut_scalar_parameter.vel && mut_scalar_parameter.exe
+#
+#         scalar after bump: 1
+#         array element after bump: 5
+#
+# Both numbers are wrong against the documented reading -- the promise is 2 and 6
+# -- and nothing says so.  That silence is the point of the file: a dropped write
+# is not a diagnostic in this compiler, it is a wrong number with exit 0.
+#
+# The consequence is not confined to this probe.  `vm.exe debug`'s `vars` command
+# counts a frame's locals through `mut n: int` parameters
+# (`dbg_dump_vars` -> `dbg_walk_decls` -> `dbg_walk_body` -> `dbg_mark`, in
+# `selfhost/parts/eval.vel`), so the count never comes back and `vars` answers
+# `locals 0` at a stop where the local is plainly in scope.  `DESIGN.md` §7.5 and
+# §10.6 record the mechanism; the debugger was written to the spec, and the
+# implementation is what does not hold.
+def bump(mut x: int) -> None {
+    x = x + 1
+}
+
+def main() -> None {
+    mut n: int = 1
+    bump(n)
+    print("scalar after bump:", n)
+
+    # An element of an array is a scalar too, so this is the same copy and not a
+    # second rule: the element the caller holds is untouched.
+    mut a: Array[int, 2] = [5, 6]
+    bump(a[0])
+    print("array element after bump:", a[0])
+}
