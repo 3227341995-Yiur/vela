@@ -172,7 +172,24 @@ mut buf: Array[float, 1024]    # zero-filled array; scalars need an initialiser
 * An array literal shorter than the declared length is zero-padded;
   `mut a: Array[float, 4] = [0.0]` is legal.
 * Struct fields and parameters are declared as `name: T`; `mut` before a
-  parameter means the callee may write through it.
+  parameter means the callee may write through it — **and this implementation does
+  not keep that promise for a scalar.** What it does instead, measured 2026-09-20
+  on `selfhost\build\vm.exe` (634368 bytes) with the interpreter and the C backend
+  printing identical bytes, exit 0, and no diagnostic:
+
+  | passed to a `mut` parameter | written back? | measured |
+  |---|---|---|
+  | a scalar (`int`) | **no** — the callee has a copy | `scalar after bump: 1` (this document promises 2) |
+  | an array *element* (`a[0]` into `mut int`) | **no** — the same copy | `array element after bump: 5` (promises 6) |
+  | an array (`mut a: Array[int, 2]`) | yes — an array is already a pointer | `array parameter after fill: 42` |
+  | a struct (`mut b: Box`, `mut self: Box`) | yes | `struct field after free function: 2` |
+
+  The probes are `tests/probes/mut_scalar_parameter.vel` and
+  `tests/probes/mut_struct_parameter.vel`; `DESIGN.md` §7.5 carries the same table
+  beside the source's own note about the gap. This paragraph is in the
+  specification rather than only in a design note for one reason: **a dropped
+  scalar write is a wrong number with exit 0**, so a reader who trusts the sentence
+  above it will write a silently wrong program and get no help from the compiler.
 
 ---
 
@@ -291,8 +308,22 @@ emitted and hoped for.
 
 A block introduces a scope. Declaration inside a block is invisible outside;
 assignment to a name that is not declared in the current function is an error;
-declaring the same name twice in one scope is an error ("Vela forbids rebinding
-a name to a different meaning in one scope").
+declaring the same name twice in one scope is an error. The compiler's own words
+for these, taken from the messages it prints and from the golden files that lock
+them — the previous version of this paragraph quoted a sentence that appears
+**nowhere** in the compiler, which a byte search of `selfhost\build\vm.exe`
+(634368 bytes, 2026-09-20) settles: `'different meaning'` and `'one scope'` are
+absent, `'cannot rebind'`, `'already declared in this scope'` and `'declared
+immutable'` are all present.
+
+| refused | the message |
+|---|---|
+| the same name declared twice in one scope | `'x' is already declared in this scope` |
+| assigning to an immutable binding | `cannot assign to 'x': it was declared immutable` |
+| rebinding an array name | `cannot rebind array 'a'` |
+
+Shadowing across blocks stays legal; it is a *redeclaration in one scope* that is
+refused, and the message says which name and which scope.
 
 ---
 
