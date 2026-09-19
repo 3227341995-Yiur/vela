@@ -75,6 +75,30 @@ if (Test-Path $vm) {
 }
 
 # --------------------------------------------------------- 2. build and run
+# ------------------------------------------- 1b. the compiler's code generator
+# `vm.exe` carries libLLVM inside it (`selfhost/LLVM_PLAN.md` step 5), so
+# `LLVM-C.dll` is a *load-time* dependency of the compiler: without it beside the
+# executable, Windows refuses to start `vm.exe` at all -- before `main`, with an
+# error that says nothing about LLVM, so every check below would fail with a
+# message that names the wrong problem.  `tools\build.ps1` copies it beside every
+# vm.exe it writes and refuses to finish if it is not there; this is the check
+# that it is still there afterwards.
+#
+# `vela_llvm_runtime.obj` is the other half: it is what `vm.exe build-llvm` links
+# into every program it builds, and the driver looks for it beside the compiler.
+Step 'the compiler carries its code generator'
+foreach ($pair in @(
+    @('LLVM-C.dll', 'the load-time dependency of vm.exe'),
+    @('vela_llvm_runtime.obj', 'what build-llvm links into every program'))) {
+    $f = Join-Path (Split-Path -Parent $vm) $pair[0]
+    if (Test-Path -LiteralPath $f) {
+        Ok ("$($pair[0])  " + (Get-Item -LiteralPath $f).Length + " B  ($($pair[1]))")
+    } else {
+        Bad "$f is missing -- $($pair[1]); run tools\build.ps1"
+    }
+}
+
+# --------------------------------------------------------- 2. build and run
 Step 'build and run the smallest program (from the repository root)'
 $hello = Join-Path $root 'examples\hello.vel'
 Set-Location $root

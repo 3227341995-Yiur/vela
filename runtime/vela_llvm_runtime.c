@@ -229,6 +229,31 @@ void vela_llvm_panic_str(vela_str msg)
     vela_panic_str(msg);
 }
 
+/* ------------------------------------------------------------------ arrays
+ *
+ * `vela_arena_alloc` is `static` in `runtime/vela_runtime.h` (`vela_runtime.h:125`),
+ * so an object emitted by the LLVM back end has no symbol to call for an array --
+ * and that one declaration was the whole reason `examples/hello.vel` could not be
+ * built by that back end.  The arena is not an implementation detail of the C back
+ * end: it *is* what a Vela array is (always 16-byte aligned, always zeroed,
+ * released when the frame that asked for it exits), and both back ends have to
+ * allocate from the same one or "an array's elements are zero" would be two
+ * answers.
+ *
+ * So this is the same wrapper as every other function in this file: the header's
+ * own function, under a name the emitted IR can call.  The signature is a pointer
+ * return and a `size_t` argument, which is exactly why the *shim* could not carry
+ * it: `extern c` has no pointer type, so `vm.exe` declares it as `ptr(i64)` in the
+ * module it builds and never passes it across its own boundary.
+ *
+ * The size is `elements * sizeof(element)`, computed by the emitter -- the same
+ * arithmetic the C back end writes -- so a program's arena use is identical on
+ * both back ends. */
+void *vela_llvm_arena_alloc(int64_t n)
+{
+    return vela_arena_alloc((size_t)n);
+}
+
 /* ------------------------------------------------------------ what is still open
  *
  * The real work of phase 1 is the emitter, not this file.  What this file cannot

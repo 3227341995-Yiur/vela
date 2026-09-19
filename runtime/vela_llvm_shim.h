@@ -100,10 +100,6 @@
  * produced its worst mistakes; `vshim_` cannot be confused with either.
  *
  * Not implemented yet, each for a reason rather than an oversight:
- *   * **GEP / struct field access.**  `load`/`store` are here for scalar locals; a
- *     `str` local needs no load, because its *address* is what the sret call and
- *     `print_str` want.  Reading a field out of a struct is the first thing that
- *     needs `LLVMBuildGEP2`, and it arrives with whichever milestone needs it.
  *   * **Variadic calls.**  `printf`-style call sites are refused with a message
  *     rather than emitted half-right; `m1_probe.ll` needs none, and the plan's
  *     vararg rules (repeating the marker, `fpext` before a variadic call) are a
@@ -366,6 +362,18 @@ int64_t vshim_build_fdiv(int64_t module, int64_t left, int64_t right);
 /* `predicate` is one of the `VSHIM_CMP_*` values; the result is `i1`, which is what
  * `vshim_build_cond_br` requires. */
 int64_t vshim_build_icmp(int64_t module, int32_t predicate, int64_t left, int64_t right);
+
+/* The address of element `index` of the array `pointer` points at, where every
+ * element is `element_type`.  This is `LLVMBuildGEP2`, and it is the one thing the
+ * note below used to list as "not implemented yet ... arrives with whichever
+ * milestone needs it": reading `a[i]` out of an array cannot be done without it, so
+ * the milestone that needs it is the array milestone, and this is it.
+ *
+ * The index is **not** checked here and must not be: the language's bounds check is
+ * a call to `vela_llvm_bounds_check` made by the emitter, so that one place decides
+ * what an out-of-range index means for both back ends.  A GEP with a bad index is
+ * how a checked language silently loses the check. */
+int64_t vshim_build_gep(int64_t module, int64_t element_type, int64_t pointer, int64_t index);
 
 /* ================================================================== calls ====
  *

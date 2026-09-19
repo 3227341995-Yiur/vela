@@ -11,6 +11,10 @@
 #   check  resolve and judge, and refuse the program if it is not allowed to exist
 #   emit-c write the C11 the program compiles to
 #   build  emit the C and hand it to the host's C compiler
+#   emit-llvm  print the LLVM IR the program compiles to (built by libLLVM
+#          inside this process, through runtime/vela_llvm_shim.h)
+#   build-llvm build the module in process, write the object into the build
+#          scratch, and link it with lld-link - no C compiler anywhere
 #   run    resolve, check and then *execute* the program, with no C compiler
 #          and no Python anywhere in the loop
 #   debug  the same interpreter, stopped, with commands read from a file
@@ -66,6 +70,10 @@ def usage() -> None {
     warn_str("         events on stdout, commands in <cmddir>/cmd.NNN (DESIGN.md 10)")
     warn_nl()
     warn_str("  build  emit the C and hand it to the host's C compiler")
+    warn_nl()
+    warn_str("  emit-llvm  print the LLVM IR this program compiles to, through libLLVM")
+    warn_nl()
+    warn_str("  build-llvm build it in process and link it with lld-link (no C compiler)")
     warn_nl()
 }
 
@@ -123,6 +131,17 @@ def find_in(s: str, needle: str) -> int {
 # the language said otherwise.
 def needs_openmp(cfile: str) -> bool {
     return find_in(read_text(cfile), "#pragma omp") >= 0
+}
+
+# Does the C this compiler just wrote call the LLVM shim?  Only one program in
+# this tree does -- the compiler itself, whose `emit_llvm.vel` calls `vshim_*` --
+# and that program has to be linked against `vela_llvm_shim.obj` and
+# `LLVM-C.lib`.  The question is put to the *file* for the same reason
+# `needs_openmp` is: the answer is in what was emitted, not in a table somebody
+# has to keep in step.  A user's program never mentions `vshim_`, so its command
+# line is exactly what it always was.
+def needs_shim(cfile: str) -> bool {
+    return find_in(read_text(cfile), "vshim_") >= 0
 }
 
 # `hello.vel` -> `hello`, so the artifacts land beside the source under the name
@@ -421,8 +440,21 @@ def vcvars_prefix(vcv: str) -> str {
     return concat(concat("call ", quoted(vcv)), " >nul 2>&1 && ")
 }
 
+# `extra` is the extra-link argument: one string, appended verbatim to the C
+# compiler's command line, and appended *only when it is not empty*.  With an
+# empty string the command line below is byte-identical to what this driver has
+# always built, which is not a stylistic claim - the fixpoint compares the C the
+# compiler writes to itself across three generations, and a command line that
+# varied would be a build that varied.
+#
+# It exists for exactly one caller: `tools\build.ps1`, which is how the compiler
+# links *its own* dependencies (the LLVM shim object and `LLVM-C.lib`) into the
+# `vm.exe` it is building.  A user program's build never passes it, and that is
+# deliberate: `vm.exe build x.vel` must not need libLLVM, and the object file
+# the compiler's LLVM back end writes is linked by `lld-link` instead, in
+# `do_build_llvm` below.
 def msvc_build(self: str, vcv: str, cfile: str, exe: str, obj: str, rt: str,
-               omp: bool, tag: str) -> int {
+               omp: bool, tag: str, extra: str) -> int {
     mut c: str = vcvars_prefix(vcv)
     # `cl.exe` starts two helpers that outlive it: `vctip.exe` (the telemetry
     # client) and `mspdbsrv.exe` (a PDB server).  They are detached, they inherit
@@ -463,6 +495,12 @@ def msvc_build(self: str, vcv: str, cfile: str, exe: str, obj: str, rt: str,
     c = concat(c, quoted(exe))
     c = concat(c, " /Fo:")
     c = concat(c, quoted(obj))
+    if len(extra) > 0 {
+        # before the redirection, and separated from what is already there: the
+        # list of inputs cl is handed ends here
+        c = concat(c, " ")
+        c = concat(c, extra)
+    }
     # cl.exe writes its diagnostics to *stdout*, not stderr.  Left alone, a build
     # that fails therefore puts the only message that explains why into the
     # caller's stdout, while this driver's own failure message goes to stderr and
@@ -585,7 +623,7 @@ def other_cc() -> str {
 }
 
 def other_build(self: str, cc: str, cfile: str, exe: str, rt: str,
-                omp: bool, tag: str) -> int {
+                omp: bool, tag: str, extra: str) -> int {
     mut c: str = concat(cc, " -O2 -std=c11")
     if omp {
         c = concat(c, " -fopenmp")
@@ -596,6 +634,10 @@ def other_build(self: str, cc: str, cfile: str, exe: str, rt: str,
     c = concat(c, quoted(cfile))
     c = concat(c, " -o ")
     c = concat(c, quoted(exe))
+    if len(extra) > 0 {
+        c = concat(c, " ")
+        c = concat(c, extra)
+    }
     return run_cc(self, "", c, tag)
 }
 
@@ -680,7 +722,7 @@ def build_scratch(path: str, ext: str) -> str {
     return concat(d, ext)
 }
 
-def do_build(self: str, path: str, rt: str) -> None {
+def do_build(self: str, path: str, rt: str, extra: str) -> None {
     stem: str = strip_vel(path)
     # The product is the executable, and it goes beside its source.  The C file and
     # the object file go to the scratch directory above; before this they were
@@ -694,6 +736,43 @@ def do_build(self: str, path: str, rt: str) -> None {
     # the back end knows whether it emitted an OpenMP pragma; the driver asks the
     # file, so a program without a `parallel for` is built without OpenMP
     omp: bool = needs_openmp(cfile)
+    # The compiler's *own* dependencies, for the one program in the tree that has
+    # them: `selfhost/vm.vel` is the compiler, its emitted C declares and calls
+    # `vshim_*` (the LLVM shim), and linking that C without
+    # `selfhost\build\vela_llvm_shim.obj` and `LLVM-C.lib` is 49 unresolved
+    # symbols -- measured, and the reason `vm.exe build selfhost/vm.vel` used to
+    # be the one thing this compiler could not do to itself.
+    #
+    # The caller's extra-link argument (the 5th word, which `tools\build.ps1`
+    # passes) always wins and is *not* added to: two copies of the same object on
+    # one link line is a duplicate-symbol warning nobody wants to read.  When the
+    # caller passes nothing, the question is put to the C file -- the same
+    # question `needs_openmp` above already asks it -- and a program whose C does
+    # not mention the shim gets exactly the command line it always got, which is
+    # what keeps every user build byte-identical.
+    #
+    # Both paths are resolved from the *compiler's own location* and from
+    # `VELA_LLVM` (the same answer `find_lld` uses), never from a path baked into
+    # this file; and a missing piece is refused with a sentence rather than
+    # dropped, because dropping it turns a diagnosable link error into 49
+    # unreadable ones.
+    mut ex: str = extra
+    if len(ex) == 0 {
+        if needs_shim(cfile) {
+            so: str = find_shim_obj()
+            lib: str = find_llvm_lib(find_lld())
+            if len(so) == 0 {
+                panic("build: this program's C calls the LLVM shim, and vela_llvm_shim.obj is not beside the compiler (tools\\build.ps1 writes it there, and VELA_LLVM_SHIM can name it)")
+            }
+            if len(lib) == 0 {
+                panic("build: this program's C calls the LLVM shim, and LLVM-C.lib was not found (set VELA_LLVM to an unpacked LLVM tree, or run tools\\get-llvm.ps1)")
+            }
+            ex = concat(concat(quoted(so), " "), quoted(lib))
+            warn_str("vela: build: this program calls the LLVM shim; linking it against ")
+            warn_str(so)
+            warn_nl()
+        }
+    }
     # Where the runtime is, resolved once, here, so that a build works from any
     # directory.  An explicit answer wins; otherwise the compiler's own location
     # is walked up; failing both, the relative literal is what it always was, and
@@ -740,7 +819,7 @@ def do_build(self: str, path: str, rt: str) -> None {
         # did we actually put the question to cl.exe?  Only "yes" makes the
         # fallback below the wrong thing to do (see there)
         cl_tried = len(vcv) > 0
-        rc = msvc_build(self, vcv, cfile, exe, obj, dir, omp, cfile)
+        rc = msvc_build(self, vcv, cfile, exe, obj, dir, omp, cfile, ex)
     }
     if rc != 0 {
         if not cl_tried {
@@ -753,7 +832,7 @@ def do_build(self: str, path: str, rt: str) -> None {
             # stderr, above — with `'cc' is not recognized as an internal or external
             # command`, which names the wrong problem and hides the right one.  A user
             # with MinGW and no MSVC still reaches it.
-            rc = other_build(self, other_cc(), cfile, exe, dir, omp, cfile)
+            rc = other_build(self, other_cc(), cfile, exe, dir, omp, cfile, ex)
         }
     }
     if rc != 0 {
@@ -783,6 +862,236 @@ def do_build(self: str, path: str, rt: str) -> None {
     if omp {
         emit_str("  (with OpenMP)")
     }
+    emit_nl()
+}
+
+# ------------------------------------------------- the LLVM back end's driver
+#
+# `vm.exe emit-llvm FILE` and `vm.exe build-llvm FILE [rtdir]` are the plan's
+# steps 3 and 4.  The difference between them and `emit-c`/`build` is the whole
+# point of the work: `build-llvm` runs *no C compiler at all*.  The module is
+# built inside this process through the shim (libLLVM is linked into this
+# binary), the object file is written by this process, and the only external
+# program on the path is `lld-link`.
+#
+# The `.ll` is written for a reader, and it is written the way the C back end
+# writes its C: this compiler re-entered in `emit-llvm` mode with the shell
+# doing the redirecting.  There is a reason beyond symmetry - Vela has no
+# mutable string, so assembling a 300 KB IR dump in memory would be one
+# `concat` per byte and would exhaust the interpreter's string table - and
+# there is a second one: the two modes share one emitter, so the text a human
+# reads and the object that gets linked cannot come from different code.
+
+def write_ll(self: str, path: str, irfile: str) -> None {
+    mut c: str = concat(quoted(self), " emit-llvm ")
+    c = concat(c, quoted(path))
+    c = concat(c, " > ")
+    c = concat(c, quoted(irfile))
+    if run_command(shell(c)) != 0 {
+        panic("build-llvm: the LLVM back end refused this program (its reason is above)")
+    }
+    if not exists(irfile) {
+        panic("build-llvm: no .ll was written")
+    }
+}
+
+# The linker, and the runtime object, are the two things this path needs from
+# outside.  Both are looked for the way the runtime directory is looked for
+# (`find_runtime`): an explicit answer first, then a walk up from the
+# compiler's own location, because the compiler is the only thing on the
+# command line pinned to the tree.  Nothing here depends on the caller's
+# working directory.
+#
+# The walk is **four** levels and not the three `find_runtime` uses, and that
+# difference is a measurement rather than a mood: `runtime` is inside the
+# checkout (two levels above `selfhost\build`), while `tools\get-llvm.ps1`
+# unpacks LLVM *beside* the checkout, one level further out.  Measured with a
+# five-line probe against the real tree: `selfhost\build/../../llvm\...\bin\
+# lld-link.exe` (three levels) resolves to `<checkout>\llvm\...`, which does not
+# exist, and every `build-llvm` failed with
+#
+#     vela: panic: build-llvm: no lld-link.exe found
+#
+# while the same file read by its absolute path was there.  The fourth candidate
+# is `<checkout>\..\llvm\...`, which is where the package actually is.
+def find_lld() -> str {
+    want: str = env("VELA_LLD")
+    if exists(want) {
+        return want
+    }
+    mut base: str = exe_dir()
+    mut up: int = 0
+    while up < 4 {
+        c1: str = join_with(base,
+            "llvm\\clang+llvm-23.1.1-x86_64-pc-windows-msvc\\bin\\lld-link.exe")
+        if exists(c1) {
+            return c1
+        }
+        c2: str = join_with(base, "llvm\\bin\\lld-link.exe")
+        if exists(c2) {
+            return c2
+        }
+        c3: str = join_with(base, "bin\\lld-link.exe")
+        if exists(c3) {
+            return c3
+        }
+        base = join(base, "..")
+        up += 1
+    }
+    return ""
+}
+
+# The two inputs a program that calls the shim has to be linked against.
+#
+# `vela_llvm_shim.obj` is built by `tools\build.ps1` and copied beside every
+# `vm.exe` it writes (step 1 and step 8 there), so it is looked for exactly where
+# the runtime object and the DLL are looked for: next to the compiler, or one
+# directory up.  `LLVM-C.lib` is found from the *linker*, which `find_lld` already
+# located -- `<llvm>\bin\lld-link.exe` means the import library is at
+# `<llvm>\lib\LLVM-C.lib` -- or from `VELA_LLVM`, the same override `find_lld`
+# honours.  Nothing here is a path baked into this file.
+def find_shim_obj() -> str {
+    want: str = env("VELA_LLVM_SHIM")
+    if exists(want) {
+        return want
+    }
+    c1: str = join_with(exe_dir(), "vela_llvm_shim.obj")
+    if exists(c1) {
+        return c1
+    }
+    c2: str = join_with(join(exe_dir(), ".."), "vela_llvm_shim.obj")
+    if exists(c2) {
+        return c2
+    }
+    return ""
+}
+
+def find_llvm_lib(lld: str) -> str {
+    want: str = env("VELA_LLVM")
+    if len(want) > 0 {
+        c: str = join_with(want, "lib\\LLVM-C.lib")
+        if exists(c) {
+            return c
+        }
+    }
+    if len(lld) == 0 {
+        return ""
+    }
+    # <llvm>\bin\lld-link.exe -> <llvm> -> <llvm>\lib\LLVM-C.lib
+    return join_with(parent_of(dir_of(lld)), "lib\\LLVM-C.lib")
+}
+
+def find_llvm_rt(rt: str) -> str {    want: str = env("VELA_LLVM_RT")
+    if exists(want) {
+        return want
+    }
+    mut base: str = exe_dir()
+    mut up: int = 0
+    while up < 3 {
+        c: str = join_with(base, "vela_llvm_runtime.obj")
+        if exists(c) {
+            return c
+        }
+        if len(rt) > 0 {
+            c2: str = join_with(rt, "vela_llvm_runtime.obj")
+            if exists(c2) {
+                return c2
+            }
+        }
+        base = join(base, "..")
+        up += 1
+    }
+    return ""
+}
+
+# One `lld-link`, and a log of it, for the same reason `run_cc` logs the C
+# compiler's own command line: "which linker did it actually run, with which
+# inputs?" is the first question any failure of this step asks.
+#
+# `vcvars64.bat` is called for one reason only: `lld-link` still has to find
+# the C runtime's import libraries (`libcmt.lib` and friends) on `LIB`, because
+# the program it links calls `printf`.  No C compiler is started by that, and
+# no `.c` file exists anywhere on this path.
+def link_llvm(vcv: str, lld: str, obj: str, rtobj: str, exe: str,
+              tag: str) -> int {
+    mut c: str = concat(quoted(lld), " /nologo /subsystem:console /out:")
+    c = concat(c, quoted(exe))
+    c = concat(c, " ")
+    c = concat(c, quoted(obj))
+    c = concat(c, " ")
+    c = concat(c, quoted(rtobj))
+    log: str = concat(tag, "_lld_cmd.txt")
+    warn_str("vela: link: ")
+    warn_str(c)
+    warn_nl()
+    if not write_text(log, concat(c, "\n")) {
+        warn_str("vela: link: could not write the link log ")
+        warn_str(log)
+        warn_nl()
+    }
+    bat: str = concat(tag, "_lld.bat")
+    mut text: str = "@echo off\r\n"
+    if len(vcv) > 0 {
+        text = concat(text, concat(concat("call ", quoted(vcv)), " >nul 2>&1\r\n"))
+    }
+    text = concat(text, "set VSLANG=1033\r\n")
+    text = concat(text, c)
+    text = concat(text, "\r\n")
+    if not write_text(bat, text) {
+        return run_command(shell(c))
+    }
+    mut rc: int = run_command(shell(bat))
+    reap_helpers()
+    return rc
+}
+
+def do_build_llvm(self: str, path: str, rt: str, nd: Array[int, 655360],
+                  ty: Array[int, 262144], flt: Array[float, 65536], src: str,
+                  mut mem: Array[int, 3741696], mut vm: VM) -> None {
+    exe: str = concat(strip_vel(path), ".exe")
+    # both intermediates go to the scratch directory, and their names carry the
+    # whole source *path* flattened, so two builds of the same file name in two
+    # directories cannot share a file (the C back end learned this the same way)
+    obj: str = build_scratch(path, ".obj")
+    ir: str = build_scratch(path, ".ll")
+    # the artifact decides, exactly as in `do_build`: there is no `stat` in the
+    # language, so "the file exists" only proves freshness if nothing was there
+    # before
+    if on_windows() {
+        run_command(concat(concat("del /q ", quoted(exe)), " >nul 2>&1"))
+    } else {
+        run_command(concat(concat("rm -f ", quoted(exe)), " >nul 2>&1"))
+    }
+    # 1. the module, built and verified inside this process, written as a COFF
+    #    object.  This is where a program the back end cannot compile yet is
+    #    refused, by name, with nothing written.
+    ll_emit_object(nd, ty, flt, src, path, mem, vm, obj)
+    # 2. the same module as text, for a human - see `write_ll`
+    write_ll(self, path, ir)
+    # 3. and the link.  From here on the only external program is lld-link.
+    lld: str = find_lld()
+    if len(lld) == 0 {
+        panic("build-llvm: no lld-link.exe found (set VELA_LLD, or run tools\\get-llvm.ps1)")
+    }
+    rtobj: str = find_llvm_rt(rt)
+    if len(rtobj) == 0 {
+        panic("build-llvm: no vela_llvm_runtime.obj beside this compiler (tools\\build.ps1 writes it there)")
+    }
+    mut rc: int = link_llvm(find_vcvars(), lld, obj, rtobj, exe, obj)
+    if rc != 0 {
+        warn_str("vela: build-llvm: lld-link exited ")
+        warn_int(rc)
+        warn_nl()
+    }
+    if not exists(exe) {
+        if rc != 0 {
+            panic("build-llvm: lld-link could not link the object it was given")
+        }
+        panic("build-llvm: lld-link reported success but wrote no executable")
+    }
+    emit_str("built ")
+    emit_str(exe)
+    emit_str("  (LLVM in-process; lld-link, no C compiler)")
     emit_nl()
 }
 
@@ -936,17 +1245,62 @@ def main() -> None {
         emit_nl()
         return
     }
+    if mode == "emit-llvm" {
+        # the second back end: the same parse, resolve and check as `emit-c`,
+        # and then the module is built inside this process instead of being
+        # printed as C
+        cx.ti = 0
+        parse_module(src, tk, tkf, nd, ty, flt, cx)
+        if cx.err == 1 {
+            panic("the front end stopped after an error")
+        }
+        mut memL: Array[int, 3741696]
+        mut vmL: VM = vm_new()
+        resolve_module(nd, ty, memL, path, vmL)
+        ck_module(nd, ty, memL, path, vmL)
+        ll_emit_ir(nd, ty, flt, src, path, memL, vmL)
+        return
+    }
+    if mode == "build-llvm" {
+        # the 4th argument is the runtime directory, exactly as `build` takes
+        # it: an empty one means "work it out from the compiler's own location"
+        mut rtL: str = ""
+        if argc() >= 4 {
+            rtL = arg(3)
+        }
+        cx.ti = 0
+        parse_module(src, tk, tkf, nd, ty, flt, cx)
+        if cx.err == 1 {
+            panic("the front end stopped after an error")
+        }
+        mut memB: Array[int, 3741696]
+        mut vmB: VM = vm_new()
+        resolve_module(nd, ty, memB, path, vmB)
+        ck_module(nd, ty, memB, path, vmB)
+        do_build_llvm(arg(0), path, rtL, nd, ty, flt, src, memB, vmB)
+        return
+    }
     if mode == "build" {
         # The 4th argument is the runtime directory, and an *empty* one means
         # "work it out": `find_runtime` then resolves it from the compiler's own
         # location, so `vm.exe build C:\anywhere\x.vel` works from any directory.
         # A caller who passes a directory still gets exactly that directory, which
         # is why the old behaviour is unchanged for them.
+        #
+        # The 5th argument is the extra-link string, and only `tools\build.ps1`
+        # ever passes it (see `msvc_build`): it is how the compiler links its own
+        # dependencies into the `vm.exe` it is building.  When it is absent the
+        # command line the C compiler is handed is byte-identical to the one this
+        # driver has always built.
         mut rt: str = ""
         if argc() >= 4 {
             rt = arg(3)
         }
-        do_build(arg(0), path, rt)
+        mut extra: str = ""
+        if argc() >= 5 {
+            extra = arg(4)
+        }
+        do_build(arg(0), path, rt, extra)
         return
     }
     usage()

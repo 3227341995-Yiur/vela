@@ -36,7 +36,7 @@ def driver_marker() -> str { return "\n# driver\n" }
 
 # The parts, in dependency order: state first (every part below uses its node
 # and token layout), then the pipeline, then the driver that calls it.
-def part_count() -> int { return 9 }
+def part_count() -> int { return 10 }
 
 def part_name(i: int) -> str {
     if i == 0 { return "vm_state.vel" }
@@ -51,8 +51,12 @@ def part_name(i: int) -> str {
     # this file by tools/gen-shim-decls.ps1): the functions are `extern c`, so this
     # part adds prototypes and nothing to link -- until `build.ps1` links the shim in.
     if i == 6 { return "llvm_shim.vel" }
-    if i == 7 { return "dump.vel" }
-    if i == 8 { return "vm_main.vel" }
+    # The second code generator (selfhost/LLVM_PLAN.md step 3).  It sits after
+    # `emit.vel` -- it reuses that back end's own type and kind helpers, so it cannot
+    # be spliced in front of it -- and before the driver that calls it.
+    if i == 7 { return "emit_llvm.vel" }
+    if i == 8 { return "dump.vel" }
+    if i == 9 { return "vm_main.vel" }
     return ""
 }
 

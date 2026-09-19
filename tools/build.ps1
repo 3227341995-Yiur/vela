@@ -12,13 +12,25 @@
 #     .\tools\build.ps1 -Record -Suites                    # ... re-freezing the goldens first
 #     .\tools\build.ps1 -Force                            # rebuild vm.exe from the seed C
 #
-# Steps: 1 vm.exe from the seed C · 2 link the parts (Vela linker) · 3 the
-# compiler compiles itself · 4 the standalone lexer · 5 the fixpoint: the
-# compiler it built writes the same C again · 6 the Vela test suite (only with
-# -Suites or -Record) · 7 reap the detached `vctip.exe`/`mspdbsrv.exe` that
-# `cl.exe` leaves behind, because while one is alive the harness that runs this
-# script refuses to run anything else — see the note at step 7 for the
-# measurement, and note that `VSCMD_SKIP_SENDTELEMETRY=1` does not prevent it.
+# Steps: 1 the LLVM objects (the compiler's own code generator) · 2 vm.exe from
+# the seed C, linked against them · 3 link the parts (Vela linker) · 4 the
+# compiler compiles itself · 5 the standalone lexer · 6 the fixpoint: the
+# compiler it built writes the same C again · 7 the Vela test suite (only with
+# -Suites or -Record) · 8 `LLVM-C.dll` and the runtime object beside every
+# `vm.exe` the build wrote, because from step 2 on the compiler is linked
+# against libLLVM and will not load without that DLL.  (The detached
+# `vctip.exe`/`mspdbsrv.exe` reaping happens at the very end of the script and
+# in the compiler's own driver; `VSCMD_SKIP_SENDTELEMETRY=1` does not stop them.)
+#
+# Steps 1 and 2 are the plan's step 5 (`selfhost/LLVM_PLAN.md`): from here on
+# `vm.exe` carries its own code generator, the way `rustc` carries LLVM.
+# `runtime\vela_llvm_shim.c` is the scalar surface over `llvm-c` that
+# `selfhost\parts\llvm_shim.vel` declares, and `runtime\vela_llvm_runtime.c`
+# re-exports the runtime the *emitted* program links against.  Both are built
+# here and nowhere else: `vm.exe` links the shim into itself through the
+# extra-link argument (`vm.exe build FILE RTDIR EXTRA`, see `msvc_build` in
+# parts/vm_main.vel, which only this script ever passes), and `vm.exe
+# build-llvm` links the runtime object into every program it builds.
 #
 # No Python anywhere in this file, or in anything it runs.  Stage 0 was deleted
 # once the goldens in tests/golden/ had been certified against it, and this
@@ -122,24 +134,125 @@ $seedC   = Join-Path $root 'selfhost\build\vm.c'
 $seedExe = Join-Path $root 'selfhost\build\vm.exe'
 $runtime = Join-Path $root 'runtime'
 $vmExe   = 'selfhost\build\vm.exe'
+$buildDir = Join-Path $root 'selfhost\build'
+
+# ------------------------------------------------------- the LLVM dependency
+#
+# `selfhost/LLVM_PLAN.md` step 5, in one place: where the LLVM package is, the
+# two objects built from it, and the extra-link string that ties them into the
+# compiler.  `tools\get-llvm.ps1` unpacks a portable LLVM *beside* this checkout
+# (not inside it, which is why the default is one directory up), and the version
+# is pinned here rather than searched for: an IR emitter is version-sensitive,
+# and `LLVM_PLAN.md` asks for the version to be asserted rather than assumed.
+function Find-LlvmDir {
+    if ($env:VELA_LLVM) { return $env:VELA_LLVM }
+    return (Join-Path (Split-Path -Parent $root) 'llvm\clang+llvm-23.1.1-x86_64-pc-windows-msvc')
+}
+
+$llvmDir  = Find-LlvmDir
+$llvmLib  = Join-Path $llvmDir 'lib\LLVM-C.lib'
+$llvmDll  = Join-Path $llvmDir 'bin\LLVM-C.dll'
+$llvmLld  = Join-Path $llvmDir 'bin\lld-link.exe'
+$llvmInc  = Join-Path $llvmDir 'include'
+$shimC    = Join-Path $runtime 'vela_llvm_shim.c'
+$rtC      = Join-Path $runtime 'vela_llvm_runtime.c'
+$shimObj  = Join-Path $buildDir 'vela_llvm_shim.obj'
+$rtObj    = Join-Path $buildDir 'vela_llvm_runtime.obj'
+
+# The extra-link argument, handed to `vm.exe build` as its 5th word.  The 4th
+# word is the runtime directory, and it has to be passed *because* PowerShell
+# 5.1 drops an empty argument entirely: measured, `& pwsh -File t.ps1 a '' b`
+# gives the child `a b` -- two arguments -- so an empty 4th word cannot reach
+# the driver at all.  The string is quoted here, ready to be pasted into the C
+# compiler's command line, which is exactly what `msvc_build` does with it.
+$extraLink  = '"' + $shimObj + '" "' + $llvmLib + '"'
+$runtimeArg = $runtime
+
+# Every step below starts `vm.exe`, and `vm.exe build-llvm` has to look for the
+# *same* LLVM package this script found.  `find_lld` in parts/vm_main.vel walks
+# up from the compiler's own directory and finds `<checkout>\..\llvm\...` on its
+# own (measured: with `VELA_LLD` unset, `build-llvm` links and the program runs),
+# so this is not what makes it work -- it is what makes every step agree.  A
+# build that finds LLVM one way and a compiler that finds it another way is two
+# answers to one question, and the second one is always the one that is wrong.
+$env:VELA_LLVM = $llvmDir
+$env:VELA_LLD  = $llvmLld
+
+# One command line handed to `cl`, in a batch file: cmd.exe strips the first and
+# last quote of whatever it is given and every path here is quoted, so a command
+# line with several quoted paths cannot survive `& cmd /c "..."`.
+function Invoke-Cl([string[]] $lines) {
+    $bat = Join-Path $buildDir '_llvm.ps1.bat'
+    $body = @()
+    $vcv4 = Find-Vcvars
+    if ($vcv4) { $body += "call `"$vcv4`" >nul 2>&1" }
+    $body += 'set VSCMD_SKIP_SENDTELEMETRY=1'
+    $body += $lines
+    [System.IO.File]::WriteAllText($bat, ($body -join "`r`n") + "`r`n")
+    & cmd.exe /c $bat 2>&1 | Out-String | ForEach-Object { if ($_ -ne '') { Say "    $_" } }
+    return $LASTEXITCODE
+}
+
+# Does the compiler that is about to do the building know the extra-link
+# argument?
+#
+# The 5th word of `vm.exe build` arrives in *this* generation, and the compiler
+# that performs the first self-build after that change is the previous
+# generation, which has never heard of a 5th word.  It therefore compiles C that
+# calls `vshim_*` and links nothing, and the C compiler says so:
+#
+#     selfhost_vm.vel.obj : error LNK2019: unresolved external symbol vshim_open
+#                           referenced in function vl_ll_open_module
+#
+# The question is asked of the binary rather than assumed.  `build` prints the
+# command line it is about to run -- to stderr -- so a build whose 5th word is a
+# marker says exactly one thing: whether the marker reached that command line.
+# The build itself fails (the marker is not a file), and nothing is being built
+# here, only asked.
+#
+# It goes through a batch file with the output redirected into a file, and that
+# is not tidiness: with `2>&1 | Out-String` PowerShell wraps the compiler's
+# stderr in a `NativeCommandError` record that *echoes the offending source
+# line*, so the marker string came back out of the probe whether the driver had
+# passed it along or not.  Measured on the first run of this script: the probe
+# answered "yes" against a compiler that ignores the argument entirely.  cmd
+# does the redirecting inside the batch and PowerShell never sees that stream.
+function Test-ExtraLinkArg([string] $vm) {
+    $probe = Join-Path $buildDir '_extra_probe.vel'
+    [System.IO.File]::WriteAllText($probe,
+        "def main() -> None {`r`n    print(`"probe`")`r`n}`r`n")
+    $bat = Join-Path $buildDir '_extra_probe.bat'
+    $out = Join-Path $buildDir '_extra_probe.txt'
+    $body = @('@echo off')
+    $vcv5 = Find-Vcvars
+    if ($vcv5) { $body += "call `"$vcv5`" >nul 2>&1" }
+    $body += 'set VSCMD_SKIP_SENDTELEMETRY=1'
+    $body += "`"$vm`" build `"$probe`" `"$runtimeArg`" VELA_EXTRA_LINK_PROBE > `"$out`" 2>&1"
+    [System.IO.File]::WriteAllText($bat, ($body -join "`r`n") + "`r`n")
+    & cmd.exe /c $bat | Out-Null
+    $text = ''
+    if (Test-Path -LiteralPath $out) { $text = [string](Get-Content -LiteralPath $out -Raw) }
+    return $text.Contains('VELA_EXTRA_LINK_PROBE')
+}
 
 function Build-SeedCompiler {
     # The floor of the bootstrapping: one C file, one C compiler, one header.
     # A batch file rather than a command line, because cmd.exe strips the first
     # and last quote of whatever it is handed and every path here is quoted.
+    #
+    # `$extraLink` is here from the first generation on, and it has to be: the
+    # seed C this script promotes at step 4 *calls the shim* (the driver's
+    # `build-llvm` mode does), so the next bootstrap has to link it.  On the
+    # very first run the checked-in seed C does not call anything in it yet, and
+    # the object is simply unused.
     if (-not (Test-Path -LiteralPath $seedC)) {
         Say "    no $seedC - nothing to bootstrap from"
         return 1
     }
-    $vcv = Find-Vcvars
-    $lines = @()
-    if ($vcv) { $lines += "call `"$vcv`" >nul 2>&1" }
-    $lines += "cd /d `"$(Split-Path -Parent $seedC)`""
-    $lines += "cl /nologo /std:c11 /O2 /I `"$runtime`" `"$seedC`" /Fe:`"$seedExe`" /Fo:`"$(Join-Path $root 'selfhost\build\vm_boot.obj')`""
-    $bat = Join-Path $root 'selfhost\build\_build.ps1.bat'
-    [System.IO.File]::WriteAllText($bat, ($lines -join "`r`n") + "`r`n")
-    & cmd.exe /c $bat 2>&1 | Out-String | ForEach-Object { if ($_ -ne '') { Say "    $_" } }
-    $code = $LASTEXITCODE
+    $code = Invoke-Cl @(
+        "cd /d `"$(Split-Path -Parent $seedC)`"",
+        "cl /nologo /std:c11 /O2 /I `"$runtime`" `"$seedC`" /Fe:`"$seedExe`" /Fo:`"$(Join-Path $root 'selfhost\build\vm_boot.obj')`" $extraLink"
+    )
     Say "    -> cl exit $code"
     if ($code -ne 0) { $script:failed = $true }
     return $code
@@ -153,7 +266,69 @@ Say "  started    : $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 $vcv = Find-Vcvars
 Say "  vcvars64   : $(if ($vcv) { $vcv } else { 'NOT FOUND' })"
 
-# ---------------------------------------------------------------- 1. vm.exe
+# ------------------------------------------------------- 1. the LLVM objects
+#
+# `selfhost/LLVM_PLAN.md` step 5.  Two objects, built once, here:
+#
+#   vela_llvm_shim.obj     the scalar surface over `llvm-c`.  `vm.exe` links it
+#                          into *itself*, which is what makes the compiler carry
+#                          its own code generator; it is passed through the
+#                          extra-link argument at steps 2 and 4.
+#   vela_llvm_runtime.obj  the runtime the *emitted program* calls.  `vm.exe
+#                          build-llvm` links it into every program it builds,
+#                          and it is copied beside every vm.exe at step 8.
+#
+# Neither is ever built by a user's build: `vm.exe build x.vel` compiles C, and
+# `vm.exe build-llvm x.vel` writes an object itself and calls a linker.  This
+# script is the only thing here that compiles a C file other than the seed.
+$llvmMissing = @()
+foreach ($p in @($llvmLib, $llvmDll, $llvmLld, (Join-Path $llvmInc 'llvm-c\Core.h'), $shimC, $rtC)) {
+    if (-not (Test-Path -LiteralPath $p)) { $llvmMissing += $p }
+}
+Head '1/8  the LLVM package the compiler is linked against'
+Say "    llvm       : $llvmDir"
+if ($llvmMissing.Count -gt 0) {
+    foreach ($m in $llvmMissing) { Say "    !! missing: $m" }
+    Say '    run tools\get-llvm.ps1, or set VELA_LLVM to an unpacked LLVM 23.x tree'
+    Say ''
+    Say 'build FAILED at step 1: the compiler cannot carry a code generator without it'
+    Write-Report
+    exit 1
+}
+Step '1/8  compile the shim and the runtime (development time only)' {
+    Invoke-Cl @(
+        "cl /nologo /std:c11 /O2 /I `"$llvmInc`" /I `"$runtime`" /c `"$shimC`" /Fo:`"$shimObj`"",
+        "cl /nologo /std:c11 /O2 /I `"$llvmInc`" /I `"$runtime`" /c `"$rtC`" /Fo:`"$rtObj`""
+    )
+} | Out-Null
+if ($failed) { Say ''; Say 'build FAILED at step 1'; Write-Report; exit 1 }
+Say "    $shimObj  ($((Get-Item -LiteralPath $shimObj).Length) bytes)"
+Say "    $rtObj  ($((Get-Item -LiteralPath $rtObj).Length) bytes)"
+Say "    extra link : $extraLink"
+
+# The DLL and the runtime object have to sit beside every vm.exe this build
+# writes, and the first one is written by step 2 -- which then *runs* that
+# vm.exe at step 3, and a vm.exe linked against LLVM-C.lib does not load at all
+# without the DLL.  So it is placed immediately after each vm.exe is written.
+#
+# `LLVM-C.dll` is 74 MB and is deliberately not in the repository (see
+# .gitignore): it is the same kind of dependency `rustc` has on its own libLLVM,
+# and step 8 refuses to finish unless it is in place.
+function Place-LlvmRuntime([string] $vmPath) {
+    if (-not (Test-Path -LiteralPath $vmPath)) { return }
+    $dir = Split-Path -Parent $vmPath
+    Copy-Item -LiteralPath $llvmDll -Destination (Join-Path $dir 'LLVM-C.dll') -Force
+    # `selfhost\build\vm.exe` lives in the directory the runtime object is
+    # *built* in, so this copy would be a file onto itself.  Copy-Item answers
+    # that with an IOException (measured: `WriteError ... CopyError`), so the
+    # no-op case is skipped by comparing the resolved paths.
+    $dst = Join-Path $dir 'vela_llvm_runtime.obj'
+    if ([System.IO.Path]::GetFullPath($dst) -ne [System.IO.Path]::GetFullPath($rtObj)) {
+        Copy-Item -LiteralPath $rtObj -Destination $dst -Force
+    }
+}
+
+# ---------------------------------------------------------------- 2. vm.exe
 #
 # Built from the seed C when it is missing or stale, otherwise left alone: a
 # compiler is not rebuildable by itself until after this step, which is exactly
@@ -163,15 +338,17 @@ if (-not $needSeed) {
     $needSeed = (Get-Item -LiteralPath $seedC).LastWriteTime -gt (Get-Item -LiteralPath $seedExe).LastWriteTime
 }
 if ($needSeed) {
-    Step '1/6  bootstrap vm.exe from selfhost\build\vm.c' { Build-SeedCompiler } | Out-Null
+    Step '2/8  bootstrap vm.exe from selfhost\build\vm.c' { Build-SeedCompiler } | Out-Null
 } else {
-    Head '1/6  vm.exe is current'
+    Head '2/8  vm.exe is current'
     Say '    (the seed C is older than the binary; -Force rebuilds anyway)'
 }
-if ($failed) { Say ''; Say 'build FAILED at step 1'; Write-Report; exit 1 }
-if (-not (Test-Path -LiteralPath $vmExe)) { Say 'no vm.exe after step 1'; Write-Report; exit 1 }
+if ($failed) { Say ''; Say 'build FAILED at step 2'; Write-Report; exit 1 }
+if (-not (Test-Path -LiteralPath $vmExe)) { Say 'no vm.exe after step 2'; Write-Report; exit 1 }
+Place-LlvmRuntime (Join-Path $root $vmExe)
+Say "    LLVM-C.dll and vela_llvm_runtime.obj are beside $vmExe"
 
-# ---------------------------------------------------------------- 2. link
+# ---------------------------------------------------------------- 3. link
 #
 # The linked compiler is generated by a Vela program, run by the compiler.  The
 # old file is kept aside first and restored if the new one does not lex: a
@@ -191,11 +368,10 @@ if (Test-Path -LiteralPath $vmVel) {
     Copy-Item -LiteralPath $vmVel -Destination $backup -Force
     $before = [int]((& $vmExe count $vmVel 2>$null | Out-String).Trim() -replace '\D', '')
     Say ''
-    Say '=== 2/6  link the parts (selfhost/vela.vel + the 8 parts)'
+    Say '=== 3/8  link the parts (selfhost/vela.vel + the 9 parts)'
     Say "    tokens in the linked compiler before re-linking: $before"
 }
-Step '    build the linker' { & $vmExe build tools/link_selfhost.vel } | Out-Null
-if (-not $failed) {
+Step '    build the linker' { & $vmExe build tools/link_selfhost.vel } | Out-Nullif (-not $failed) {
     Step '    run the linker' { & $linker } | Out-Null
 }
 
@@ -251,9 +427,9 @@ if (-not $failed -and $before -gt 0) {
         Copy-Item -LiteralPath $backup -Destination $vmVel -Force
     }
 }
-if ($failed) { Say ''; Say 'build FAILED at step 2'; Write-Report; exit 1 }
+if ($failed) { Say ''; Say 'build FAILED at step 3'; Write-Report; exit 1 }
 
-# ---------------------------------------------------------------- 3. compiler
+# ---------------------------------------------------------------- 4. compiler
 #
 # `vm.exe build selfhost/vm.vel` is the compiler compiling the compiler, through
 # its own build driver: emit the C, hand it to cl.exe, keep the binary.
@@ -296,7 +472,31 @@ $scratchDir = Join-Path $env:TEMP 'vela-build'
 $scratchC = Join-Path $scratchDir (($selfSource -replace '[:\\/]', '_') + '.c')
 Remove-Item -LiteralPath $scratchC -Force -ErrorAction SilentlyContinue
 
-Step '3/6  build the compiler with the compiler' { & $vmExe build $selfSource } | Out-Null
+# The extra-link inputs, handed to whichever compiler is doing the building.
+#
+# Normally that is the 5th word of `vm.exe build` -- the mechanism this project
+# decided on, and the one `msvc_build` in parts/vm_main.vel documents.  For the
+# *first* self-build after that argument was added, the compiler in the tree is
+# the previous generation, which ignores it -- see `Test-ExtraLinkArg` -- and the
+# bridge is `CL`: the C compiler reads that variable and treats its contents as
+# extra arguments, so the older driver gets the same inputs without a change to
+# the command line it builds.  Measured: with `CL` set to a path that does not
+# exist, the build fails with
+#
+#     LINK : fatal error LNK1181: cannot open input file 'Z:\...obj'
+#
+# which is cl reading the variable through the old driver's batch file.  One
+# generation later the probe answers "yes" and this branch is never taken again.
+if (Test-ExtraLinkArg $vmExe) {
+    Say '    the compiler knows the extra-link argument: passed as the 5th word'
+    Step '4/8  build the compiler with the compiler' { & $vmExe build $selfSource $runtimeArg $extraLink } | Out-Null
+} else {
+    Say '    this compiler predates the extra-link argument: the same inputs go'
+    Say '    through `CL`, which the C compiler reads as extra arguments'
+    $env:CL = $extraLink
+    Step '4/8  build the compiler with the compiler' { & $vmExe build $selfSource $runtimeArg } | Out-Null
+    Remove-Item Env:\CL -ErrorAction SilentlyContinue
+}
 if (-not $failed) {
     Head '      promote what the compiler wrote'
     $gen2C = Join-Path $root 'selfhost\vm.c'
@@ -331,16 +531,24 @@ if (-not $failed) {
             $failed = $true
         }
     }
+    # the promoted binaries are `vm.exe`s too, and a vm.exe without LLVM-C.dll
+    # beside it does not load at all - so it goes beside each one as it lands
+    foreach ($p in @((Join-Path $root 'selfhost\vm.exe'),
+                     (Join-Path $root 'selfhost\build\vm.exe'),
+                     (Join-Path $root 'selfhost\build\vm_by_vela.exe'))) {
+        Place-LlvmRuntime $p
+    }
+    Say '    LLVM-C.dll and vela_llvm_runtime.obj are beside every vm.exe above'
 }
-if ($failed) { Say ''; Say 'build FAILED at step 3'; Write-Report; exit 1 }
+if ($failed) { Say ''; Say 'build FAILED at step 4'; Write-Report; exit 1 }
 
-# ---------------------------------------------------------------- 4. lexer
-Step '4/6  build the standalone lexer (selfhost/vela.vel)' { & $vmExe build selfhost/vela.vel } | Out-Null
+# ---------------------------------------------------------------- 5. lexer
+Step '5/8  build the standalone lexer (selfhost/vela.vel)' { & $vmExe build selfhost/vela.vel } | Out-Null
 if (Test-Path -LiteralPath (Join-Path $root 'selfhost\vela.exe')) {
     Copy-Item -LiteralPath (Join-Path $root 'selfhost\vela.exe') -Destination (Join-Path $root 'selfhost\build\vela.exe') -Force
 }
 
-# ---------------------------------------------------------------- 5. fixpoint
+# ---------------------------------------------------------------- 6. fixpoint
 #
 # The property stage 4 rests on, checked here as well as in the test suite: the
 # compiler must write the C it was built from, and the compiler it built must
@@ -357,10 +565,10 @@ $gen2C   = Join-Path $root 'selfhost\vm.c'
 $gen2Out = Join-Path $root 'selfhost\build\_fixpoint_gen2.c'
 
 if (-not (Test-Path -LiteralPath $gen2Exe)) {
-    Head '5/6  fixpoint skipped: no generation 2 binary'
+    Head '6/8  fixpoint skipped: no generation 2 binary'
     $failed = $true
 } else {
-    Step '5/6  fixpoint: generation 2 re-emits the compiler' {
+    Step '6/8  fixpoint: generation 2 re-emits the compiler' {
         & cmd.exe /c "`"$gen2Exe`" emit-c $selfSource > `"$gen2Out`" 2> nul"
     } | Out-Null
     if (-not $failed) {
@@ -380,7 +588,7 @@ if (-not (Test-Path -LiteralPath $gen2Exe)) {
     }
 }
 
-# ---------------------------------------------------------------- 6. suite
+# ---------------------------------------------------------------- 7. suite
 $suiteExe = Join-Path $root 'tests\run_tests.exe'
 if ($Suites -or $Record) {
     # `tests/run_tests.vel` finds the compiler through `VELA_SELF` and now *requires*
@@ -391,16 +599,53 @@ if ($Suites -or $Record) {
     # reason was the driver's own harmless first line.  Measured: unset, 30 cases
     # failed; set, 5.  `tools\refreeze.ps1` sets it for the same reason.
     $env:VELA_SELF = $vmExe
-    Step '6/6  build the test suite (tests/run_tests.vel)' { & $vmExe build tests/run_tests.vel } | Out-Null
+    Step '7/8  build the test suite (tests/run_tests.vel)' { & $vmExe build tests/run_tests.vel } | Out-Null
     if (-not $failed) {
         if ($Record) { Step '      record the goldens' { & $suiteExe record } | Out-Null }
         if ($Suites) { Step '      run the suite'      { & $suiteExe } | Out-Null }
     }
 } else {
-    Head '6/6  test suite not requested (-Suites)'
+    Head '7/8  test suite not requested (-Suites)'
 }
 
-# ---------------------------------------- 7/7  leave no detached helpers behind
+# ------------------------------- 8/8  the code generator beside every vm.exe
+#
+# The compiler now carries libLLVM inside it, and `LLVM-C.dll` is a *load-time*
+# dependency of the binary: without it beside the executable, Windows refuses to
+# start `vm.exe` at all -- before `main`, with an error that says nothing about
+# LLVM.  So this is not a tidiness check; it is the difference between a
+# compiler that runs and one that does not.  Every `vm.exe` this build wrote is
+# listed here explicitly (they are `selfhost\build\vm.exe`, the promoted
+# `selfhost\vm.exe`, and `vm_by_vela.exe`), and a missing file is named.
+#
+# `vela_llvm_runtime.obj` is what `vm.exe build-llvm` links into every program
+# it builds, and it is looked for beside the compiler (`find_llvm_rt` in
+# parts/vm_main.vel), so it sits with the DLL.
+Head '8/8  the code generator is beside every vm.exe'
+$vmBins = @(
+    (Join-Path $root 'selfhost\build\vm.exe'),
+    (Join-Path $root 'selfhost\vm.exe'),
+    (Join-Path $root 'selfhost\build\vm_by_vela.exe')
+)
+foreach ($b in $vmBins) {
+    if (-not (Test-Path -LiteralPath $b)) {
+        Say "    !! no $b"
+        $failed = $true
+        continue
+    }
+    $dir = Split-Path -Parent $b
+    foreach ($need in @('LLVM-C.dll', 'vela_llvm_runtime.obj')) {
+        $f = Join-Path $dir $need
+        if (Test-Path -LiteralPath $f) {
+            Say "    $($b.Replace($root + '\', '')) + $need ($((Get-Item -LiteralPath $f).Length) bytes)"
+        } else {
+            Say "    !! $b needs $f, and it is not there"
+            $failed = $true
+        }
+    }
+}
+
+# ---------------------------------------- 9/9  leave no detached helpers behind
 # `cl.exe` starts `vctip.exe` (its telemetry client) and `mspdbsrv.exe` (a PDB
 # server) as *detached* processes.  They outlive the build by minutes or hours and
 # inherit the handles of whatever started them.  In this project that has twice

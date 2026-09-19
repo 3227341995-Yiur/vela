@@ -1615,6 +1615,64 @@ int64_t vshim_build_icmp(int64_t module, int32_t predicate, int64_t left, int64_
     return h;
 }
 
+/* The address of one element, which is what `a[i]` needs: an array in this
+ * language is a pointer (the C back end emits `int64_t*`), and nothing can be read
+ * out of one without `getelementptr`.
+ *
+ * The index is deliberately **not** bounds-checked here.  The check is a call to
+ * `vela_llvm_bounds_check` that the emitter makes first, so there is exactly one
+ * place -- the runtime, shared with the C back end -- that decides what an
+ * out-of-range index means and what it prints.  Checking here as well would be a
+ * second answer to the same question, and a `gep` with an unchecked index is how a
+ * language that is checked by default quietly stops being one. */
+int64_t vshim_build_gep(int64_t module, int64_t element_type, int64_t pointer,
+                        int64_t index)
+{
+    shim_module *m, *owner = NULL;
+    LLVMTypeRef ty;
+    LLVMValueRef ptr, idx, r;
+    int64_t h;
+
+    clear_error();
+    m = module_of(module);
+    if (!m) return 0;
+    ty = (LLVMTypeRef)lookup(element_type, SHIM_KIND_TYPE, &owner);
+    if (!ty) return 0;
+    if (owner != m) {
+        fail("the element type belongs to another module");
+        return 0;
+    }
+    ptr = (LLVMValueRef)lookup(pointer, SHIM_KIND_VALUE, &owner);
+    if (!ptr) return 0;
+    if (owner != m) {
+        fail("the pointer belongs to another module");
+        return 0;
+    }
+    if (!type_is_pointer(LLVMTypeOf(ptr))) {
+        fail("an element address needs a pointer to index into");
+        return 0;
+    }
+    idx = (LLVMValueRef)lookup(index, SHIM_KIND_VALUE, &owner);
+    if (!idx) return 0;
+    if (owner != m) {
+        fail("the index belongs to another module");
+        return 0;
+    }
+    if (!type_is_integer(LLVMTypeOf(idx))) {
+        fail("an element index must be an integer");
+        return 0;
+    }
+    if (check_builder(m) != VSHIM_OK) return 0;
+    r = LLVMBuildGEP2(m->builder, ty, ptr, &idx, 1, "");
+    if (!r) {
+        fail("LLVMBuildGEP2() returned NULL");
+        return 0;
+    }
+    h = slot_add(m, r, SHIM_KIND_VALUE);
+    if (!h) return 0;
+    return h;
+}
+
 /* ==================================================================== calls */
 
 int64_t vshim_arglist_begin(int64_t module)

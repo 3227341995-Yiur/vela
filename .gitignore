@@ -135,6 +135,17 @@
 # the build report, written next to the checkout by tools\build.ps1
 /../vela-build-report.txt
 
+# `LLVM-C.dll` -- 74,159,616 bytes -- copied beside every `vm.exe` that
+# `tools\build.ps1` writes.  It is the *compiler's* own dependency, not a user
+# program's: `vm.exe` carries libLLVM inside it (selfhost/LLVM_PLAN.md step 5)
+# and the DLL is a load-time dependency, so without it Windows refuses to start
+# the compiler at all, before `main`.  It is the same kind of dependency `rustc`
+# has on its own libLLVM, and it is far too large to track: a fresh checkout runs
+# `tools\get-llvm.ps1` and then `tools\build.ps1`, which copies it from
+# `<checkout>\..\llvm\`.
+/selfhost/build/LLVM-C.dll
+/selfhost/LLVM-C.dll
+
 # editor/OS noise
 .vscode/
 *.swp

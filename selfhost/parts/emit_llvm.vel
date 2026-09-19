@@ -1,0 +1,1940 @@
+# ---------------------------------------------------------------------------
+# selfhost/parts/emit_llvm.vel - the in-process LLVM back end (plan step 3).
+#
+# This is the second code generator: the same AST walk `emit.vel` does, with
+# calls into `runtime/vela_llvm_shim.h` (declared for Vela in
+# `selfhost/parts/llvm_shim.vel`) instead of C text on stdout.  The reason the
+# walk exists at all is the north star: `vm.exe build x.vel` must write a native
+# object *itself*, with no C compiler and no C text anywhere, and the only thing
+# left on the machine is a linker.
+#
+# ## What is deliberately the same as the C back end, and why that is not tidiness
+#
+# Every *checked* operation is a call to the runtime symbol the C back end
+# calls: `vela_llvm_add_range`, `vela_llvm_sub_range`, `vela_llvm_mul_range`,
+# `vela_llvm_floor_div`, `vela_llvm_floor_mod`, `vela_llvm_bounds_check`.  A
+# plain `add` where the C back end calls the checked helper would drop the
+# language's central promise silently, and the promise would still hold in
+# every test that does not overflow - which is exactly the kind of divergence
+# nobody finds later.  The runtime behind those names is one implementation
+# shared by both back ends (`runtime/vela_llvm_runtime.c` re-exports the
+# header's own functions, so the two back ends cannot drift).
+#
+# Printing is the same argument: `vela_llvm_print_*` and not `printf` from here,
+# because "print a float" is a *byte* contract (`%.6f`) and an emitter that
+# formats its own floats passes every test until the one value where its format
+# and the runtime's disagree.
+#
+# ## The `str` problem, and the two shapes it forces
+#
+# A Vela `str` is a 16-byte struct, and the Microsoft x86-64 ABI passes it by
+# reference and returns it through a hidden pointer (measured, and written down
+# in `selfhost/llvm/m1_probe.ll`).  So there is no `str` *value* in this back
+# end at all: a `str` is always a pointer to 16 bytes that some storage holds.
+# A string literal is therefore lowered as
+#
+#     %slot = alloca %vela_str, align 8          (in the entry block, see below)
+#     call void @vela_llvm_str_lit(ptr sret(%vela_str) %slot, ptr @.s<node>, i64 len)
+#
+# and what the rest of this emitter carries around is `%slot` - the pointer -
+# which is exactly what `vela_llvm_print_str(ptr)` wants.
+#
+# ## Every alloca lives in the entry block, and that is a measurement, not a style
+#
+# LLVM frees alloca'd storage at *function exit*, not when the block that
+# contains the alloca is left, so an `alloca` placed where a variable is
+# declared is executed once per iteration of an enclosing loop and carves out a
+# fresh slot every time.  A `mut x: int` inside a million-iteration loop would
+# then grow the stack by a million slots instead of reusing one.  So this back
+# end walks each function body twice: `ll_alloc_body` reserves a slot in the
+# entry block for every local, every `for` variable and every string literal
+# *before* a single instruction of the body is emitted, and the emit pass only
+# ever loads and stores.  The pre-pass records what it reserved in three tables
+# (`slots` by frame slot, `slotkind` beside it so a mismatched reference is
+# refused rather than silently reading another variable's storage, and `lit` by
+# node id for the literal slots).
+#
+# ## What is refused, and why each refusal is the honest answer
+#
+# A refusal is a deliverable here; a wrong answer is not.  Every `trap` below
+# names the construct *and* what it would take to lower it:
+#
+#   * `Array[T, N]` -- **supported**, and it goes through the runtime's own arena
+#     (`vela_llvm_arena_alloc`, a non-static wrapper over `vela_arena_alloc` in
+#     `runtime/vela_llvm_runtime.c`), so an array is stored, zeroed and released
+#     exactly as the C back end stores, zeroes and releases one.  A stack `alloca`
+#     was never an option: it would work for `examples\hello.vel` and kill the
+#     compiler, whose pools are tens of megabytes.
+#   * structs, fields and methods - they need a pointer-to-field *and* the struct
+#     layout, and the shim's `vshim_build_gep` has arrived only as far as arrays.
+#   * `and` / `or` - a short-circuit needs a value that flows from two blocks, and
+#     the shim exposes no `phi` on purpose.  A slot would do it, and the slot design
+#     is what the next slice adds.
+#   * float comparisons - `vshim_build_icmp` is integer-only and the shim has no
+#     `fcmp` entry point yet.
+#   * `continue` inside a `for` -- supported here, and *broken in the C back end*:
+#     that back end lowers `for i in range(...)` to a `while` with the increment at
+#     the end of the body, and C's `continue` skips it, so `i` never moves again.
+#     Measured: a two-line program (`for i in range(0, 3) { continue }`) hangs when
+#     built by the C back end and terminates with the right answer here.  This back
+#     end branches `continue` to the loop's increment block instead, which is why
+#     the two back ends disagree about that program -- and why `build-llvm` is not
+#     the default yet.
+#   * `parallel for` - LLVM IR has no OpenMP (LLVM_PLAN.md refuses it in as many
+#     words): serialising it would ship a loop that says it is parallel and is
+#     not, which is the one failure mode this project promised never to ship.
+#   * `str` parameters and `str` returns - both need the sret/by-reference
+#     discipline applied to a *user* function, which is real work and belongs
+#     with the string milestone.
+#   * `& | ^ << >> ** ~`, integer `/`, and the `len(str)`/`abs`/`min_int`/...
+#     builtins - the runtime exports no symbol for them yet (`vela_pow_int`,
+#     `vela_shl_int` and friends are `static inline` in the header), so there is
+#     nothing to call.  Refusing names the gap; emitting an unchecked instruction
+#     would change the program's meaning.
+# ---------------------------------------------------------------------------
+
+# ------------------------------------------------------------------- the state
+#
+# Vela has no globals and a struct may not hold an array, so the module, the
+# handles and the current block all travel in one struct, mutated through a
+# `mut` parameter, and the three tables travel beside it as array parameters.
+#
+# Every field is assigned by name after construction (`ll_zero`), so the
+# constructor's argument count is the only thing that has to be right - and a
+# wrong count is a type error, not a silent one.
+
+struct LG {
+    m: int            # the module handle
+    tbl: str          # byte index -> one-character str, for output
+    t_void: int
+    t_i1: int
+    t_i8: int
+    t_i32: int
+    t_i64: int
+    t_f64: int
+    t_ptr: int
+    t_str: int
+    f_setargs: int    # void(i32, ptr)
+    f_init: int       # void()
+    f_pstr: int       # void(ptr)
+    f_pi64: int       # void(i64)
+    f_pf64: int       # void(f64)
+    f_pbool: int      # void(i1)
+    f_sep: int
+    f_nl: int
+    f_strlit: int     # void(ptr sret(%vela_str), ptr, i64)
+    f_bounds: int     # void(i64, i64, ptr, i32)
+    f_add: int        # i64(i64, i64, i64, i64, ptr, i32)
+    f_sub: int
+    f_mul: int
+    f_floordiv: int   # i64(i64, i64, ptr, i32)
+    f_floormod: int
+    f_alloc: int      # ptr(i64) -- vela_llvm_arena_alloc, for every array
+    pfile: int        # the source path as a NUL-terminated C string
+    cur: int          # the block the builder is positioned at
+    fnn: int          # the LLVM function being emitted
+    retk: int         # that function's packed return type
+    rslot: int        # where `return` stores its value (0 when it returns None)
+    exitb: int        # the block every `return` branches to
+    brkb: int         # the exit block of the innermost loop (0 outside one)
+    contb: int        # ... and its continue block
+    term: int         # 1 when `cur` already ends in a terminator
+}
+
+def ll_zero() -> LG {
+    return LG(0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+}
+
+# The frame-slot table this back end can address.  A slot is the resolver's own
+# frame slot (`NT_SLOT`, resolve.vel:502); `CELL_STACK_MAX` says a function may
+# have 200000 of them, and this table stops at 4096 - which every function in
+# this repository is far below - so that the limit is a sentence rather than a
+# silent wrap.
+def LL_SLOTS() -> int { return 4096 }
+def LL_NODES() -> int { return 65536 }
+def LL_FNS() -> int { return 8192 }
+
+# ------------------------------------------------------------ the byte table
+#
+# The shim hands text back through its own byte buffer, one `u8` per call, and
+# Vela has no way to turn an integer 0..255 into a one-character `str` - there
+# is no `chr`, and `concat` only joins strings that already exist.  So the back
+# end carries all 256 bytes as one literal and slices a character out of it:
+# `substr` on a `str` is a *slice*, not an allocation (runtime/vela_runtime.h),
+# which is what makes this affordable at a hundred thousand bytes of IR.
+# The table is the literal itself, with no `unescape` around it, and that is worth
+# one sentence because the first version of this function had the call and was
+# wrong in a way that looked almost right: **the back ends decode a literal's
+# escapes when they emit it**, so `unescape("\x00\x01\x02...")` decodes an already
+# decoded 256-byte string a second time.  Measured with a five-line probe:
+#
+#     mut tbl: str = "\x00\x01...\xff"      ->  len(tbl) = 256
+#     len(unescape(tbl))                    ->  255
+#
+# because byte 0x5C at index 92 is the two-byte sequence `\]`, which the second
+# pass eats.  Every byte above 91 then came back one too high, so the emitted IR
+# was `MpevmfID` where `ModuleID` belonged -- the whole module shifted by one,
+# and only after the backslash.
+def ll_table() -> str {
+    return "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2a\x2b\x2c\x2d\x2e\x2f\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f\x40\x41\x42\x43\x44\x45\x46\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a\x5b\x5c\x5d\x5e\x5f\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a\x6b\x6c\x6d\x6e\x6f\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7a\x7b\x7c\x7d\x7e\x7f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff"
+}
+
+# ---------------------------------------------------------------- the buffer
+#
+# The protocol the shim documents: reset, one byte per call, then the `*_buf`
+# function that reads the buffer as its string.  Nothing here ever passes a
+# `str` across the boundary, because the language will not let it (SPEC 12,
+# and `check.vel` refuses it with a sentence): a Vela `str` is a length and a
+# pointer into Vela's own region, not a `char *`.
+def ll_buf(s: str) -> bool {
+    if vshim_buf_reset() != 0 {
+        return False
+    }
+    mut i: int = 0
+    while i < len(s) {
+        if vshim_buf_byte(bytes_at(s, i)) != 0 {
+            return False
+        }
+        i += 1
+    }
+    return True
+}
+
+# The runtime's own messages take a `const char *` (`vela_panic` prints it with
+# `%s`), so a path handed to `vela_llvm_add_range` must be NUL-terminated.  The
+# shim's global is exactly the bytes it is given, with no added terminator -
+# that is what `vela_llvm_str_lit(ptr, i64)` needs for a literal - so the
+# terminator is added here, as one more byte of the same string.  `"\0"` is the
+# byte it says it is: a literal's escapes are decoded by the back end that emits
+# it (see `ll_table`), so no `unescape` is needed or wanted here.
+def ll_cstr(s: str) -> str {
+    return concat(s, "\0")
+}
+
+def ll_err_byte(lg: LG, b: int) -> None {
+    warn_str(substr(lg.tbl, b, b + 1))
+}
+
+def ll_out_byte(lg: LG, b: int) -> None {
+    emit_str(substr(lg.tbl, b, b + 1))
+}
+
+# The shim's own sentence is the only diagnosis there is: the caller cannot
+# inspect LLVM's error objects, so this prints what the shim recorded and then
+# stops the compiler with a non-zero status.
+def ll_fail(lg: LG, what: str) -> None {
+    warn_str("\nvela: llvm: ")
+    warn_str(what)
+    warn_str(": ")
+    if vshim_last_error_buf() == 0 {
+        mut n: int = vshim_buf_len()
+        mut i: int = 0
+        while i < n {
+            b: int = vshim_buf_read_byte(i)
+            if b < 0 {
+                break
+            }
+            ll_err_byte(lg, b)
+            i += 1
+        }
+    } else {
+        warn_str("(the shim recorded no message)")
+    }
+    warn_nl()
+    panic("the LLVM back end could not build this program")
+}
+
+def ll_ck(lg: LG, what: str, h: int) -> int {
+    if h == 0 {
+        ll_fail(lg, what)
+    }
+    return h
+}
+
+def ll_ckst(lg: LG, what: str, st: int) -> None {
+    if st != 0 {
+        ll_fail(lg, what)
+    }
+}
+
+# -------------------------------------------------------------- types, slots
+
+# The IR type of a value kind.  0 means "this back end has no spelling for it",
+# and every caller refuses rather than building something.
+def ll_type_of(lg: LG, k: int) -> int {
+    if k == K_INT() { return lg.t_i64 }
+    if k == K_FLT() { return lg.t_f64 }
+    if k == K_BOOL() { return lg.t_i1 }
+    if k == K_STR() { return lg.t_str }
+    if k == K_I32() { return lg.t_i32 }
+    if k == K_U8() { return lg.t_i8 }
+    return 0
+}
+
+# One alloca, in the entry block, of a kind's type.
+def ll_alloca(mut lg: LG, k: int, path: str, line: int) -> int {
+    t: int = ll_type_of(lg, k)
+    if t == 0 {
+        trap(path, line, "the LLVM back end has no IR type for this value kind")
+    }
+    return ll_ck(lg, "an alloca", vshim_build_alloca(lg.m, t, 8))
+}
+
+# A slot that holds an *address*: what an array declaration reserves, and what an
+# array parameter's incoming pointer is stored into.  `t_ptr` is 8 bytes and
+# `align 8`, the same slot the C back end gives an array pointer.
+def ll_alloca_ptr(mut lg: LG, what: str) -> int {
+    return ll_ck(lg, what, vshim_build_alloca(lg.m, lg.t_ptr, 8))
+}
+
+# `sizeof` of one element, which is what the C back end's own
+# `vela_arena_alloc((size_t)n * sizeof(T))` multiplies by.  Both back ends must ask
+# the arena for the same number of bytes or a program's arena use would differ
+# between them.  `0` means "no spelling yet" and refuses.
+def ll_esize(k: int) -> int {
+    if k == K_INT() { return 8 }
+    if k == K_FLT() { return 8 }
+    if k == K_I32() { return 4 }
+    if k == K_U8() { return 1 }
+    if k == K_BOOL() { return 1 }
+    return 0
+}
+
+# `slots` says which alloca a frame slot is, and `slotkind` says which kind was
+# put there.  The second table is not bookkeeping: a frame slot that resolved to
+# another variable's storage would be a silently wrong program, so a reference
+# whose kind disagrees with the reservation is refused here.
+def ll_note(mut lg: LG, mut slots: Array[int, 4096],
+            mut slotkind: Array[int, 4096], slot: int, k: int, h: int,
+            path: str, line: int) -> None {
+    if slot < 0 or slot >= LL_SLOTS() {
+        trap(path, line,
+             "this function has more locals than the LLVM back end's slot table holds")
+    }
+    slots[slot] = h
+    slotkind[slot] = k
+}
+
+def ll_slot_for(lg: LG, slots: Array[int, 4096],
+                slotkind: Array[int, 4096], slot: int, k: int,
+                path: str, line: int) -> int {
+    if slot < 0 or slot >= LL_SLOTS() {
+        trap(path, line, "this local has no frame slot the LLVM back end can name")
+    }
+    h: int = slots[slot]
+    if h == 0 {
+        trap(path, line, "this local was never reserved a slot in the entry block")
+    }
+    if slotkind[slot] != k {
+        trap(path, line,
+             "this local's frame slot holds a different kind than the reference expects")
+    }
+    return h
+}
+
+# --------------------------------------------------------------- basic blocks
+
+def ll_at(mut lg: LG, blk: int, what: str) -> None {
+    ll_ckst(lg, what, vshim_pos_at_end(lg.m, blk))
+    lg.cur = blk
+    lg.term = 0
+}
+
+def ll_new(mut lg: LG, name: str) -> int {
+    if not ll_buf(name) {
+        ll_fail(lg, "naming a basic block")
+    }
+    b: int = ll_ck(lg, "appending a basic block",
+                   vshim_block_append_buf(lg.m, lg.fnn))
+    ll_at(lg, b, "positioning the builder at a new block")
+    return b
+}
+
+# A statement after a `return` still has to be put somewhere, and LLVM refuses
+# an instruction after a terminator.  A fresh block is the honest answer: the
+# statements are emitted, and the block is unreachable, exactly as dead C is.
+def ll_open(mut lg: LG) -> None {
+    if lg.term == 1 {
+        ll_new(lg, "dead")
+    }
+}
+
+def ll_br(mut lg: LG, target: int) -> None {
+    ll_ckst(lg, "a branch", vshim_build_br(lg.m, target))
+    lg.term = 1
+}
+
+def ll_cbr(mut lg: LG, cond: int, t: int, f: int) -> None {
+    ll_ckst(lg, "a conditional branch", vshim_build_cond_br(lg.m, cond, t, f))
+    lg.term = 1
+}
+
+def ll_ret(mut lg: LG, v: int) -> None {
+    ll_ckst(lg, "a return", vshim_build_ret(lg.m, v))
+    lg.term = 1
+}
+
+def ll_ret_void(mut lg: LG) -> None {
+    ll_ckst(lg, "a void return", vshim_build_ret_void(lg.m))
+    lg.term = 1
+}
+
+# ------------------------------------------------------------------- calls
+
+def ll_call_n(lg: LG, fn: int, args: Array[int, 8], n: int) -> int {
+    mut l: int = vshim_arglist_begin(lg.m)
+    if l == 0 {
+        ll_fail(lg, "starting an argument list")
+    }
+    mut i: int = 0
+    while i < n {
+        if vshim_arglist_add(l, args[i]) != 0 {
+            vshim_arglist_abandon(l)
+            ll_fail(lg, "adding an argument")
+        }
+        i += 1
+    }
+    return ll_ck(lg, "a call", vshim_call(l, fn))
+}
+
+def ll_call0(lg: LG, fn: int) -> int {
+    mut a: Array[int, 8]
+    return ll_call_n(lg, fn, a, 0)
+}
+
+def ll_call1(lg: LG, fn: int, x: int) -> int {
+    mut a: Array[int, 8]
+    a[0] = x
+    return ll_call_n(lg, fn, a, 1)
+}
+
+def ll_call2(lg: LG, fn: int, x: int, y: int) -> int {
+    mut a: Array[int, 8]
+    a[0] = x
+    a[1] = y
+    return ll_call_n(lg, fn, a, 2)
+}
+
+def ll_call3(lg: LG, fn: int, x: int, y: int, z: int) -> int {
+    mut a: Array[int, 8]
+    a[0] = x
+    a[1] = y
+    a[2] = z
+    return ll_call_n(lg, fn, a, 3)
+}
+
+# A call site for every parameter list the runtime's checked helpers have:
+# `vela_llvm_add_range(a, b, lo, hi, file, line)` and its siblings.
+def ll_call6(lg: LG, fn: int, x0: int, x1: int, x2: int, x3: int, x4: int,
+             x5: int) -> int {
+    mut a: Array[int, 8]
+    a[0] = x0
+    a[1] = x1
+    a[2] = x2
+    a[3] = x3
+    a[4] = x4
+    a[5] = x5
+    return ll_call_n(lg, fn, a, 6)
+}
+
+# ------------------------------------------------------------------ signatures
+
+def ll_sig_of(lg: LG, ret: int, ps: Array[int, 8], n: int, what: str) -> int {
+    mut sig: int = vshim_sig_begin(lg.m, ret)
+    if sig == 0 {
+        ll_fail(lg, what)
+    }
+    mut i: int = 0
+    while i < n {
+        if vshim_sig_param(sig, ps[i]) != 0 {
+            ll_fail(lg, what)
+        }
+        i += 1
+    }
+    mut t: int = vshim_sig_finish(sig)
+    if t == 0 {
+        ll_fail(lg, what)
+    }
+    return t
+}
+
+def ll_declare(lg: LG, name: str, ret: int, ps: Array[int, 8], n: int,
+               what: str) -> int {
+    mut t: int = ll_sig_of(lg, ret, ps, n, what)
+    if not ll_buf(name) {
+        ll_fail(lg, what)
+    }
+    return ll_ck(lg, what, vshim_fn_declare_buf(lg.m, t))
+}
+
+# ------------------------------------------------------------------ the module
+
+def ll_open_module(mut lg: LG) -> None {
+    if vshim_open() != 0 {
+        ll_fail(lg, "initialising the LLVM target")
+    }
+    if not ll_buf("vela_module") {
+        ll_fail(lg, "naming the module")
+    }
+    lg.m = ll_ck(lg, "opening the module", vshim_module_open_buf())
+    lg.t_void = ll_ck(lg, "vshim_type_void", vshim_type_void(lg.m))
+    lg.t_i1 = ll_ck(lg, "vshim_type_i1", vshim_type_i1(lg.m))
+    lg.t_i8 = ll_ck(lg, "vshim_type_i8", vshim_type_i8(lg.m))
+    lg.t_i32 = ll_ck(lg, "vshim_type_i32", vshim_type_i32(lg.m))
+    lg.t_i64 = ll_ck(lg, "vshim_type_i64", vshim_type_i64(lg.m))
+    lg.t_f64 = ll_ck(lg, "vshim_type_f64", vshim_type_f64(lg.m))
+    lg.t_ptr = ll_ck(lg, "vshim_type_ptr", vshim_type_ptr(lg.m))
+    lg.t_str = ll_ck(lg, "vshim_type_str", vshim_type_str(lg.m))
+}
+
+# The runtime the *emitted program* links against: the names, the argument
+# order and the ABI are `runtime/vela_llvm_runtime.c`'s, read from there rather
+# than restated.  Everything below is what the C back end calls for the same
+# construct, so the two back ends mean the same thing by the same program.
+def ll_declare_rt(mut lg: LG, path: str) -> None {
+    mut ps: Array[int, 8]
+    ps[0] = lg.t_i32
+    ps[1] = lg.t_ptr
+    lg.f_setargs = ll_declare(lg, "vela_llvm_set_args", lg.t_void, ps, 2,
+                              "declaring vela_llvm_set_args")
+    lg.f_init = ll_declare(lg, "vela_llvm_runtime_init", lg.t_void, ps, 0,
+                           "declaring vela_llvm_runtime_init")
+    ps[0] = lg.t_ptr
+    lg.f_pstr = ll_declare(lg, "vela_llvm_print_str", lg.t_void, ps, 1,
+                           "declaring vela_llvm_print_str")
+    ps[0] = lg.t_i64
+    lg.f_pi64 = ll_declare(lg, "vela_llvm_print_i64", lg.t_void, ps, 1,
+                           "declaring vela_llvm_print_i64")
+    ps[0] = lg.t_f64
+    lg.f_pf64 = ll_declare(lg, "vela_llvm_print_f64", lg.t_void, ps, 1,
+                           "declaring vela_llvm_print_f64")
+    ps[0] = lg.t_i1
+    lg.f_pbool = ll_declare(lg, "vela_llvm_print_bool", lg.t_void, ps, 1,
+                            "declaring vela_llvm_print_bool")
+    lg.f_sep = ll_declare(lg, "vela_llvm_print_sep", lg.t_void, ps, 0,
+                          "declaring vela_llvm_print_sep")
+    lg.f_nl = ll_declare(lg, "vela_llvm_print_nl", lg.t_void, ps, 0,
+                         "declaring vela_llvm_print_nl")
+    # void (ptr sret(%vela_str), ptr, i64) -- the shape M1 measured, and the
+    # reason `vshim_fn_sret_param` exists at all
+    ps[0] = lg.t_ptr
+    ps[1] = lg.t_ptr
+    ps[2] = lg.t_i64
+    lg.f_strlit = ll_declare(lg, "vela_llvm_str_lit", lg.t_void, ps, 3,
+                             "declaring vela_llvm_str_lit")
+    ll_ckst(lg, "the sret on vela_llvm_str_lit",
+            vshim_fn_sret_param(lg.f_strlit, 0, lg.t_str))
+    ps[0] = lg.t_i64
+    ps[1] = lg.t_i64
+    ps[2] = lg.t_ptr
+    ps[3] = lg.t_i32
+    lg.f_bounds = ll_declare(lg, "vela_llvm_bounds_check", lg.t_void, ps, 4,
+                             "declaring vela_llvm_bounds_check")
+    ps[0] = lg.t_i64
+    ps[1] = lg.t_i64
+    ps[2] = lg.t_i64
+    ps[3] = lg.t_i64
+    ps[4] = lg.t_ptr
+    ps[5] = lg.t_i32
+    lg.f_add = ll_declare(lg, "vela_llvm_add_range", lg.t_i64, ps, 6,
+                          "declaring vela_llvm_add_range")
+    lg.f_sub = ll_declare(lg, "vela_llvm_sub_range", lg.t_i64, ps, 6,
+                          "declaring vela_llvm_sub_range")
+    lg.f_mul = ll_declare(lg, "vela_llvm_mul_range", lg.t_i64, ps, 6,
+                          "declaring vela_llvm_mul_range")
+    ps[0] = lg.t_i64
+    ps[1] = lg.t_i64
+    ps[2] = lg.t_ptr
+    ps[3] = lg.t_i32
+    lg.f_floordiv = ll_declare(lg, "vela_llvm_floor_div", lg.t_i64, ps, 4,
+                               "declaring vela_llvm_floor_div")
+    lg.f_floormod = ll_declare(lg, "vela_llvm_floor_mod", lg.t_i64, ps, 4,
+                               "declaring vela_llvm_floor_mod")
+    # the array allocator: `vela_arena_alloc` re-exposed under a name the IR can
+    # call (`runtime/vela_llvm_runtime.c`), because the one in
+    # `runtime/vela_runtime.h` is `static`.  It returns a pointer, which is why it
+    # could not live in the shim: `extern c` has no pointer type.
+    ps[0] = lg.t_i64
+    lg.f_alloc = ll_declare(lg, "vela_llvm_arena_alloc", lg.t_ptr, ps, 1,
+                            "declaring vela_llvm_arena_alloc")
+    lg.pfile = ll_path_global(lg, path)
+}
+
+# The source path as a C string, for every panic the program can raise.  The
+# bytes are the path *as it was spelled on the command line*, which is what the
+# C back end bakes into its `vela_add_range(...)` calls too - the same program
+# built twice by two back ends must print the same message.
+def ll_path_global(mut lg: LG, path: str) -> int {
+    if not ll_buf(ll_cstr(path)) {
+        ll_fail(lg, "the source path")
+    }
+    return ll_ck(lg, "the source path as a C string",
+                 vshim_string_global_buf(lg.m, 0))
+}
+
+# ----------------------------------------------------- the program's functions
+
+# `vl_` keeps a program's names out of the runtime's way, exactly as the C back
+# end's naming rule does.  An `extern c` function is not ours to rename: the
+# symbol it names is somebody else's library.
+def ll_fn_name(nd: Array[int, 655360], mem: Array[int, 3741696], path: str,
+               f: int) -> str {
+    d: int = ft_get(mem, f, FT_DEF())
+    if ft_get(mem, f, FT_BODY()) < 0 {
+        return interned(nd[d * 10 + 1])
+    }
+    if ft_get(mem, f, FT_OWNER()) >= 0 {
+        trap(path, nd_line(nd, d),
+             "a method is not compiled by the LLVM back end yet: it needs a struct, and the shim has no pointer-to-field until a milestone asks for one")
+    }
+    return concat("vl_", interned(nd[d * 10 + 1]))
+}
+
+def ll_fn_ret_type(lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                   mem: Array[int, 3741696], vm: VM, path: str,
+                   f: int) -> int {
+    k: int = unpack_kind(type_packed(ty, ft_get(mem, f, FT_RETTY()), mem, vm))
+    d: int = ft_get(mem, f, FT_DEF())
+    if k == K_NONE() {
+        return lg.t_void
+    }
+    if k == K_STR() {
+        trap(path, nd_line(nd, d),
+             "a function that returns `str` is not compiled by the LLVM back end yet: the Microsoft ABI returns a 16-byte struct through a hidden pointer, which is real work in the caller as well as the callee")
+    }
+    if k == K_ST() {
+        trap(path, nd_line(nd, d), "a function that returns a struct is not compiled by the LLVM back end yet")
+    }
+    if is_array(k) {
+        trap(path, nd_line(nd, d), "a function that returns an array is not compiled by the LLVM back end yet")
+    }
+    t: int = ll_type_of(lg, k)
+    if t == 0 {
+        trap(path, nd_line(nd, d), "this function's return type has no IR spelling")
+    }
+    return t
+}
+
+def ll_param_type(lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                  mem: Array[int, 3741696], vm: VM, path: str, p: int) -> int {
+    pk: int = param_packed(nd, ty, mem, vm, p)
+    k: int = unpack_kind(pk)
+    if k == K_STR() {
+        trap(path, nd_line(nd, p),
+             "a `str` parameter is not compiled by the LLVM back end yet: a 16-byte struct arrives by reference, and modeling that is the string milestone's work")
+    }
+    if k == K_ST() or is_ptr_binding(pk) {
+        trap(path, nd_line(nd, p), "a struct parameter is not compiled by the LLVM back end yet")
+    }
+    if is_array(k) {
+        # an array parameter is a pointer, exactly as it is in the C back end's
+        # `int64_t* a`; the length travels in the packed kind, so the bounds check
+        # at an index site still knows it
+        return lg.t_ptr
+    }
+    t: int = ll_type_of(lg, k)
+    if t == 0 {
+        trap(path, nd_line(nd, p), "this parameter's type has no IR spelling")
+    }
+    return t
+}
+
+def ll_declare_fn(lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                  mem: Array[int, 3741696], vm: VM, path: str, f: int) -> int {
+    mut sig: int = vshim_sig_begin(lg.m, ll_fn_ret_type(lg, nd, ty, mem, vm,
+                                                         path, f))
+    if sig == 0 {
+        ll_fail(lg, "starting a function signature")
+    }
+    mut p: int = ft_get(mem, f, FT_PARAM())
+    while p > 0 {
+        if vshim_sig_param(sig, ll_param_type(lg, nd, ty, mem, vm, path, p)) != 0 {
+            ll_fail(lg, "a parameter type")
+        }
+        p = nd_nx(nd, p)
+    }
+    mut t: int = vshim_sig_finish(sig)
+    if t == 0 {
+        ll_fail(lg, "finishing a function signature")
+    }
+    if not ll_buf(ll_fn_name(nd, mem, path, f)) {
+        ll_fail(lg, "naming a function")
+    }
+    if ft_get(mem, f, FT_BODY()) < 0 {
+        return ll_ck(lg, "declaring a function", vshim_fn_declare_buf(lg.m, t))
+    }
+    return ll_ck(lg, "defining a function", vshim_fn_define_buf(lg.m, t))
+}
+
+# ------------------------------------------------- the slot reservation pass
+#
+# One walk of the function body, before a single instruction of it is emitted,
+# which reserves an entry-block slot for every local, every `for` variable and
+# every string literal.  See the header: an alloca placed where a variable is
+# declared is re-executed by every iteration of an enclosing loop.
+
+def ll_reserve_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                    flt: Array[float, 65536], src: str, path: str,
+                    mut mem: Array[int, 3741696], vm: VM,
+                    mut slots: Array[int, 4096], mut lit: Array[int, 65536],
+                    e: int) -> None {
+    if e <= 0 {
+        return
+    }
+    k: int = nd_kind(nd, e)
+    if k == 22 {
+        # a literal is a 16-byte struct written *through* a pointer, so its
+        # storage is reserved here and `ll_lit_into` fills it where the literal
+        # appears
+        if lit[e] == 0 {
+            lit[e] = ll_ck(lg, "a slot for a string literal",
+                           vshim_build_alloca(lg.m, lg.t_str, 8))
+        }
+        return
+    }
+    if k == 26 {
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                        nd[e * 10 + 1])
+        mut a: int = nd[e * 10 + 2]
+        while a > 0 {
+            ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, a)
+            a = nd_nx(nd, a)
+        }
+        return
+    }
+    if k == 27 {
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 2])
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 3])
+        return
+    }
+    if k == 28 {
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 2])
+        return
+    }
+    if k == 29 {
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 2])
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 3])
+        return
+    }
+    if k == 30 {
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 2])
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 3])
+        return
+    }
+    if k == 31 {
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 1])
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 2])
+        return
+    }
+    if k == 32 {
+        # the field name at +2 is an interned handle, not a node
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 1])
+        return
+    }
+    if k == 33 {
+        mut a2: int = nd[e * 10 + 1]
+        while a2 > 0 {
+            ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, a2)
+            a2 = nd_nx(nd, a2)
+        }
+        return
+    }
+    # literals, booleans, `None` and names hold nothing that needs storage
+}
+
+def ll_reserve_decl(mut lg: LG, nd: Array[int, 655360],
+                    mut mem: Array[int, 3741696],
+                    mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
+                    path: str, s: int) -> None {
+    k: int = unpack_kind(nt_get(mem, s, NT_LIT()))
+    line: int = nd_line(nd, s)
+    slot: int = nt_get(mem, s, NT_SLOT())
+    if is_array(k) {
+        # an array *binding* is an address (the C back end emits `int64_t*`), so
+        # its slot holds a pointer and the arena owns the elements.  The kind
+        # recorded beside it is the array kind, so an index into a slot that was
+        # declared as something else is refused rather than read as an address.
+        ll_note(lg, slots, slotkind, slot, k,
+                ll_alloca_ptr(lg, "an array binding's slot"), path, line)
+        return
+    }
+    if k == K_ST() {
+        trap(path, line, "a struct local is not compiled by the LLVM back end yet")
+    }
+    ll_note(lg, slots, slotkind, slot, k, ll_alloca(lg, k, path, line), path, line)
+}
+
+def ll_reserve_body(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                    flt: Array[float, 65536], src: str, path: str,
+                    mut mem: Array[int, 3741696], vm: VM,
+                    mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
+                    mut lit: Array[int, 65536], head: int) -> None {
+    mut s: int = head
+    while s > 0 {
+        ll_reserve_stmt(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                        lit, s)
+        s = nd_nx(nd, s)
+    }
+}
+
+def ll_reserve_stmt(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                    flt: Array[float, 65536], src: str, path: str,
+                    mut mem: Array[int, 3741696], vm: VM,
+                    mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
+                    mut lit: Array[int, 65536], s: int) -> None {
+    k: int = nd_kind(nd, s)
+    if k == 6 {
+        if (nd[s * 10 + 6] & 2) == 2 {
+            ll_reserve_decl(lg, nd, mem, slots, slotkind, path, s)
+        }
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                        nd[s * 10 + 2])
+        return
+    }
+    if k == 7 {
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                        nd[s * 10 + 2])
+        return
+    }
+    if k == 8 {
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                        nd[s * 10 + 1])
+        return
+    }
+    if k == 9 {
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                        nd[s * 10 + 1])
+        return
+    }
+    if k == 10 {
+        mut e: int = s
+        while e > 0 {
+            ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                            nd[e * 10 + 1])
+            if nd_kind(nd, e) == 10 {
+                ll_reserve_body(lg, nd, ty, flt, src, path, mem, vm, slots,
+                                slotkind, lit, nd[e * 10 + 2])
+            }
+            e = nd[e * 10 + 4]
+            if e > 0 {
+                if nd_kind(nd, e) != 10 {
+                    ll_reserve_body(lg, nd, ty, flt, src, path, mem, vm, slots,
+                                    slotkind, lit, e)
+                    e = 0
+                }
+            }
+        }
+        return
+    }
+    if k == 11 {
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                        nd[s * 10 + 1])
+        ll_reserve_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                        lit, nd[s * 10 + 2])
+        return
+    }
+    if k == 12 {
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                        nd[s * 10 + 2])
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                        nd[s * 10 + 3])
+        if nd[s * 10 + 4] > 0 {
+            ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                            nd[s * 10 + 4])
+        }
+        # the induction variable is a local of the loop and is assigned every
+        # iteration, so it needs a slot of its own.  The resolver put it in
+        # exactly the same frame-slot space as a declaration (resolve.vel:600).
+        slot: int = nt_get(mem, s, NT_SLOT())
+        ll_note(lg, slots, slotkind, slot, K_INT(),
+                ll_alloca(lg, K_INT(), path, nd_line(nd, s)), path,
+                nd_line(nd, s))
+        ll_reserve_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                        lit, nd[s * 10 + 8])
+        return
+    }
+    # break, continue and pass hold no expressions and no storage
+}
+
+# ---------------------------------------------------------------- arrays
+#
+# An array in this language is a pointer to elements the *runtime's arena* owns:
+# the C back end emits
+#
+#     double* vl_xs = (double*)vela_arena_alloc((size_t)8 * sizeof(double));
+#
+# and the LLVM back end emits the same call, to the same function, under the name
+# `vela_llvm_arena_alloc` (`runtime/vela_llvm_runtime.c`, because the header's own
+# is `static`).  That matters more than it looks: the arena is what makes a bare
+# `Array[int, 8]` zero-filled and what makes a frame's arrays go away when the frame
+# does, and a stack `alloca` is *not* a substitute -- it would work for
+# `examples\hello.vel` and kill the compiler, whose pools are tens of megabytes.
+#
+# Reading `a[i]` is three steps and the order is the language's:
+#
+#   1. the index, evaluated **once** into a value (the C back end needs a temporary
+#      to get this right, and the measurement that forced it is in emit.vel's
+#      "index temporaries" note);
+#   2. `vela_llvm_bounds_check(index, len, file, line)` -- the runtime's own call,
+#      so an out-of-range index means the same thing on both back ends;
+#   3. `getelementptr` to the element and load (or store) it.
+#
+# The length comes from the *packed kind* (`pack_kind(kind, n)`), which is where the
+# resolve pass put it, so no second table is needed.
+
+def ll_esize_of(ek: int, path: str, line: int) -> int {
+    n: int = ll_esize(ek)
+    if n == 0 {
+        trap(path, line,
+             "an array of this element kind is not compiled by the LLVM back end yet: only int, float, i32, u8 and bool elements have an IR spelling here")
+    }
+    return n
+}
+
+# The array's address, out of the slot its binding was given.
+def ll_array_ptr(mut lg: LG, nd: Array[int, 655360],
+                 mem: Array[int, 3741696], slots: Array[int, 4096],
+                 slotkind: Array[int, 4096], path: str, base: int) -> int {
+    if nd_kind(nd, base) != 25 {
+        trap(path, nd_line(nd, base),
+             "the LLVM back end can index a local array so far, and this is not one: an array that came out of a call or a field is the next slice's work")
+    }
+    if nt_get(mem, base, NT_SYM()) != SYM_LOCAL() {
+        trap(path, nd_line(nd, base), "this name is not a local array")
+    }
+    k: int = unpack_kind(local_kind(mem, base))
+    if not is_array(k) {
+        trap(path, nd_line(nd, base), "this name is not an array")
+    }
+    h: int = ll_slot_for(lg, slots, slotkind, nt_get(mem, base, NT_VAL()), k,
+                         path, nd_line(nd, base))
+    return ll_ck(lg, "loading an array's address",
+                 vshim_build_load(lg.m, lg.t_ptr, h))
+}
+
+def ll_bounds(mut lg: LG, index: int, len: int, path: str, line: int) -> None {
+    mut a: Array[int, 8]
+    a[0] = index
+    a[1] = ll_ck(lg, "an array's length", vshim_const_i64(lg.m, len))
+    a[2] = lg.pfile
+    a[3] = const_i32(lg, line)
+    ll_call_n(lg, lg.f_bounds, a, 4)
+}
+
+# The address of `a[i]`, with the check made first: one place decides what an
+# out-of-range index means, and it is the runtime's, shared with the C back end.
+def ll_index_addr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                  flt: Array[float, 65536], src: str, path: str,
+                  mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+                  slotkind: Array[int, 4096], lit: Array[int, 65536],
+                  fns: Array[int, 8192], e: int) -> int {
+    base: int = nd[e * 10 + 1]
+    line: int = nd_line(nd, e)
+    bk: int = unpack_kind(expr_packed(nd, ty, mem, vm, base))
+    if not is_array(bk) {
+        trap(path, line,
+             "indexing a value that is not an array is not compiled by the LLVM back end yet")
+    }
+    len: int = unpack_len(expr_packed(nd, ty, mem, vm, base))
+    p: int = ll_array_ptr(lg, nd, mem, slots, slotkind, path, base)
+    iv: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                      fns, nd[e * 10 + 2])
+    ll_bounds(lg, iv, len, path, line)
+    ek: int = elem_kind_of(bk)
+    et: int = ll_type_of(lg, ek)
+    if et == 0 {
+        trap(path, line, "an array of this element kind has no IR type yet")
+    }
+    return ll_ck(lg, "an element address", vshim_build_gep(lg.m, et, p, iv))
+}
+
+# `mut xs: Array[int, 8] = [1, 2, 3]` -- the arena call, the address stored in the
+# binding's slot, and the written elements stored one by one.  The elements the
+# literal does not mention are zeroed by the arena, which is what the C back end
+# relies on too.
+def ll_array_decl(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                  flt: Array[float, 65536], src: str, path: str,
+                  mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+                  slotkind: Array[int, 4096], lit: Array[int, 65536],
+                  fns: Array[int, 8192], s: int, h: int, k: int) -> None {
+    line: int = nd_line(nd, s)
+    n: int = unpack_len(k)
+    if n < 0 {
+        trap(path, line, "this array declaration has no declared length")
+    }
+    ek: int = elem_kind_of(k)
+    esz: int = ll_esize_of(ek, path, line)
+    p: int = ll_call1(lg, lg.f_alloc,
+                      ll_ck(lg, "an array's size",
+                            vshim_const_i64(lg.m, n * esz)))
+    ll_ckst(lg, "storing an array's address", vshim_build_store(lg.m, p, h))
+    v: int = nd[s * 10 + 2]
+    if v <= 0 {
+        return
+    }
+    if nd_kind(nd, v) != 33 {
+        trap(path, line, "an array declaration needs an array literal")
+    }
+    et: int = ll_type_of(lg, ek)
+    mut i: int = 0
+    mut a: int = nd[v * 10 + 1]
+    while a > 0 {
+        val: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                           lit, fns, a)
+        ep: int = ll_ck(lg, "an element address",
+                        vshim_build_gep(lg.m, et, p,
+                                        ll_ck(lg, "an element index",
+                                              vshim_const_i64(lg.m, i))))
+        ll_ckst(lg, "storing an element", vshim_build_store(lg.m, val, ep))
+        i += 1
+        a = nd_nx(nd, a)
+    }
+}
+
+# ------------------------------------------------------------ expressions
+
+def ll_slot_name(lg: LG, nd: Array[int, 655360], mem: Array[int, 3741696],
+                 slots: Array[int, 4096], slotkind: Array[int, 4096],
+                 path: str, e: int) -> int {
+    if nt_get(mem, e, NT_SYM()) != SYM_LOCAL() {
+        trap(path, nd_line(nd, e),
+             "the LLVM back end can only read a value out of a local variable so far")
+    }
+    k: int = unpack_kind(local_kind(mem, e))
+    if is_array(k) {
+        # an array *name* is not a scalar value: it is only ever indexed, and that
+        # path (`ll_index_addr`) loads the address itself.  A bare `print(xs)`
+        # would have nothing to print anyway.
+        trap(path, nd_line(nd, e),
+             "an array name is not a value the LLVM back end can read on its own; only `a[i]` and `len(a)` are compiled so far")
+    }
+    if k == K_ST() {
+        trap(path, nd_line(nd, e), "reading a struct is not compiled by the LLVM back end yet")
+    }
+    return ll_slot_for(lg, slots, slotkind, nt_get(mem, e, NT_VAL()), k, path,
+                       nd_line(nd, e))
+}
+
+# A name that is a `str` is a *pointer* to its 16 bytes, never a value: see the
+# header.  Everything else is loaded out of its slot.
+def ll_name(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+            mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+            slotkind: Array[int, 4096], path: str, e: int) -> int {
+    h: int = ll_slot_name(lg, nd, mem, slots, slotkind, path, e)
+    k: int = unpack_kind(local_kind(mem, e))
+    if k == K_STR() {
+        return h
+    }
+    return ll_ck(lg, "loading a local",
+                 vshim_build_load(lg.m, ll_type_of(lg, k), h))
+}
+
+# The literal's *value*, not the text that was written: `"\n"` is one newline
+# byte and the count that goes with it is the count of the decoded text.  The C
+# back end learned this the hard way (see emit_expr) and this is the same rule.
+def ll_lit_into(mut lg: LG, dst: int, nd: Array[int, 655360],
+                src: str, path: str, e: int) -> None {
+    mut s: str = substr(src, nd[e * 10 + 1], nd[e * 10 + 1] + nd[e * 10 + 2])
+    if (nd[e * 10 + 6] & 1) == 1 {
+        s = unescape(s)
+    }
+    if not ll_buf(s) {
+        ll_fail(lg, "handing a string literal to the shim")
+    }
+    g: int = ll_ck(lg, "a string literal",
+                   vshim_string_global_buf(lg.m, e))
+    a: int = ll_ck(lg, "the literal's length", vshim_const_i64(lg.m, len(s)))
+    ll_call3(lg, lg.f_strlit, dst, g, a)
+}
+
+def ll_binop(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+             flt: Array[float, 65536], src: str, path: str,
+             mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+             slotkind: Array[int, 4096], lit: Array[int, 65536],
+             fns: Array[int, 8192], e: int) -> int {
+    op: int = nd[e * 10 + 1]
+    line: int = nd_line(nd, e)
+    lk: int = expr_kind(nd, ty, mem, vm, nd[e * 10 + 2])
+    a: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                     lit, fns, nd[e * 10 + 2])
+    b: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                     lit, fns, nd[e * 10 + 3])
+    if lk == K_INT() {
+        lo: int = ll_ck(lg, "the lower bound", vshim_const_i64(lg.m, 0 - 9223372036854775807 - 1))
+        hi: int = ll_ck(lg, "the upper bound", vshim_const_i64(lg.m, 9223372036854775807))
+        if op == 1 {
+            return ll_call6(lg, lg.f_add, a, b, lo, hi, lg.pfile, const_i32(lg, line))
+        }
+        if op == 2 {
+            return ll_call6(lg, lg.f_sub, a, b, lo, hi, lg.pfile, const_i32(lg, line))
+        }
+        if op == 3 {
+            return ll_call6(lg, lg.f_mul, a, b, lo, hi, lg.pfile, const_i32(lg, line))
+        }
+        if op == 20 {
+            return ll_call4(lg, lg.f_floordiv, a, b, lg.pfile, const_i32(lg, line))
+        }
+        if op == 5 {
+            return ll_call4(lg, lg.f_floormod, a, b, lg.pfile, const_i32(lg, line))
+        }
+        trap(path, line,
+             "this integer operator is not compiled by the LLVM back end yet: the runtime exports no symbol for it (`vela_pow_int`, `vela_shl_int`, `vela_shr_int` are static in runtime/vela_runtime.h), so emitting the raw instruction instead would drop the check the language promises")
+    }
+    if lk == K_FLT() {
+        if op == 1 {
+            return ll_ck(lg, "a float add", vshim_build_fadd(lg.m, a, b))
+        }
+        if op == 2 {
+            return ll_ck(lg, "a float subtract", vshim_build_fsub(lg.m, a, b))
+        }
+        if op == 3 {
+            return ll_ck(lg, "a float multiply", vshim_build_fmul(lg.m, a, b))
+        }
+        if op == 4 {
+            return ll_ck(lg, "a float divide", vshim_build_fdiv(lg.m, a, b))
+        }
+        trap(path, line, "this operator has no LLVM lowering for two floats yet")
+    }
+    trap(path, line, "the LLVM back end has no arithmetic for this operand kind yet")
+    return 0
+}
+
+def const_i32(lg: LG, v: int) -> int {
+    return ll_ck(lg, "an i32 constant", vshim_const_i32(lg.m, v))
+}
+
+def ll_call4(lg: LG, fn: int, x0: int, x1: int, x2: int, x3: int) -> int {
+    mut a: Array[int, 8]
+    a[0] = x0
+    a[1] = x1
+    a[2] = x2
+    a[3] = x3
+    return ll_call_n(lg, fn, a, 4)
+}
+
+def ll_cmp(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+           flt: Array[float, 65536], src: str, path: str,
+           mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+           slotkind: Array[int, 4096], lit: Array[int, 65536],
+           fns: Array[int, 8192], e: int) -> int {
+    op: int = nd[e * 10 + 1]
+    line: int = nd_line(nd, e)
+    lk: int = expr_kind(nd, ty, mem, vm, nd[e * 10 + 2])
+    if lk == K_STR() {
+        trap(path, line,
+             "comparing two `str` values is not compiled by the LLVM back end yet: it is a runtime call (`vela_llvm_str_eq`) and belongs with the string milestone")
+    }
+    if lk == K_FLT() {
+        trap(path, line,
+             "comparing two floats is not compiled by the LLVM back end yet: `vshim_build_icmp` is integer-only and the shim exposes no `fcmp` yet, so this would have to be a signed integer compare or nothing")
+    }
+    a: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns, nd[e * 10 + 2])
+    b: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns, nd[e * 10 + 3])
+    # `vshim_build_icmp`'s predicate is a C `int`, spelled `i32` on this side,
+    # and Vela has no cast: an `int` *constant* that fits crosses the boundary
+    # and a computed `int` does not (`check.vel`, `ck_extern_arg`).  So each
+    # comparison kind gets its own call site with its own literal, and an
+    # operator that matches none of them is refused rather than given a
+    # plausible-looking predicate.
+    if op == 22 { return ll_ck(lg, "a comparison", vshim_build_icmp(lg.m, 0, a, b)) }
+    if op == 23 { return ll_ck(lg, "a comparison", vshim_build_icmp(lg.m, 1, a, b)) }
+    if op == 6 { return ll_ck(lg, "a comparison", vshim_build_icmp(lg.m, 2, a, b)) }
+    if op == 24 { return ll_ck(lg, "a comparison", vshim_build_icmp(lg.m, 3, a, b)) }
+    if op == 7 { return ll_ck(lg, "a comparison", vshim_build_icmp(lg.m, 4, a, b)) }
+    if op == 25 { return ll_ck(lg, "a comparison", vshim_build_icmp(lg.m, 5, a, b)) }
+    trap(path, line, "this comparison has no LLVM predicate yet")
+    return 0
+}
+
+def ll_unary(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+             flt: Array[float, 65536], src: str, path: str,
+             mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+             slotkind: Array[int, 4096], lit: Array[int, 65536],
+             fns: Array[int, 8192], e: int) -> int {
+    op: int = nd[e * 10 + 1]
+    line: int = nd_line(nd, e)
+    k: int = expr_kind(nd, ty, mem, vm, nd[e * 10 + 2])
+    if op == 1 {
+        return ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                       lit, fns, nd[e * 10 + 2])
+    }
+    if op == 2 {
+        v: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                         lit, fns, nd[e * 10 + 2])
+        if k == K_FLT() {
+            # `to_float(0)` and not the literal `0.0`, and that is not a
+            # preference: the lexer stores a float literal's value in `tkf`,
+            # which is `Array[float, 65536]` **indexed by token index**
+            # (vela.vel:465), so a float literal anywhere past the 65536th token
+            # of the linked compiler panics the compiler while it lexes itself.
+            # Measured: this file's own `0.0` was at token 85263 and every mode
+            # of the compiler died with `index 85262 out of range for array of
+            # length 65536`.  A cast has no literal to store.
+            z: int = ll_ck(lg, "a float zero", vshim_const_f64(lg.m, to_float(0)))
+            return ll_ck(lg, "a float negate", vshim_build_fsub(lg.m, z, v))
+        }
+        if k == K_INT() {
+            # `-x` is `0 - x`, which is the same checked subtraction the
+            # language means by it.  The one place the two back ends differ is
+            # the *message* for `-INT64_MIN`: the C back end calls
+            # `vela_neg_int` ("integer overflow (negation)") and this calls
+            # `vela_llvm_sub_range` ("integer overflow (subtraction)").  Both
+            # panic with status 2 and neither returns a wrong number.
+            z2: int = ll_ck(lg, "a zero", vshim_const_i64(lg.m, 0))
+            lo: int = ll_ck(lg, "the lower bound", vshim_const_i64(lg.m, 0 - 9223372036854775807 - 1))
+            hi: int = ll_ck(lg, "the upper bound", vshim_const_i64(lg.m, 9223372036854775807))
+            return ll_call6(lg, lg.f_sub, z2, v, lo, hi, lg.pfile, const_i32(lg, line))
+        }
+        trap(path, line, "negating this value kind is not compiled by the LLVM back end yet")
+    }
+    if op == 15 {
+        v2: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                          lit, fns, nd[e * 10 + 2])
+        f: int = ll_ck(lg, "a false", vshim_const_bool(lg.m, False))
+        return ll_ck(lg, "a boolean not", vshim_build_icmp(lg.m, 0, v2, f))
+    }
+    trap(path, line,
+         "this unary operator is not compiled by the LLVM back end yet: the runtime exports no symbol for it yet (`vela_abs_int`, `vela_neg_int` are static in runtime/vela_runtime.h)")
+    return 0
+}
+
+def ll_call_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                 flt: Array[float, 65536], src: str, path: str,
+                 mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+                 slotkind: Array[int, 4096], lit: Array[int, 65536],
+                 fns: Array[int, 8192], e: int) -> int {
+    callee: int = nd[e * 10 + 1]
+    if nd_kind(nd, callee) == 32 {
+        trap(path, nd_line(nd, e),
+             "a method call is not compiled by the LLVM back end yet: it needs a struct")
+    }
+    sk: int = nt_get(mem, callee, NT_SYM())
+    if sk == SYM_BUILTIN() {
+        b: int = nt_get(mem, callee, NT_VAL())
+        if b == B_LEN() {
+            # `len(array)` is a compile-time constant: the length is in the packed
+            # kind, exactly as it is for the C back end's `len`
+            argpacked: int = expr_packed(nd, ty, mem, vm, nd[e * 10 + 2])
+            if is_array(unpack_kind(argpacked)) {
+                return ll_ck(lg, "a length",
+                             vshim_const_i64(lg.m, unpack_len(argpacked)))
+            }
+            trap(path, nd_line(nd, e),
+                 "`len` of a `str` is not compiled by the LLVM back end yet: it is the `.len` field of a 16-byte struct, and reading a field out of one is the string milestone's work")
+        }
+        trap(path, nd_line(nd, e),
+             "this builtin is not compiled by the LLVM back end yet (only `print` and `len` of an array are)")
+    }
+    if sk != SYM_FUNC() {
+        trap(path, nd_line(nd, e),
+             "only a call to a function can be compiled by the LLVM back end so far; this one is a struct constructor")
+    }
+    f: int = nt_get(mem, callee, NT_VAL())
+    if fns[f] == 0 {
+        trap(path, nd_line(nd, e), "this function was never declared to the back end")
+    }
+    mut ps: Array[int, 8]
+    mut n: int = 0
+    mut a: int = nd[e * 10 + 2]
+    while a > 0 {
+        if n >= 8 {
+            trap(path, nd_line(nd, e), "the LLVM back end's argument list holds eight arguments")
+        }
+        ps[n] = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                        lit, fns, a)
+        n += 1
+        a = nd_nx(nd, a)
+    }
+    return ll_call_n(lg, fns[f], ps, n)
+}
+
+def ll_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+            flt: Array[float, 65536], src: str, path: str,
+            mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+            slotkind: Array[int, 4096], lit: Array[int, 65536],
+            fns: Array[int, 8192], e: int) -> int {
+    k: int = nd_kind(nd, e)
+    if k == 20 {
+        return ll_ck(lg, "an integer constant",
+                     vshim_const_i64(lg.m, nd[e * 10 + 1]))
+    }
+    if k == 21 {
+        return ll_ck(lg, "a float constant",
+                     vshim_const_f64(lg.m, flt[nd[e * 10 + 1]]))
+    }
+    if k == 22 {
+        dst: int = lit[e]
+        if dst == 0 {
+            trap(path, nd_line(nd, e),
+                 "this string literal was never given a slot in the entry block")
+        }
+        ll_lit_into(lg, dst, nd, src, path, e)
+        return dst
+    }
+    if k == 23 {
+        return ll_ck(lg, "a boolean constant",
+                     vshim_const_bool(lg.m, nd[e * 10 + 1] == 1))
+    }
+    if k == 25 {
+        return ll_name(lg, nd, ty, mem, vm, slots, slotkind, path, e)
+    }
+    if k == 26 {
+        return ll_call_expr(lg, nd, ty, flt, src, path, mem, vm, slots,
+                            slotkind, lit, fns, e)
+    }
+    if k == 27 {
+        return ll_binop(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                        lit, fns, e)
+    }
+    if k == 28 {
+        return ll_unary(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                        lit, fns, e)
+    }
+    if k == 29 {
+        trap(path, nd_line(nd, e),
+             "`and` / `or` are not compiled by the LLVM back end yet: a short circuit needs a value that flows out of two blocks, and the shim exposes no `phi` on purpose (a slot would do it, and that is the next slice)")
+    }
+    if k == 30 {
+        return ll_cmp(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                      lit, fns, e)
+    }
+    if k == 31 {
+        ep: int = ll_index_addr(lg, nd, ty, flt, src, path, mem, vm, slots,
+                                slotkind, lit, fns, e)
+        bk: int = unpack_kind(expr_packed(nd, ty, mem, vm, nd[e * 10 + 1]))
+        et: int = ll_type_of(lg, elem_kind_of(bk))
+        return ll_ck(lg, "loading an element", vshim_build_load(lg.m, et, ep))
+    }
+    if k == 32 {
+        trap(path, nd_line(nd, e),
+             "reading a struct field is not compiled by the LLVM back end yet: it needs a pointer-to-field, and the shim has no GEP until a milestone asks for one")
+    }
+    if k == 33 {
+        trap(path, nd_line(nd, e), "an array literal is not compiled by the LLVM back end yet")
+    }
+    if k == 24 {
+        trap(path, nd_line(nd, e), "`None` is not a value the LLVM back end can build")
+    }
+    trap(path, nd_line(nd, e), "the LLVM back end has no lowering for this expression yet")
+    return 0
+}
+
+# -------------------------------------------------------------------- print
+
+def ll_print(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+             flt: Array[float, 65536], src: str, path: str,
+             mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+             slotkind: Array[int, 4096], lit: Array[int, 65536],
+             fns: Array[int, 8192], e: int) -> None {
+    mut a: int = nd[e * 10 + 2]
+    mut n: int = 0
+    while a > 0 {
+        if n > 0 {
+            ll_call0(lg, lg.f_sep)
+        }
+        k: int = expr_kind(nd, ty, mem, vm, a)
+        v: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                         lit, fns, a)
+        if k == K_STR() {
+            ll_call1(lg, lg.f_pstr, v)
+        } else if k == K_FLT() {
+            ll_call1(lg, lg.f_pf64, v)
+        } else if k == K_BOOL() {
+            ll_call1(lg, lg.f_pbool, v)
+        } else {
+            ll_call1(lg, lg.f_pi64, v)
+        }
+        a = nd_nx(nd, a)
+        n += 1
+    }
+    ll_call0(lg, lg.f_nl)
+}
+
+# ---------------------------------------------------------------- statements
+
+def ll_assign(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+              flt: Array[float, 65536], src: str, path: str,
+              mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+              slotkind: Array[int, 4096], lit: Array[int, 65536],
+              fns: Array[int, 8192], s: int) -> None {
+    tgt: int = nd[s * 10 + 1]
+    v: int = nd[s * 10 + 2]
+    line: int = nd_line(nd, s)
+    decl: bool = (nd[s * 10 + 6] & 2) == 2
+    if nd_kind(nd, tgt) != 25 {
+        if nd_kind(nd, tgt) == 31 {
+            # `a[i] = v`: the address (with its bounds check) first, then the value,
+            # then the store -- the order the C back end's hoisted check makes.
+            ep: int = ll_index_addr(lg, nd, ty, flt, src, path, mem, vm, slots,
+                                    slotkind, lit, fns, tgt)
+            bk: int = unpack_kind(expr_packed(nd, ty, mem, vm, nd[tgt * 10 + 1]))
+            et: int = ll_type_of(lg, elem_kind_of(bk))
+            val2: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots,
+                                slotkind, lit, fns, v)
+            ll_ckst(lg, "storing an element", vshim_build_store(lg.m, val2, ep))
+            return
+        }
+        if nd_kind(nd, tgt) == 32 {
+            trap(path, line, "storing into a struct field is not compiled by the LLVM back end yet")
+        }
+        trap(path, line, "the LLVM back end can only assign to a local variable or an array element so far")
+    }
+    mut k: int = 0
+    mut slot: int = 0
+    if decl {
+        k = unpack_kind(nt_get(mem, s, NT_LIT()))
+        slot = nt_get(mem, s, NT_SLOT())
+        if is_array(k) {
+            h0: int = ll_slot_for(lg, slots, slotkind, slot, k, path, line)
+            ll_array_decl(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                          lit, fns, s, h0, k)
+            return
+        }
+        if k == K_ST() {
+            trap(path, line, "a struct declaration is not compiled by the LLVM back end yet")
+        }
+    } else {
+        k = unpack_kind(nt_get(mem, tgt, NT_LIT()))
+        slot = nt_get(mem, tgt, NT_VAL())
+    }
+    h: int = ll_slot_for(lg, slots, slotkind, slot, k, path, line)
+    if v <= 0 {
+        trap(path, line, "this declaration needs an initialiser")
+    }
+    if k == K_STR() {
+        if nd_kind(nd, v) != 22 {
+            trap(path, line,
+                 "only a string literal can be stored into a `str` in this slice: a copy between two `str` values is a 16-byte struct copy the shim has no instruction for")
+        }
+        ll_lit_into(lg, h, nd, src, path, v)
+        return
+    }
+    val: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                       lit, fns, v)
+    ll_ckst(lg, "storing into a local", vshim_build_store(lg.m, val, h))
+}
+
+def ll_aug(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+           flt: Array[float, 65536], src: str, path: str,
+           mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+           slotkind: Array[int, 4096], lit: Array[int, 65536],
+           fns: Array[int, 8192], s: int) -> None {
+    tgt: int = nd[s * 10 + 1]
+    v: int = nd[s * 10 + 2]
+    op: int = nd[s * 10 + 3]
+    line: int = nd_line(nd, s)
+    if nd_kind(nd, tgt) != 25 {
+        trap(path, line, "only a local variable can be updated in place by the LLVM back end so far")
+    }
+    k: int = unpack_kind(nt_get(mem, tgt, NT_LIT()))
+    h: int = ll_slot_for(lg, slots, slotkind, nt_get(mem, tgt, NT_VAL()), k,
+                         path, line)
+    t: int = ll_type_of(lg, k)
+    if t == 0 {
+        trap(path, line, "this local's kind has no IR spelling")
+    }
+    cur: int = ll_ck(lg, "loading a local", vshim_build_load(lg.m, t, h))
+    val: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                       lit, fns, v)
+    mut r: int = 0
+    if k == K_INT() {
+        lo: int = ll_ck(lg, "the lower bound", vshim_const_i64(lg.m, 0 - 9223372036854775807 - 1))
+        hi: int = ll_ck(lg, "the upper bound", vshim_const_i64(lg.m, 9223372036854775807))
+        if op == 1 {
+            r = ll_call6(lg, lg.f_add, cur, val, lo, hi, lg.pfile, const_i32(lg, line))
+        } else if op == 2 {
+            r = ll_call6(lg, lg.f_sub, cur, val, lo, hi, lg.pfile, const_i32(lg, line))
+        } else if op == 3 {
+            r = ll_call6(lg, lg.f_mul, cur, val, lo, hi, lg.pfile, const_i32(lg, line))
+        } else if op == 20 {
+            r = ll_call4(lg, lg.f_floordiv, cur, val, lg.pfile, const_i32(lg, line))
+        } else if op == 5 {
+            r = ll_call4(lg, lg.f_floormod, cur, val, lg.pfile, const_i32(lg, line))
+        } else {
+            trap(path, line,
+                 "this augmented operator is not compiled by the LLVM back end yet: the runtime exports no symbol for it")
+        }
+    } else if k == K_FLT() {
+        if op == 1 {
+            r = ll_ck(lg, "a float add", vshim_build_fadd(lg.m, cur, val))
+        } else if op == 2 {
+            r = ll_ck(lg, "a float subtract", vshim_build_fsub(lg.m, cur, val))
+        } else if op == 3 {
+            r = ll_ck(lg, "a float multiply", vshim_build_fmul(lg.m, cur, val))
+        } else if op == 4 {
+            r = ll_ck(lg, "a float divide", vshim_build_fdiv(lg.m, cur, val))
+        } else {
+            trap(path, line, "this augmented operator has no LLVM lowering for floats yet")
+        }
+    } else {
+        trap(path, line, "updating a value of this kind in place is not compiled by the LLVM back end yet")
+    }
+    ll_ckst(lg, "storing into a local", vshim_build_store(lg.m, r, h))
+}
+
+def ll_return_stmt(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                   flt: Array[float, 65536], src: str, path: str,
+                   mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+                   slotkind: Array[int, 4096], lit: Array[int, 65536],
+                   fns: Array[int, 8192], s: int) -> None {
+    v: int = nd[s * 10 + 1]
+    rk: int = unpack_kind(lg.retk)
+    if rk == K_NONE() {
+        if v > 0 {
+            trap(path, nd_line(nd, s), "this function returns nothing, so it cannot return a value")
+        }
+        ll_br(lg, lg.exitb)
+        return
+    }
+    if v <= 0 {
+        trap(path, nd_line(nd, s), "this function returns a value and this `return` has none")
+    }
+    if rk == K_STR() {
+        if nd_kind(nd, v) != 22 {
+            trap(path, nd_line(nd, s), "only a string literal can be returned as `str` in this slice")
+        }
+        ll_lit_into(lg, lg.rslot, nd, src, path, v)
+        ll_br(lg, lg.exitb)
+        return
+    }
+    val: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                       lit, fns, v)
+    ll_ckst(lg, "storing the return value", vshim_build_store(lg.m, val, lg.rslot))
+    ll_br(lg, lg.exitb)
+}
+
+def ll_if(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+          flt: Array[float, 65536], src: str, path: str,
+          mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+          slotkind: Array[int, 4096], lit: Array[int, 65536],
+          fns: Array[int, 8192], s: int) -> None {
+    # Appending a block moves the builder, so the block the condition belongs to
+    # is remembered first and the builder is returned to it before anything is
+    # emitted into it.
+    here: int = lg.cur
+    thenb: int = ll_new(lg, "then")
+    elseb: int = ll_new(lg, "else")
+    join: int = ll_new(lg, "join")
+    ll_at(lg, here, "positioning the builder back at the branch point")
+    cond: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                        lit, fns, nd[s * 10 + 1])
+    ll_cbr(lg, cond, thenb, elseb)
+    ll_at(lg, thenb, "positioning the builder in the `then` block")
+    ll_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns,
+            nd[s * 10 + 2])
+    if lg.term == 0 {
+        ll_br(lg, join)
+    }
+    ll_at(lg, elseb, "positioning the builder in the `else` block")
+    e: int = nd[s * 10 + 4]
+    if e > 0 {
+        if nd_kind(nd, e) == 10 {
+            # `else if` is a nested if node in Vela's AST, and it is emitted as
+            # one: the same shape the C back end produces
+            ll_if(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                  fns, e)
+        } else {
+            ll_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                    fns, e)
+        }
+    }
+    if lg.term == 0 {
+        ll_br(lg, join)
+    }
+    ll_at(lg, join, "positioning the builder at the join block")
+}
+
+def ll_while(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+             flt: Array[float, 65536], src: str, path: str,
+             mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+             slotkind: Array[int, 4096], lit: Array[int, 65536],
+             fns: Array[int, 8192], s: int) -> None {
+    here: int = lg.cur
+    condb: int = ll_new(lg, "cond")
+    bodyb: int = ll_new(lg, "body")
+    exitb: int = ll_new(lg, "exit")
+    ll_at(lg, here, "positioning the builder back at the loop head")
+    ll_br(lg, condb)
+    ll_at(lg, condb, "positioning the builder in the loop condition")
+    cond: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                        lit, fns, nd[s * 10 + 1])
+    ll_cbr(lg, cond, bodyb, exitb)
+    ll_at(lg, bodyb, "positioning the builder in the loop body")
+    oldbrk: int = lg.brkb
+    oldcont: int = lg.contb
+    lg.brkb = exitb
+    lg.contb = condb
+    ll_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns,
+            nd[s * 10 + 2])
+    if lg.term == 0 {
+        ll_br(lg, condb)
+    }
+    lg.brkb = oldbrk
+    lg.contb = oldcont
+    ll_at(lg, exitb, "positioning the builder after the loop")
+}
+
+# `for i in range(a, b, step)` -- the equivalent while loop, with the start, the
+# bound and the step evaluated once, in that order, before the first test, which
+# is what the C back end's own comment says it does.
+#
+# The step decides the *direction* of the test, and it is a runtime value, so
+# the test block splits in two: `step > 0` takes `i < stop`, and everything else
+# takes `i > stop` -- the same rule and the same order as the C back end, where
+# `step > 0 ? i < stop : i > stop` is one expression.  The two comparisons
+# cannot be selected between, because the shim exposes no `phi` and no `select`,
+# so the branch is the honest lowering.
+#
+# The increment is the *checked* add, because that is what the compiled program
+# does: a range that runs off the end of int64 must panic, not wrap.
+def ll_for(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+           flt: Array[float, 65536], src: str, path: str,
+           mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+           slotkind: Array[int, 4096], lit: Array[int, 65536],
+           fns: Array[int, 8192], s: int) -> None {
+    line: int = nd_line(nd, s)
+    if (nd[s * 10 + 6] & 1) == 1 {
+        trap(path, line,
+             "`parallel for` is refused by the LLVM back end, deliberately: LLVM IR has no OpenMP and emitting the runtime ABI is out of scope, and a loop that says it is parallel while running serially is the one failure mode this project has promised never to ship (selfhost/LLVM_PLAN.md)")
+    }
+    hs: int = ll_slot_for(lg, slots, slotkind, nt_get(mem, s, NT_SLOT()),
+                          K_INT(), path, line)
+    here: int = lg.cur
+    mut a: Array[int, 8]
+    a[0] = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                   fns, nd[s * 10 + 2])
+    a[1] = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                   fns, nd[s * 10 + 3])
+    if nd[s * 10 + 4] > 0 {
+        a[2] = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                       lit, fns, nd[s * 10 + 4])
+    } else {
+        a[2] = ll_ck(lg, "a step of one", vshim_const_i64(lg.m, 1))
+    }
+    ll_ckst(lg, "storing the induction variable",
+            vshim_build_store(lg.m, a[0], hs))
+    condb: int = ll_new(lg, "test")
+    postb: int = ll_new(lg, "test_up")
+    negb: int = ll_new(lg, "test_down")
+    bodyb: int = ll_new(lg, "body")
+    incb: int = ll_new(lg, "inc")
+    exitb: int = ll_new(lg, "exit")
+    ll_at(lg, here, "positioning the builder back at the loop head")
+    ll_br(lg, condb)
+    ll_at(lg, condb, "positioning the builder at the loop test")
+    pos: int = ll_ck(lg, "a step test",
+                     vshim_build_icmp(lg.m, 4, a[2],
+                                      ll_ck(lg, "a zero", vshim_const_i64(lg.m, 0))))
+    ll_cbr(lg, pos, postb, negb)
+    ll_at(lg, postb, "positioning the builder at the rising test")
+    cur: int = ll_ck(lg, "loading the induction variable",
+                     vshim_build_load(lg.m, lg.t_i64, hs))
+    ll_cbr(lg, ll_ck(lg, "a rising comparison",
+                     vshim_build_icmp(lg.m, 2, cur, a[1])), bodyb, exitb)
+    ll_at(lg, negb, "positioning the builder at the falling test")
+    cur2: int = ll_ck(lg, "loading the induction variable",
+                      vshim_build_load(lg.m, lg.t_i64, hs))
+    ll_cbr(lg, ll_ck(lg, "a falling comparison",
+                     vshim_build_icmp(lg.m, 4, cur2, a[1])), bodyb, exitb)
+    ll_at(lg, bodyb, "positioning the builder in the loop body")
+    oldbrk: int = lg.brkb
+    oldcont: int = lg.contb
+    lg.brkb = exitb
+    lg.contb = incb
+    ll_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns,
+            nd[s * 10 + 8])
+    if lg.term == 0 {
+        ll_br(lg, incb)
+    }
+    ll_at(lg, incb, "positioning the builder at the increment")
+    cur3: int = ll_ck(lg, "loading the induction variable",
+                      vshim_build_load(lg.m, lg.t_i64, hs))
+    lo: int = ll_ck(lg, "the lower bound", vshim_const_i64(lg.m, 0 - 9223372036854775807 - 1))
+    hi: int = ll_ck(lg, "the upper bound", vshim_const_i64(lg.m, 9223372036854775807))
+    nv: int = ll_call6(lg, lg.f_add, cur3, a[2], lo, hi, lg.pfile,
+                       const_i32(lg, line))
+    ll_ckst(lg, "storing the induction variable",
+            vshim_build_store(lg.m, nv, hs))
+    ll_br(lg, condb)
+    lg.brkb = oldbrk
+    lg.contb = oldcont
+    ll_at(lg, exitb, "positioning the builder after the loop")
+}
+
+def ll_stmt(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+            flt: Array[float, 65536], src: str, path: str,
+            mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+            slotkind: Array[int, 4096], lit: Array[int, 65536],
+            fns: Array[int, 8192], s: int) -> None {
+    ll_open(lg)
+    k: int = nd_kind(nd, s)
+    if k == 6 {
+        ll_assign(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                  fns, s)
+        return
+    }
+    if k == 7 {
+        ll_aug(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns, s)
+        return
+    }
+    if k == 8 {
+        v: int = nd[s * 10 + 1]
+        if nd_kind(nd, v) == 26 {
+            callee: int = nd[v * 10 + 1]
+            if nd_kind(nd, callee) == 25 {
+                if nt_get(mem, callee, NT_SYM()) == SYM_BUILTIN() {
+                    if nt_get(mem, callee, NT_VAL()) == B_PRINT() {
+                        ll_print(lg, nd, ty, flt, src, path, mem, vm, slots,
+                                 slotkind, lit, fns, v)
+                        return
+                    }
+                }
+            }
+        }
+        ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns, v)
+        return
+    }
+    if k == 9 {
+        ll_return_stmt(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                       lit, fns, s)
+        return
+    }
+    if k == 10 {
+        ll_if(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns, s)
+        return
+    }
+    if k == 11 {
+        ll_while(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                 fns, s)
+        return
+    }
+    if k == 12 {
+        ll_for(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns, s)
+        return
+    }
+    if k == 13 {
+        if lg.brkb == 0 {
+            trap(path, nd_line(nd, s), "`break` outside a loop")
+        }
+        ll_br(lg, lg.brkb)
+        return
+    }
+    if k == 14 {
+        if lg.contb == 0 {
+            trap(path, nd_line(nd, s), "`continue` outside a loop")
+        }
+        ll_br(lg, lg.contb)
+        return
+    }
+    if k == 15 {
+        return
+    }
+    trap(path, nd_line(nd, s), "the LLVM back end has no lowering for this statement yet")
+}
+
+def ll_body(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+            flt: Array[float, 65536], src: str, path: str,
+            mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+            slotkind: Array[int, 4096], lit: Array[int, 65536],
+            fns: Array[int, 8192], head: int) -> None {
+    mut s: int = head
+    while s > 0 {
+        ll_stmt(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns, s)
+        s = nd_nx(nd, s)
+    }
+}
+
+# ------------------------------------------------------------ one whole function
+
+def ll_function(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                flt: Array[float, 65536], src: str, path: str,
+                mut mem: Array[int, 3741696], vm: VM,
+                mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
+                mut lit: Array[int, 65536], fns: Array[int, 8192],
+                f: int) -> None {
+    lg.fnn = fns[f]
+    lg.brkb = 0
+    lg.contb = 0
+    lg.retk = type_packed(ty, ft_get(mem, f, FT_RETTY()), mem, vm)
+    rk: int = unpack_kind(lg.retk)
+    # a whole-function table: slots are per-function (the resolver restarts
+    # `nlocal` at 0 for every one of them, resolve.vel:633), so an entry left
+    # over from the previous function must not answer for this one
+    mut i: int = 0
+    while i < LL_SLOTS() {
+        slots[i] = 0
+        slotkind[i] = K_BAD()
+        i += 1
+    }
+    lg.fnn = fns[f]
+    entry: int = ll_new(lg, "entry")
+    lg.rslot = 0
+    if rk == K_STR() {
+        trap(path, nd_line(nd, ft_get(mem, f, FT_DEF())),
+             "a function that returns `str` is not compiled by the LLVM back end yet: a 16-byte struct comes back through a hidden pointer")
+    }
+    if rk != K_NONE() {
+        if rk == K_ST() {
+            trap(path, nd_line(nd, ft_get(mem, f, FT_DEF())), "a function that returns a struct is not compiled by the LLVM back end yet")
+        }
+        if is_array(rk) {
+            trap(path, nd_line(nd, ft_get(mem, f, FT_DEF())), "a function that returns an array is not compiled by the LLVM back end yet")
+        }
+        lg.rslot = ll_alloca(lg, rk, path, nd_line(nd, ft_get(mem, f, FT_DEF())))
+    }
+    # every parameter becomes an entry-block slot with the incoming value stored
+    # into it, so a `mut` parameter is writable and nothing downstream has to
+    # care which parameters are.  The resolver gives parameter `i` frame slot
+    # `i` (resolve.vel:633-642), which is what the body's references resolve to.
+    mut p: int = ft_get(mem, f, FT_PARAM())
+    mut pi: int = 0
+    while p > 0 {
+        pk: int = param_packed(nd, ty, mem, vm, p)
+        kk: int = unpack_kind(pk)
+        mut h: int = 0
+        if is_array(kk) {
+            # an array parameter arrives as a pointer and is stored in a pointer
+            # slot, so the body's `a[i]` reads the address out of it
+            h = ll_alloca_ptr(lg, "a parameter slot")
+        } else {
+            h = ll_alloca(lg, kk, path, nd_line(nd, p))
+        }
+        pv: int = vshim_fn_param(fns[f], pi)
+        if pv == 0 {
+            ll_fail(lg, "a parameter of the function")
+        }
+        ll_ckst(lg, "storing a parameter", vshim_build_store(lg.m, pv, h))
+        ll_note(lg, slots, slotkind, pi, kk, h, path, nd_line(nd, p))
+        p = nd_nx(nd, p)
+        pi += 1
+    }
+    # the reservation pass, and then the exit block: the body is emitted in the
+    # entry block *after* every alloca, and every `return` branches to `exitb`
+    ll_reserve_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                    ft_get(mem, f, FT_BODY()))
+    lg.exitb = ll_new(lg, "exit")
+    ll_at(lg, entry, "returning the builder to the entry block")
+    d: int = ft_get(mem, f, FT_DEF())
+    ll_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns,
+            ft_get(mem, f, FT_BODY()))
+    if lg.term == 0 {
+        ll_br(lg, lg.exitb)
+    }
+    ll_at(lg, lg.exitb, "positioning the builder at the exit block")
+    if rk == K_NONE() {
+        ll_ret_void(lg)
+        return
+    }
+    v: int = ll_ck(lg, "loading the return value",
+                   vshim_build_load(lg.m, ll_type_of(lg, rk), lg.rslot))
+    ll_ret(lg, v)
+    return
+}
+
+# The process entry point: `main` is `i32 @main(i32, ptr)` unmangled, and it
+# performs the same three startup steps the C back end's `main` does, in the
+# same order, because `vela_runtime_init` is the one that reserves the arena
+# and the persistent string region.
+def ll_entry(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+             mem: Array[int, 3741696], vm: VM, fns: Array[int, 8192],
+             midx: int) -> None {
+    mut ps: Array[int, 8]
+    ps[0] = lg.t_i32
+    ps[1] = lg.t_ptr
+    mut t: int = ll_sig_of(lg, lg.t_i32, ps, 2, "the signature of main")
+    if not ll_buf("main") {
+        ll_fail(lg, "naming main")
+    }
+    mut fn: int = ll_ck(lg, "defining main", vshim_fn_define_buf(lg.m, t))
+    lg.fnn = fn
+    lg.retk = pack_kind(K_NONE(), 0)
+    ll_new(lg, "entry")
+    ll_call2(lg, lg.f_setargs, vshim_fn_param(fn, 0), vshim_fn_param(fn, 1))
+    ll_call0(lg, lg.f_init)
+    ll_call0(lg, fns[midx])
+    ll_ret(lg, const_i32(lg, 0))
+}
+
+# ------------------------------------------------------------- the whole module
+
+def ll_program(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+               flt: Array[float, 65536], src: str, path: str,
+               mut mem: Array[int, 3741696], mut vm: VM,
+               mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
+               mut lit: Array[int, 65536], mut fns: Array[int, 8192]) -> None {
+    ll_open_module(lg)
+    ll_declare_rt(lg, path)
+    # every function is declared before any body is emitted, which is what the
+    # C back end does with its prototypes and for the same reason: a call site
+    # needs its callee's handle, and the caller may come first
+    mut f: int = 0
+    while f < vm.nfn {
+        fns[f] = ll_declare_fn(lg, nd, ty, mem, vm, path, f)
+        f += 1
+    }
+    mut g: int = 0
+    while g < vm.nfn {
+        if ft_get(mem, g, FT_BODY()) >= 0 {
+            ll_function(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                        lit, fns, g)
+        }
+        g += 1
+    }
+    midx: int = find_main(mem, vm, nd)
+    if midx < 0 {
+        fail(path, 1, "this program has no `def main() -> None` to compile")
+    }
+    ll_entry(lg, nd, ty, mem, vm, fns, midx)
+}
+
+def ll_build(nd: Array[int, 655360], ty: Array[int, 262144],
+             flt: Array[float, 65536], src: str, path: str,
+             mut mem: Array[int, 3741696], mut vm: VM) -> LG {
+    mut lg: LG = ll_zero()
+    lg.tbl = ll_table()
+    mut slots: Array[int, 4096]
+    mut slotkind: Array[int, 4096]
+    mut lit: Array[int, 65536]
+    mut fns: Array[int, 8192]
+    ll_program(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns)
+    return lg
+}
+
+# `vm.exe emit-llvm FILE` -- the module's IR text on stdout, exactly the way
+# `emit-c` prints C on stdout (and for the same use: reading and diffing what
+# the back end built).  Nothing is written beside the source.
+def ll_emit_ir(nd: Array[int, 655360], ty: Array[int, 262144],
+               flt: Array[float, 65536], src: str, path: str,
+               mut mem: Array[int, 3741696], mut vm: VM) -> None {
+    lg: LG = ll_build(nd, ty, flt, src, path, mem, vm)
+    ll_ckst(lg, "verifying the module", vshim_verify(lg.m))
+    if vshim_module_ir_buf(lg.m) != 0 {
+        ll_fail(lg, "reading the module back as IR text")
+    }
+    mut n: int = vshim_buf_len()
+    mut i: int = 0
+    while i < n {
+        b: int = vshim_buf_read_byte(i)
+        if b < 0 {
+            break
+        }
+        ll_out_byte(lg, b)
+        i += 1
+    }
+}
+
+# `vm.exe build-llvm FILE` -- the module built *in this process* through the
+# shim, verified, and written as a COFF object at `objpath`.  The object is the
+# caller's decision and the caller's scratch directory: this layer never picks
+# a name beside somebody's source (that is `build_scratch` in vm_main.vel).
+def ll_emit_object(nd: Array[int, 655360], ty: Array[int, 262144],
+                   flt: Array[float, 65536], src: str, path: str,
+                   mut mem: Array[int, 3741696], mut vm: VM,
+                   objpath: str) -> None {
+    lg: LG = ll_build(nd, ty, flt, src, path, mem, vm)
+    if not ll_buf(objpath) {
+        ll_fail(lg, "the object's path")
+    }
+    ll_ckst(lg, "writing the object file", vshim_emit_object_buf(lg.m))
+}
