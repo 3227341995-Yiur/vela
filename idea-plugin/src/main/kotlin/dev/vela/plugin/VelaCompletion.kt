@@ -217,8 +217,17 @@ data class VelaCall(
 )
 
 /** The parameters a `VelaSymbol` declares, in order; empty for a non-callable. */
+/** A parameter list that cannot be trusted answers nothing, never a guess. */
 internal fun symbolParameters(sym: VelaSymbol): List<String> {
+    // The form check matters as much as the split: a symbol whose `detail` does not
+    // begin with its own name and `(`, or whose text does not close the list, is not
+    // a signature at all, and splitting it would name arguments out of prose.  The
+    // hint engine and the parameter-info popup no longer come through here at all --
+    // they read the declaration out of the tree (`VelaTargets.declaredParameterNames`)
+    // -- so what is left is the completion template, where a wrong name would be
+    // inserted into the document rather than merely drawn.
     if (!sym.isCallable) return emptyList()
+    if (!sym.detail.startsWith(sym.name + "(")) return emptyList()
     val open = sym.detail.indexOf('(')
     if (open < 0) return emptyList()
     val close = sym.detail.indexOf(')', open + 1)

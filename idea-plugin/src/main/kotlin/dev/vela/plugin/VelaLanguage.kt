@@ -121,6 +121,23 @@ class VelaLexer : LexerBase() {
             tokenEnd = pos
             return
         }
+        // A byte-order mark, at the very start of the file only: whitespace, because
+        // that is what it is to the compiler.  `VelaSyntaxScanner` skips one and
+        // `vm.exe` parses `tests/build/bom_first_byte.vel`, so a lexer that tokenised
+        // the mark as an identifier would disagree with both -- and it did: the
+        // highlighter coloured a BOM as a name, and the PSI replay had no parser token
+        // to match those bytes against, which is how `psi-tree-diff.ps1` found it.
+        // Both spellings are skipped, because the file is read as ISO-8859-1 in one
+        // path and as characters in the other: UTF-8's EF BB BF, or a real U+FEFF.
+        if (pos == startOffset) {
+            val bom = bomLength()
+            if (bom > 0) {
+                pos += bom
+                tokenType = TokenType.WHITE_SPACE
+                tokenEnd = pos
+                return
+            }
+        }
         val c = buffer[pos]
         tokenType = when {
             c == ' ' || c == '\t' || c == '\r' || c == '\n' -> {
@@ -139,9 +156,27 @@ class VelaLexer : LexerBase() {
         tokenEnd = pos
     }
 
+    /**
+     * The length of a byte-order mark at [startOffset], or 0 if there is none.
+     *
+     * `EF BB BF` as three ISO-8859-1 characters (how the file's bytes read when they
+     * are not decoded as UTF-8) or one `U+FEFF`.
+     */
+    private fun bomLength(): Int {
+        val n = endOffset - startOffset
+        if (n <= 0) return 0
+        val a = buffer[startOffset]
+        if (a == '\uFEFF') return 1
+        if (n >= 3 && a == '\u00EF' && buffer[startOffset + 1] == '\u00BB' &&
+            buffer[startOffset + 2] == '\u00BF'
+        ) {
+            return 3
+        }
+        return 0
+    }
+
     /** A string is one token even unterminated: the compiler reports that. */
-    private fun scanString(quote: Char): IElementType {
-        pos++
+    private fun scanString(quote: Char): IElementType {        pos++
         while (pos < endOffset) {
             val c = buffer[pos]
             if (c == '\\' && pos + 1 < endOffset) {

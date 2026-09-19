@@ -128,9 +128,24 @@ object VelaHints {
             // `callAt` already refuses to read a declaration as a call.
             val call = text.callAt(open + 1) ?: continue
             if (call.openParen != open) continue
-            val sym = resolveCall(text, call) ?: continue
+            // resolveCall still decides *whether* this is a call worth naming: a
+            // declaration is not a call, and a name nothing declares gets nothing.
+            resolveCall(text, call) ?: continue
 
-            val declared = parameterNames(sym)
+            // The names come from the *declaration*, read out of the tree at the
+            // callee's own name -- not from a string split of the symbol's text.
+            // `declaredParameterNames` answers null when the declaration's parameter
+            // list cannot be trusted (it was recovered from, so the text inside the
+            // parentheses is not the parameters the parser recorded), and then this
+            // call gets no hint at all: a hint is right or it is not drawn.  That
+            // null is what removes the reported defect -- `def f(s, s, s) -> int`,
+            // which the compiler refuses for its unannotated parameters, used to
+            // name the arguments of `f(1, 2, 3)` as `s: s: s: `.
+            val calleeAt = open - call.name.length
+            val declared = VelaTargets.declaredParameterNames(text, calleeAt)
+                ?: (if (VelaTargets.declaresFunction(text, calleeAt)) null
+                    else VelaTargets.builtinParameterNames(call.name))
+                ?: continue
             if (declared.isEmpty()) continue
             // A receiver is written before the dot, so the method's own first
             // parameter — `self` — has its argument in the receiver, not here.

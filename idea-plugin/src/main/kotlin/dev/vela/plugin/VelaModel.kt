@@ -112,10 +112,188 @@ object VelaModel {
         // the lexing it is meant to avoid.
         val key = contentKey(text)
         cache[key]?.let { return it }
-        val built = scan(text)
+        val built = scanFromTree(text)
         if (cache.size > 32) cache.clear()
         cache[key] = built
         return built
+    }
+
+    /**
+     * The declaration list, read from the plugin's parser's tree.
+     *
+     * This is the change that moved six features onto the real tree at once: the
+     * structure view, completion, go-to-declaration, parameter info, the
+     * documentation provider and the parameter-name inlay hints all read *this*
+     * list, so all six now ask a tree that `ast-diff.ps1` holds to `vm.exe parse`
+     * (107 files, 115,459 node lines, no difference) rather than reconstructing
+     * declarations from a token stream by counting braces.
+     *
+     * What changes for the reader, and it is not cosmetic: a nested `def` inside a
+     * function body, a `struct` field written as `mut x: T`, a field whose type is
+     * `Array[int, 4]`, and a declaration that is only *partly* written (the state a
+     * file is in whenever someone is typing) are all things the token scan had to
+     * guess at and the tree simply says.  `SymbolDiff` measures the two against each
+     * other over the corpus, so the difference is a number and not a claim.
+     */
+    private fun scanFromTree(text: CharSequence): List<VelaSymbol> {
+        val src = text.toString()
+        val tree = VelaSyntaxParser.parse(src)
+        val out = ArrayList<VelaSymbol>(32)
+        val module = tree.root.children.firstOrNull { it.kind == VelaNodeKind.MODULE_BLOCK }
+            ?: return out
+        for (statement in module.children) {
+            when (statement.kind) {
+                VelaNodeKind.STRUCT -> readStructFromTree(statement, tree, text, out, -1)
+                VelaNodeKind.DEF -> readCallableFromTree(statement, tree, text, out, -1,
+                    VelaSymbolKind.FUNCTION)
+                else -> Unit
+            }
+        }
+        return out
+    }
+
+    /**
+     * A struct, and the members written between its braces -- in source order, which
+     * is the order the reader wrote them.  (The compiler's *dump* prints fields
+     * first and methods second; that is a printer's choice, not the file's order.)
+     */
+    private fun readStructFromTree(n: VelaSyntaxNode, tree: VelaSyntaxTree, text: CharSequence,
+                           out: ArrayList<VelaSymbol>, parent: Int) {
+        val me = out.size
+        out.add(
+            VelaSymbol(
+                VelaSymbolKind.STRUCT, n.name, "struct " + n.name, "",
+                lineAt(tree, n, text), parent,
+            )
+        )
+        for (member in n.children) {
+            if (velaIsFieldMember(member)) {
+                out.add(
+                    VelaSymbol(
+                        VelaSymbolKind.FIELD, member.name, member.typeText, member.typeText,
+                        lineAt(tree, member, text), me,
+                    )
+                )
+            } else if (member.kind == VelaNodeKind.DEF) {
+                readCallableFromTree(member, tree, text, out, me, VelaSymbolKind.METHOD)
+            }
+        }
+    }
+
+    /**
+     * A callable and its parameters.
+     *
+     * `detail` is the signature *as written*, sliced out of the source from the name
+     * to the `)` that closes the parameter list, because that is what the reader
+     * wants to see in the structure view, hover and parameter info -- reconstructing
+     * it would silently reformat the file's own spacing.  The slice is found through
+     * the parser's token list, which is the tree's own record of which tokens belong
+     * to this declaration, so a multi-line parameter list is sliced correctly.
+     */
+    private fun readCallableFromTree(n: VelaSyntaxNode, tree: VelaSyntaxTree, text: CharSequence,
+                             out: ArrayList<VelaSymbol>, parent: Int, kind: VelaSymbolKind) {
+        val me = out.size
+        val nameTok = firstPlainNameToken(tree, n)
+        val line = if (nameTok >= 0) lineOfOffset(text, tree.toks[nameTok].start)
+        else lineAt(tree, n, text)
+        val params = n.children.filter { it.kind == VelaNodeKind.PARAM }
+        val ret = n.retType.ifEmpty { "None" }
+        val close = closeParenToken(tree, n)
+        val sig = if (nameTok >= 0 && close >= 0) {
+            text.subSequence(tree.toks[nameTok].start, tree.toks[close].end).toString()
+                .replace('\n', ' ').replace(Regex(" +"), " ") + " -> " + ret
+        } else {
+            n.name + " -> " + ret
+        }
+        out.add(VelaSymbol(kind, n.name, sig, ret, line, parent))
+        for (p in params) {
+            val pName = firstPlainNameToken(tree, p)
+            val pLine = if (pName >= 0) lineOfOffset(text, tree.toks[pName].start)
+            else lineAt(tree, p, text)
+            val mut = if (p.flags and 1 != 0) "mut " else ""
+            out.add(
+                VelaSymbol(
+                    VelaSymbolKind.PARAMETER, p.name,
+                    mut + p.name + ": " + p.typeText, p.typeText, pLine, me,
+                )
+            )
+        }
+    }
+
+    /**
+     * The token index of a declaration's *name*, or -1.
+     *
+     * Not simply "the first identifier": `extern c def abs(...)` has one identifier
+     * before the name -- the language the symbol comes from -- and taking it made
+     * every `extern` declaration's signature read `c def abs(x: i32) -> i32` in the
+     * structure view and in hover, which `SymbolDiff` reported on 18 files.  The name
+     * is the first plain identifier *after* the `def` keyword.
+     */
+    private fun firstPlainNameToken(tree: VelaSyntaxTree, n: VelaSyntaxNode): Int {
+        val from = if (n.startTok >= 0) n.startTok else 0
+        val to = if (n.endTok >= 0) n.endTok else tree.toks.size - 1
+        var i = from
+        while (i <= to && i < tree.toks.size) {
+            val t = tree.toks[i]
+            if (t.kind == VelaTokKind.NAME && t.code == VelaKw.DEF) {
+                var j = i + 1
+                while (j <= to && j < tree.toks.size) {
+                    val u = tree.toks[j]
+                    if (u.kind == VelaTokKind.NAME && u.code == 0 && u.start < u.end) return j
+                    j++
+                }
+                return -1
+            }
+            i++
+        }
+        // A parameter has no `def` keyword: its name is its first plain identifier.
+        i = from
+        while (i <= to && i < tree.toks.size) {
+            val t = tree.toks[i]
+            if (t.kind == VelaTokKind.NAME && t.code == 0 && t.start < t.end) return i
+            i++
+        }
+        return -1
+    }
+
+    /** The token index of the `)` that closes a declaration's parameter list, or -1. */
+    private fun closeParenToken(tree: VelaSyntaxTree, n: VelaSyntaxNode): Int {
+        val from = if (n.startTok >= 0) n.startTok else 0
+        val to = if (n.endTok >= 0) n.endTok else tree.toks.size - 1
+        var i = from
+        var depth = 0
+        var opened = false
+        while (i <= to && i < tree.toks.size) {
+            val t = tree.toks[i]
+            if (t.kind == VelaTokKind.OP && t.code == VelaOps.LPAREN) {
+                depth++
+                opened = true
+            } else if (t.kind == VelaTokKind.OP && t.code == VelaOps.RPAREN) {
+                depth--
+                if (opened && depth == 0) return i
+            }
+            i++
+        }
+        return -1
+    }
+
+    /** The 1-based line a node starts on: where its first token begins. */
+    private fun lineAt(tree: VelaSyntaxTree, n: VelaSyntaxNode, text: CharSequence): Int {
+        val i = n.startTok
+        if (i >= 0 && i < tree.toks.size) return lineOfOffset(text, tree.toks[i].start)
+        return 1
+    }
+
+    /** 1-based line of a character offset, the compiler's own convention. */
+    private fun lineOfOffset(text: CharSequence, offset: Int): Int {
+        var line = 1
+        var i = 0
+        val end = if (offset > text.length) text.length else offset
+        while (i < end) {
+            if (text[i] == '\n') line++
+            i++
+        }
+        return line
     }
 
     private fun contentKey(text: CharSequence): String {
@@ -224,6 +402,17 @@ object VelaModel {
         }
         return out
     }
+
+    /**
+     * The declaration list as the *old* token scan produced it.
+     *
+     * Kept only so the conversion to the tree can be measured: `SymbolDiff` runs both
+     * over the whole corpus and reports every file where they disagree, so "the
+     * features now read the tree" is a table of differences rather than a claim in a
+     * comment.  Nothing in the plugin calls this; if the differential is retired, this
+     * method and the four private helpers below it should go with it.
+     */
+    fun referenceSymbols(text: CharSequence): List<VelaSymbol> = scan(text.toString())
 
     private fun scan(text: CharSequence): List<VelaSymbol> {
         val toks = tokenize(text)

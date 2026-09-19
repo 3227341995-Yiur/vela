@@ -47,7 +47,16 @@ class VelaParameterInfoHandler : ParameterInfoHandler<PsiElement, ParameterHint>
 
         // The index the caret is in, from the commas written so far.  A caret just
         // inside the `(` is in argument 0, which is the argument being typed.
-        val hint = ParameterHint(sym, text.argumentIndex(call.openParen, offset))
+        // The declared parameter names come from the tree at the callee's own name;
+        // null (they cannot be trusted, or it is a name the language declares that
+        // the table does not describe) disables the popup instead of showing guesses.
+        val calleeAt = call.openParen - call.name.length
+        // A name this file declares is answered by that declaration or by nothing:
+        // the language's table is only consulted for a name the file does not write.
+        val declared = VelaTargets.declaredParameterNames(text, calleeAt)
+            ?: (if (VelaTargets.declaresFunction(text, calleeAt)) null
+                else VelaTargets.builtinParameterNames(call.name))
+        val hint = ParameterHint(sym, text.argumentIndex(call.openParen, offset), declared)
         // Anchored to the `(` of the call being read, not to the caret: with the
         // caret deep in an argument list that is where a reader looks.  This leaf is
         // what `findElementForUpdatingParameterInfo` finds again by identity.
@@ -103,7 +112,13 @@ class VelaParameterInfoHandler : ParameterInfoHandler<PsiElement, ParameterHint>
             context.setUIComponentEnabled(false)
             return
         }
-        val shown = symbolParameters(sym)
+        // The declaration's own parameter names, or nothing at all.  A name read out
+        // of text that is not the parameter list is a name the user never wrote.
+        val shown = hint.params
+        if (shown == null) {
+            context.setUIComponentEnabled(false)
+            return
+        }
         val current = hint.index
         fun widthUpTo(n: Int): Int = shown.take(n).sumOf { it.length + 2 }
         // One string with the parameters as written, then the return type: both are
@@ -158,7 +173,21 @@ class VelaParameterInfoHandler : ParameterInfoHandler<PsiElement, ParameterHint>
 }
 
 /**
- * What the popup is about: the resolved callable and which of its parameters the
- * caret's argument is — `0` for the first, and for a caret just inside the `(`.
+ * What the popup is about: the resolved callable, which of its parameters the
+ * caret's argument is — `0` for the first, and for a caret just inside the `(` —
+ * and the parameter names the *declaration* gives, in order.
+ *
+ * The names are read once, from the tree, where the file's text is at hand
+ * (`findElementForParameterInfo`), and carried here.  They are deliberately not
+ * read out of the symbol's own text: that path named the arguments of `f(1, 2, 3)`
+ * as `s: s: s: ` for a declaration, `def f(s, s, s) -> int`, whose parameter list
+ * the parser never read as parameters because the compiler refuses it.
+ *
+ * [params] is null when the declaration's parameter list cannot be trusted, and
+ * then the popup is disabled rather than drawn with names that are not there.
  */
-class ParameterHint(val sym: VelaSymbol, val index: Int)
+class ParameterHint(
+    val sym: VelaSymbol,
+    val index: Int,
+    val params: List<String>?,
+)

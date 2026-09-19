@@ -83,10 +83,18 @@ object VelaDeclarations {
      * not declare; and a name that is *itself* the declaration, which is what keeps
      * the plugin from offering a target equal to the caret.
      */
+
     fun declarationRange(text: CharSequence, offset: Int): IntRange? {
         val caret = nameRangeAt(text, offset) ?: return null
         val name = text.subSequence(caret.first, caret.last + 1).toString()
-        return declarationRange(text, caret.first, caret.last, name)
+        // `caret.last + 1`, not `caret.last`: the four-argument form takes an
+        // *exclusive* end (it mirrors `TextRange`), and passing the inclusive one made
+        // `caretEnd <= caretStart` true for every one-character name -- so `n`, `s`,
+        // `i`, `a`, `b` and `x` had no go-to-declaration target at all, in 0.1.3 and
+        // since.  Vela code is full of one-character names.  `GotoOracle` is what
+        // found it: three references to `n` in `tests/build/recursion_fib.vel` came
+        // back null while `fib` in the same line resolved.
+        return declarationRange(text, caret.first, caret.last + 1, name)
     }
 
     /**
@@ -106,18 +114,25 @@ object VelaDeclarations {
         if (name.isEmpty() || !name.all { isNamePart(it) } || name.first().isDigit()) return null
         if (caretStart < 0 || caretEnd > text.length || caretEnd <= caretStart) return null
         if (!isNamePart(text[caretStart])) return null
-        val caret = caretStart until caretEnd
-        // A keyword and a builtin are names the *language* declares; there is no
-        // line in this file to navigate to, and inventing one would be a guess.
+        // A keyword and a builtin are names the *language* declares; there is no line
+        // in this file to navigate to, and inventing one would be a guess.
         if (VelaTokenTypes.KEYWORDS.contains(name)) return null
         if (VelaModel.BUILTINS.any { it.first == name }) return null
 
-        val declaration = resolve(text, caret.first, name) ?: return null
-        val target = declarationOf(text, declaration, name) ?: return null
+        // The tree answers this now, and it is the same answer for every caller:
+        // `VelaTargets` resolves the name to a *declaration node* -- a field, a
+        // local, a loop variable, a parameter, a method, a function, a struct -- and
+        // returns the range of the declaration's own name.  The old path here read
+        // the flat model and could only ever name a receiver-typed member or a
+        // file-level symbol; `GotoOracle` measured what that cost (every reference in
+        // `tests/build/recursion_fib.vel` -- a function, three parameters, a local and
+        // a loop variable -- came back with no target at all).
+        val target = VelaTargets.declarationFor(text, caretStart) ?: return null
+        val range = target.start until target.end
         // The name *is* the declaration: the platform would offer the caret its own
         // element, and the honest answer is that there is nothing to go to.
-        if (target == caret) return null
-        return target
+        if (range.first == caretStart && range.last + 1 == caretEnd) return null
+        return range
     }
 
     /**

@@ -25,22 +25,25 @@ import com.intellij.psi.PsiFile
  * range.  The descriptors are returned sorted by start offset (shortest first
  * when two share a start) because each pass rebuilds them from scratch.
  *
- * ## Nesting is computed here, not read from the tree
+ * ## Where the block ranges come from
  *
- * `VelaParserDefinition` deliberately builds a flat tree — tokens only, no block
- * nodes — so there is no `def` node whose range could be the fold region.  The
- * braces are matched off the token sequence instead, which is the same sequence
- * the formatter indents by and the brace matcher pairs: one answer, from one
- * source.
+ * From the **tree**.  This used to match braces off a token sequence, with a
+ * comment here explaining that the parser definition built "a flat tree — tokens
+ * only, no block nodes" so there was no node whose range could be the fold region.
+ * That is no longer true and has not been for a version: `VelaParserDefinition`
+ * replays a real tree, `VELA_BLOCK` elements cover their braces, and the node's
+ * own range *is* the region.  So the block pass reads the tree, and its ranges are
+ * the compiler's blocks by construction rather than by matching.
  *
- * ## Placeholders
+ * The comment-run pass still reads leaves, and that is not a leftover: the tree
+ * has no comment nodes, on purpose (a comment is trivia, and `vm.exe parse` prints
+ * a line for no comment either).  Comments come from the same PSI tree's leaves,
+ * so both passes read one source.
  *
- * A block says how many lines of code it holds (`{ 12 lines }` — counted as the
- * number of lines that contain at least one token inside the block, so a blank
- * line is not a line of code and a statement spread over two lines counts once).
- * A comment run says how many comment lines it holds (`# 3 comment lines`).
- * Neither is `...`: the whole point of folding is that the reader can decide
- * whether to open it.
+ * The two pure functions below are the whole computation, and
+ * `idea-plugin/fold-diff.ps1` runs the tree version against
+ * [velaFoldRangesReference] — the brace-matching implementation this replaced —
+ * over the corpus, so "the ranges did not change" is a table and not a claim.
  */
 class VelaFoldingBuilder : FoldingBuilderEx() {
 
@@ -55,7 +58,12 @@ class VelaFoldingBuilder : FoldingBuilderEx() {
         val text = document.charsSequence
         val out = ArrayList<FoldingDescriptor>()
         val blockStarts = HashSet<Int>()
-        addBlockRegions(file, document, text, tokens, out, blockStarts)
+        for (fold in velaFoldRanges(text)) {
+            blockStarts.add(fold.start)
+            val region = FoldingDescriptor(file, TextRange(fold.start, fold.end))
+            region.setPlaceholderText(fold.placeholder)
+            out.add(region)
+        }
         addCommentRegions(file, document, text, tokens, out, blockStarts)
         if (out.isEmpty()) return NO_REGIONS
         out.sortWith(compareBy({ it.range.startOffset }, { it.range.endOffset }))
@@ -86,48 +94,6 @@ class VelaFoldingBuilder : FoldingBuilderEx() {
      * boilerplate.
      */
     override fun isCollapsedByDefault(node: ASTNode): Boolean = false
-
-    // ------------------------------------------------------------------ blocks
-
-    private fun addBlockRegions(
-        file: PsiFile,
-        document: Document,
-        text: CharSequence,
-        tokens: List<VelaToken>,
-        out: MutableList<FoldingDescriptor>,
-        blockStarts: MutableSet<Int>,
-    ) {
-        val open = ArrayList<Int>(16)
-        for (i in tokens.indices) {
-            val token = tokens[i]
-            if (token.type != VelaTokenTypes.BRACES) continue
-            if (token.text == "{") {
-                open.add(i)
-                continue
-            }
-            if (token.text != "}") continue
-            if (open.isEmpty()) continue
-            val openIndex = open.removeAt(open.size - 1)
-            val from = tokens[openIndex].end
-            val to = token.start
-            if (to <= from) continue
-            if (!hasLineBreak(text, from, to)) continue
-            var lines = 0
-            var lastLine = -1
-            for (k in openIndex + 1 until i) {
-                val line = document.getLineNumber(tokens[k].start)
-                if (line != lastLine) {
-                    lines++
-                    lastLine = line
-                }
-            }
-            if (lines <= 0) continue
-            blockStarts.add(from)
-            val region = FoldingDescriptor(file, TextRange(from, to))
-            region.setPlaceholderText(blockPlaceholder(lines))
-            out.add(region)
-        }
-    }
 
     // ----------------------------------------------------------------- comments
 
@@ -197,26 +163,128 @@ class VelaFoldingBuilder : FoldingBuilderEx() {
         out.add(region)
     }
 
-    // ------------------------------------------------------------------ text
-
-    private fun hasLineBreak(text: CharSequence, from: Int, to: Int): Boolean {
-        if (to > text.length) return false
-        var i = if (from < 0) 0 else from
-        while (i < to) {
-            val c = text[i]
-            if (c == '\n' || c == '\r') return true
-            i++
-        }
-        return false
-    }
-
-    private fun blockPlaceholder(lines: Int): String =
-        if (lines == 1) "{ 1 line }" else "{ $lines lines }"
-
-    private fun commentPlaceholder(lines: Int): String =
-        if (lines == 1) "# 1 comment line" else "# $lines comment lines"
 
     private companion object {
         private val NO_REGIONS = emptyArray<FoldingDescriptor>()
     }
 }
+
+/** A foldable region: the body between two braces, and what to show instead. */
+data class VelaFold(val start: Int, val end: Int, val placeholder: String)
+
+/**
+ * The block fold ranges, read from the parser's tree.
+ *
+ * A `VELA_BLOCK` element covers its own braces, so the region is the body: one
+ * character past the `{` and one before the `}`.  Two conditions survive from the
+ * brace-matching version, and both are about not hiding text for nothing: a region
+ * needs a line break inside it, and it needs at least one line that holds a token
+ * (a blank line is not a line of code).  The line count is the same number the old
+ * implementation reported, so the placeholder text is unchanged.
+ *
+ * An `UNDECLARED_BLOCK` -- a body whose `{` was missing, which only recovery
+ * creates -- has no braces to fold and is skipped, and so is a block that reaches
+ * the end of the file without a `}`.
+ */
+fun velaFoldRanges(text: CharSequence): List<VelaFold> {
+    val src = text.toString()
+    val tree = VelaSyntaxParser.parse(src)
+    val out = ArrayList<VelaFold>(16)
+    collectBlockFolds(tree.root, tree.toks, src, text, out)
+    return out
+}
+
+private fun collectBlockFolds(n: VelaSyntaxNode, toks: List<VelaTok>, src: String,
+                              text: CharSequence, out: MutableList<VelaFold>) {
+    if (n.kind == VelaNodeKind.BLOCK) {
+        val open = n.startTok
+        val close = n.endTok
+        if (open >= 0 && close > open && close < toks.size) {
+            val from = toks[open].end
+            val to = toks[close].start
+            if (to > from && hasLineBreak(text, from, to)) {
+                val lines = tokenLines(toks, open + 1, close, text)
+                if (lines > 0) out.add(VelaFold(from, to, blockPlaceholder(lines)))
+            }
+        }
+    }
+    for (c in n.children) collectBlockFolds(c, toks, src, text, out)
+}
+
+/**
+ * The brace-matched block fold ranges: the implementation the tree replaced.
+ *
+ * Kept so the conversion is measurable -- `idea-plugin/fold-diff.ps1` runs both over
+ * the corpus and reports every file whose regions differ -- and read no longer by
+ * anything the plugin runs.  It matches braces over the parser's own token list,
+ * which is what the builder did over the lexer's tokens before.
+ */
+fun velaFoldRangesReference(text: CharSequence): List<VelaFold> {
+    val scan = VelaSyntaxScanner.scan(text.toString())
+    val toks = scan.toks
+    val out = ArrayList<VelaFold>(16)
+    val open = ArrayList<Int>(16)
+    for (i in toks.indices) {
+        val t = toks[i]
+        if (t.kind != VelaTokKind.OP) continue
+        if (t.code == VelaOps.LBRACE) {
+            open.add(i)
+            continue
+        }
+        if (t.code != VelaOps.RBRACE) continue
+        if (open.isEmpty()) continue
+        val openIndex = open.removeAt(open.size - 1)
+        val from = toks[openIndex].end
+        val to = t.start
+        if (to <= from) continue
+        if (!hasLineBreak(text, from, to)) continue
+        val lines = tokenLines(toks, openIndex + 1, i, text)
+        if (lines <= 0) continue
+        out.add(VelaFold(from, to, blockPlaceholder(lines)))
+    }
+    return out
+}
+
+/** How many distinct lines hold a token in `toks[from until to]`. */
+private fun tokenLines(toks: List<VelaTok>, from: Int, to: Int, text: CharSequence): Int {
+    var lines = 0
+    var lastLine = -1
+    var i = from
+    while (i < to && i < toks.size) {
+        val line = lineOfOffset(text, toks[i].start)
+        if (line != lastLine) {
+            lines++
+            lastLine = line
+        }
+        i++
+    }
+    return lines
+}
+
+private fun lineOfOffset(text: CharSequence, offset: Int): Int {
+    var line = 1
+    var i = 0
+    val end = if (offset > text.length) text.length else offset
+    while (i < end) {
+        if (text[i] == '\n') line++
+        i++
+    }
+    return line
+}
+
+private fun hasLineBreak(text: CharSequence, from: Int, to: Int): Boolean {
+    if (to > text.length) return false
+    var i = if (from < 0) 0 else from
+    while (i < to) {
+        val c = text[i]
+        if (c == '\n' || c == '\r') return true
+        i++
+    }
+    return false
+}
+
+private fun blockPlaceholder(lines: Int): String =
+    if (lines == 1) "{ 1 line }" else "{ $lines lines }"
+
+private fun commentPlaceholder(lines: Int): String =
+    if (lines == 1) "# 1 comment line" else "# $lines comment lines"
