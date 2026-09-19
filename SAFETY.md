@@ -29,15 +29,24 @@ SHA256  AD4A997B132728449D91D789E5CFC26A8A82CAAD466B41F78AC3C5041FBE73D0
 size    795136 bytes       selfhost\build\vm.exe, 2026-09-20 02:52
 ```
 
-- tally: **55 passed, 0 failed**, **7 xfail rows still showing their violation**,
-  **7 holes CLOSED (the promise now holds)**. `RESULT: PASS` (exit 0). The closed rows
-  are named in §3.1 and §3.2; the seven still open under the current build are §3.3.
+- tally: **55 passed, 0 failed**, then the three kinds of recorded row counted apart:
+
+  ```
+  violations still open (FAIL-as-expected): 4
+  violations now closed (CLOSED):            7
+  other xfail rows failing as recorded:      2
+  deliberate gaps documented (DELIBERATE):   1
+  RESULT: PASS
+  ```
+
+  The rows are named in §3.1 and §3.2 (closed) and §3.3 (open), and the counting rule
+  is §0.
 - one earlier build is pinned alongside for the before/after comparison, and it is what
-  makes those two columns readable:
+  makes those columns readable:
   `67ACF63B7DD3A5249E2FE3B1F015D5DB4D4C4032FEFB464F12F86F519F903D8A` / `770560
-  bytes` → **55 passed, 0 failed**, **14 xfail rows**, **0 CLOSED**. The same 55
-  non-hole rows pass under both, which is what makes the seven that moved a difference
-  about those seven rows and nothing else.
+  bytes` → **55 passed, 0 failed**, `violations still open: 11`, `CLOSED: 0`, `other
+  xfail rows: 2`, `DELIBERATE: 1`. The same 55 non-hole rows pass under both, which is
+  what makes the seven that moved a difference about those seven rows and nothing else.
 - the cases: `tests/safety/cases/*.vel` (69 programs, ASCII only).
 - the expectations: `tests/safety/manifest.txt`, one row per case, written by hand
   from the spec before any of it was run.
@@ -48,14 +57,31 @@ size    795136 bytes       selfhost\build\vm.exe, 2026-09-20 02:52
   being dressed up as a checker hole. The point of writing both down is that a reader
   of `tests/safety/` alone would otherwise not know how far the member rule reaches.
 
-A row marked `xfail` asserts that its promise is *broken*, so `tools/safety.ps1`
-distinguishes three outcomes for it: **`FAIL-as-expected`** (the promise is still
-broken — the hole is real), **`CLOSED`** (the promise now holds — the hole is shut,
-counted in a tally column of its own), and **`BEHAVIOUR-CHANGED`** (the promise
-holds but a run-time recording in that row moved; reported, not swallowed). Closing
-a hole can never look like "another kind of failure" — that was the flaw in the
-first version of this corpus, which reported the same `10 xfail` before and after
-the operator-table fix and was therefore blind to its own subject.
+## 0. How a row's verdict is computed
+
+Three kinds of row, and **every kind has to be able to fail in both directions**. The
+first version of this harness could not: a row whose promise had been kept reported
+`CLOSED` no matter what reason the refusal gave, so the corpus was blind to its own
+subject. That is the same defect as a check that cannot fail, and it is why the table
+below has a line for the middle outcome of each kind.
+
+| mode | promise (assertion) | observed | verdict |
+|---|---|---|---|
+| `violation` | `check` refuses, with the recorded `check_msg` | refuses, message identical | `CLOSED` |
+| | | refuses, message **different** | **`FAIL`** — the rule holds for a reason nobody recorded; a human reads it |
+| | | accepts | `FAIL-as-expected` — the hole is open, as recorded |
+| `deliberate` | `check` **accepts** (exit 0, `ok`, empty stderr), and the back end refuses it afterwards | accepts, back end refuses | `DELIBERATE` |
+| | | refuses | **`FAIL`** — the documented decision changed, and the file stating it must change too |
+| `check` / `ok` / `native` / `run-ok` / `diverge` | the row's own expectation | matches | `PASS` |
+| | | does not match | `FAIL` |
+| any row with a run-time recording | — (recording, not assertion) | moved | `BEHAVIOUR-CHANGED` where the recording *is* the assertion; a printed `note` otherwise |
+
+`violation` rows are the only ones with a `CLOSED`, because they are the only ones
+asserting that a *rule* is kept. A row like `hole_mut_scalar_parameter` states a plain
+expectation (the call site prints `11`) that is simply known to fail; it reports
+`FAIL-expected` and would report `UNEXPECTED-PASS` if the compiler started printing
+`11` — dressing that up as `FAIL-as-expected` would be one more check that cannot fail.
+
 
 ## 1. The promise table
 
@@ -161,10 +187,12 @@ tally           : 55 passed, 0 failed
                   holes CLOSED (the promise now holds): 7
 ```
 
-(Those two tally lines are the 65-case corpus as it stood when the operator table was
-fixed; four member-access rows were added afterwards, which is why the same two lines
-now read `14 xfail / 0 CLOSED` and `7 xfail / 7 CLOSED` at the top of this file. The
-seven operator rows are unchanged by that addition — see §3.3 for the current run.)
+(Those four tally lines are the 65-case corpus, and the tally wording of the day; the
+harness now prints the four-column form shown at the top of this file, and four
+member-access rows were added afterwards, which is why the same information reads
+`violations still open: 11 / CLOSED: 0` and `open: 4 / CLOSED: 7 / other: 2 /
+DELIBERATE: 1`. The seven operator rows are unchanged by either — see §3.3 for the
+current run.)
 
 What the checker now prints — and note that the messages are the ones this corpus's
 manifest wrote by hand as the *expected* refusals, which is the whole point of having
@@ -222,19 +250,20 @@ exit=2   vela: type error: Pt has no field 'zzz'
 The third line is the half a rule like this usually misses — `self.` inside the
 struct's own body — and it is covered.
 
-**What it does not reach — now four rows in this corpus.** Each shape is a
-`violation` case whose `check` side asserts the refusal the rule owes, so today all
-four report `FAIL-as-expected` and the day the rule reaches them they report `CLOSED`
-without anyone editing a manifest. Their names, and what stops the program *instead*
-today (which is never the checker, and was in no case observed to produce a wrong
-answer):
+**What it does not reach — now four rows in this corpus.** Three of them are
+`violation` cases whose `check` side asserts the refusal the rule owes, so today they
+report `FAIL-as-expected` and the day the rule reaches them they report `CLOSED`
+without anyone editing a manifest. The fourth (`p.sum`) is a `deliberate` row, because
+its acceptance is a decision rather than a gap — see below. Their names, and what stops
+the program *instead* today (which is never the checker, and was in no case observed to
+produce a wrong answer):
 
 | receiver | case | `check` today | what stops the program instead |
 |---|---|---|---|
 | a **nested field** (`o.inner.zzz`) | `hole_member_nested_receiver` | `exit=0  ok` | `build` -> `vela: panic: this struct has no field of that name`; `run` -> exit 2 |
 | method **arity** (`p.dot(p, q, p)` on a one-parameter method) | `hole_member_method_arity` | `exit=0  ok` | `build` -> the host C compiler: `error C2197: 'int64_t vl_Pt__dot(vl_Pt,vl_Pt)': too many arguments for call`; the interpreter words the same mistake `wrong number of arguments for this method`, exit 2 |
 | a method called on a **non-struct** (`n.foo()` for `int n`) | `hole_member_non_struct_receiver` | `exit=0  ok` | `build` -> `vela: panic: this struct has no method of that name`; the interpreter says `only a struct has methods`, exit 2 |
-| a method name **read as a value** (`p.sum`) | `hole_member_method_as_value` | `exit=0  ok` | `build` -> `vela: panic: this struct has no field of that name`; `run` -> exit 2 |
+| a method name **read as a value** (`p.sum`) | `hole_member_method_as_value` *(a `deliberate` row, not a `violation`)* | `exit=0  ok` | `build` -> `vela: panic: this struct has no field of that name`; `run` -> exit 2 |
 
 Two corrections to the way this gap was reported to me, both in the direction of what
 the binary actually does:
@@ -247,22 +276,46 @@ the binary actually does:
   different fact from "the checker should have refused and did not", so it is
   deliberately **not** a row; it is in §4 instead.
 
-`p.sum` (reading a method name as a value) is deliberate rather than an oversight: the
-checker is documented as letting it through, so its row exists to keep the decision
-visible — if the decision changes, the row reports `CLOSED`, and if it does not, the
-row is the evidence that the gap is a choice. Its `note` in
-`tests/safety/manifest.txt` says so in the row itself, not only here.
+`p.sum` (reading a method name as a value) is a decision rather than an oversight, and
+its row is a **`deliberate`** one — not a `violation`. That is the whole point: the
+other three member shapes are promises the rule has not reached yet (they will report
+`CLOSED` when it does), while this one promises the *opposite* — that `check` accepts,
+because the checker is documented as letting it through. A `deliberate` row therefore
+fails if the checker ever starts refusing it (`FAIL`, exit 1: the documented decision
+changed and the file that states it must be re-read), which is what keeps it from
+being a decision nobody runs. Measured both ways in this session:
 
-### 3.3 Still open (7)
+```
+# as it stands
+hole_member_method_as_value   deliberate DELIBERATE
+    actual: check exit=0 stdout="ok" stderr= || build exit=2 (the back end refuses it)
+            vela: panic: this struct has no field of that name || run exit=2
 
-Seven rows report `FAIL-as-expected` under the current build — re-measured for this
-revision, not assumed. Three are the promises below; four are member-access shapes
-(`hole_member_nested_receiver`, `hole_member_method_arity`,
-`hole_member_non_struct_receiver`, `hole_member_method_as_value`, §3.2), and the
-three named here are:
+# the same row with its expectation flipped (check_exit 2), to prove DELIBERATE can fail
+hole_member_method_as_value   deliberate FAIL
+    reason: a DELIBERATE row is no longer accepted: the row requires check exit 2 and
+            stdout "ok", but check gave exit 0 stdout "ok" — the documented decision
+            has changed, so the file that states it has to change too
+harness exit = 1 / RESULT: FAIL
+```
 
-`bounds_zero_len_array_constant`, `hole_mut_scalar_parameter`,
-`hole_extern_conflicting_prototypes`.
+Its `note` in `tests/safety/manifest.txt` says the same thing in the row itself, not
+only here.
+
+### 3.3 Still open (4), and one row that is open without being a violation
+
+Under the current build the tally reads `violations still open (FAIL-as-expected): 4`
+and `other xfail rows failing as recorded: 2` — re-measured for this revision, not
+assumed. The four open `violation` rows are one promise and three member shapes:
+`bounds_zero_len_array_constant` (§3.3 below) plus `hole_member_nested_receiver`,
+`hole_member_method_arity`, `hole_member_non_struct_receiver` (§3.2's table; the
+fourth member shape, `p.sum`, is the `deliberate` row and reports `DELIBERATE`).
+
+The two `other xfail` rows are the ones whose expectation is simply *known to be
+broken*, with no "was this rule kept?" question to answer:
+`hole_mut_scalar_parameter` and `hole_extern_conflicting_prototypes` — they report
+`FAIL-expected` and would report `UNEXPECTED-PASS` the day the compiler starts doing
+what the row says.
 
 **Hole 1 — `mut` on a scalar parameter does not write through, and both front ends
 agree on the wrong answer.**
@@ -413,7 +466,8 @@ adds the three rows (`hole_mut_scalar_parameter`, `probe_mut_struct_parameter`,
 violation and this file gets corrected, rather than the other way round. The same is now
 true of the operator table: the seven `hole_*` rows are the watch on `bfd70fc` (§3.1),
 and §3.2's four member rows are the watch on `099f6fc`'s non-reaching shapes — added
-after that fix, and reporting `FAIL-as-expected` until the rule reaches them.
+after that fix: three reporting `FAIL-as-expected` until the rule reaches them, and one
+(`p.sum`) a `deliberate` row that fails the day the checker stops letting it through.
 
 ## 4. What this corpus does not cover
 

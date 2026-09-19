@@ -41,18 +41,27 @@
 #              the same line, and the assertion that they *are* the same is the
 #              point of most of these rows); `pragma: yes` adds the OpenMP
 #              requirement on the emitted C.
-#   violation  a two-sided row for a hole, and the two sides answer different
-#              questions.  `check_exit`/`check_msg` are the ASSERTION: what the rule
-#              requires of `vm.exe check` — a refusal, with that message.  If check
-#              does not do it, the promise is broken and the row is a hole
-#              (`FAIL-as-expected`); if check does do it, the hole is shut and the
-#              row reports `CLOSED`, which the tally counts in a column of its own.
+#   violation  a two-sided row for a hole, and both directions have to be able to
+#              fail.  `check_exit`/`check_msg` are the ASSERTION: what the rule
+#              requires of `vm.exe check` — a refusal, with that message.
+#                check refuses, message identical -> CLOSED (first-class in the tally)
+#                check refuses, message DIFFERENT -> FAIL (the promise holds for a
+#                  reason nobody recorded — calling that CLOSED would be a check that
+#                  cannot fail, which is the defect this corpus exists to catch)
+#                check accepts                      -> FAIL-as-expected (hole is open)
 #              The run and native columns are then the RECORD of what each front end
 #              used to do with a program the checker should have refused — carried
 #              because they are the measurement that made the case, printed with the
-#              row, and never a verdict: once the checker refuses the program there
-#              is no run of it left to observe, so the recording going stale is the
-#              fix working and is reported as a `note`, not as a reason.
+#              row, and never a verdict: once the checker refuses the program there is
+#              no run of it left to observe, so the recording going stale is the fix
+#              working and is reported as a `note`, not as a reason.
+#   deliberate a row for a gap that is a DECISION, not an oversight.  The promise is
+#              the opposite of `violation`: `check` must ACCEPT (exit 0, stdout `ok`,
+#              empty stderr), and the back end must then refuse it.
+#                accepted -> DELIBERATE
+#                refused  -> FAIL (the decision changed, and the file that states it
+#                  has to be re-read — a mode that could only ever report DELIBERATE
+#                  would be another check that cannot fail)
 #   diverge    both front ends must each print their column, and the two must
 #              differ.  This is for a documented gap where *the measurement is the
 #              assertion* (SPEC.md §3.1's untypechecked call, and the narrowing it
@@ -196,7 +205,7 @@ hole_unary_not_int | hole_unary_not_int.vel | violation | 2 | operator 'not' can
 hole_member_nested_receiver | hole_member_nested_receiver.vel | violation | 2 | Outer has no field 'zzz' | 2 | this struct has no field of that name | 2 | this struct has no field of that name | | | | yes | SPEC 4 (struct form) | `o.inner.zzz` accepted (check exit 0); the back end refuses it, not the checker |
 hole_member_method_arity | hole_member_method_arity.vel | violation | 2 | 'dot' takes 1 argument, got 3 | 2 | wrong number of arguments for this method | 2 | too many arguments for call | | | | yes | SPEC 4 (methods are struct members) | `p.dot(p, q, p)` accepted (check exit 0); the host C compiler refuses it (C2197), and the interpreter words it differently |
 hole_member_non_struct_receiver | hole_member_non_struct_receiver.vel | violation | 2 | int has no method 'foo' | 2 | only a struct has methods | 2 | this struct has no method of that name | | | | yes | SPEC 3 / 4 | `n.foo()` for `int n` accepted (check exit 0); the back end refuses it, not the checker |
-hole_member_method_as_value | hole_member_method_as_value.vel | violation | 2 | Pt has no field 'sum' | 2 | this struct has no field of that name | 2 | this struct has no field of that name | | | | yes | SPEC 4.1 (no nested functions) | `p.sum`, a method name read as a value, is accepted (check exit 0).  DELIBERATE: the checker is documented as letting this through, so the row exists to keep the decision visible — not as a claim of an oversight.  The back end refuses it. |
+hole_member_method_as_value | hole_member_method_as_value.vel | deliberate | 0 | | 0 | | 0 | | | | | | SPEC 4.1 (no nested functions) | `p.sum`, a method name read as a value, is accepted (check exit 0).  DELIBERATE: the checker is documented as letting this through, so the row exists to keep the decision visible — not as a claim of an oversight.  The back end refuses it.  A `deliberate` row's promise is that `check` ACCEPTS, so if the checker ever refuses it this row FAILS and the decision gets re-read instead of sitting in a file nobody runs. |
 # DESIGN.md §7.5: "`mut` on a scalar parameter does not write through — a gap between
 # the implementation and SPEC.md:148".  The promise (SPEC.md:148) is that the callee
 # may write through, so both expected outputs are 11 and the measured 10 is the

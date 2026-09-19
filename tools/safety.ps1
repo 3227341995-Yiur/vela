@@ -391,8 +391,10 @@ if ($rows.Count -eq 0) {
 # ---------------------------------------------------------------- the cases
 $passed = 0
 $failed = 0
-$xfailed = 0
-$closed = 0
+$xfailed = 0          # `violation` rows whose rule is still broken (holes open)
+$xfailedOther = 0     # non-violation xfail rows, assertion failing as recorded
+$closed = 0           # `violation` rows whose rule now holds, in the recorded words
+$deliberate = 0       # `deliberate` rows, accepted as documented
 $behaviourChanged = 0
 $failures = @()
 $listed = 0
@@ -516,51 +518,58 @@ foreach ($row in $rows) {
         }
 
         'violation' {
-            # A hole, split in two.  The promise columns (`check_exit`, `check_msg`)
-            # are the ASSERTION: what the rule requires of `check`.  Observed to be
-            # broken, the row is a hole (`FAIL-as-expected`); observed to hold, the
-            # hole is SHUT (`CLOSED`) and that is a first-class result — the tally
-            # has a column for it, and closing a hole can never look like "another
-            # kind of failure".  Whatever either front end does with a program the
-            # checker should have refused is a RECORD, printed with the row and
-            # never a verdict, because it is the pre-fix behaviour by construction:
-            # `hole_cmp_bool_int` is admitted, the interpreter panics about it and
-            # the compiled program answers `False`; once the checker refuses the
-            # program there is no runtime left to record, and that is the fix
-            # working, not the case breaking.
+            # A hole, and BOTH directions have to be able to fail.
+            #
+            # The promise columns (`check_exit`, `check_msg`) are the ASSERTION: the
+            # rule requires `check` to refuse the program *with that message*.  Three
+            # outcomes, and the middle one is why this is written the way it is:
+            #
+            #   check refuses, message identical  -> CLOSED (first-class in the tally)
+            #   check refuses, message DIFFERENT  -> FAIL  (the promise holds for a
+            #       reason nobody recorded, which is exactly the kind of change that
+            #       must be looked at; call it "closed" and it is a check that cannot
+            #       fail — the defect this repository keeps finding)
+            #   check accepts                     -> FAIL-as-expected (the hole is open)
+            #
+            # Whatever either front end does with a program the checker should have
+            # refused is a RECORD, printed with the row and never a verdict: it is the
+            # pre-fix behaviour by construction, so once the checker refuses the
+            # program there is no runtime left to record.
             $c = Invoke-Vm 'check' $caseFile
             $actual = ('check exit={0} stdout="{1}" stderr={2}' -f $c.code, $c.stdout.Trim(), (Get-FirstBlock $c.stderr))
-            $checkOk = ($c.code -eq $cExit)
-            if ($checkOk -and $row.checkMsg.Length -gt 0 -and -not (Test-Contains $c.stderr $row.checkMsg)) {
-                $checkOk = $false
-            }
+            $exitOk = ($c.code -eq $cExit)
+            $msgOk = ($row.checkMsg.Length -eq 0) -or (Test-Contains $c.stderr $row.checkMsg)
+            $stdoutOk = ($c.stdout.Trim().Length -eq 0)
+            # Two different facts, and the verdict keys off the right one:
+            # `refusedAsRequired` is "the checker did what the rule demands" (that is
+            # what decides whether the hole is shut), and `checkOk` adds "in the words
+            # this row recorded".  Collapsing them was this mode's last bug: a refused
+            # program whose message had changed was classified as "still open" instead
+            # of "closed for an unrecorded reason".
+            $refusedAsRequired = ($exitOk -and $stdoutOk)
+            $checkOk = ($refusedAsRequired -and $msgOk)
             if ($checkOk) {
-                if ($c.stdout.Trim().Length -ne 0) { $checkOk = $false }
+                # The promise holds: nothing is built, because `build` would only run
+                # the same checker again and fail at exit 2 — the checker *working*.
+                # Building it here was this function's first bug; it turned every
+                # closed hole into `the program must compile, but build exited 2`.
+            }
+            elseif ($refusedAsRequired) {
+                Add-Failure $problems ('the promise is kept for a reason this row does not record: check exit {0} as expected, but stderr lacks "{1}"' -f $cExit, $row.checkMsg)
             }
             else {
                 Add-Failure $problems ('the promise is not kept: expected check exit {0}, got {1}' -f $cExit, $c.code)
-                if ($row.checkMsg.Length -gt 0 -and -not (Test-Contains $c.stderr $row.checkMsg)) {
-                    Add-Failure $problems ('check stderr lacks "{0}"' -f $row.checkMsg)
-                }
-                if ($c.code -eq $cExit -and $c.stdout.Trim().Length -ne 0) {
-                    Add-Failure $problems 'wrote to stdout while being refused'
-                }
+                if (-not $msgOk) { Add-Failure $problems ('check stderr lacks "{0}"' -f $row.checkMsg) }
+                if (-not $stdoutOk) { Add-Failure $problems 'wrote to stdout while being refused' }
             }
 
             $i = Invoke-Vm 'run' $caseFile
             $recRun = ('run exit={0} stdout="{1}"{2}' -f $i.code, $i.stdout.Trim(),
                 $(if ((Get-FirstBlock $i.stderr).Length -gt 0) { ' stderr=' + (Get-FirstBlock $i.stderr) } else { '' }))
-            $recNative = 'not built (the checker refuses the program)'
+            $recNative = 'not built (the checker refuses the program, which is the promise)'
             $nativePhase = $null
-            if ($checkOk) {
-                # The promise holds, so the checker refuses the program: `build`
-                # would only run the same checker again and fail at exit 2, which is
-                # the checker *working*.  Building it here was this function's first
-                # bug — it turned every closed hole into `the program must compile,
-                # but build exited 2`, i.e. exactly the "another kind of failure"
-                # this mode was rewritten to stop producing.  Nothing is built when
-                # there is nothing the checker should have let through.
-                $recNative = 'not built (the checker refuses the program, which is the promise)'
+            if ($refusedAsRequired) {
+                # nothing to record beyond the interpreter's answer
             }
             else {
                 $b = Invoke-Build $caseFile
@@ -605,8 +614,8 @@ foreach ($row in $rows) {
                 if ($nativePhase[0] -ne $nExit) { $runtimeMatches = $false }
                 elseif ($row.nativeOut.Length -gt 0 -and -not (Test-OneLine $nativePhase[1] $row.nativeOut)) { $runtimeMatches = $false }
             }
-            if ($checkOk -and -not $runtimeMatches) { $recordChanged = $true }
-            $phaseObserved = $checkOk
+            if ($refusedAsRequired -and -not $runtimeMatches) { $recordChanged = $true }
+            $phaseObserved = $refusedAsRequired
             $actual = ('check exit={0} stdout="{1}"{2} || run exit={3} stdout="{4}" || native {5}' -f `
                 $c.code, $c.stdout.Trim(),
                 $(if ((Get-FirstBlock $c.stderr).Length -gt 0) { ' stderr=' + (Get-FirstBlock $c.stderr) } else { '' }),
@@ -638,32 +647,117 @@ foreach ($row in $rows) {
             if ($row.nativeOut -eq $row.runOut) { Add-Failure $problems 'a diverge row must expect two different answers' }
         }
 
+        'deliberate' {
+            # A row for a *deliberate* gap in the rule — the promise is that `check`
+            # ACCEPTS the program, and that the back end refuses it afterwards.  The
+            # two directions both matter, and the second is the reason this mode
+            # exists: if the checker starts refusing it, the documented decision has
+            # changed and somebody has to look at the file that says so.  A mode that
+            # only ever reported DELIBERATE could not notice that.
+            $c = Invoke-Vm 'check' $caseFile
+            $actual = ('check exit={0} stdout="{1}" stderr={2}' -f $c.code, $c.stdout.Trim(), (Get-FirstBlock $c.stderr))
+            $checkOk = ($c.code -eq $cExit) -and ($c.stdout.Trim() -eq 'ok') -and ($c.stderr.Trim().Length -eq 0)
+            if ($checkOk) {
+                # Accepted, as the row says it should be: now the back end has to
+                # refuse it, or the "deliberate gap" is really a silent acceptance.
+                $b = Invoke-Build $caseFile
+                if ($b.code -ne 0) {
+                    $actual += (' || build exit={0} (the back end refuses it){1}' -f $b.code,
+                        $(if ((Get-FirstBlock $b.stderr).Length -gt 0) { ' ' + (Get-FirstBlock $b.stderr) } else { '' }))
+                    if ($b.code -ne 2 -and $nExit -eq 0) {
+                        Add-Failure $problems ('the row says the back end refuses it, but build exited {0} for another reason' -f $b.code)
+                    }
+                }
+                elseif (-not (Test-Path $b.exe)) {
+                    Add-Failure $problems 'build reported success but wrote no executable'
+                }
+                else {
+                    $p = Invoke-Program $b.exe
+                    $actual += (' || program exit={0} stdout="{1}"' -f $p.code, $p.stdout.Trim())
+                    if ($p.code -eq 0) {
+                        Add-Failure $problems 'the row says the back end refuses this program, but the compiled program exited 0'
+                    }
+                }
+            }
+            else {
+                # The row's promise is that `check` ACCEPTS.  Whether it refused
+                # (`exit 2`) or accepted but not cleanly (exit 0 with a warning, say),
+                # the documented decision no longer holds as written, and the file
+                # that states it has to be re-read.
+                Add-Failure $problems ('a DELIBERATE row is no longer accepted: the row requires check exit {0} and stdout "ok", but check gave exit {1} stdout "{2}"{3} — the documented decision has changed, so the file that states it has to change too' -f `
+                    $cExit, $c.code, $c.stdout.Trim(),
+                    $(if ((Get-FirstBlock $c.stderr).Length -gt 0) { ' stderr=' + (Get-FirstBlock $c.stderr) } else { '' }))
+            }
+            $i = Invoke-Vm 'run' $caseFile
+            $actual += (' || run exit={0} stdout="{1}"' -f $i.code, $i.stdout.Trim())
+        }
+
         default {
             Add-Failure $problems ('unknown mode "{0}"' -f $row.mode)
         }
     }
 
-    # The verdict.  For an xfail row the load-bearing question is whether the
-    # promise is still broken, not whether the pre-fix runtime recording still
-    # matches: a hole that gets CLOSED is a result to report (its own tally column),
-    # never "another kind of failure" — a harness that cannot see its own corpus get
-    # fixed is a harness that reports the same numbers before and after the fix.
+    # The verdict.  Three kinds of row, and each has to be able to fail in BOTH
+    # directions — a check that cannot fail is the defect this repository keeps
+    # finding, and the first version of this harness had one:
+    #
+    #   xfail      FAIL-as-expected (the promise is broken, as recorded)
+    #              CLOSED (the promise holds *and says so in the recorded words*)
+    #              FAIL  (anything else, including a refusal worded differently:
+    #                     "closed" on a message nobody recorded is a silent pass)
+    #   deliberate DELIBERATE (check accepts, as the decision documents)
+    #              FAIL  (check refuses: the decision changed, someone must look)
+    #   ordinary   PASS / FAIL / BEHAVIOUR-CHANGED on the promise itself
     $isXfail = ($row.xfail -eq 'yes')
+    # Only a `violation` row has the closed/open distinction: its assertion is "the
+    # rule is kept", which can be observed either way.  The other xfail rows state a
+    # plain assertion that is simply *expected to fail* (`hole_mut_scalar_parameter`
+    # promises 11 and the compiler prints 10), and dressing those up as
+    # `FAIL-as-expected` would be the very thing this rewrite is about — a check that
+    # cannot fail.  They are ordinary rows that happen to be failing; the `xfail`
+    # column only keeps them out of the exit code.
+    $isHoleRow = ($isXfail -and $row.mode -eq 'violation')
+    $isDeliberate = ($row.mode -eq 'deliberate')
     $verdictProblems = @($problems)
-    if ($isXfail) { $verdictProblems = @($problems | Where-Object { $_ -notlike 'runtime-record-changed*' }) }
+    if ($isHoleRow) { $verdictProblems = @($problems | Where-Object { $_ -notlike 'runtime-record-changed*' }) }
     $violation = ($verdictProblems.Count -gt 0)
     $state = if ($violation) { 'FAIL' } else { 'PASS' }
-    if ($isXfail) {
-        if ($violation) { $state = 'FAIL-as-expected'; $xfailed++ }
+    if ($isDeliberate) {
+        if ($violation) { $state = 'FAIL'; $failed++; $failures += $row }
+        else { $state = 'DELIBERATE'; $deliberate++ }
+    }
+    elseif ($isHoleRow) {
+        if ($violation) {
+            if ($phaseObserved -eq $false) {
+                # The promise is still broken: the hole is open, which is what the
+                # row records.  Counted apart from a real failure, and NOT counted as
+                # a pass — the tally says how many holes are still open.
+                $state = 'FAIL-as-expected'
+                $xfailed++
+            }
+            else {
+                # The promise holds, but not in the words the row wrote down.
+                $state = 'FAIL'
+                $failed++
+                $failures += $row
+            }
+        }
         else { $state = 'CLOSED'; $closed++ }
     }
     elseif ($recordChanged) {
-        # Not an xfail row and the run-time answer moved: the promise assertion still
+        # Not a hole row and the run-time answer moved: the promise assertion still
         # holds, so this cannot be a silent pass, and it is not a promise failure
         # either.  Loud, and in its own column.
         $state = 'BEHAVIOUR-CHANGED'
         $behaviourChanged++
         $failures += $row
+    }
+    elseif ($isXfail) {
+        # A non-violation xfail row: the assertion is expected to fail, so a failure
+        # is the recorded state and a clean pass is news.  Both are reported, neither
+        # in the exit code, and the tally counts the recorded failures.
+        if ($violation) { $state = 'FAIL-expected'; $xfailedOther++ }
+        else { $state = 'UNEXPECTED-PASS'; $xfailMissing++ }
     }
     else {
         if ($violation) { $failed++ } else { $passed++ }
@@ -699,8 +793,10 @@ Write-Host ''
 Write-Host '---------------------------------------------------------------------------'
 Write-Host ('frozen compiler : SHA256 {0} / {1} bytes' -f $hash, $size)
 Write-Host ('tally           : {0} passed, {1} failed' -f $passed, $failed)
-Write-Host ('                  xfail rows still showing their violation: {0}' -f $xfailed)
-Write-Host ('                  holes CLOSED (the promise now holds): {0}' -f $closed)
+Write-Host ('                  violations still open (FAIL-as-expected): {0}' -f $xfailed)
+Write-Host ('                  violations now closed (CLOSED):            {0}' -f $closed)
+Write-Host ('                  other xfail rows failing as recorded:      {0}' -f $xfailedOther)
+Write-Host ('                  deliberate gaps documented (DELIBERATE):   {0}' -f $deliberate)
 if ($behaviourChanged -gt 0) {
     Write-Host ('                  rows whose run-time recording moved: {0}' -f $behaviourChanged)
 }
