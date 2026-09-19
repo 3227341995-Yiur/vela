@@ -500,6 +500,15 @@ are different claims, and only the second one is true:
   comes back and `vars` answers `locals 0` at a stop where the local is plainly in
   scope (§10.6 records the mechanism). The debugger is the code that was written to
   the specification; the implementation is what does not hold.
+
+  How far the gap has spread, measured rather than feared: every `def` in
+  `selfhost/vela.vel` and `selfhost/parts/*.vel` — **624 functions** — scanned for
+  one that writes a scalar `mut` parameter returns **two**, `dbg_mark` and
+  `dbg_walk_decls`, both inside the debugger's locals walk. Nothing else in the
+  compiler depends on the write coming back, and nothing in the corpus does either:
+  a program that reads a scalar `mut` parameter after the call is reading the copy,
+  and the only reason that has never shown up is that such a program has never been
+  written here.
 * **The front end's pools are fixed arrays** (`selfhost/vela.vel`): 131 072
   tokens, 65 536 syntax nodes. Real programs are nowhere near them; the
   compiler's own source is, which is the honest reason the token pool was
@@ -949,12 +958,22 @@ are defects, and the third is a document that lied about which stream to read.
    count never comes back, the reporting loop `while i < n` never runs once, and
    the command prints what it believes: zero.
 
-   The fix therefore belongs to the language, not to the debugger — either `mut`
-   on a scalar parameter starts meaning what `SPEC.md` §3 says it means, or the
-   debugger stops relying on it. Both are real options and neither is chosen here.
-   What is now recorded is that a debugger was not the only code in this compiler
-   that would hit this, and that the primitive has a probe of its own so the next
-   attempt starts from a measurement instead of a paragraph.
+   The fix therefore belongs to the debugger first, and the choice is made here on
+   a measurement rather than on taste. Every `def` in `selfhost/vela.vel` and
+   `selfhost/parts/*.vel` — **624 functions** — was scanned for a function that
+   *writes* a scalar `mut` parameter, which is the only shape this gap can break:
+   **two of them exist**, `dbg_mark` (`eval.vel:2428`) and `dbg_walk_decls`
+   (`eval.vel:2482`), and both are in this one walk. So the debugger stops relying
+   on the write coming back — a local, two-function change with no effect on the
+   language's calling convention — and `mut` on a scalar starts meaning what
+   `SPEC.md` §3 says it means in its own change, with the suite and the two probes
+   behind it, because that one does move every scalar `mut` parameter in every
+   program this compiler has ever accepted.
+
+   What is now recorded, and was not before: the gap has spread into exactly one
+   feature, that feature is a user-visible one, and the primitive underneath it has
+   a probe of its own so the next attempt starts from a measurement instead of a
+   paragraph.
 
 3. **The usage text names the wrong stream.** `vm_main.vel` prints "events on
    stdout"; with the two streams redirected to separate files, every event landed
