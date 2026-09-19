@@ -8,6 +8,21 @@ line is source that has not been through the tool it needs, and says so.
 
 ## 0. Where this session left the tree (2026-09-20, 02:1x)
 
+**And one thing about the gate itself, because it was broken.**  `tools\build.ps1`
+line 374 had lost the newline between `| Out-Null` and the `if` that follows, so
+PowerShell read the pipeline as a command named `Out-Nullif` and swallowed **both**
+the step that builds the linker and the step that runs it.  `selfhost\vm.vel` was
+therefore never regenerated from `selfhost\parts\*.vel`, which made the fixpoint a
+comparison of a file with itself: `RESULT: ok` and "the compiler reproduces itself"
+were printed, and they were **true and vacuous** — no part edit since that byte was
+lost could reach `vm.exe` by way of `build.ps1`.  Found by an agent that tried to
+make a part change land and watched it not land; the missing byte is repaired
+(`Out-Nullif` count 0, the file parses with no errors, and the diff is one line).
+The lesson is the one this repository keeps re-learning: **a check that cannot fail
+is not a check**, and the fixpoint is only evidence when the step it compares
+against actually ran.  Anything measured through `build.ps1` between the commit that
+introduced the broken line and the repair should be re-run.
+
 Written because this session ran to its round limit with the work unfinished, and
 the next person needs the boundary rather than the story.  Everything here was
 measured; where it is a snapshot of a moving tree, it says so.

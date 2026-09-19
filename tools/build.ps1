@@ -371,7 +371,8 @@ if (Test-Path -LiteralPath $vmVel) {
     Say '=== 3/8  link the parts (selfhost/vela.vel + the 9 parts)'
     Say "    tokens in the linked compiler before re-linking: $before"
 }
-Step '    build the linker' { & $vmExe build tools/link_selfhost.vel } | Out-Nullif (-not $failed) {
+Step '    build the linker' { & $vmExe build tools/link_selfhost.vel } | Out-Null
+if (-not $failed) {
     Step '    run the linker' { & $linker } | Out-Null
 }
 
