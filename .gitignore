@@ -12,11 +12,22 @@
 # compiler and program outputs
 *.obj
 *.exe
+*.dll
 *.pdb
 *.ilk
 *.lib
 *.exp
 *.o
+
+# `*.dll` earns its own paragraph.  `tools\build.ps1` copies `LLVM-C.dll`
+# (74,159,616 B) beside the compiler on purpose -- the compiler is what needs it
+# at run time, and that is the plan's step 4 -- but this list originally covered
+# `.obj`, `.exe`, `.lib`, `.pdb` and `.ilk` and said nothing about `.dll`.  So the
+# copy turned up in `git status` as one `git add -A` away from a public
+# repository, where a 74 MB blob is in the history of every clone forever and
+# deleting it later does not take it out.  The rule is not left to memory:
+# `tools\check-hygiene.ps1` asks git about every untracked file over 5 MB and
+# fails, naming the ones git does not ignore.
 
 # the emitted C, wherever it lands: beside a source in the corpus, in the
 # benchmarks, in the examples, or in the repository root by accident.
@@ -97,9 +108,21 @@
 
 # the C-compiler driver's own scratch, which `tools\build.ps1` writes for
 # diagnosability: `vm.exe_cc.bat` and `vm.exe_cc_cmd.txt` are regenerated on every
-# build, and two of them were committed in the first commit by accident
+# build, and two of them were committed in the first commit by accident.  The rule
+# below did not catch the pair written one directory up — measured 2026-09-20,
+# `selfhost/vm.exe_cc.bat` (531 B, holding an absolute path into a `%TEMP%`
+# directory that no longer exists) was still tracked while every build recreated
+# it, and its `_cmd.txt` sibling had zero references anywhere.  Both spellings are
+# covered now, and `tools\check-hygiene.ps1` is what asks the question again.
 /selfhost/build/*.bat
 /selfhost/build/*.txt
+/selfhost/*.bat
+/selfhost/*.txt
+
+# a debugger session's command files: `tools\dbg_test.ps1` rebuilds the directory
+# on every run, so whatever is left in it is a previous run's transcript rather
+# than a fixture.  Two were tracked.
+/tools/dbg-session/
 
 # agents' scratch files: `_`-prefixed, wherever they were working.  These are
 # not evidence and not source -- 45 files named `_ovf_child_NN.txt` from one
