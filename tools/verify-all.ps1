@@ -20,6 +20,11 @@
       smoke     tools\smoke.ps1        is the tree alive: build, run, build from
                                        outside the repository, the user's directory
                                        staying clean, compiled == interpreted
+      shim-decls tools\gen-shim-decls.ps1 -Check
+                                       the compiler's code generator is reached
+                                       through generated `extern c` declarations;
+                                       this is the check that they are still what
+                                       the C header says
       suite     tools\refreeze.ps1     record the locks, keep the written
                                        expectations, run all the cases
       bench     tools\bench.ps1        7 repetitions per variant, every answer
@@ -27,6 +32,10 @@
                                        idle machine, so it is opt-in)
       plugin    idea-plugin\build-offline.ps1
                                        compile the plugin and run its verifier
+      mutation  idea-plugin\mutation-test.ps1
+                                       break the plugin on purpose, one defect at a
+                                       time, and require the verifier to catch each
+                                       (opt-in: one plugin build per mutant)
 
 .PARAMETER WithBench
     Also run the benchmarks.  Off by default: they take minutes, and a benchmark
@@ -35,6 +44,11 @@
 .PARAMETER WithPlugin
     Also build and verify the IDEA plugin (needs the installed IDE's kotlinc; it
     does not need the network).
+
+.PARAMETER WithMutation
+    Also run the plugin's mutation test.  Asks for a mutant and fails loudly if the
+    script does not exist, because "the verifier cannot fail" is the one claim this
+    project has never been able to make and would like to.
 
 .PARAMETER SkipSuite
     Skip the test suite.  For iterating on a build problem, when the suite's ten
@@ -53,6 +67,7 @@
 param(
     [switch] $WithBench,
     [switch] $WithPlugin,
+    [switch] $WithMutation,
     [switch] $SkipSuite
 )
 
@@ -135,6 +150,22 @@ Write-Host ("  logs: {0}" -f $logDir)
 
 Invoke-Step -Name 'build'  -Script 'tools\build.ps1'    -SuccessPattern 'RESULT: ok'
 Invoke-Step -Name 'smoke'  -Script 'tools\smoke.ps1'    -SuccessPattern 'RESULT: ok'
+
+# The compiler's own code generator is reached through `extern c` declarations that
+# are generated from the C header, because an interface written twice by hand drifts.
+# The generated file is only honest if it is still what the header says, so the check
+# runs here rather than in someone's memory.  It is skipped, loudly, when the shim
+# does not exist yet.
+$shimHeader = Join-Path $repo 'runtime\vela_llvm_shim.h'
+if (Test-Path -LiteralPath $shimHeader) {
+    Invoke-Step -Name 'shim-decls' -Script 'tools\gen-shim-decls.ps1' -Arguments @('-Check') -SuccessPattern 'in step:'
+} else {
+    [void]$results.Add([pscustomobject]@{
+        Step = 'shim-decls'; Ok = $null; Code = 0; Seconds = 0;
+        Verdict = 'skipped (no runtime\vela_llvm_shim.h yet)'; Out = ''; Err = ''
+    })
+}
+
 if (-not $SkipSuite) {
     Invoke-Step -Name 'suite' -Script 'tools\refreeze.ps1' -SuccessPattern 'RESULT: green'
 } else {
@@ -157,6 +188,26 @@ if ($WithPlugin) {
     [void]$results.Add([pscustomobject]@{
         Step = 'plugin'; Ok = $null; Code = 0; Seconds = 0;
         Verdict = 'skipped (add -WithPlugin)'; Out = ''; Err = ''
+    })
+}
+
+# A verifier is only a verifier if it has been shown to fail.  The mutation test
+# breaks the plugin on purpose, one defect at a time, and requires the verifier to
+# catch each one; opt-in because it builds the plugin once per mutant.
+$mutation = Join-Path $repo 'idea-plugin\mutation-test.ps1'
+if ($WithMutation) {
+    if (Test-Path -LiteralPath $mutation) {
+        Invoke-Step -Name 'mutation' -Script 'idea-plugin\mutation-test.ps1' -SuccessPattern 'RESULT:'
+    } else {
+        [void]$results.Add([pscustomobject]@{
+            Step = 'mutation'; Ok = $false; Code = 1; Seconds = 0;
+            Verdict = "asked for -WithMutation but $mutation does not exist"; Out = ''; Err = ''
+        })
+    }
+} else {
+    [void]$results.Add([pscustomobject]@{
+        Step = 'mutation'; Ok = $null; Code = 0; Seconds = 0;
+        Verdict = 'skipped (add -WithMutation: proves the verifier can fail)'; Out = ''; Err = ''
     })
 }
 
