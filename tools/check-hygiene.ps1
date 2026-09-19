@@ -22,7 +22,7 @@
 #
 # Exit 0 with `RESULT: ok`, or 1 with every offending path named and sized.
 
-param([int] $MaxMB = 5)
+param([int] $MaxMB = 5, [int] $WarnMB = 20, [switch] $Strict)
 
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
@@ -79,6 +79,57 @@ if ($bigTracked) {
     }
 } else {
     Say '      none'
+}
+
+# ------------------------------------- 3. big ignored files inside the checkout
+#
+# A different question from the two above, and labelled as such: these *cannot*
+# be committed, because git ignores them, so they are not a risk to the
+# repository.  They are a risk to the checkout -- 75 MB of copied DLL and
+# compiler binary sitting in the working tree is disk, backup time and `grep`
+# noise, and it is how a "frozen" copy of something ends up being mistaken for
+# source.  Measured 2026-09-20: `.safety-frozen\` held `LLVM-C.dll` (74,159,616 B),
+# `vm.exe` and a manifest, 74,950,197 B in three files, all of them ignored and
+# therefore invisible to `git status` and to [1/2] above.
+#
+# WARN by default, with `-Strict` to make it fail: the check above answers "can
+# this be committed", and answering a different question with the same verdict
+# would be the kind of over-claiming this repository is written against.
+Say ''
+Say ('[3/3] ignored files over {0} MB inside the checkout (WARN: they cannot be committed)' -f $WarnMB)
+$bigIgnored = New-Object System.Collections.Generic.List[object]
+$roots = @((Join-Path $root 'runtime'), (Join-Path $root 'selfhost'), (Join-Path $root 'tests'),
+           (Join-Path $root 'tools'), (Join-Path $root 'bench'), (Join-Path $root 'examples'),
+           (Join-Path $root 'idea-plugin'), (Join-Path $root 'ide-demo'), $root)
+foreach ($r in $roots) {
+    if (-not (Test-Path -LiteralPath $r)) { continue }
+    Get-ChildItem -LiteralPath $r -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.Length -le ($WarnMB * 1MB)) { return }
+        $rel = $_.FullName.Substring($root.Length).TrimStart('\', '/')
+        if ($_.DirectoryName -ne $root) { return }
+        & $git check-ignore -q -- $rel 2>$null
+        if ($LASTEXITCODE -eq 0) { $bigIgnored.Add([pscustomobject]@{ Size = $_.Length; Path = $rel }) }
+    }
+    # one level down as well: a scratch directory directly inside the checkout
+    Get-ChildItem -LiteralPath $r -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        Get-ChildItem -LiteralPath $_.FullName -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($_.Length -le ($WarnMB * 1MB)) { return }
+            $rel = $_.FullName.Substring($root.Length).TrimStart('\', '/')
+            & $git check-ignore -q -- $rel 2>$null
+            if ($LASTEXITCODE -eq 0) { $bigIgnored.Add([pscustomobject]@{ Size = $_.Length; Path = $rel }) }
+        }
+    }
+}
+$bigIgnored = $bigIgnored | Sort-Object -Property Path -Unique
+if ($bigIgnored.Count -eq 0) {
+    Say '      none'
+} else {
+    foreach ($b in $bigIgnored | Sort-Object Size -Descending) {
+        Say ('  WARN  {0,12:N0} B  ignored, inside the checkout: {1}' -f $b.Size, $b.Path)
+    }
+    $total = ($bigIgnored | Measure-Object -Property Size -Sum).Sum
+    Say ('        {0,12:N0} B in {1} file(s).  Move scratch out of the checkout rather than freezing a copy of it here.' -f $total, $bigIgnored.Count)
+    if ($Strict) { $bad.Add(('{0} ignored file(s) over {1} MB inside the checkout (-Strict)' -f $bigIgnored.Count, $WarnMB)) }
 }
 
 Say ''

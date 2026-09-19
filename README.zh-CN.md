@@ -1,7 +1,7 @@
 <!--
 源文件 : README.md
-源文件字节 : 33925
-源文件 SHA256 : 09ef1d063f655fdb9b5f7b6af2cbe3ad42a33945dee266fd4cf577ff14c4676b
+源文件字节 : 34309
+源文件 SHA256 : f2daea56e541a14a461aa0feb03ac49b43fbdc03b7e26384f161c2f0e16ea84f
 翻译日期 : 2026-09-20
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -195,7 +195,7 @@ tests\run_tests.exe fast     :: skip the fixpoint case
 tests\run_tests.exe record   :: re-freeze the goldens
 ```
 
-**在运行它之前把 `VELA_SELF` 设为一个绝对路径。** `tests/run_tests.vel` 通过那个变量找到编译器，若没有就回退到相对路径 `selfhost/build/vm.exe`——用的是正斜杠——而套件为了 cmd.exe 的缘故会把每条命令多包一对引号。cmd.exe 于是在第一个 `/` 处切开那个路径，回答 `'selfhost' is not recognized as an internal or external command`；套件把*捕获到的 stderr* 报告为原因，而那是驱动自身无害的第一行，于是每个用例看起来都像编译器失败。实测：不设置，30 个用例失败 "could not be built"；设置，5 个。`tools\refreeze.ps1` 正是为此设置它，`tools\build.ps1` 则一直都设置。
+**在运行它之前把 `VELA_SELF` 设为一个绝对路径。** `tests/run_tests.vel` 通过那个变量找到编译器，若没有就回退到相对路径 `selfhost/build/vm.exe`——用的是正斜杠——而套件为了 cmd.exe 的缘故会把每条命令多包一对引号。cmd.exe 于是在第一个 `/` 处切开那个路径，回答 `'selfhost' is not recognized as an internal or external command`；套件把*捕获到的 stderr* 报告为原因，而那是驱动自身无害的第一行，于是每个用例看起来都像编译器失败。实测两次，在两个不同的日子，这就是为什么本仓库里有两份文档在这件事上不一致：**不设置时，30 个用例失败并报 "could not be built"**——两次运行都是如此，而且它可复现——而**设置时**，计数在第一次运行是 5、在第二次是 **0**，因为那五个是别的事，并且此后已被修复（今天的套件是 **190 passed, 0 failed**，`STATUS.md` §2）。30 才是这一段存在的理由。`tools\refreeze.ps1` 正是为此设置它，`tools\build.ps1` 则一直都设置。
 
 关于这棵树，还有两件事也都是实测而非猜测：
 
