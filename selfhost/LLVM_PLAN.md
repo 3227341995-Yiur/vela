@@ -242,12 +242,27 @@ The steps, in order, each ending with the evidence that closes it:
 ## Interface (phase 1)
 
 ```
-vm.exe emit-llvm  <file.vel>          # writes <stem>.ll beside the source, like emit-c
-vm.exe build-llvm <file.vel> [rtobj]  # emit-llvm, then clang-cl the .ll + the runtime object
+vm.exe emit-llvm  <file.vel>          # the module's IR text, on stdout, like emit-c
+vm.exe build-llvm <file.vel> [rtdir]  # emit the object in process, then lld-link it
 ```
 
-- The runtime object is built once, and by the LLVM-side driver:
-  `clang-cl /c runtime/vela_llvm_runtime.c /Fo<dir>\vela_llvm_runtime.obj`.
+**What the driver does, read out of it on 2026-09-20** (`vm_main.vel`, mode
+`build-llvm` at :1164) — this is the part the original interface note above got
+wrong, because it described the phase-1 shape (hand the `.ll` text to `clang-cl`)
+and phase 2 replaced that with an object built in process:
+
+* the object comes from the shim (`vshim_emit_object_buf`), i.e. from **libLLVM
+  inside `vm.exe`** — not from a program parsing IR text;
+* the same module is written out **as text for a human** by `write_ll`, into the
+  scratch, so a person can read what was emitted without a second tool;
+* from there on **the only external program is `lld-link`**, found through the
+  `VELA_LLD` environment variable or the install `tools\get-llvm.ps1` creates.  If
+  it is missing the mode panics and says so, rather than falling back to a C
+  compiler;
+* `vela_llvm_runtime.obj` must sit **beside the compiler**, and the mode panics
+  naming it when it does not (`vm_main.vel:978`).  Nothing writes that object yet:
+  `tools\build.ps1` is where it belongs, which is why `build-llvm` cannot run end
+  to end today.
 - Output paths follow the C backend's rule, which is: **the executable lands beside
   the source and nothing else does**.  The `.ll` and the `.obj` go to
   `%TEMP%\vela-build\<flattened path of the source>\`, the same scratch the C backend
@@ -364,7 +379,9 @@ same case list the suite does. A backend that is fast and wrong is not a backend
 
 ## What we will not claim
 
-- Not "no dependency at all" until the linker is ours too (phase 4).
+- Not "no dependency at all" until the linker is ours too — the `later` row of the
+  phase table above, which this paragraph used to call "phase 4" while the table
+  named no such phase. A number the table does not carry is not a plan.
 - Not "faster than C++" — that is a measurement, not an intention, and the
   existing table already reports a loss on parallel matmul. If LLVM changes the
   numbers, `bench/RESULTS.md` records them with the backend they were built by.
@@ -442,9 +459,13 @@ Two corrections to this plan, both from the probe:
   until it silently diverges.
 - The tools that *are* present report LLVM 19.1.5, so expect 19.x conventions
   (opaque pointers are normal; `i8*` is still accepted). The target triple and the
-  datalayout line in any hand-written `.ll` are **unverified placeholders** until
-  a compiler exists to print them with `clang -print-target-triple` and
-  `-S -emit-llvm`.
+  datalayout line in any hand-written `.ll` were **unverified placeholders** until
+  a compiler existed to print them — and then they were printed, by
+  `clang.exe -S -emit-llvm` on a two-line C file, which is where the M1 record
+  above gets `x86_64-pc-windows-msvc19.44.35227` and the `e-m:w-p270:32:32-…`
+  line.  So this paragraph is history, kept because the caution it encodes is the
+  reason those strings are measured rather than remembered; the strings themselves
+  are measurements now.
 
 ### Operational warning, which matters more than it looks
 
