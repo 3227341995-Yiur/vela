@@ -68,9 +68,12 @@ holds).  **The holes are recorded and ranked; none is fixed.**
 `tools\check-hygiene.ps1` asks git whether anything over 5 MB could be committed
 (it caught `LLVM-C.dll`, 74,159,616 B, one `git add -A` from a public repository)
 and names the 222,478,848 B of ignored copies now sitting in the checkout.
-`tools\docs-zh-check.ps1` names the translation that went stale — five pairs are
-bilingual with a language switcher on the first line of each file, in the shape
-GitHub reads.
+`tools\docs-zh-check.ps1` names the translation that went stale.  The
+reader-facing documents are bilingual in pairs, each carrying a language switcher
+on its first line in the shape GitHub reads — **and how many pairs there are is
+deliberately not written here**, because a count in prose is a number that expires
+the next time someone translates a file (this sentence said "five" for about an
+hour).  The checker's own `found N` is the number, and it is one command away.
 
 **What the next session should do, in order.**  ① make the fixpoint case pass the
 compiler's own link inputs, then `tools\refreeze.ps1` + the suite, and get the tree
@@ -104,6 +107,15 @@ the end.  This round ran dozens of builds, including 190-case suite runs, with n
 wedge.
 
 ## 2. Verified, with the commands that verified them
+
+**Read this table as the state at the commit that produced it, not as today's.**
+§0 is today's.  Three rows below have moved since they were written, and they are
+kept rather than edited because each was true when its command was run: the
+fixpoint hash (`vm.exe` now links `libLLVM` and is 782 848 bytes, not 634 368), the
+suite tally (187 passed, 3 failed at the last full run — §0 names the cause), and
+the declaration row's byte count.  The digest-lock row is the one whose *values*
+are expected to move every time a part changes, which is what `tools\refreeze.ps1`
+is for.
 
 | what | command | result |
 |---|---|---|
