@@ -694,6 +694,12 @@ surface has no `dlsym` either, and rather than invent one the interpreter has no
 foreign call at all (§9.2) — the boundary the `refuse-interp` case in the corpus
 asserts.
 
+### 9.4.1 A note on what this section is not
+
+§9 is about the *foreign* boundary. §10 is about the debugger, and it was missing
+until 2026-09-20 even though `selfhost/parts/eval.vel` cited it by number; the
+section was written from the source and from runs, not from memory.
+
 ### 9.5 What is deliberately left undone
 
 The boundary in §9.1 is much smaller than the design this section first carried,
@@ -751,4 +757,183 @@ extern c "libm" {                          # the shape that was designed, not bu
   are a copy, and `mut` on a parameter only says what the (absent) body may do —
   the same gap SPEC:148 has for a Vela scalar parameter, which the probes in this
   directory record for the language's own functions.
+
+## 10. The debug protocol (`vm.exe debug`)
+
+The same interpreter with a stopwatch on it: `vm.exe debug <file.vel> <cmddir>
+[program arguments...]`. Nothing about the program changes — the arena, the
+pools and `run_main` are the same calls in the same order — and the only new
+thing on the command line is the directory the driver leaves its command files
+in.
+
+### 10.1 What the mode is, and the pause loop
+
+The debugger is `run` with a stopwatch: the same `parse`, `resolve` and
+`ck_module`, and then the same `run_main`, with a session (`dbg_session`) that
+arms the interpreter's statement gate. A statement whose line is not armed — the
+normal case, and every statement under `vm.exe run` — pays one compare against
+`vm.dbg_on == 0` and then runs exactly as it does without this section.
+
+Every command answers the pause loop with `1` ("give me the next command") or `0`
+("start running again"); `dbg_pause` loops while the answer is `1`. `stack` and
+`vars` are answered *inside* a pause, which is why they can run interpreted code
+in the paused frame at all, and why `dbg_gate`'s first test is `dbg_on == 0`: that
+is what stops the debugger from debugging itself. `run` and `continue` are the
+same code path (`dbg_arm_run(vm, 0)`) — `run` is what the initial prompt expects,
+`continue` what a stop expects — and `quit` resumes with the session disarmed, so
+that nothing stops again.
+
+A stop happens **before** the statement runs, and it is announced on the event
+stream as `stopped <line> <reason>`.
+
+### 10.2 The wire format: events and commands
+
+**The events.**
+
+| event | when |
+|---|---|
+| `ready` | before each read of a command file — this is the prompt |
+| `stopped <line> <reason>` | a stop; `reason` is one of `breakpoint`, `step`, `next`, `out` |
+| `breakpoint <line>` | acknowledgement of `break <line>` |
+| `cleared <line>` | acknowledgement of `clear <line>` (one line per breakpoint for `clearall`) |
+| `locals <n>` | the count from `vars`, followed by one `name = value` line per local |
+| `stack <n>` | the count from `stack`, followed by one `<depth> <line> <function>` line per frame |
+| `exited 0` | the run finished; the exit status is the process's own |
+| `error …` | a bad command, or a missing command file |
+
+**The commands.**
+
+```
+break <line> | clear <line> | clearall | run | continue
+step | next | out | stack | vars | quit | help
+```
+
+`break` and `clear` take a line number, `clearall` forgets every breakpoint, and
+`step`, `next` and `out` resume in a stepping mode so that the stop they cause
+arrives with its own reason. Breakpoints are line-based and live for as long as
+the session is armed — except for the `continue` defect that §10.6 records in
+full.
+
+### 10.3 The channel
+
+**stdout carries the debugged program's own output and nothing else; stderr
+carries the protocol's events and nothing else.** That split is not decoration:
+events ride `warn_*`, the one writer the runtime flushes, so the program's output
+reaches the console directly, in order, exactly as it does under `vm.exe run` —
+which is why this protocol needs no `output` event at all. (`vm_main.vel`'s usage
+text claims "events on stdout"; §10.6 records the measurement that shows which
+stream they really take.)
+
+**Commands arrive as files, not on stdin.** The driver writes
+`<cmddir>\cmd.NNN` — three digits, `cmd.001`, `cmd.002`, … — numbered from 1 and
+read in order, so a session directory is a transcript as well as a channel: what
+the driver said, in order, is on disk afterwards. A file may hold several lines;
+they are executed in order, and a line that resumes the program ends the batch.
+
+The driver creates file N only once it knows what it wants to say, because "not
+written yet" and "empty" are the same answer here: `read_text` cannot tell a
+missing file from an empty one. That is also why the debugger blocks at every stop
+until the next file appears, and says `error no command file from the driver;
+running to the end` and continues with the session disarmed when the driver has
+stopped talking.
+
+Three digits is the whole numbering — a session has hundreds of commands, not
+thousands — and fixed width is what keeps arithmetic off the hot path. A digit is
+turned into text by `dbg_digit` rather than by `interned(48 + d)`, because an
+intern handle is only valid if the *program being debugged* has interned that
+string, and this debugger's program is a compiler: it may have interned a handful
+of names and no digit at all.
+
+### 10.4 The command line, and the program's own arguments
+
+`vm.exe debug <file.vel> <cmddir> [program arguments...]` (`SPEC.md` §11). The
+directory is required rather than defaulted, because a debugger with no way to
+hear a command would block forever on the first stop, and the honest version of
+that is to refuse the command line.
+
+The program must not see the directory: a breakpoint is not allowed to change
+what the program prints or returns, and the program's own `argv` is part of what
+it prints. So `argc()` is one shorter under `debug` — `argc() - 2 - vm.dbg_on` —
+and `arg(i)` skips the directory by reading index `2 + vm.dbg_on`.
+
+### 10.5 What it will not hide, and its limits
+
+A float local is shown as `<float 3>` — its integer part, named as a float —
+because `emit_float` is the one formatter with no `warn_` twin. Showing a wrong
+number silently would be worse than showing a partial one out loud, and that
+trade is made the same way everywhere in this mode: `vars` and `stack` print a
+count and then exactly what they have, an array is named (`<array of 3>`) rather
+than expanded, and a struct says how many fields it holds.
+
+**The limits.**
+
+* **64 breakpoints** (`D_BP_MAX`), in insertion order, in reserved arena words at
+  `D_BP_BASE` (254000).
+* **The frame trace** lives under `HEAP0` too, at `D_STATE_BASE` (250000) with
+  `D_STATE_MAX` (4096) words, three words per frame: the function number, the
+  eval function number (what `vars` walks), and the line the call was made on.
+  It is *not* the resolver's `SCOPE_BASE` scratch, which looks like a neighbour
+  and is nothing of the kind.
+* **Nothing is spent when the mode is not used**: every statement pays one
+  compare against `vm.dbg_on == 0` and then runs exactly as it does under `run`.
+
+### 10.6 What is measured broken today
+
+Measured 2026-09-20 against `selfhost\build\vm.exe` (634368 bytes). Two of these
+are defects, and the third is a document that lied about which stream to read.
+
+1. **`continue` disarms every breakpoint in the frame it was issued from.**
+   Mechanism, read from the source and then confirmed by the run:
+   `dbg_arm_run` (`eval.vel:2322`) assigns `vm.dbg_depth = vm.vdepth` — the depth
+   *at the pause* — and `dbg_bp_hit` (`eval.vel:2265`) returns `False` unless
+   `vm.vdepth > vm.dbg_depth`. So a `continue` taken inside `main` refuses every
+   later stop in `main`. The first `run` appears to work only because it is armed
+   before any frame is entered, at depth 0.
+
+   The run: a program whose line 4 executes three times (a `while` loop printing
+   inside it), driven with `break 4` / `break 5` / `run` and then seven
+   `continue` files. Output on stderr, verbatim:
+
+   ```
+   ready
+   breakpoint 4
+   ready
+   breakpoint 5
+   ready
+   stopped 4 breakpoint
+   ready
+   ```
+
+   One stop out of seven commands, and never line 5 — which is executed on
+   every iteration. `step`, `next` and `out` are unaffected, because
+   `dbg_step_stop` compares line numbers and depths for its own reasons; the
+   measured sequence that shows a step still working is `stopped 5 step`.
+
+   *The fix is not written yet and is not asserted here.* The depth test belongs
+   to step semantics, and the guard against re-stopping on the statement that was
+   just resumed is already structural — `dbg_gate` is called before a statement
+   runs and is not re-entered for that same statement — but that reading has to
+   be confirmed by a test that re-fires a breakpoint three times, and by the
+   interleaved `step`/`continue` cases that would break if the guard were simply
+   deleted.
+
+2. **`vars` reports `locals 0`.** At a stop inside `main` where `i` is certainly
+   in scope (declared two lines above the breakpoint and read by the statement
+   that stopped), `vars` answers `locals 0` — measured twice, at two different
+   stops. The cause is not yet localized; `dbg_dump_vars` walks the frame record
+   filed by `dbg_tr_eval(mem, vm.vdepth)`, and the defect is either there or in
+   the record.
+
+3. **The usage text names the wrong stream.** `vm_main.vel` prints "events on
+   stdout"; with the two streams redirected to separate files, every event landed
+   in the stderr file and only the program's own bytes in the stdout file. An
+   editor that reads stdout for events sees the program's output and no protocol
+   at all.
+
+`SPEC.md` §11 and `ROADMAP.md` stream 4.3 both treat this mode as *not ready for
+an editor to drive*, and that verdict stands until 1 and 2 are fixed and a
+harness drives the protocol end to end. What has changed is that the verdict is
+now based on two named defects with a reproduction each, instead of on the
+absence of a section describing the protocol.
+
 

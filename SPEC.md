@@ -451,10 +451,14 @@ selfhost\build\vm.exe build  file.vel [runtime-dir]
 * A missing mode, or one the compiler does not know, prints that list and exits
   non-zero.
 * The sources also carry a **`debug` mode** — the same interpreter, stopped, with
-  events on stdout and commands read from files in a directory the caller names
-  (`vm.exe debug file.vel <cmddir> [program arguments...]`). `DESIGN.md` §7.5 and
-  `ROADMAP.md` stream 4.3 treat it as not yet ready for an editor to drive; this
-  document only records that the mode exists in the sources.
+  events on **stderr** and commands read from files in a directory the caller
+  names (`vm.exe debug file.vel <cmddir> [program arguments...]`).
+  `DESIGN.md` §10 is the protocol: the `cmd.NNN` file channel, the events, the
+  commands, the command line, and the two defects measured on 2026-09-20 that
+  still stand between it and an editor — `continue` disarms the breakpoints of
+  the frame it was issued from, and `vars` reports `locals 0` at a stop where a
+  local is in scope. This document records that the mode exists and what it
+  refuses to promise; the editor-facing verdict is §10.6's.
 
 Building the compiler itself is `tools\build.ps1` (§10, `DESIGN.md` §7): one
 command that bootstraps the compiler from the checked-in C, links the parts,
