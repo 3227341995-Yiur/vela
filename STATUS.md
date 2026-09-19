@@ -107,12 +107,39 @@ wedge.
   not describe the variant, and the conclusion drawn from it was therefore false.
   A second measurement, taken independently while isolating the same cost, produced
   the table above and the true split.  Labels on experiments are load-bearing.
-- The repository still has **no version control**.  `git.exe` exists on this
-  machine; nothing has been committed because nothing has been initialised.
+- **Version control exists now.**  The repository had none until this session — which
+  mattered, because three test sources had already been lost and could not be
+  recovered.  `git.exe` is on this machine, the tree is committed (see `git log`),
+  and `.gitignore` was written so that a fresh checkout keeps all 65 corpus sources
+  while ignoring every generated file except the two the build needs to start
+  (`selfhost\build\vm.c` and `selfhost\build\vm.exe`).
 
 ## 5. Defects found by running things, this round
 
 Every one of these was invisible to reading:
+
+- **`build` can report failure for a build that succeeded, and leaves the executable
+  behind when it does.**  Measured with `PATH` stripped to `C:\Windows\System32;C:\Windows`
+  (so `cl` is reachable only through the absolute `vcvars64.bat`) in a fresh directory:
+  `vm.exe build hello.vel` exits **2** with `vela: build: the C compiler refused
+  <…>\hello.vel.c` and `vela: panic: build: no C compiler on this host could build the
+  emitted C`, while `hello.exe` (150016 B) **is written and runs correctly**
+  (`hello from Vela` / `sum 0..99 = 4950`, exit 0).  The identical sequence typed into a
+  `.bat` by hand — `call vcvars64.bat`, `set VSLANG=1033`, the same `cl` line — returns
+  `ERRORLEVEL=0` at every step and produces the same executable, so the *compiler* is
+  not at fault; the driver's verdict is.  The shape is visible in `vm_main.vel`: the
+  exit code decides at line 722-729 and the artifact is only checked afterwards, at
+  line 730, so a non-zero code with a fresh executable on disk panics before the check
+  that would have said otherwise — leaving the user with a working `hello.exe` beside a
+  message insisting nothing was built.  Fix direction, to be applied when the build path
+  is not in use by other work: **delete the target before invoking the C compiler**
+  (Vela has no `stat`, so "the file exists" only proves freshness if nothing was there
+  before), then let the artifact decide and the exit code explain.  Deliberately not
+  fixed yet: two agents were mid-run and the build path is load-bearing.
+- **`vm.exe debug` is advertised and does nothing.**  The usage line lists
+  `lex|count|parse|nodes|emit-c|run|check|debug|build`, and `vm.exe debug
+  examples\hello.vel` exits 2 with **no output at all**.  The IDEA plugin's refusal to
+  offer a Debug button is therefore honest, and stays honest until the mode exists.
 
 - `runtime/vela_runtime.h` was missing `vela_bounds_check`, so **every compiled
   program** failed to link; and `vela_sub_overflows` was wrong, so every compiled
