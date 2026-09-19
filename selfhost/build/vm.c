@@ -283,6 +283,9 @@ static vela_str vl_ck_op_quoted(int64_t);
 static void vl_ck_arith(int64_t*, vela_str, int64_t, int64_t, int64_t, int64_t, int64_t);
 static int64_t vl_ck_etype(int64_t*, int64_t*, struct vl_VM, int64_t);
 static void vl_ck_binop(int64_t*, int64_t*, vela_str, struct vl_VM, int64_t);
+static vela_str vl_ck_unop_msg(int64_t, int64_t);
+static void vl_ck_unary(int64_t*, int64_t*, vela_str, struct vl_VM, int64_t);
+static void vl_ck_compare(int64_t*, int64_t*, vela_str, struct vl_VM, int64_t);
 static void vl_ck_shift_count(int64_t*, vela_str, int64_t, int64_t);
 static bool vl_ck_has_break(int64_t*, int64_t);
 static bool vl_ck_always_returns(int64_t*, int64_t);
@@ -501,6 +504,9 @@ static void vl_emit_while(int64_t*, int64_t*, double*, vela_str, vela_str, int64
 static bool vl_par_step_is_one(int64_t*, int64_t);
 static bool vl_par_chain_ok(int64_t*, int64_t);
 static void vl_emit_for_omp(int64_t*, int64_t*, double*, vela_str, vela_str, int64_t*, struct vl_VM*, int64_t, int64_t);
+static bool vl_for_body_continues(int64_t*, int64_t);
+static void vl_emit_for_cond(int64_t*, int64_t);
+static void vl_emit_for_incr(int64_t*, vela_str, int64_t, int64_t);
 static void vl_emit_for(int64_t*, int64_t*, double*, vela_str, vela_str, int64_t*, struct vl_VM*, int64_t, int64_t);
 static void vl_emit_array_decl(int64_t*, int64_t*, double*, vela_str, vela_str, int64_t*, struct vl_VM*, int64_t, int64_t);
 static void vl_emit_stmt(int64_t*, int64_t*, double*, vela_str, vela_str, int64_t*, struct vl_VM*, int64_t, int64_t);
@@ -4472,7 +4478,34 @@ static vela_str vl_ck_op_text(int64_t vl_op) {
     if ((vl_op == 35LL)) {
         return vela_str_lit("<<", 2);
     }
-    return vela_str_lit(">>", 2);
+    if ((vl_op == 36LL)) {
+        return vela_str_lit(">>", 2);
+    }
+    if ((vl_op == 6LL)) {
+        return vela_str_lit("<", 1);
+    }
+    if ((vl_op == 7LL)) {
+        return vela_str_lit(">", 1);
+    }
+    if ((vl_op == 22LL)) {
+        return vela_str_lit("==", 2);
+    }
+    if ((vl_op == 23LL)) {
+        return vela_str_lit("!=", 2);
+    }
+    if ((vl_op == 24LL)) {
+        return vela_str_lit("<=", 2);
+    }
+    if ((vl_op == 25LL)) {
+        return vela_str_lit(">=", 2);
+    }
+    if ((vl_op == 15LL)) {
+        return vela_str_lit("not", 3);
+    }
+    if ((vl_op == 32LL)) {
+        return vela_str_lit("~", 1);
+    }
+    return vela_str_lit("?", 1);
 }
 
 static vela_str vl_ck_op_msg(vela_str vl_pre, vela_str vl_mid, int64_t vl_lt, int64_t vl_rt) {
@@ -4578,8 +4611,8 @@ static int64_t vl_ck_etype(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, 
         return vl_K_NONE();
     }
     if ((vl_k == 25LL)) {
-        int64_t vl_ix_12719;
-        int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_12719 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3797)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3797)), 655360, "selfhost/vm.vel", 3797), vl_nd[vl_ix_12719]));
+        int64_t vl_ix_12773;
+        int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_12773 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3833)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3833)), 655360, "selfhost/vm.vel", 3833), vl_nd[vl_ix_12773]));
         if ((vl_i < 0LL)) {
             return vl_K_BAD();
         }
@@ -4590,12 +4623,12 @@ static int64_t vl_ck_etype(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, 
         return vl_ck;
     }
     if ((vl_k == 27LL)) {
-        int64_t vl_ix_12760;
-        int64_t vl_op = (vela_bounds_check((vl_ix_12760 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3810)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3810)), 655360, "selfhost/vm.vel", 3810), vl_nd[vl_ix_12760]);
-        int64_t vl_ix_12773;
-        int64_t vl_lt = vl_ck_etype(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_12773 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3811)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3811)), 655360, "selfhost/vm.vel", 3811), vl_nd[vl_ix_12773]));
-        int64_t vl_ix_12787;
-        int64_t vl_rt = vl_ck_etype(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_12787 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3812)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3812)), 655360, "selfhost/vm.vel", 3812), vl_nd[vl_ix_12787]));
+        int64_t vl_ix_12814;
+        int64_t vl_op = (vela_bounds_check((vl_ix_12814 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3846)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3846)), 655360, "selfhost/vm.vel", 3846), vl_nd[vl_ix_12814]);
+        int64_t vl_ix_12827;
+        int64_t vl_lt = vl_ck_etype(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_12827 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3847)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3847)), 655360, "selfhost/vm.vel", 3847), vl_nd[vl_ix_12827]));
+        int64_t vl_ix_12841;
+        int64_t vl_rt = vl_ck_etype(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_12841 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3848)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3848)), 655360, "selfhost/vm.vel", 3848), vl_nd[vl_ix_12841]));
         if (((vl_lt == vl_K_BAD()) || (vl_rt == vl_K_BAD()))) {
             return vl_K_BAD();
         }
@@ -4640,14 +4673,14 @@ static int64_t vl_ck_etype(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, 
         return vl_K_BAD();
     }
     if ((vl_k == 28LL)) {
-        int64_t vl_ix_12948;
-        int64_t vl_op = (vela_bounds_check((vl_ix_12948 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3857)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3857)), 655360, "selfhost/vm.vel", 3857), vl_nd[vl_ix_12948]);
+        int64_t vl_ix_13002;
+        int64_t vl_op = (vela_bounds_check((vl_ix_13002 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3893)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3893)), 655360, "selfhost/vm.vel", 3893), vl_nd[vl_ix_13002]);
         if ((vl_op == 15LL)) {
             return vl_K_BOOL();
         }
         if ((((vl_op == 1LL) || (vl_op == 2LL)) || (vl_op == 32LL))) {
-            int64_t vl_ix_12979;
-            int64_t vl_inner = vl_ck_etype(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_12979 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3862)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3862)), 655360, "selfhost/vm.vel", 3862), vl_nd[vl_ix_12979]));
+            int64_t vl_ix_13033;
+            int64_t vl_inner = vl_ck_etype(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_13033 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3898)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3898)), 655360, "selfhost/vm.vel", 3898), vl_nd[vl_ix_13033]));
             if (vl_ck_is_num_kind(vl_inner)) {
                 return vl_inner;
             }
@@ -4661,8 +4694,8 @@ static int64_t vl_ck_etype(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, 
         return vl_K_BOOL();
     }
     if ((vl_k == 31LL)) {
-        int64_t vl_ix_13021;
-        int64_t vl_base = vl_ck_etype(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_13021 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3876)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3876)), 655360, "selfhost/vm.vel", 3876), vl_nd[vl_ix_13021]));
+        int64_t vl_ix_13075;
+        int64_t vl_base = vl_ck_etype(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_13075 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3912)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3912)), 655360, "selfhost/vm.vel", 3912), vl_nd[vl_ix_13075]));
         if (vl_ck_is_array_ck(vl_base)) {
             return vl_elem_kind_of(vl_unpack_kind(vl_base));
         }
@@ -4671,12 +4704,12 @@ static int64_t vl_ck_etype(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, 
 }
 
 static void vl_ck_binop(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM vl_vm, int64_t vl_e) {
-    int64_t vl_ix_13051;
-    int64_t vl_op = (vela_bounds_check((vl_ix_13051 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3886)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3886)), 655360, "selfhost/vm.vel", 3886), vl_nd[vl_ix_13051]);
-    int64_t vl_ix_13060;
-    int64_t vl_lhs = (vela_bounds_check((vl_ix_13060 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3887)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3887)), 655360, "selfhost/vm.vel", 3887), vl_nd[vl_ix_13060]);
-    int64_t vl_ix_13069;
-    int64_t vl_rhs = (vela_bounds_check((vl_ix_13069 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3888)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3888)), 655360, "selfhost/vm.vel", 3888), vl_nd[vl_ix_13069]);
+    int64_t vl_ix_13105;
+    int64_t vl_op = (vela_bounds_check((vl_ix_13105 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3922)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3922)), 655360, "selfhost/vm.vel", 3922), vl_nd[vl_ix_13105]);
+    int64_t vl_ix_13114;
+    int64_t vl_lhs = (vela_bounds_check((vl_ix_13114 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3923)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3923)), 655360, "selfhost/vm.vel", 3923), vl_nd[vl_ix_13114]);
+    int64_t vl_ix_13123;
+    int64_t vl_rhs = (vela_bounds_check((vl_ix_13123 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3924)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3924)), 655360, "selfhost/vm.vel", 3924), vl_nd[vl_ix_13123]);
     int64_t vl_line = vl_nd_line(vl_nd, vl_e);
     int64_t vl_lt = vl_ck_etype(vl_nd, vl_mem, vl_vm, vl_lhs);
     int64_t vl_rt = vl_ck_etype(vl_nd, vl_mem, vl_vm, vl_rhs);
@@ -4688,8 +4721,8 @@ static void vl_ck_binop(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struc
             (void)(vl_ck_safety(vl_path, vl_line, vela_str_lit("division by constant zero", 25)));
         }
         if ((vl_nd_kind(vl_nd, vl_rhs) == 21LL)) {
-            int64_t vl_ix_13143;
-            if ((((vela_bounds_check((vl_ix_13143 = vela_add_range((vela_mul_range((vl_rhs), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3909)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3909)), 655360, "selfhost/vm.vel", 3909), vl_nd[vl_ix_13143]) & 2LL) == 2LL)) {
+            int64_t vl_ix_13197;
+            if ((((vela_bounds_check((vl_ix_13197 = vela_add_range((vela_mul_range((vl_rhs), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3945)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3945)), 655360, "selfhost/vm.vel", 3945), vl_nd[vl_ix_13197]) & 2LL) == 2LL)) {
                 (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_rhs), vela_str_lit("float division by constant zero", 31)));
             }
         }
@@ -4716,6 +4749,71 @@ static void vl_ck_binop(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struc
     }
 }
 
+static vela_str vl_ck_unop_msg(int64_t vl_op, int64_t vl_t) {
+    return (vela_concat((vela_concat(vl_ck_op_pre(vl_op), vela_str_lit(" cannot be applied to ", 22))), vl_ck_spell_ck(vl_t)));
+}
+
+static void vl_ck_unary(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM vl_vm, int64_t vl_e) {
+    int64_t vl_ix_13305;
+    int64_t vl_op = (vela_bounds_check((vl_ix_13305 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4012)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4012)), 655360, "selfhost/vm.vel", 4012), vl_nd[vl_ix_13305]);
+    int64_t vl_ix_13318;
+    int64_t vl_t = vl_ck_etype(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_13318 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4013)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4013)), 655360, "selfhost/vm.vel", 4013), vl_nd[vl_ix_13318]));
+    if ((!vl_ck_is_scalar_kind(vl_t))) {
+        return;
+    }
+    if ((vl_op == 15LL)) {
+        if ((vl_t != vl_K_BOOL())) {
+            (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_unop_msg(vl_op, vl_t)));
+        }
+        return;
+    }
+    if ((vl_op == 32LL)) {
+        if ((!vl_ck_is_int_kind(vl_t))) {
+            (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_unop_msg(vl_op, vl_t)));
+        }
+        return;
+    }
+    if (vl_ck_is_num_kind(vl_t)) {
+        return;
+    }
+    (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_unop_msg(vl_op, vl_t)));
+}
+
+static void vl_ck_compare(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM vl_vm, int64_t vl_e) {
+    int64_t vl_ix_13401;
+    int64_t vl_op = (vela_bounds_check((vl_ix_13401 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4048)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4048)), 655360, "selfhost/vm.vel", 4048), vl_nd[vl_ix_13401]);
+    int64_t vl_line = vl_nd_line(vl_nd, vl_e);
+    int64_t vl_ix_13420;
+    int64_t vl_lt = vl_ck_etype(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_13420 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4050)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4050)), 655360, "selfhost/vm.vel", 4050), vl_nd[vl_ix_13420]));
+    int64_t vl_ix_13434;
+    int64_t vl_rt = vl_ck_etype(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_13434 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4051)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4051)), 655360, "selfhost/vm.vel", 4051), vl_nd[vl_ix_13434]));
+    if (((!vl_ck_is_scalar_kind(vl_lt)) || (!vl_ck_is_scalar_kind(vl_rt)))) {
+        return;
+    }
+    bool vl_eq = ((vl_op == 22LL) || (vl_op == 23LL));
+    if (((vl_lt == vl_K_STR()) || (vl_rt == vl_K_STR()))) {
+        if ((((vl_lt == vl_K_STR()) && (vl_rt == vl_K_STR())) && vl_eq)) {
+            return;
+        }
+        (void)(vl_ck_type(vl_path, vl_line, vl_ck_op_msg(vl_ck_op_pre(vl_op), vela_str_lit(" cannot be applied to ", 22), vl_lt, vl_rt)));
+        return;
+    }
+    if ((vl_lt != vl_rt)) {
+        if (vl_ck_adapt_pair(vl_nd, vl_e, vl_lt, vl_rt)) {
+            return;
+        }
+        (void)(vl_ck_type(vl_path, vl_line, vl_ck_op_msg(vl_ck_op_pre(vl_op), vela_str_lit(" mixes ", 7), vl_lt, vl_rt)));
+        return;
+    }
+    if (vl_ck_is_num_kind(vl_lt)) {
+        return;
+    }
+    if (((vl_lt == vl_K_BOOL()) && vl_eq)) {
+        return;
+    }
+    (void)(vl_ck_type(vl_path, vl_line, vl_ck_op_msg(vl_ck_op_pre(vl_op), vela_str_lit(" cannot be applied to ", 22), vl_lt, vl_rt)));
+}
+
 static void vl_ck_shift_count(int64_t* vl_nd, vela_str vl_path, int64_t vl_line, int64_t vl_rhs) {
     int64_t vl_v = vl_ck_const_int(vl_nd, vl_rhs);
     if ((vl_v == vl_ck_no_const())) {
@@ -4738,12 +4836,12 @@ static bool vl_ck_has_break(int64_t* vl_nd, int64_t vl_head) {
             return true;
         }
         if ((vl_k == 10LL)) {
-            int64_t vl_ix_13310;
-            if (vl_ck_has_break(vl_nd, (vela_bounds_check((vl_ix_13310 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3972)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3972)), 655360, "selfhost/vm.vel", 3972), vl_nd[vl_ix_13310]))) {
+            int64_t vl_ix_13633;
+            if (vl_ck_has_break(vl_nd, (vela_bounds_check((vl_ix_13633 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4116)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4116)), 655360, "selfhost/vm.vel", 4116), vl_nd[vl_ix_13633]))) {
                 return true;
             }
-            int64_t vl_ix_13323;
-            if (vl_ck_has_break(vl_nd, (vela_bounds_check((vl_ix_13323 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3975)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3975)), 655360, "selfhost/vm.vel", 3975), vl_nd[vl_ix_13323]))) {
+            int64_t vl_ix_13646;
+            if (vl_ck_has_break(vl_nd, (vela_bounds_check((vl_ix_13646 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4119)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4119)), 655360, "selfhost/vm.vel", 4119), vl_nd[vl_ix_13646]))) {
                 return true;
             }
         }
@@ -4760,11 +4858,11 @@ static bool vl_ck_always_returns(int64_t* vl_nd, int64_t vl_head) {
             return true;
         }
         if ((vl_k == 10LL)) {
-            int64_t vl_ix_13368;
-            int64_t vl_e = (vela_bounds_check((vl_ix_13368 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3992)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3992)), 655360, "selfhost/vm.vel", 3992), vl_nd[vl_ix_13368]);
+            int64_t vl_ix_13691;
+            int64_t vl_e = (vela_bounds_check((vl_ix_13691 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4136)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4136)), 655360, "selfhost/vm.vel", 4136), vl_nd[vl_ix_13691]);
             if ((vl_e > 0LL)) {
-                int64_t vl_ix_13382;
-                if (vl_ck_always_returns(vl_nd, (vela_bounds_check((vl_ix_13382 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3994)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 3994)), 655360, "selfhost/vm.vel", 3994), vl_nd[vl_ix_13382]))) {
+                int64_t vl_ix_13705;
+                if (vl_ck_always_returns(vl_nd, (vela_bounds_check((vl_ix_13705 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4138)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4138)), 655360, "selfhost/vm.vel", 4138), vl_nd[vl_ix_13705]))) {
                     if (vl_ck_always_returns(vl_nd, vl_e)) {
                         return true;
                     }
@@ -4772,13 +4870,13 @@ static bool vl_ck_always_returns(int64_t* vl_nd, int64_t vl_head) {
             }
         }
         if ((vl_k == 11LL)) {
-            int64_t vl_ix_13405;
-            if ((vl_nd_kind(vl_nd, (vela_bounds_check((vl_ix_13405 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4002)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4002)), 655360, "selfhost/vm.vel", 4002), vl_nd[vl_ix_13405])) == 23LL)) {
-                int64_t vl_ix_13421;
-                int64_t vl_ix_13416;
-                if (((vela_bounds_check((vl_ix_13421 = vela_add_range((vela_mul_range(((vela_bounds_check((vl_ix_13416 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4003)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4003)), 655360, "selfhost/vm.vel", 4003), vl_nd[vl_ix_13416])), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4003)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4003)), 655360, "selfhost/vm.vel", 4003), vl_nd[vl_ix_13421]) == 1LL)) {
-                    int64_t vl_ix_13432;
-                    if ((!vl_ck_has_break(vl_nd, (vela_bounds_check((vl_ix_13432 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4004)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4004)), 655360, "selfhost/vm.vel", 4004), vl_nd[vl_ix_13432])))) {
+            int64_t vl_ix_13728;
+            if ((vl_nd_kind(vl_nd, (vela_bounds_check((vl_ix_13728 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4146)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4146)), 655360, "selfhost/vm.vel", 4146), vl_nd[vl_ix_13728])) == 23LL)) {
+                int64_t vl_ix_13744;
+                int64_t vl_ix_13739;
+                if (((vela_bounds_check((vl_ix_13744 = vela_add_range((vela_mul_range(((vela_bounds_check((vl_ix_13739 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4147)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4147)), 655360, "selfhost/vm.vel", 4147), vl_nd[vl_ix_13739])), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4147)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4147)), 655360, "selfhost/vm.vel", 4147), vl_nd[vl_ix_13744]) == 1LL)) {
+                    int64_t vl_ix_13755;
+                    if ((!vl_ck_has_break(vl_nd, (vela_bounds_check((vl_ix_13755 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4148)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4148)), 655360, "selfhost/vm.vel", 4148), vl_nd[vl_ix_13755])))) {
                         return true;
                     }
                 }
@@ -4790,8 +4888,8 @@ static bool vl_ck_always_returns(int64_t* vl_nd, int64_t vl_head) {
 }
 
 static bool vl_ck_callee_impure(int64_t* vl_nd, int64_t* vl_mem, int64_t vl_e) {
-    int64_t vl_ix_13460;
-    int64_t vl_callee = (vela_bounds_check((vl_ix_13460 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4017)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4017)), 655360, "selfhost/vm.vel", 4017), vl_nd[vl_ix_13460]);
+    int64_t vl_ix_13783;
+    int64_t vl_callee = (vela_bounds_check((vl_ix_13783 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4161)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4161)), 655360, "selfhost/vm.vel", 4161), vl_nd[vl_ix_13783]);
     if ((vl_nd_kind(vl_nd, vl_callee) != 25LL)) {
         return false;
     }
@@ -4826,24 +4924,24 @@ static int64_t vl_ck_cond_kind(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_
         return vl_K_BOOL();
     }
     if ((vl_k == 28LL)) {
-        int64_t vl_ix_13570;
-        if (((vela_bounds_check((vl_ix_13570 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4059)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4059)), 655360, "selfhost/vm.vel", 4059), vl_nd[vl_ix_13570]) == 15LL)) {
+        int64_t vl_ix_13893;
+        if (((vela_bounds_check((vl_ix_13893 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4203)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4203)), 655360, "selfhost/vm.vel", 4203), vl_nd[vl_ix_13893]) == 15LL)) {
             return vl_K_BOOL();
         }
-        int64_t vl_ix_13588;
-        return vl_ck_cond_kind(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_13588 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4062)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4062)), 655360, "selfhost/vm.vel", 4062), vl_nd[vl_ix_13588]));
+        int64_t vl_ix_13911;
+        return vl_ck_cond_kind(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_13911 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4206)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4206)), 655360, "selfhost/vm.vel", 4206), vl_nd[vl_ix_13911]));
     }
     if ((vl_k == 27LL)) {
-        int64_t vl_ix_13600;
-        if (((vela_bounds_check((vl_ix_13600 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4065)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4065)), 655360, "selfhost/vm.vel", 4065), vl_nd[vl_ix_13600]) == vl_ck_op_div())) {
+        int64_t vl_ix_13923;
+        if (((vela_bounds_check((vl_ix_13923 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4209)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4209)), 655360, "selfhost/vm.vel", 4209), vl_nd[vl_ix_13923]) == vl_ck_op_div())) {
             return vl_K_FLT();
         }
-        int64_t vl_ix_13619;
-        return vl_ck_cond_kind(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_13619 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4068)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4068)), 655360, "selfhost/vm.vel", 4068), vl_nd[vl_ix_13619]));
+        int64_t vl_ix_13942;
+        return vl_ck_cond_kind(vl_nd, vl_mem, vl_vm, (vela_bounds_check((vl_ix_13942 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4212)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4212)), 655360, "selfhost/vm.vel", 4212), vl_nd[vl_ix_13942]));
     }
     if ((vl_k == 25LL)) {
-        int64_t vl_ix_13634;
-        int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_13634 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4071)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4071)), 655360, "selfhost/vm.vel", 4071), vl_nd[vl_ix_13634]));
+        int64_t vl_ix_13957;
+        int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_13957 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4215)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4215)), 655360, "selfhost/vm.vel", 4215), vl_nd[vl_ix_13957]));
         if ((vl_i >= 0LL)) {
             int64_t vl_kk = vl_unpack_kind(vl_sc_ckind(vl_mem, vl_i));
             if (vl_ck_is_array_ck(vl_sc_ckind(vl_mem, vl_i))) {
@@ -4856,8 +4954,8 @@ static int64_t vl_ck_cond_kind(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_
 }
 
 static void vl_ck_condition(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM vl_vm, int64_t vl_s, vela_str vl_word) {
-    int64_t vl_ix_13679;
-    int64_t vl_e = (vela_bounds_check((vl_ix_13679 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4085)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4085)), 655360, "selfhost/vm.vel", 4085), vl_nd[vl_ix_13679]);
+    int64_t vl_ix_14002;
+    int64_t vl_e = (vela_bounds_check((vl_ix_14002 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4229)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4229)), 655360, "selfhost/vm.vel", 4229), vl_nd[vl_ix_14002]);
     int64_t vl_k = vl_ck_cond_kind(vl_nd, vl_mem, vl_vm, vl_e);
     if ((vl_k == vl_K_BAD())) {
         return;
@@ -4869,13 +4967,13 @@ static void vl_ck_condition(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, s
 }
 
 static void vl_ck_index(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM vl_vm, int64_t vl_e) {
-    int64_t vl_ix_13737;
-    int64_t vl_base = (vela_bounds_check((vl_ix_13737 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4103)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4103)), 655360, "selfhost/vm.vel", 4103), vl_nd[vl_ix_13737]);
+    int64_t vl_ix_14060;
+    int64_t vl_base = (vela_bounds_check((vl_ix_14060 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4247)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4247)), 655360, "selfhost/vm.vel", 4247), vl_nd[vl_ix_14060]);
     if ((vl_nd_kind(vl_nd, vl_base) != 25LL)) {
         return;
     }
-    int64_t vl_ix_13757;
-    int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_13757 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4107)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4107)), 655360, "selfhost/vm.vel", 4107), vl_nd[vl_ix_13757]));
+    int64_t vl_ix_14080;
+    int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_14080 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4251)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4251)), 655360, "selfhost/vm.vel", 4251), vl_nd[vl_ix_14080]));
     if ((vl_i < 0LL)) {
         return;
     }
@@ -4887,8 +4985,8 @@ static void vl_ck_index(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struc
     if ((vl_ln <= 0LL)) {
         return;
     }
-    int64_t vl_ix_13794;
-    int64_t vl_idx = (vela_bounds_check((vl_ix_13794 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4119)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4119)), 655360, "selfhost/vm.vel", 4119), vl_nd[vl_ix_13794]);
+    int64_t vl_ix_14117;
+    int64_t vl_idx = (vela_bounds_check((vl_ix_14117 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4263)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4263)), 655360, "selfhost/vm.vel", 4263), vl_nd[vl_ix_14117]);
     int64_t vl_v = vl_ck_const_int(vl_nd, vl_idx);
     if ((vl_v == vl_ck_no_const())) {
         return;
@@ -4908,28 +5006,28 @@ static void vl_ck_expr(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct
     }
     int64_t vl_k = vl_nd_kind(vl_nd, vl_e);
     if ((vl_k == 31LL)) {
-        int64_t vl_ix_13893;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_13893 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4150)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4150)), 655360, "selfhost/vm.vel", 4150), vl_nd[vl_ix_13893])));
-        int64_t vl_ix_13907;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_13907 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4151)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4151)), 655360, "selfhost/vm.vel", 4151), vl_nd[vl_ix_13907])));
+        int64_t vl_ix_14216;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14216 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4294)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4294)), 655360, "selfhost/vm.vel", 4294), vl_nd[vl_ix_14216])));
+        int64_t vl_ix_14230;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14230 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4295)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4295)), 655360, "selfhost/vm.vel", 4295), vl_nd[vl_ix_14230])));
         (void)(vl_ck_index(vl_nd, vl_mem, vl_path, vl_vm, vl_e));
         return;
     }
     if ((vl_k == 26LL)) {
-        int64_t vl_ix_13929;
-        int64_t vl_callee = (vela_bounds_check((vl_ix_13929 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4156)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4156)), 655360, "selfhost/vm.vel", 4156), vl_nd[vl_ix_13929]);
+        int64_t vl_ix_14252;
+        int64_t vl_callee = (vela_bounds_check((vl_ix_14252 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4300)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4300)), 655360, "selfhost/vm.vel", 4300), vl_nd[vl_ix_14252]);
         if ((vl_nd_kind(vl_nd, vl_callee) == 32LL)) {
-            int64_t vl_ix_13949;
-            (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_13949 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4160)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4160)), 655360, "selfhost/vm.vel", 4160), vl_nd[vl_ix_13949])));
+            int64_t vl_ix_14272;
+            (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14272 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4304)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4304)), 655360, "selfhost/vm.vel", 4304), vl_nd[vl_ix_14272])));
         }
         if ((vl_vm.f_cpure == 1LL)) {
             if (vl_ck_callee_impure(vl_nd, vl_mem, vl_e)) {
-                int64_t vl_ix_13976;
-                (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_quoted(vela_str_lit("a 'pure' function may not call '", 32), (vela_bounds_check((vl_ix_13976 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4166)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4166)), 655360, "selfhost/vm.vel", 4166), vl_nd[vl_ix_13976]), vela_str_lit("', which is not declared 'pure'", 31))));
+                int64_t vl_ix_14299;
+                (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_quoted(vela_str_lit("a 'pure' function may not call '", 32), (vela_bounds_check((vl_ix_14299 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4310)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4310)), 655360, "selfhost/vm.vel", 4310), vl_nd[vl_ix_14299]), vela_str_lit("', which is not declared 'pure'", 31))));
             }
         }
-        int64_t vl_ix_13989;
-        int64_t vl_a = (vela_bounds_check((vl_ix_13989 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4170)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4170)), 655360, "selfhost/vm.vel", 4170), vl_nd[vl_ix_13989]);
+        int64_t vl_ix_14312;
+        int64_t vl_a = (vela_bounds_check((vl_ix_14312 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4314)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4314)), 655360, "selfhost/vm.vel", 4314), vl_nd[vl_ix_14312]);
         while ((vl_a > 0LL)) {
             (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, vl_a));
             vl_a = vl_nd_nx(vl_nd, vl_a);
@@ -4938,8 +5036,8 @@ static void vl_ck_expr(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct
         return;
     }
     if ((vl_k == 33LL)) {
-        int64_t vl_ix_14029;
-        int64_t vl_el = (vela_bounds_check((vl_ix_14029 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4181)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4181)), 655360, "selfhost/vm.vel", 4181), vl_nd[vl_ix_14029]);
+        int64_t vl_ix_14352;
+        int64_t vl_el = (vela_bounds_check((vl_ix_14352 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4325)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4325)), 655360, "selfhost/vm.vel", 4325), vl_nd[vl_ix_14352]);
         while ((vl_el > 0LL)) {
             (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, vl_el));
             vl_el = vl_nd_nx(vl_nd, vl_el);
@@ -4947,35 +5045,37 @@ static void vl_ck_expr(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct
         return;
     }
     if ((vl_k == 27LL)) {
-        int64_t vl_ix_14066;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14066 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4189)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4189)), 655360, "selfhost/vm.vel", 4189), vl_nd[vl_ix_14066])));
-        int64_t vl_ix_14080;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14080 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4190)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4190)), 655360, "selfhost/vm.vel", 4190), vl_nd[vl_ix_14080])));
+        int64_t vl_ix_14389;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14389 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4333)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4333)), 655360, "selfhost/vm.vel", 4333), vl_nd[vl_ix_14389])));
+        int64_t vl_ix_14403;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14403 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4334)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4334)), 655360, "selfhost/vm.vel", 4334), vl_nd[vl_ix_14403])));
         (void)(vl_ck_binop(vl_nd, vl_mem, vl_path, vl_vm, vl_e));
         return;
     }
     if ((vl_k == 28LL)) {
-        int64_t vl_ix_14107;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14107 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4195)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4195)), 655360, "selfhost/vm.vel", 4195), vl_nd[vl_ix_14107])));
+        int64_t vl_ix_14430;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14430 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4339)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4339)), 655360, "selfhost/vm.vel", 4339), vl_nd[vl_ix_14430])));
+        (void)(vl_ck_unary(vl_nd, vl_mem, vl_path, vl_vm, vl_e));
         return;
     }
     if ((vl_k == 29LL)) {
-        int64_t vl_ix_14126;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14126 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4199)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4199)), 655360, "selfhost/vm.vel", 4199), vl_nd[vl_ix_14126])));
-        int64_t vl_ix_14140;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14140 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4200)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4200)), 655360, "selfhost/vm.vel", 4200), vl_nd[vl_ix_14140])));
+        int64_t vl_ix_14457;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14457 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4346)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4346)), 655360, "selfhost/vm.vel", 4346), vl_nd[vl_ix_14457])));
+        int64_t vl_ix_14471;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14471 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4347)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4347)), 655360, "selfhost/vm.vel", 4347), vl_nd[vl_ix_14471])));
         return;
     }
     if ((vl_k == 30LL)) {
-        int64_t vl_ix_14159;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14159 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4204)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4204)), 655360, "selfhost/vm.vel", 4204), vl_nd[vl_ix_14159])));
-        int64_t vl_ix_14173;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14173 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4205)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4205)), 655360, "selfhost/vm.vel", 4205), vl_nd[vl_ix_14173])));
+        int64_t vl_ix_14490;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14490 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4351)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4351)), 655360, "selfhost/vm.vel", 4351), vl_nd[vl_ix_14490])));
+        int64_t vl_ix_14504;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14504 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4352)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4352)), 655360, "selfhost/vm.vel", 4352), vl_nd[vl_ix_14504])));
+        (void)(vl_ck_compare(vl_nd, vl_mem, vl_path, vl_vm, vl_e));
         return;
     }
     if ((vl_k == 32LL)) {
-        int64_t vl_ix_14187;
-        int64_t vl_base = (vela_bounds_check((vl_ix_14187 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4212)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4212)), 655360, "selfhost/vm.vel", 4212), vl_nd[vl_ix_14187]);
+        int64_t vl_ix_14526;
+        int64_t vl_base = (vela_bounds_check((vl_ix_14526 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4360)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4360)), 655360, "selfhost/vm.vel", 4360), vl_nd[vl_ix_14526]);
         int64_t vl_bk = vl_nd_kind(vl_nd, vl_base);
         if ((((vl_bk != 25LL) && (vl_bk != 31LL)) && (vl_bk != 32LL))) {
             (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_e), vela_str_lit("cannot read a field from a temporary struct", 43)));
@@ -4984,19 +5084,19 @@ static void vl_ck_expr(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct
         return;
     }
     if ((vl_k == 34LL)) {
-        int64_t vl_ix_14241;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14241 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4222)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4222)), 655360, "selfhost/vm.vel", 4222), vl_nd[vl_ix_14241])));
-        int64_t vl_ix_14255;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14255 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4223)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4223)), 655360, "selfhost/vm.vel", 4223), vl_nd[vl_ix_14255])));
-        int64_t vl_ix_14269;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14269 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4224)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4224)), 655360, "selfhost/vm.vel", 4224), vl_nd[vl_ix_14269])));
+        int64_t vl_ix_14580;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14580 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4370)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4370)), 655360, "selfhost/vm.vel", 4370), vl_nd[vl_ix_14580])));
+        int64_t vl_ix_14594;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14594 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4371)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4371)), 655360, "selfhost/vm.vel", 4371), vl_nd[vl_ix_14594])));
+        int64_t vl_ix_14608;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_14608 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4372)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4372)), 655360, "selfhost/vm.vel", 4372), vl_nd[vl_ix_14608])));
         return;
     }
 }
 
 static void vl_ck_store_name(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_s, int64_t vl_tgt) {
-    int64_t vl_ix_14287;
-    int64_t vl_name = (vela_bounds_check((vl_ix_14287 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4232)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4232)), 655360, "selfhost/vm.vel", 4232), vl_nd[vl_ix_14287]);
+    int64_t vl_ix_14626;
+    int64_t vl_name = (vela_bounds_check((vl_ix_14626 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4380)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4380)), 655360, "selfhost/vm.vel", 4380), vl_nd[vl_ix_14626]);
     int64_t vl_i = vl_ck_bound(vl_mem, (*vl_vm), vl_name);
     if ((vl_i < 0LL)) {
         return;
@@ -5016,19 +5116,19 @@ static void vl_ck_store_name(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, 
 }
 
 static void vl_ck_store(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_s) {
-    int64_t vl_ix_14377;
-    int64_t vl_tgt = (vela_bounds_check((vl_ix_14377 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4263)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4263)), 655360, "selfhost/vm.vel", 4263), vl_nd[vl_ix_14377]);
+    int64_t vl_ix_14716;
+    int64_t vl_tgt = (vela_bounds_check((vl_ix_14716 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4411)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4411)), 655360, "selfhost/vm.vel", 4411), vl_nd[vl_ix_14716]);
     int64_t vl_k = vl_nd_kind(vl_nd, vl_tgt);
     if ((vl_k == 25LL)) {
         (void)(vl_ck_store_name(vl_nd, vl_mem, vl_path, vl_vm, vl_s, vl_tgt));
         return;
     }
     if ((vl_k == 31LL)) {
-        int64_t vl_ix_14409;
-        int64_t vl_base = (vela_bounds_check((vl_ix_14409 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4273)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4273)), 655360, "selfhost/vm.vel", 4273), vl_nd[vl_ix_14409]);
+        int64_t vl_ix_14748;
+        int64_t vl_base = (vela_bounds_check((vl_ix_14748 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4421)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4421)), 655360, "selfhost/vm.vel", 4421), vl_nd[vl_ix_14748]);
         if ((vl_nd_kind(vl_nd, vl_base) == 25LL)) {
-            int64_t vl_ix_14424;
-            int64_t vl_name = (vela_bounds_check((vl_ix_14424 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4275)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4275)), 655360, "selfhost/vm.vel", 4275), vl_nd[vl_ix_14424]);
+            int64_t vl_ix_14763;
+            int64_t vl_name = (vela_bounds_check((vl_ix_14763 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4423)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4423)), 655360, "selfhost/vm.vel", 4423), vl_nd[vl_ix_14763]);
             int64_t vl_i = vl_ck_bound(vl_mem, (*vl_vm), vl_name);
             if ((vl_i >= 0LL)) {
                 int64_t vl_ck = vl_sc_ckind(vl_mem, vl_i);
@@ -5039,16 +5139,16 @@ static void vl_ck_store(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struc
                 }
             }
         }
-        int64_t vl_ix_14478;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_14478 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4289)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4289)), 655360, "selfhost/vm.vel", 4289), vl_nd[vl_ix_14478])));
-        int64_t vl_ix_14492;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_14492 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4290)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4290)), 655360, "selfhost/vm.vel", 4290), vl_nd[vl_ix_14492])));
+        int64_t vl_ix_14817;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_14817 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4437)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4437)), 655360, "selfhost/vm.vel", 4437), vl_nd[vl_ix_14817])));
+        int64_t vl_ix_14831;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_14831 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4438)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4438)), 655360, "selfhost/vm.vel", 4438), vl_nd[vl_ix_14831])));
         (void)(vl_ck_index(vl_nd, vl_mem, vl_path, (*vl_vm), vl_tgt));
         return;
     }
     if ((vl_k == 32LL)) {
-        int64_t vl_ix_14519;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_14519 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4295)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4295)), 655360, "selfhost/vm.vel", 4295), vl_nd[vl_ix_14519])));
+        int64_t vl_ix_14858;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_14858 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4443)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4443)), 655360, "selfhost/vm.vel", 4443), vl_nd[vl_ix_14858])));
         return;
     }
     (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_s), vela_str_lit("invalid assignment target", 25)));
@@ -5058,8 +5158,8 @@ static int64_t vl_ck_clamp(int64_t vl_v) {
     if ((vl_v > 4611686018427387904LL)) {
         return 4611686018427387904LL;
     }
-    if ((vl_v < vela_neg_int(4611686018427387904LL, "selfhost/vm.vel", 4358))) {
-        return vela_neg_int(4611686018427387904LL, "selfhost/vm.vel", 4359);
+    if ((vl_v < vela_neg_int(4611686018427387904LL, "selfhost/vm.vel", 4506))) {
+        return vela_neg_int(4611686018427387904LL, "selfhost/vm.vel", 4507);
     }
     return vl_v;
 }
@@ -5080,14 +5180,14 @@ static void vl_ck_iv_exact(struct vl_Iv* vl_out, int64_t vl_v) {
 
 static void vl_ck_iv_add(struct vl_Iv* vl_out, struct vl_Iv vl_a, struct vl_Iv vl_b) {
     if (((vl_a.f_lok == 1LL) && (vl_b.f_lok == 1LL))) {
-        vl_out->f_lo = vl_ck_clamp(vela_add_range((vl_a.f_lo), (vl_b.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4380));
+        vl_out->f_lo = vl_ck_clamp(vela_add_range((vl_a.f_lo), (vl_b.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4528));
         vl_out->f_lok = 1LL;
     } else {
         vl_out->f_lo = 0LL;
         vl_out->f_lok = 0LL;
     }
     if (((vl_a.f_hik == 1LL) && (vl_b.f_hik == 1LL))) {
-        vl_out->f_hi = vl_ck_clamp(vela_add_range((vl_a.f_hi), (vl_b.f_hi), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4387));
+        vl_out->f_hi = vl_ck_clamp(vela_add_range((vl_a.f_hi), (vl_b.f_hi), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4535));
         vl_out->f_hik = 1LL;
     } else {
         vl_out->f_hi = 0LL;
@@ -5097,14 +5197,14 @@ static void vl_ck_iv_add(struct vl_Iv* vl_out, struct vl_Iv vl_a, struct vl_Iv v
 
 static void vl_ck_iv_sub(struct vl_Iv* vl_out, struct vl_Iv vl_a, struct vl_Iv vl_b) {
     if (((vl_a.f_lok == 1LL) && (vl_b.f_hik == 1LL))) {
-        vl_out->f_lo = vl_ck_clamp(vela_sub_range((vl_a.f_lo), (vl_b.f_hi), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4397));
+        vl_out->f_lo = vl_ck_clamp(vela_sub_range((vl_a.f_lo), (vl_b.f_hi), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4545));
         vl_out->f_lok = 1LL;
     } else {
         vl_out->f_lo = 0LL;
         vl_out->f_lok = 0LL;
     }
     if (((vl_a.f_hik == 1LL) && (vl_b.f_lok == 1LL))) {
-        vl_out->f_hi = vl_ck_clamp(vela_sub_range((vl_a.f_hi), (vl_b.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4404));
+        vl_out->f_hi = vl_ck_clamp(vela_sub_range((vl_a.f_hi), (vl_b.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4552));
         vl_out->f_hik = 1LL;
     } else {
         vl_out->f_hi = 0LL;
@@ -5117,10 +5217,10 @@ static void vl_ck_iv_mul(struct vl_Iv* vl_out, struct vl_Iv vl_a, struct vl_Iv v
         (void)(vl_ck_iv_unknown(vl_out));
         return;
     }
-    int64_t vl_p1 = vela_mul_range((vl_a.f_lo), (vl_b.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4417);
-    int64_t vl_p2 = vela_mul_range((vl_a.f_lo), (vl_b.f_hi), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4418);
-    int64_t vl_p3 = vela_mul_range((vl_a.f_hi), (vl_b.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4419);
-    int64_t vl_p4 = vela_mul_range((vl_a.f_hi), (vl_b.f_hi), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4420);
+    int64_t vl_p1 = vela_mul_range((vl_a.f_lo), (vl_b.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4565);
+    int64_t vl_p2 = vela_mul_range((vl_a.f_lo), (vl_b.f_hi), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4566);
+    int64_t vl_p3 = vela_mul_range((vl_a.f_hi), (vl_b.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4567);
+    int64_t vl_p4 = vela_mul_range((vl_a.f_hi), (vl_b.f_hi), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4568);
     int64_t vl_lo = vl_p1;
     if ((vl_p2 < vl_lo)) {
         vl_lo = vl_p2;
@@ -5149,14 +5249,14 @@ static void vl_ck_iv_mul(struct vl_Iv* vl_out, struct vl_Iv vl_a, struct vl_Iv v
 
 static void vl_ck_iv_neg(struct vl_Iv* vl_out, struct vl_Iv vl_a) {
     if ((vl_a.f_hik == 1LL)) {
-        vl_out->f_lo = vl_ck_clamp(vela_neg_int(vl_a.f_hi, "selfhost/vm.vel", 4437));
+        vl_out->f_lo = vl_ck_clamp(vela_neg_int(vl_a.f_hi, "selfhost/vm.vel", 4585));
         vl_out->f_lok = 1LL;
     } else {
         vl_out->f_lo = 0LL;
         vl_out->f_lok = 0LL;
     }
     if ((vl_a.f_lok == 1LL)) {
-        vl_out->f_hi = vl_ck_clamp(vela_neg_int(vl_a.f_lo, "selfhost/vm.vel", 4444));
+        vl_out->f_hi = vl_ck_clamp(vela_neg_int(vl_a.f_lo, "selfhost/vm.vel", 4592));
         vl_out->f_hik = 1LL;
     } else {
         vl_out->f_hi = 0LL;
@@ -5175,10 +5275,10 @@ static void vl_ck_iv_floordiv(struct vl_Iv* vl_out, struct vl_Iv vl_a, struct vl
             return;
         }
     }
-    int64_t vl_q1 = vela_floor_div((vl_a.f_lo), (vl_b.f_lo), "selfhost/vm.vel", 4465);
-    int64_t vl_q2 = vela_floor_div((vl_a.f_lo), (vl_b.f_hi), "selfhost/vm.vel", 4466);
-    int64_t vl_q3 = vela_floor_div((vl_a.f_hi), (vl_b.f_lo), "selfhost/vm.vel", 4467);
-    int64_t vl_q4 = vela_floor_div((vl_a.f_hi), (vl_b.f_hi), "selfhost/vm.vel", 4468);
+    int64_t vl_q1 = vela_floor_div((vl_a.f_lo), (vl_b.f_lo), "selfhost/vm.vel", 4613);
+    int64_t vl_q2 = vela_floor_div((vl_a.f_lo), (vl_b.f_hi), "selfhost/vm.vel", 4614);
+    int64_t vl_q3 = vela_floor_div((vl_a.f_hi), (vl_b.f_lo), "selfhost/vm.vel", 4615);
+    int64_t vl_q4 = vela_floor_div((vl_a.f_hi), (vl_b.f_hi), "selfhost/vm.vel", 4616);
     int64_t vl_lo = vl_q1;
     if ((vl_q2 < vl_lo)) {
         vl_lo = vl_q2;
@@ -5221,8 +5321,8 @@ static void vl_ck_iv_mod(struct vl_Iv* vl_out, struct vl_Iv vl_a, struct vl_Iv v
         return;
     }
     int64_t vl_hi = vl_r.f_hi;
-    if ((vela_sub_range((vl_b.f_hi), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4499) < vl_hi)) {
-        vl_hi = vela_sub_range((vl_b.f_hi), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4500);
+    if ((vela_sub_range((vl_b.f_hi), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4647) < vl_hi)) {
+        vl_hi = vela_sub_range((vl_b.f_hi), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4648);
     }
     vl_out->f_lo = 0LL;
     vl_out->f_hi = vl_hi;
@@ -5234,12 +5334,12 @@ static void vl_ck_iv_pow(struct vl_Iv* vl_out, struct vl_Iv vl_a, struct vl_Iv v
     if ((((vl_a.f_lok == 1LL) && (vl_a.f_hik == 1LL)) && (vl_a.f_lo == vl_a.f_hi))) {
         if ((((vl_b.f_lok == 1LL) && (vl_b.f_hik == 1LL)) && (vl_b.f_lo == vl_b.f_hi))) {
             if (((vl_b.f_lo >= 0LL) && (vl_b.f_lo <= 40LL))) {
-                if (((vl_a.f_lo > vela_neg_int(16777216LL, "selfhost/vm.vel", 4514)) && (vl_a.f_lo < 16777216LL))) {
+                if (((vl_a.f_lo > vela_neg_int(16777216LL, "selfhost/vm.vel", 4662)) && (vl_a.f_lo < 16777216LL))) {
                     int64_t vl_v = 1LL;
                     int64_t vl_i = 0LL;
                     while ((vl_i < vl_b.f_lo)) {
-                        vl_v = vela_mul_range((vl_v), (vl_a.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4518);
-                        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4519);
+                        vl_v = vela_mul_range((vl_v), (vl_a.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4666);
+                        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4667);
                     }
                     (void)(vl_ck_iv_exact(vl_out, vl_ck_clamp(vl_v)));
                     return;
@@ -5251,72 +5351,72 @@ static void vl_ck_iv_pow(struct vl_Iv* vl_out, struct vl_Iv vl_a, struct vl_Iv v
 }
 
 static int64_t vl_ck_iv_find(int64_t* vl_iv, int64_t vl_ni, int64_t vl_name) {
-    int64_t vl_i = vela_sub_range((vl_ni), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4553);
+    int64_t vl_i = vela_sub_range((vl_ni), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4701);
     while ((vl_i >= 0LL)) {
-        int64_t vl_ix_15248;
-        if (((vela_bounds_check((vl_ix_15248 = vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4555)), 64, "selfhost/vm.vel", 4555), vl_iv[vl_ix_15248]) == vl_name)) {
+        int64_t vl_ix_15587;
+        if (((vela_bounds_check((vl_ix_15587 = vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4703)), 64, "selfhost/vm.vel", 4703), vl_iv[vl_ix_15587]) == vl_name)) {
             return vl_i;
         }
-        vl_i = vela_sub_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4558);
+        vl_i = vela_sub_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4706);
     }
-    return vela_neg_int(1LL, "selfhost/vm.vel", 4560);
+    return vela_neg_int(1LL, "selfhost/vm.vel", 4708);
 }
 
 static void vl_ck_iv_push(int64_t* vl_iv, struct vl_Par* vl_p, int64_t vl_name, struct vl_Iv vl_a) {
     if ((vl_p->f_ni >= 16LL)) {
         return;
     }
-    int64_t vl_ix_15277;
-    vela_bounds_check((vl_ix_15277 = vela_mul_range((vl_p->f_ni), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4567)), 64, "selfhost/vm.vel", 4567);
-    vl_iv[vl_ix_15277] = vl_name;
-    int64_t vl_ix_15287;
-    vela_bounds_check((vl_ix_15287 = vela_add_range((vela_mul_range((vl_p->f_ni), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4568)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4568)), 64, "selfhost/vm.vel", 4568);
-    vl_iv[vl_ix_15287] = vl_a.f_lo;
-    int64_t vl_ix_15298;
-    vela_bounds_check((vl_ix_15298 = vela_add_range((vela_mul_range((vl_p->f_ni), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4569)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4569)), 64, "selfhost/vm.vel", 4569);
-    vl_iv[vl_ix_15298] = vl_a.f_hi;
+    int64_t vl_ix_15616;
+    vela_bounds_check((vl_ix_15616 = vela_mul_range((vl_p->f_ni), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4715)), 64, "selfhost/vm.vel", 4715);
+    vl_iv[vl_ix_15616] = vl_name;
+    int64_t vl_ix_15626;
+    vela_bounds_check((vl_ix_15626 = vela_add_range((vela_mul_range((vl_p->f_ni), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4716)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4716)), 64, "selfhost/vm.vel", 4716);
+    vl_iv[vl_ix_15626] = vl_a.f_lo;
+    int64_t vl_ix_15637;
+    vela_bounds_check((vl_ix_15637 = vela_add_range((vela_mul_range((vl_p->f_ni), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4717)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4717)), 64, "selfhost/vm.vel", 4717);
+    vl_iv[vl_ix_15637] = vl_a.f_hi;
     int64_t vl_f = 0LL;
     if ((vl_a.f_lok == 1LL)) {
-        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4572);
+        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4720);
     }
     if ((vl_a.f_hik == 1LL)) {
-        vl_f = vela_add_range(vl_f, 2LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4575);
+        vl_f = vela_add_range(vl_f, 2LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4723);
     }
-    int64_t vl_ix_15328;
-    vela_bounds_check((vl_ix_15328 = vela_add_range((vela_mul_range((vl_p->f_ni), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4577)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4577)), 64, "selfhost/vm.vel", 4577);
-    vl_iv[vl_ix_15328] = vl_f;
-    vl_p->f_ni = vela_add_range(vl_p->f_ni, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4578);
+    int64_t vl_ix_15667;
+    vela_bounds_check((vl_ix_15667 = vela_add_range((vela_mul_range((vl_p->f_ni), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4725)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4725)), 64, "selfhost/vm.vel", 4725);
+    vl_iv[vl_ix_15667] = vl_f;
+    vl_p->f_ni = vela_add_range(vl_p->f_ni, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4726);
 }
 
 static int64_t vl_ck_lb_find(int64_t* vl_lb, int64_t vl_nlb, int64_t vl_name) {
-    int64_t vl_i = vela_sub_range((vl_nlb), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4582);
+    int64_t vl_i = vela_sub_range((vl_nlb), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4730);
     while ((vl_i >= 0LL)) {
-        int64_t vl_ix_15351;
-        if (((vela_bounds_check((vl_ix_15351 = vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4584)), 64, "selfhost/vm.vel", 4584), vl_lb[vl_ix_15351]) == vl_name)) {
+        int64_t vl_ix_15690;
+        if (((vela_bounds_check((vl_ix_15690 = vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4732)), 64, "selfhost/vm.vel", 4732), vl_lb[vl_ix_15690]) == vl_name)) {
             return vl_i;
         }
-        vl_i = vela_sub_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4587);
+        vl_i = vela_sub_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4735);
     }
-    return vela_neg_int(1LL, "selfhost/vm.vel", 4589);
+    return vela_neg_int(1LL, "selfhost/vm.vel", 4737);
 }
 
 static void vl_ck_lb_push(int64_t* vl_lb, struct vl_Par* vl_p, int64_t vl_name, int64_t vl_start, int64_t vl_stop, int64_t vl_step) {
     if ((vl_p->f_nlb >= 16LL)) {
         return;
     }
-    int64_t vl_ix_15382;
-    vela_bounds_check((vl_ix_15382 = vela_mul_range((vl_p->f_nlb), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4597)), 64, "selfhost/vm.vel", 4597);
-    vl_lb[vl_ix_15382] = vl_name;
-    int64_t vl_ix_15392;
-    vela_bounds_check((vl_ix_15392 = vela_add_range((vela_mul_range((vl_p->f_nlb), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4598)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4598)), 64, "selfhost/vm.vel", 4598);
-    vl_lb[vl_ix_15392] = vl_start;
-    int64_t vl_ix_15402;
-    vela_bounds_check((vl_ix_15402 = vela_add_range((vela_mul_range((vl_p->f_nlb), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4599)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4599)), 64, "selfhost/vm.vel", 4599);
-    vl_lb[vl_ix_15402] = vl_stop;
-    int64_t vl_ix_15412;
-    vela_bounds_check((vl_ix_15412 = vela_add_range((vela_mul_range((vl_p->f_nlb), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4600)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4600)), 64, "selfhost/vm.vel", 4600);
-    vl_lb[vl_ix_15412] = vl_step;
-    vl_p->f_nlb = vela_add_range(vl_p->f_nlb, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4601);
+    int64_t vl_ix_15721;
+    vela_bounds_check((vl_ix_15721 = vela_mul_range((vl_p->f_nlb), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4745)), 64, "selfhost/vm.vel", 4745);
+    vl_lb[vl_ix_15721] = vl_name;
+    int64_t vl_ix_15731;
+    vela_bounds_check((vl_ix_15731 = vela_add_range((vela_mul_range((vl_p->f_nlb), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4746)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4746)), 64, "selfhost/vm.vel", 4746);
+    vl_lb[vl_ix_15731] = vl_start;
+    int64_t vl_ix_15741;
+    vela_bounds_check((vl_ix_15741 = vela_add_range((vela_mul_range((vl_p->f_nlb), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4747)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4747)), 64, "selfhost/vm.vel", 4747);
+    vl_lb[vl_ix_15741] = vl_stop;
+    int64_t vl_ix_15751;
+    vela_bounds_check((vl_ix_15751 = vela_add_range((vela_mul_range((vl_p->f_nlb), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4748)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4748)), 64, "selfhost/vm.vel", 4748);
+    vl_lb[vl_ix_15751] = vl_step;
+    vl_p->f_nlb = vela_add_range(vl_p->f_nlb, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4749);
 }
 
 static void vl_ck_iv_expr(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_iv, int64_t vl_ni, int64_t vl_e, struct vl_Iv* vl_out) {
@@ -5326,13 +5426,13 @@ static void vl_ck_iv_expr(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, i
     }
     int64_t vl_k = vl_nd_kind(vl_nd, vl_e);
     if ((vl_k == 20LL)) {
-        int64_t vl_ix_15453;
-        (void)(vl_ck_iv_exact(vl_out, (vela_bounds_check((vl_ix_15453 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4616)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4616)), 655360, "selfhost/vm.vel", 4616), vl_nd[vl_ix_15453])));
+        int64_t vl_ix_15792;
+        (void)(vl_ck_iv_exact(vl_out, (vela_bounds_check((vl_ix_15792 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4764)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4764)), 655360, "selfhost/vm.vel", 4764), vl_nd[vl_ix_15792])));
         return;
     }
     if ((vl_k == 23LL)) {
-        int64_t vl_ix_15467;
-        if (((vela_bounds_check((vl_ix_15467 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4620)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4620)), 655360, "selfhost/vm.vel", 4620), vl_nd[vl_ix_15467]) == 1LL)) {
+        int64_t vl_ix_15806;
+        if (((vela_bounds_check((vl_ix_15806 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4768)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4768)), 655360, "selfhost/vm.vel", 4768), vl_nd[vl_ix_15806]) == 1LL)) {
             (void)(vl_ck_iv_exact(vl_out, 1LL));
         } else {
             (void)(vl_ck_iv_exact(vl_out, 0LL));
@@ -5340,24 +5440,24 @@ static void vl_ck_iv_expr(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, i
         return;
     }
     if ((vl_k == 25LL)) {
-        int64_t vl_ix_15495;
-        int64_t vl_i = vl_ck_iv_find(vl_iv, vl_ni, (vela_bounds_check((vl_ix_15495 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4628)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4628)), 655360, "selfhost/vm.vel", 4628), vl_nd[vl_ix_15495]));
+        int64_t vl_ix_15834;
+        int64_t vl_i = vl_ck_iv_find(vl_iv, vl_ni, (vela_bounds_check((vl_ix_15834 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4776)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4776)), 655360, "selfhost/vm.vel", 4776), vl_nd[vl_ix_15834]));
         if ((vl_i < 0LL)) {
             (void)(vl_ck_iv_unknown(vl_out));
             return;
         }
-        int64_t vl_ix_15516;
-        vl_out->f_lo = (vela_bounds_check((vl_ix_15516 = vela_add_range((vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4633)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4633)), 64, "selfhost/vm.vel", 4633), vl_iv[vl_ix_15516]);
-        int64_t vl_ix_15526;
-        vl_out->f_hi = (vela_bounds_check((vl_ix_15526 = vela_add_range((vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4634)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4634)), 64, "selfhost/vm.vel", 4634), vl_iv[vl_ix_15526]);
-        int64_t vl_ix_15534;
-        if ((((vela_bounds_check((vl_ix_15534 = vela_add_range((vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4635)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4635)), 64, "selfhost/vm.vel", 4635), vl_iv[vl_ix_15534]) & 1LL) == 1LL)) {
+        int64_t vl_ix_15855;
+        vl_out->f_lo = (vela_bounds_check((vl_ix_15855 = vela_add_range((vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4781)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4781)), 64, "selfhost/vm.vel", 4781), vl_iv[vl_ix_15855]);
+        int64_t vl_ix_15865;
+        vl_out->f_hi = (vela_bounds_check((vl_ix_15865 = vela_add_range((vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4782)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4782)), 64, "selfhost/vm.vel", 4782), vl_iv[vl_ix_15865]);
+        int64_t vl_ix_15873;
+        if ((((vela_bounds_check((vl_ix_15873 = vela_add_range((vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4783)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4783)), 64, "selfhost/vm.vel", 4783), vl_iv[vl_ix_15873]) & 1LL) == 1LL)) {
             vl_out->f_lok = 1LL;
         } else {
             vl_out->f_lok = 0LL;
         }
-        int64_t vl_ix_15554;
-        if ((((vela_bounds_check((vl_ix_15554 = vela_add_range((vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4640)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4640)), 64, "selfhost/vm.vel", 4640), vl_iv[vl_ix_15554]) & 2LL) == 2LL)) {
+        int64_t vl_ix_15893;
+        if ((((vela_bounds_check((vl_ix_15893 = vela_add_range((vela_mul_range((vl_i), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4788)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4788)), 64, "selfhost/vm.vel", 4788), vl_iv[vl_ix_15893]) & 2LL) == 2LL)) {
             vl_out->f_hik = 1LL;
         } else {
             vl_out->f_hik = 0LL;
@@ -5365,12 +5465,12 @@ static void vl_ck_iv_expr(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, i
         return;
     }
     if ((vl_k == 28LL)) {
-        int64_t vl_ix_15579;
-        int64_t vl_op = (vela_bounds_check((vl_ix_15579 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4648)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4648)), 655360, "selfhost/vm.vel", 4648), vl_nd[vl_ix_15579]);
+        int64_t vl_ix_15918;
+        int64_t vl_op = (vela_bounds_check((vl_ix_15918 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4796)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4796)), 655360, "selfhost/vm.vel", 4796), vl_nd[vl_ix_15918]);
         if ((((vl_op == 1LL) || (vl_op == 2LL)) || (vl_op == 32LL))) {
             struct vl_Iv vl_a = (struct vl_Iv){ 0LL, 0LL, 0LL, 0LL };
-            int64_t vl_ix_15613;
-            (void)(vl_ck_iv_expr(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, (vela_bounds_check((vl_ix_15613 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4651)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4651)), 655360, "selfhost/vm.vel", 4651), vl_nd[vl_ix_15613]), (&vl_a)));
+            int64_t vl_ix_15952;
+            (void)(vl_ck_iv_expr(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, (vela_bounds_check((vl_ix_15952 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4799)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4799)), 655360, "selfhost/vm.vel", 4799), vl_nd[vl_ix_15952]), (&vl_a)));
             if ((vl_op == 1LL)) {
                 vl_out->f_lo = vl_a.f_lo;
                 vl_out->f_hi = vl_a.f_hi;
@@ -5393,14 +5493,14 @@ static void vl_ck_iv_expr(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, i
         return;
     }
     if ((vl_k == 27LL)) {
-        int64_t vl_ix_15701;
-        int64_t vl_op = (vela_bounds_check((vl_ix_15701 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4676)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4676)), 655360, "selfhost/vm.vel", 4676), vl_nd[vl_ix_15701]);
+        int64_t vl_ix_16040;
+        int64_t vl_op = (vela_bounds_check((vl_ix_16040 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4824)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4824)), 655360, "selfhost/vm.vel", 4824), vl_nd[vl_ix_16040]);
         struct vl_Iv vl_a = (struct vl_Iv){ 0LL, 0LL, 0LL, 0LL };
-        int64_t vl_ix_15724;
-        (void)(vl_ck_iv_expr(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, (vela_bounds_check((vl_ix_15724 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4678)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4678)), 655360, "selfhost/vm.vel", 4678), vl_nd[vl_ix_15724]), (&vl_a)));
+        int64_t vl_ix_16063;
+        (void)(vl_ck_iv_expr(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, (vela_bounds_check((vl_ix_16063 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4826)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4826)), 655360, "selfhost/vm.vel", 4826), vl_nd[vl_ix_16063]), (&vl_a)));
         struct vl_Iv vl_b = (struct vl_Iv){ 0LL, 0LL, 0LL, 0LL };
-        int64_t vl_ix_15748;
-        (void)(vl_ck_iv_expr(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, (vela_bounds_check((vl_ix_15748 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4680)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4680)), 655360, "selfhost/vm.vel", 4680), vl_nd[vl_ix_15748]), (&vl_b)));
+        int64_t vl_ix_16087;
+        (void)(vl_ck_iv_expr(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, (vela_bounds_check((vl_ix_16087 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4828)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4828)), 655360, "selfhost/vm.vel", 4828), vl_nd[vl_ix_16087]), (&vl_b)));
         if ((vl_op == 1LL)) {
             (void)(vl_ck_iv_add(vl_out, vl_a, vl_b));
             return;
@@ -5429,17 +5529,17 @@ static void vl_ck_iv_expr(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, i
         return;
     }
     if ((vl_k == 26LL)) {
-        int64_t vl_ix_15837;
-        int64_t vl_callee = (vela_bounds_check((vl_ix_15837 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4709)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4709)), 655360, "selfhost/vm.vel", 4709), vl_nd[vl_ix_15837]);
+        int64_t vl_ix_16176;
+        int64_t vl_callee = (vela_bounds_check((vl_ix_16176 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4857)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4857)), 655360, "selfhost/vm.vel", 4857), vl_nd[vl_ix_16176]);
         if ((vl_nd_kind(vl_nd, vl_callee) == 25LL)) {
             if ((vl_nt_get(vl_mem, vl_callee, vl_NT_SYM()) == vl_SYM_BUILTIN())) {
                 if ((vl_nt_get(vl_mem, vl_callee, vl_NT_VAL()) == vl_B_LEN())) {
-                    int64_t vl_ix_15870;
-                    int64_t vl_a = (vela_bounds_check((vl_ix_15870 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4713)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4713)), 655360, "selfhost/vm.vel", 4713), vl_nd[vl_ix_15870]);
+                    int64_t vl_ix_16209;
+                    int64_t vl_a = (vela_bounds_check((vl_ix_16209 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4861)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4861)), 655360, "selfhost/vm.vel", 4861), vl_nd[vl_ix_16209]);
                     if ((vl_a > 0LL)) {
                         if ((vl_nd_kind(vl_nd, vl_a) == 25LL)) {
-                            int64_t vl_ix_15891;
-                            int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_15891 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4716)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4716)), 655360, "selfhost/vm.vel", 4716), vl_nd[vl_ix_15891]));
+                            int64_t vl_ix_16230;
+                            int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_16230 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4864)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4864)), 655360, "selfhost/vm.vel", 4864), vl_nd[vl_ix_16230]));
                             if ((vl_i >= 0LL)) {
                                 int64_t vl_ck = vl_sc_ckind(vl_mem, vl_i);
                                 if (vl_ck_is_array_ck(vl_ck)) {
@@ -5461,13 +5561,13 @@ static void vl_ck_iv_expr(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, i
 static int64_t vl_ck_linear(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_iv, int64_t vl_ni, int64_t vl_e, int64_t vl_var, struct vl_Iv* vl_rest) {
     int64_t vl_k = vl_nd_kind(vl_nd, vl_e);
     if ((vl_k == 20LL)) {
-        int64_t vl_ix_15958;
-        (void)(vl_ck_iv_exact(vl_rest, (vela_bounds_check((vl_ix_15958 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4747)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4747)), 655360, "selfhost/vm.vel", 4747), vl_nd[vl_ix_15958])));
+        int64_t vl_ix_16297;
+        (void)(vl_ck_iv_exact(vl_rest, (vela_bounds_check((vl_ix_16297 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4895)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4895)), 655360, "selfhost/vm.vel", 4895), vl_nd[vl_ix_16297])));
         return 0LL;
     }
     if ((vl_k == 25LL)) {
-        int64_t vl_ix_15973;
-        if (((vela_bounds_check((vl_ix_15973 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4751)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4751)), 655360, "selfhost/vm.vel", 4751), vl_nd[vl_ix_15973]) == vl_var)) {
+        int64_t vl_ix_16312;
+        if (((vela_bounds_check((vl_ix_16312 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4899)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4899)), 655360, "selfhost/vm.vel", 4899), vl_nd[vl_ix_16312]) == vl_var)) {
             (void)(vl_ck_iv_exact(vl_rest, 0LL));
             return 1LL;
         }
@@ -5475,15 +5575,15 @@ static int64_t vl_ck_linear(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm,
         return 0LL;
     }
     if ((vl_k == 28LL)) {
-        int64_t vl_ix_16006;
-        int64_t vl_op = (vela_bounds_check((vl_ix_16006 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4759)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4759)), 655360, "selfhost/vm.vel", 4759), vl_nd[vl_ix_16006]);
+        int64_t vl_ix_16345;
+        int64_t vl_op = (vela_bounds_check((vl_ix_16345 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4907)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4907)), 655360, "selfhost/vm.vel", 4907), vl_nd[vl_ix_16345]);
         if ((vl_op == 1LL)) {
-            int64_t vl_ix_16025;
-            return vl_ck_linear(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, (vela_bounds_check((vl_ix_16025 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4761)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4761)), 655360, "selfhost/vm.vel", 4761), vl_nd[vl_ix_16025]), vl_var, vl_rest);
+            int64_t vl_ix_16364;
+            return vl_ck_linear(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, (vela_bounds_check((vl_ix_16364 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4909)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4909)), 655360, "selfhost/vm.vel", 4909), vl_nd[vl_ix_16364]), vl_var, vl_rest);
         }
         if ((vl_op == 2LL)) {
-            int64_t vl_ix_16045;
-            int64_t vl_c = vl_ck_linear(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, (vela_bounds_check((vl_ix_16045 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4764)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4764)), 655360, "selfhost/vm.vel", 4764), vl_nd[vl_ix_16045]), vl_var, vl_rest);
+            int64_t vl_ix_16384;
+            int64_t vl_c = vl_ck_linear(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, (vela_bounds_check((vl_ix_16384 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4912)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4912)), 655360, "selfhost/vm.vel", 4912), vl_nd[vl_ix_16384]), vl_var, vl_rest);
             if ((vl_c == vl_ck_no_const())) {
                 return vl_ck_no_const();
             }
@@ -5493,17 +5593,17 @@ static int64_t vl_ck_linear(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm,
             vl_t.f_lok = vl_rest->f_lok;
             vl_t.f_hik = vl_rest->f_hik;
             (void)(vl_ck_iv_neg(vl_rest, vl_t));
-            return vela_neg_int(vl_c, "selfhost/vm.vel", 4776);
+            return vela_neg_int(vl_c, "selfhost/vm.vel", 4924);
         }
         return vl_ck_no_const();
     }
     if ((vl_k == 27LL)) {
-        int64_t vl_ix_16109;
-        int64_t vl_op = (vela_bounds_check((vl_ix_16109 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4781)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4781)), 655360, "selfhost/vm.vel", 4781), vl_nd[vl_ix_16109]);
-        int64_t vl_ix_16118;
-        int64_t vl_l = (vela_bounds_check((vl_ix_16118 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4782)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4782)), 655360, "selfhost/vm.vel", 4782), vl_nd[vl_ix_16118]);
-        int64_t vl_ix_16127;
-        int64_t vl_r = (vela_bounds_check((vl_ix_16127 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4783)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4783)), 655360, "selfhost/vm.vel", 4783), vl_nd[vl_ix_16127]);
+        int64_t vl_ix_16448;
+        int64_t vl_op = (vela_bounds_check((vl_ix_16448 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4929)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4929)), 655360, "selfhost/vm.vel", 4929), vl_nd[vl_ix_16448]);
+        int64_t vl_ix_16457;
+        int64_t vl_l = (vela_bounds_check((vl_ix_16457 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4930)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4930)), 655360, "selfhost/vm.vel", 4930), vl_nd[vl_ix_16457]);
+        int64_t vl_ix_16466;
+        int64_t vl_r = (vela_bounds_check((vl_ix_16466 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4931)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4931)), 655360, "selfhost/vm.vel", 4931), vl_nd[vl_ix_16466]);
         if (((vl_op == 1LL) || (vl_op == 2LL))) {
             struct vl_Iv vl_lr = (struct vl_Iv){ 0LL, 0LL, 0LL, 0LL };
             int64_t vl_lc = vl_ck_linear(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, vl_l, vl_var, (&vl_lr));
@@ -5517,10 +5617,10 @@ static int64_t vl_ck_linear(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm,
             }
             if ((vl_op == 1LL)) {
                 (void)(vl_ck_iv_add(vl_rest, vl_lr, vl_rr));
-                return vela_add_range((vl_lc), (vl_rc), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4797);
+                return vela_add_range((vl_lc), (vl_rc), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4945);
             }
             (void)(vl_ck_iv_sub(vl_rest, vl_lr, vl_rr));
-            return vela_sub_range((vl_lc), (vl_rc), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4800);
+            return vela_sub_range((vl_lc), (vl_rc), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4948);
         }
         if ((vl_op == 3LL)) {
             struct vl_Iv vl_lr = (struct vl_Iv){ 0LL, 0LL, 0LL, 0LL };
@@ -5544,7 +5644,7 @@ static int64_t vl_ck_linear(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm,
                 struct vl_Iv vl_kn = (struct vl_Iv){ 0LL, 0LL, 0LL, 0LL };
                 (void)(vl_ck_iv_exact((&vl_kn), vl_kk));
                 (void)(vl_ck_iv_mul(vl_rest, vl_kn, vl_lr));
-                return vela_mul_range((vl_lc), (vl_kk), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4826);
+                return vela_mul_range((vl_lc), (vl_kk), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4974);
             }
             if ((vl_rc != 0LL)) {
                 int64_t vl_kk = vl_ck_const_int(vl_nd, vl_l);
@@ -5554,7 +5654,7 @@ static int64_t vl_ck_linear(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm,
                 struct vl_Iv vl_kn = (struct vl_Iv){ 0LL, 0LL, 0LL, 0LL };
                 (void)(vl_ck_iv_exact((&vl_kn), vl_kk));
                 (void)(vl_ck_iv_mul(vl_rest, vl_kn, vl_rr));
-                return vela_mul_range((vl_rc), (vl_kk), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4836);
+                return vela_mul_range((vl_rc), (vl_kk), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4984);
             }
             (void)(vl_ck_iv_mul(vl_rest, vl_lr, vl_rr));
             return 0LL;
@@ -5576,88 +5676,88 @@ static bool vl_ck_same_expr(int64_t* vl_nd, int64_t vl_a, int64_t vl_b) {
         return false;
     }
     if ((vl_ka == 20LL)) {
-        int64_t vl_ix_16431;
-        int64_t vl_ix_16438;
-        return ((vela_bounds_check((vl_ix_16431 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4866)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4866)), 655360, "selfhost/vm.vel", 4866), vl_nd[vl_ix_16431]) == (vela_bounds_check((vl_ix_16438 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4866)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4866)), 655360, "selfhost/vm.vel", 4866), vl_nd[vl_ix_16438]));
+        int64_t vl_ix_16770;
+        int64_t vl_ix_16777;
+        return ((vela_bounds_check((vl_ix_16770 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5014)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5014)), 655360, "selfhost/vm.vel", 5014), vl_nd[vl_ix_16770]) == (vela_bounds_check((vl_ix_16777 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5014)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5014)), 655360, "selfhost/vm.vel", 5014), vl_nd[vl_ix_16777]));
     }
     if ((vl_ka == 21LL)) {
-        int64_t vl_ix_16450;
-        int64_t vl_ix_16457;
-        if (((vela_bounds_check((vl_ix_16450 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4869)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4869)), 655360, "selfhost/vm.vel", 4869), vl_nd[vl_ix_16450]) != (vela_bounds_check((vl_ix_16457 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4869)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4869)), 655360, "selfhost/vm.vel", 4869), vl_nd[vl_ix_16457]))) {
+        int64_t vl_ix_16789;
+        int64_t vl_ix_16796;
+        if (((vela_bounds_check((vl_ix_16789 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5017)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5017)), 655360, "selfhost/vm.vel", 5017), vl_nd[vl_ix_16789]) != (vela_bounds_check((vl_ix_16796 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5017)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5017)), 655360, "selfhost/vm.vel", 5017), vl_nd[vl_ix_16796]))) {
             return false;
         }
-        int64_t vl_ix_16468;
-        int64_t vl_ix_16475;
-        if (((vela_bounds_check((vl_ix_16468 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4872)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4872)), 655360, "selfhost/vm.vel", 4872), vl_nd[vl_ix_16468]) != (vela_bounds_check((vl_ix_16475 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4872)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4872)), 655360, "selfhost/vm.vel", 4872), vl_nd[vl_ix_16475]))) {
+        int64_t vl_ix_16807;
+        int64_t vl_ix_16814;
+        if (((vela_bounds_check((vl_ix_16807 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5020)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5020)), 655360, "selfhost/vm.vel", 5020), vl_nd[vl_ix_16807]) != (vela_bounds_check((vl_ix_16814 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5020)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5020)), 655360, "selfhost/vm.vel", 5020), vl_nd[vl_ix_16814]))) {
             return false;
         }
-        int64_t vl_ix_16487;
-        int64_t vl_ix_16494;
-        return ((vela_bounds_check((vl_ix_16487 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4875)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4875)), 655360, "selfhost/vm.vel", 4875), vl_nd[vl_ix_16487]) == (vela_bounds_check((vl_ix_16494 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4875)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4875)), 655360, "selfhost/vm.vel", 4875), vl_nd[vl_ix_16494]));
+        int64_t vl_ix_16826;
+        int64_t vl_ix_16833;
+        return ((vela_bounds_check((vl_ix_16826 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5023)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5023)), 655360, "selfhost/vm.vel", 5023), vl_nd[vl_ix_16826]) == (vela_bounds_check((vl_ix_16833 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5023)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5023)), 655360, "selfhost/vm.vel", 5023), vl_nd[vl_ix_16833]));
     }
     if ((vl_ka == 22LL)) {
-        int64_t vl_ix_16506;
-        int64_t vl_ix_16513;
-        if (((vela_bounds_check((vl_ix_16506 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4878)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4878)), 655360, "selfhost/vm.vel", 4878), vl_nd[vl_ix_16506]) != (vela_bounds_check((vl_ix_16513 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4878)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4878)), 655360, "selfhost/vm.vel", 4878), vl_nd[vl_ix_16513]))) {
+        int64_t vl_ix_16845;
+        int64_t vl_ix_16852;
+        if (((vela_bounds_check((vl_ix_16845 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5026)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5026)), 655360, "selfhost/vm.vel", 5026), vl_nd[vl_ix_16845]) != (vela_bounds_check((vl_ix_16852 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5026)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5026)), 655360, "selfhost/vm.vel", 5026), vl_nd[vl_ix_16852]))) {
             return false;
         }
-        int64_t vl_ix_16525;
-        int64_t vl_ix_16532;
-        return ((vela_bounds_check((vl_ix_16525 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4881)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4881)), 655360, "selfhost/vm.vel", 4881), vl_nd[vl_ix_16525]) == (vela_bounds_check((vl_ix_16532 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4881)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4881)), 655360, "selfhost/vm.vel", 4881), vl_nd[vl_ix_16532]));
+        int64_t vl_ix_16864;
+        int64_t vl_ix_16871;
+        return ((vela_bounds_check((vl_ix_16864 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5029)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5029)), 655360, "selfhost/vm.vel", 5029), vl_nd[vl_ix_16864]) == (vela_bounds_check((vl_ix_16871 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5029)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5029)), 655360, "selfhost/vm.vel", 5029), vl_nd[vl_ix_16871]));
     }
     if ((vl_ka == 23LL)) {
-        int64_t vl_ix_16545;
-        int64_t vl_ix_16552;
-        return ((vela_bounds_check((vl_ix_16545 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4884)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4884)), 655360, "selfhost/vm.vel", 4884), vl_nd[vl_ix_16545]) == (vela_bounds_check((vl_ix_16552 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4884)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4884)), 655360, "selfhost/vm.vel", 4884), vl_nd[vl_ix_16552]));
+        int64_t vl_ix_16884;
+        int64_t vl_ix_16891;
+        return ((vela_bounds_check((vl_ix_16884 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5032)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5032)), 655360, "selfhost/vm.vel", 5032), vl_nd[vl_ix_16884]) == (vela_bounds_check((vl_ix_16891 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5032)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5032)), 655360, "selfhost/vm.vel", 5032), vl_nd[vl_ix_16891]));
     }
     if ((vl_ka == 24LL)) {
         return true;
     }
     if ((vl_ka == 25LL)) {
-        int64_t vl_ix_16571;
-        int64_t vl_ix_16578;
-        return ((vela_bounds_check((vl_ix_16571 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4890)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4890)), 655360, "selfhost/vm.vel", 4890), vl_nd[vl_ix_16571]) == (vela_bounds_check((vl_ix_16578 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4890)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4890)), 655360, "selfhost/vm.vel", 4890), vl_nd[vl_ix_16578]));
+        int64_t vl_ix_16910;
+        int64_t vl_ix_16917;
+        return ((vela_bounds_check((vl_ix_16910 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5038)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5038)), 655360, "selfhost/vm.vel", 5038), vl_nd[vl_ix_16910]) == (vela_bounds_check((vl_ix_16917 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5038)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5038)), 655360, "selfhost/vm.vel", 5038), vl_nd[vl_ix_16917]));
     }
     if ((((vl_ka == 27LL) || (vl_ka == 29LL)) || (vl_ka == 30LL))) {
-        int64_t vl_ix_16598;
-        int64_t vl_ix_16605;
-        if (((vela_bounds_check((vl_ix_16598 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4893)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4893)), 655360, "selfhost/vm.vel", 4893), vl_nd[vl_ix_16598]) != (vela_bounds_check((vl_ix_16605 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4893)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4893)), 655360, "selfhost/vm.vel", 4893), vl_nd[vl_ix_16605]))) {
+        int64_t vl_ix_16937;
+        int64_t vl_ix_16944;
+        if (((vela_bounds_check((vl_ix_16937 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5041)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5041)), 655360, "selfhost/vm.vel", 5041), vl_nd[vl_ix_16937]) != (vela_bounds_check((vl_ix_16944 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5041)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5041)), 655360, "selfhost/vm.vel", 5041), vl_nd[vl_ix_16944]))) {
             return false;
         }
-        int64_t vl_ix_16618;
-        int64_t vl_ix_16625;
-        if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16618 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4896)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4896)), 655360, "selfhost/vm.vel", 4896), vl_nd[vl_ix_16618]), (vela_bounds_check((vl_ix_16625 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4896)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4896)), 655360, "selfhost/vm.vel", 4896), vl_nd[vl_ix_16625])))) {
+        int64_t vl_ix_16957;
+        int64_t vl_ix_16964;
+        if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16957 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5044)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5044)), 655360, "selfhost/vm.vel", 5044), vl_nd[vl_ix_16957]), (vela_bounds_check((vl_ix_16964 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5044)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5044)), 655360, "selfhost/vm.vel", 5044), vl_nd[vl_ix_16964])))) {
             return false;
         }
-        int64_t vl_ix_16640;
-        int64_t vl_ix_16647;
-        return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16640 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4899)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4899)), 655360, "selfhost/vm.vel", 4899), vl_nd[vl_ix_16640]), (vela_bounds_check((vl_ix_16647 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4899)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4899)), 655360, "selfhost/vm.vel", 4899), vl_nd[vl_ix_16647]));
+        int64_t vl_ix_16979;
+        int64_t vl_ix_16986;
+        return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16979 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5047)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5047)), 655360, "selfhost/vm.vel", 5047), vl_nd[vl_ix_16979]), (vela_bounds_check((vl_ix_16986 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5047)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5047)), 655360, "selfhost/vm.vel", 5047), vl_nd[vl_ix_16986]));
     }
     if ((vl_ka == 28LL)) {
-        int64_t vl_ix_16659;
-        int64_t vl_ix_16666;
-        if (((vela_bounds_check((vl_ix_16659 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4902)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4902)), 655360, "selfhost/vm.vel", 4902), vl_nd[vl_ix_16659]) != (vela_bounds_check((vl_ix_16666 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4902)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4902)), 655360, "selfhost/vm.vel", 4902), vl_nd[vl_ix_16666]))) {
+        int64_t vl_ix_16998;
+        int64_t vl_ix_17005;
+        if (((vela_bounds_check((vl_ix_16998 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5050)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5050)), 655360, "selfhost/vm.vel", 5050), vl_nd[vl_ix_16998]) != (vela_bounds_check((vl_ix_17005 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5050)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5050)), 655360, "selfhost/vm.vel", 5050), vl_nd[vl_ix_17005]))) {
             return false;
         }
-        int64_t vl_ix_16680;
-        int64_t vl_ix_16687;
-        return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16680 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4905)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4905)), 655360, "selfhost/vm.vel", 4905), vl_nd[vl_ix_16680]), (vela_bounds_check((vl_ix_16687 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4905)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4905)), 655360, "selfhost/vm.vel", 4905), vl_nd[vl_ix_16687]));
+        int64_t vl_ix_17019;
+        int64_t vl_ix_17026;
+        return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17019 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5053)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5053)), 655360, "selfhost/vm.vel", 5053), vl_nd[vl_ix_17019]), (vela_bounds_check((vl_ix_17026 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5053)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5053)), 655360, "selfhost/vm.vel", 5053), vl_nd[vl_ix_17026]));
     }
     if ((vl_ka == 26LL)) {
-        int64_t vl_ix_16701;
-        int64_t vl_ix_16708;
-        if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16701 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4908)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4908)), 655360, "selfhost/vm.vel", 4908), vl_nd[vl_ix_16701]), (vela_bounds_check((vl_ix_16708 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4908)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4908)), 655360, "selfhost/vm.vel", 4908), vl_nd[vl_ix_16708])))) {
+        int64_t vl_ix_17040;
+        int64_t vl_ix_17047;
+        if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17040 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5056)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5056)), 655360, "selfhost/vm.vel", 5056), vl_nd[vl_ix_17040]), (vela_bounds_check((vl_ix_17047 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5056)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5056)), 655360, "selfhost/vm.vel", 5056), vl_nd[vl_ix_17047])))) {
             return false;
         }
-        int64_t vl_ix_16720;
-        int64_t vl_ix_16727;
-        if (((vela_bounds_check((vl_ix_16720 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4911)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4911)), 655360, "selfhost/vm.vel", 4911), vl_nd[vl_ix_16720]) != (vela_bounds_check((vl_ix_16727 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4911)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4911)), 655360, "selfhost/vm.vel", 4911), vl_nd[vl_ix_16727]))) {
+        int64_t vl_ix_17059;
+        int64_t vl_ix_17066;
+        if (((vela_bounds_check((vl_ix_17059 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5059)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5059)), 655360, "selfhost/vm.vel", 5059), vl_nd[vl_ix_17059]) != (vela_bounds_check((vl_ix_17066 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5059)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5059)), 655360, "selfhost/vm.vel", 5059), vl_nd[vl_ix_17066]))) {
             return false;
         }
-        int64_t vl_ix_16738;
-        int64_t vl_x = (vela_bounds_check((vl_ix_16738 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4914)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4914)), 655360, "selfhost/vm.vel", 4914), vl_nd[vl_ix_16738]);
-        int64_t vl_ix_16747;
-        int64_t vl_y = (vela_bounds_check((vl_ix_16747 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4915)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4915)), 655360, "selfhost/vm.vel", 4915), vl_nd[vl_ix_16747]);
+        int64_t vl_ix_17077;
+        int64_t vl_x = (vela_bounds_check((vl_ix_17077 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5062)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5062)), 655360, "selfhost/vm.vel", 5062), vl_nd[vl_ix_17077]);
+        int64_t vl_ix_17086;
+        int64_t vl_y = (vela_bounds_check((vl_ix_17086 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5063)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5063)), 655360, "selfhost/vm.vel", 5063), vl_nd[vl_ix_17086]);
         while (((vl_x > 0LL) && (vl_y > 0LL))) {
             if ((!vl_ck_same_expr(vl_nd, vl_x, vl_y))) {
                 return false;
@@ -5668,30 +5768,30 @@ static bool vl_ck_same_expr(int64_t* vl_nd, int64_t vl_a, int64_t vl_b) {
         return ((vl_x <= 0LL) && (vl_y <= 0LL));
     }
     if ((vl_ka == 31LL)) {
-        int64_t vl_ix_16799;
-        int64_t vl_ix_16806;
-        if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16799 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4926)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4926)), 655360, "selfhost/vm.vel", 4926), vl_nd[vl_ix_16799]), (vela_bounds_check((vl_ix_16806 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4926)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4926)), 655360, "selfhost/vm.vel", 4926), vl_nd[vl_ix_16806])))) {
+        int64_t vl_ix_17138;
+        int64_t vl_ix_17145;
+        if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17138 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5074)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5074)), 655360, "selfhost/vm.vel", 5074), vl_nd[vl_ix_17138]), (vela_bounds_check((vl_ix_17145 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5074)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5074)), 655360, "selfhost/vm.vel", 5074), vl_nd[vl_ix_17145])))) {
             return false;
         }
-        int64_t vl_ix_16821;
-        int64_t vl_ix_16828;
-        return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16821 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4929)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4929)), 655360, "selfhost/vm.vel", 4929), vl_nd[vl_ix_16821]), (vela_bounds_check((vl_ix_16828 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4929)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4929)), 655360, "selfhost/vm.vel", 4929), vl_nd[vl_ix_16828]));
+        int64_t vl_ix_17160;
+        int64_t vl_ix_17167;
+        return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17160 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5077)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5077)), 655360, "selfhost/vm.vel", 5077), vl_nd[vl_ix_17160]), (vela_bounds_check((vl_ix_17167 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5077)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5077)), 655360, "selfhost/vm.vel", 5077), vl_nd[vl_ix_17167]));
     }
     if ((vl_ka == 32LL)) {
-        int64_t vl_ix_16840;
-        int64_t vl_ix_16847;
-        if (((vela_bounds_check((vl_ix_16840 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4932)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4932)), 655360, "selfhost/vm.vel", 4932), vl_nd[vl_ix_16840]) != (vela_bounds_check((vl_ix_16847 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4932)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4932)), 655360, "selfhost/vm.vel", 4932), vl_nd[vl_ix_16847]))) {
+        int64_t vl_ix_17179;
+        int64_t vl_ix_17186;
+        if (((vela_bounds_check((vl_ix_17179 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5080)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5080)), 655360, "selfhost/vm.vel", 5080), vl_nd[vl_ix_17179]) != (vela_bounds_check((vl_ix_17186 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5080)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5080)), 655360, "selfhost/vm.vel", 5080), vl_nd[vl_ix_17186]))) {
             return false;
         }
-        int64_t vl_ix_16861;
-        int64_t vl_ix_16868;
-        return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16861 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4935)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4935)), 655360, "selfhost/vm.vel", 4935), vl_nd[vl_ix_16861]), (vela_bounds_check((vl_ix_16868 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4935)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4935)), 655360, "selfhost/vm.vel", 4935), vl_nd[vl_ix_16868]));
+        int64_t vl_ix_17200;
+        int64_t vl_ix_17207;
+        return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17200 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5083)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5083)), 655360, "selfhost/vm.vel", 5083), vl_nd[vl_ix_17200]), (vela_bounds_check((vl_ix_17207 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5083)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5083)), 655360, "selfhost/vm.vel", 5083), vl_nd[vl_ix_17207]));
     }
     if ((vl_ka == 33LL)) {
-        int64_t vl_ix_16880;
-        int64_t vl_x = (vela_bounds_check((vl_ix_16880 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4938)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4938)), 655360, "selfhost/vm.vel", 4938), vl_nd[vl_ix_16880]);
-        int64_t vl_ix_16889;
-        int64_t vl_y = (vela_bounds_check((vl_ix_16889 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4939)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4939)), 655360, "selfhost/vm.vel", 4939), vl_nd[vl_ix_16889]);
+        int64_t vl_ix_17219;
+        int64_t vl_x = (vela_bounds_check((vl_ix_17219 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5086)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5086)), 655360, "selfhost/vm.vel", 5086), vl_nd[vl_ix_17219]);
+        int64_t vl_ix_17228;
+        int64_t vl_y = (vela_bounds_check((vl_ix_17228 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5087)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5087)), 655360, "selfhost/vm.vel", 5087), vl_nd[vl_ix_17228]);
         while (((vl_x > 0LL) && (vl_y > 0LL))) {
             if ((!vl_ck_same_expr(vl_nd, vl_x, vl_y))) {
                 return false;
@@ -5702,64 +5802,64 @@ static bool vl_ck_same_expr(int64_t* vl_nd, int64_t vl_a, int64_t vl_b) {
         return ((vl_x <= 0LL) && (vl_y <= 0LL));
     }
     if ((vl_ka == 34LL)) {
-        int64_t vl_ix_16941;
-        int64_t vl_ix_16948;
-        if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16941 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4950)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4950)), 655360, "selfhost/vm.vel", 4950), vl_nd[vl_ix_16941]), (vela_bounds_check((vl_ix_16948 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4950)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4950)), 655360, "selfhost/vm.vel", 4950), vl_nd[vl_ix_16948])))) {
+        int64_t vl_ix_17280;
+        int64_t vl_ix_17287;
+        if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17280 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5098)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5098)), 655360, "selfhost/vm.vel", 5098), vl_nd[vl_ix_17280]), (vela_bounds_check((vl_ix_17287 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5098)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5098)), 655360, "selfhost/vm.vel", 5098), vl_nd[vl_ix_17287])))) {
             return false;
         }
-        int64_t vl_ix_16962;
-        int64_t vl_ix_16969;
-        if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16962 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4953)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4953)), 655360, "selfhost/vm.vel", 4953), vl_nd[vl_ix_16962]), (vela_bounds_check((vl_ix_16969 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4953)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4953)), 655360, "selfhost/vm.vel", 4953), vl_nd[vl_ix_16969])))) {
+        int64_t vl_ix_17301;
+        int64_t vl_ix_17308;
+        if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17301 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5101)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5101)), 655360, "selfhost/vm.vel", 5101), vl_nd[vl_ix_17301]), (vela_bounds_check((vl_ix_17308 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5101)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5101)), 655360, "selfhost/vm.vel", 5101), vl_nd[vl_ix_17308])))) {
             return false;
         }
-        int64_t vl_ix_16984;
-        int64_t vl_ix_16991;
-        return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_16984 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4956)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4956)), 655360, "selfhost/vm.vel", 4956), vl_nd[vl_ix_16984]), (vela_bounds_check((vl_ix_16991 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4956)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4956)), 655360, "selfhost/vm.vel", 4956), vl_nd[vl_ix_16991]));
+        int64_t vl_ix_17323;
+        int64_t vl_ix_17330;
+        return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17323 = vela_add_range((vela_mul_range((vl_a), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5104)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5104)), 655360, "selfhost/vm.vel", 5104), vl_nd[vl_ix_17323]), (vela_bounds_check((vl_ix_17330 = vela_add_range((vela_mul_range((vl_b), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5104)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5104)), 655360, "selfhost/vm.vel", 5104), vl_nd[vl_ix_17330]));
     }
     return false;
 }
 
 static bool vl_ck_rowmajor(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, int64_t vl_expr, int64_t vl_var, int64_t* vl_lb, int64_t vl_nlb) {
-    int64_t vl_kn = vela_neg_int(1LL, "selfhost/vm.vel", 4966);
-    int64_t vl_rn = vela_neg_int(1LL, "selfhost/vm.vel", 4967);
+    int64_t vl_kn = vela_neg_int(1LL, "selfhost/vm.vel", 5114);
+    int64_t vl_rn = vela_neg_int(1LL, "selfhost/vm.vel", 5115);
     if ((vl_nd_kind(vl_nd, vl_expr) != 27LL)) {
         return false;
     }
-    int64_t vl_ix_17027;
-    int64_t vl_ix_17138;
-    if (((vela_bounds_check((vl_ix_17027 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4971)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4971)), 655360, "selfhost/vm.vel", 4971), vl_nd[vl_ix_17027]) == 1LL)) {
-        int64_t vl_ix_17036;
-        int64_t vl_left = (vela_bounds_check((vl_ix_17036 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4972)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4972)), 655360, "selfhost/vm.vel", 4972), vl_nd[vl_ix_17036]);
+    int64_t vl_ix_17366;
+    int64_t vl_ix_17477;
+    if (((vela_bounds_check((vl_ix_17366 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5119)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5119)), 655360, "selfhost/vm.vel", 5119), vl_nd[vl_ix_17366]) == 1LL)) {
+        int64_t vl_ix_17375;
+        int64_t vl_left = (vela_bounds_check((vl_ix_17375 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5120)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5120)), 655360, "selfhost/vm.vel", 5120), vl_nd[vl_ix_17375]);
         if ((vl_nd_kind(vl_nd, vl_left) == 27LL)) {
-            int64_t vl_ix_17051;
-            if (((vela_bounds_check((vl_ix_17051 = vela_add_range((vela_mul_range((vl_left), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4974)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4974)), 655360, "selfhost/vm.vel", 4974), vl_nd[vl_ix_17051]) == 3LL)) {
-                int64_t vl_ix_17060;
-                int64_t vl_l0 = (vela_bounds_check((vl_ix_17060 = vela_add_range((vela_mul_range((vl_left), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4975)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4975)), 655360, "selfhost/vm.vel", 4975), vl_nd[vl_ix_17060]);
-                int64_t vl_ix_17069;
-                int64_t vl_l1 = (vela_bounds_check((vl_ix_17069 = vela_add_range((vela_mul_range((vl_left), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4976)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4976)), 655360, "selfhost/vm.vel", 4976), vl_nd[vl_ix_17069]);
-                int64_t vl_ix_17084;
-                int64_t vl_ix_17112;
-                if (((vl_nd_kind(vl_nd, vl_l0) == 25LL) && ((vela_bounds_check((vl_ix_17084 = vela_add_range((vela_mul_range((vl_l0), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4977)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4977)), 655360, "selfhost/vm.vel", 4977), vl_nd[vl_ix_17084]) == vl_var))) {
+            int64_t vl_ix_17390;
+            if (((vela_bounds_check((vl_ix_17390 = vela_add_range((vela_mul_range((vl_left), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5122)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5122)), 655360, "selfhost/vm.vel", 5122), vl_nd[vl_ix_17390]) == 3LL)) {
+                int64_t vl_ix_17399;
+                int64_t vl_l0 = (vela_bounds_check((vl_ix_17399 = vela_add_range((vela_mul_range((vl_left), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5123)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5123)), 655360, "selfhost/vm.vel", 5123), vl_nd[vl_ix_17399]);
+                int64_t vl_ix_17408;
+                int64_t vl_l1 = (vela_bounds_check((vl_ix_17408 = vela_add_range((vela_mul_range((vl_left), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5124)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5124)), 655360, "selfhost/vm.vel", 5124), vl_nd[vl_ix_17408]);
+                int64_t vl_ix_17423;
+                int64_t vl_ix_17451;
+                if (((vl_nd_kind(vl_nd, vl_l0) == 25LL) && ((vela_bounds_check((vl_ix_17423 = vela_add_range((vela_mul_range((vl_l0), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5125)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5125)), 655360, "selfhost/vm.vel", 5125), vl_nd[vl_ix_17423]) == vl_var))) {
                     vl_kn = vl_l1;
-                    int64_t vl_ix_17098;
-                    vl_rn = (vela_bounds_check((vl_ix_17098 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4979)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4979)), 655360, "selfhost/vm.vel", 4979), vl_nd[vl_ix_17098]);
-                } else if (((vl_nd_kind(vl_nd, vl_l1) == 25LL) && ((vela_bounds_check((vl_ix_17112 = vela_add_range((vela_mul_range((vl_l1), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4980)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4980)), 655360, "selfhost/vm.vel", 4980), vl_nd[vl_ix_17112]) == vl_var))) {
+                    int64_t vl_ix_17437;
+                    vl_rn = (vela_bounds_check((vl_ix_17437 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5127)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5127)), 655360, "selfhost/vm.vel", 5127), vl_nd[vl_ix_17437]);
+                } else if (((vl_nd_kind(vl_nd, vl_l1) == 25LL) && ((vela_bounds_check((vl_ix_17451 = vela_add_range((vela_mul_range((vl_l1), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5128)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5128)), 655360, "selfhost/vm.vel", 5128), vl_nd[vl_ix_17451]) == vl_var))) {
                     vl_kn = vl_l0;
-                    int64_t vl_ix_17126;
-                    vl_rn = (vela_bounds_check((vl_ix_17126 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4982)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4982)), 655360, "selfhost/vm.vel", 4982), vl_nd[vl_ix_17126]);
+                    int64_t vl_ix_17465;
+                    vl_rn = (vela_bounds_check((vl_ix_17465 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5130)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5130)), 655360, "selfhost/vm.vel", 5130), vl_nd[vl_ix_17465]);
                 }
             }
         }
-    } else if (((vela_bounds_check((vl_ix_17138 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4986)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4986)), 655360, "selfhost/vm.vel", 4986), vl_nd[vl_ix_17138]) == 3LL)) {
-        int64_t vl_ix_17147;
-        int64_t vl_l0 = (vela_bounds_check((vl_ix_17147 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4987)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4987)), 655360, "selfhost/vm.vel", 4987), vl_nd[vl_ix_17147]);
-        int64_t vl_ix_17156;
-        int64_t vl_l1 = (vela_bounds_check((vl_ix_17156 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4988)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4988)), 655360, "selfhost/vm.vel", 4988), vl_nd[vl_ix_17156]);
-        int64_t vl_ix_17171;
-        int64_t vl_ix_17190;
-        if (((vl_nd_kind(vl_nd, vl_l0) == 25LL) && ((vela_bounds_check((vl_ix_17171 = vela_add_range((vela_mul_range((vl_l0), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4989)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4989)), 655360, "selfhost/vm.vel", 4989), vl_nd[vl_ix_17171]) == vl_var))) {
+    } else if (((vela_bounds_check((vl_ix_17477 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5134)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5134)), 655360, "selfhost/vm.vel", 5134), vl_nd[vl_ix_17477]) == 3LL)) {
+        int64_t vl_ix_17486;
+        int64_t vl_l0 = (vela_bounds_check((vl_ix_17486 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5135)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5135)), 655360, "selfhost/vm.vel", 5135), vl_nd[vl_ix_17486]);
+        int64_t vl_ix_17495;
+        int64_t vl_l1 = (vela_bounds_check((vl_ix_17495 = vela_add_range((vela_mul_range((vl_expr), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5136)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5136)), 655360, "selfhost/vm.vel", 5136), vl_nd[vl_ix_17495]);
+        int64_t vl_ix_17510;
+        int64_t vl_ix_17529;
+        if (((vl_nd_kind(vl_nd, vl_l0) == 25LL) && ((vela_bounds_check((vl_ix_17510 = vela_add_range((vela_mul_range((vl_l0), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5137)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5137)), 655360, "selfhost/vm.vel", 5137), vl_nd[vl_ix_17510]) == vl_var))) {
             vl_kn = vl_l1;
-        } else if (((vl_nd_kind(vl_nd, vl_l1) == 25LL) && ((vela_bounds_check((vl_ix_17190 = vela_add_range((vela_mul_range((vl_l1), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4991)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 4991)), 655360, "selfhost/vm.vel", 4991), vl_nd[vl_ix_17190]) == vl_var))) {
+        } else if (((vl_nd_kind(vl_nd, vl_l1) == 25LL) && ((vela_bounds_check((vl_ix_17529 = vela_add_range((vela_mul_range((vl_l1), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5139)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5139)), 655360, "selfhost/vm.vel", 5139), vl_nd[vl_ix_17529]) == vl_var))) {
             vl_kn = vl_l0;
         }
     }
@@ -5772,17 +5872,17 @@ static bool vl_ck_rowmajor(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, 
     if ((vl_nd_kind(vl_nd, vl_rn) != 25LL)) {
         return false;
     }
-    int64_t vl_ix_17231;
-    int64_t vl_j = vl_ck_lb_find(vl_lb, vl_nlb, (vela_bounds_check((vl_ix_17231 = vela_add_range((vela_mul_range((vl_rn), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5005)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5005)), 655360, "selfhost/vm.vel", 5005), vl_nd[vl_ix_17231]));
+    int64_t vl_ix_17570;
+    int64_t vl_j = vl_ck_lb_find(vl_lb, vl_nlb, (vela_bounds_check((vl_ix_17570 = vela_add_range((vela_mul_range((vl_rn), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5153)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5153)), 655360, "selfhost/vm.vel", 5153), vl_nd[vl_ix_17570]));
     if ((vl_j < 0LL)) {
         return false;
     }
-    int64_t vl_ix_17247;
-    int64_t vl_bstart = (vela_bounds_check((vl_ix_17247 = vela_add_range((vela_mul_range((vl_j), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5009)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5009)), 64, "selfhost/vm.vel", 5009), vl_lb[vl_ix_17247]);
-    int64_t vl_ix_17256;
-    int64_t vl_bstop = (vela_bounds_check((vl_ix_17256 = vela_add_range((vela_mul_range((vl_j), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5010)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5010)), 64, "selfhost/vm.vel", 5010), vl_lb[vl_ix_17256]);
-    int64_t vl_ix_17265;
-    int64_t vl_bstep = (vela_bounds_check((vl_ix_17265 = vela_add_range((vela_mul_range((vl_j), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5011)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5011)), 64, "selfhost/vm.vel", 5011), vl_lb[vl_ix_17265]);
+    int64_t vl_ix_17586;
+    int64_t vl_bstart = (vela_bounds_check((vl_ix_17586 = vela_add_range((vela_mul_range((vl_j), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5157)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5157)), 64, "selfhost/vm.vel", 5157), vl_lb[vl_ix_17586]);
+    int64_t vl_ix_17595;
+    int64_t vl_bstop = (vela_bounds_check((vl_ix_17595 = vela_add_range((vela_mul_range((vl_j), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5158)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5158)), 64, "selfhost/vm.vel", 5158), vl_lb[vl_ix_17595]);
+    int64_t vl_ix_17604;
+    int64_t vl_bstep = (vela_bounds_check((vl_ix_17604 = vela_add_range((vela_mul_range((vl_j), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5159)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5159)), 64, "selfhost/vm.vel", 5159), vl_lb[vl_ix_17604]);
     if ((vl_ck_const_int(vl_nd, vl_bstart) != 0LL)) {
         return false;
     }
@@ -5797,16 +5897,16 @@ static bool vl_ck_rowmajor(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, 
     if ((vl_nd_kind(vl_nd, vl_kn) != 27LL)) {
         return false;
     }
-    int64_t vl_ix_17316;
-    if (((vela_bounds_check((vl_ix_17316 = vela_add_range((vela_mul_range((vl_kn), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5026)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5026)), 655360, "selfhost/vm.vel", 5026), vl_nd[vl_ix_17316]) != 3LL)) {
+    int64_t vl_ix_17655;
+    if (((vela_bounds_check((vl_ix_17655 = vela_add_range((vela_mul_range((vl_kn), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5174)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5174)), 655360, "selfhost/vm.vel", 5174), vl_nd[vl_ix_17655]) != 3LL)) {
         return false;
     }
-    int64_t vl_ix_17330;
-    if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17330 = vela_add_range((vela_mul_range((vl_kn), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5029)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5029)), 655360, "selfhost/vm.vel", 5029), vl_nd[vl_ix_17330]), vl_bstop))) {
+    int64_t vl_ix_17669;
+    if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17669 = vela_add_range((vela_mul_range((vl_kn), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5177)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5177)), 655360, "selfhost/vm.vel", 5177), vl_nd[vl_ix_17669]), vl_bstop))) {
         return false;
     }
-    int64_t vl_ix_17346;
-    return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17346 = vela_add_range((vela_mul_range((vl_kn), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5032)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5032)), 655360, "selfhost/vm.vel", 5032), vl_nd[vl_ix_17346]), vl_bstep);
+    int64_t vl_ix_17685;
+    return vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_17685 = vela_add_range((vela_mul_range((vl_kn), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5180)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5180)), 655360, "selfhost/vm.vel", 5180), vl_nd[vl_ix_17685]), vl_bstep);
 }
 
 static bool vl_ck_match_linear(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_iv, int64_t vl_ni, int64_t* vl_lb, int64_t vl_nlb, int64_t vl_expr, int64_t vl_var) {
@@ -5826,9 +5926,9 @@ static bool vl_ck_match_linear(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_
     }
     int64_t vl_a = vl_c;
     if ((vl_a < 0LL)) {
-        vl_a = vela_neg_int(vl_a, "selfhost/vm.vel", 5056);
+        vl_a = vela_neg_int(vl_a, "selfhost/vm.vel", 5204);
     }
-    return (vl_a > vela_sub_range((vl_rest.f_hi), (vl_rest.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5058));
+    return (vl_a > vela_sub_range((vl_rest.f_hi), (vl_rest.f_lo), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5206));
 }
 
 static void vl_ck_range_iv(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_iv, int64_t vl_ni, int64_t vl_start, int64_t vl_stop, int64_t vl_step, struct vl_Iv* vl_out) {
@@ -5843,7 +5943,7 @@ static void vl_ck_range_iv(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, 
                 return;
             }
             vl_out->f_lo = vl_a.f_lo;
-            vl_out->f_hi = vela_sub_range((vl_b.f_hi), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5078);
+            vl_out->f_hi = vela_sub_range((vl_b.f_hi), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5226);
             vl_out->f_lok = 1LL;
             vl_out->f_hik = 1LL;
             return;
@@ -5881,9 +5981,9 @@ static void vl_ck_range_iv(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, 
             (void)(vl_ck_iv_exact(vl_out, vl_a.f_lo));
             return;
         }
-        int64_t vl_last = vela_sub_range((vl_b.f_lo), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5116);
+        int64_t vl_last = vela_sub_range((vl_b.f_lo), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5264);
         if ((vl_c.f_lo < 0LL)) {
-            vl_last = vela_add_range((vl_b.f_lo), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5118);
+            vl_last = vela_add_range((vl_b.f_lo), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5266);
         }
         int64_t vl_hi = vl_last;
         if ((vl_a.f_lo > vl_hi)) {
@@ -5931,78 +6031,78 @@ static int64_t vl_TW_KCAP(void) {
 }
 
 static void vl_ck_pwrite(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_iv, int64_t vl_ni, int64_t* vl_lb, int64_t vl_nlb, int64_t* vl_tb, int64_t vl_bn, int64_t vl_idx, int64_t vl_var) {
-    int64_t vl_ix_17790;
-    int64_t vl_n = (vela_bounds_check((vl_ix_17790 = vl_TW_NB()), 448, "selfhost/vm.vel", 5167), vl_tb[vl_ix_17790]);
-    int64_t vl_b = vela_neg_int(1LL, "selfhost/vm.vel", 5168);
+    int64_t vl_ix_18129;
+    int64_t vl_n = (vela_bounds_check((vl_ix_18129 = vl_TW_NB()), 448, "selfhost/vm.vel", 5315), vl_tb[vl_ix_18129]);
+    int64_t vl_b = vela_neg_int(1LL, "selfhost/vm.vel", 5316);
     int64_t vl_i = 0LL;
     while ((vl_i < vl_n)) {
-        int64_t vl_ix_17808;
-        if (((vela_bounds_check((vl_ix_17808 = vela_add_range((vl_TW_WB()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5171)), 448, "selfhost/vm.vel", 5171), vl_tb[vl_ix_17808]) == vl_bn)) {
+        int64_t vl_ix_18147;
+        if (((vela_bounds_check((vl_ix_18147 = vela_add_range((vl_TW_WB()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5319)), 448, "selfhost/vm.vel", 5319), vl_tb[vl_ix_18147]) == vl_bn)) {
             vl_b = vl_i;
             break;
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5175);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5323);
     }
     if ((vl_b < 0LL)) {
         if ((vl_n >= vl_TW_CAP())) {
             return;
         }
         vl_b = vl_n;
-        int64_t vl_ix_17835;
-        vela_bounds_check((vl_ix_17835 = vl_TW_NB()), 448, "selfhost/vm.vel", 5182);
-        vl_tb[vl_ix_17835] = vela_add_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5182);
-        int64_t vl_ix_17845;
-        vela_bounds_check((vl_ix_17845 = vela_add_range((vl_TW_WB()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5183)), 448, "selfhost/vm.vel", 5183);
-        vl_tb[vl_ix_17845] = vl_bn;
-        int64_t vl_ix_17853;
-        vela_bounds_check((vl_ix_17853 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5184)), 448, "selfhost/vm.vel", 5184);
-        vl_tb[vl_ix_17853] = 0LL;
-        int64_t vl_ix_17861;
-        vela_bounds_check((vl_ix_17861 = vela_add_range((vl_TW_WP()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5185)), 448, "selfhost/vm.vel", 5185);
-        vl_tb[vl_ix_17861] = 0LL;
-        int64_t vl_ix_17869;
-        vela_bounds_check((vl_ix_17869 = vela_add_range((vl_TW_WX()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5186)), 448, "selfhost/vm.vel", 5186);
-        vl_tb[vl_ix_17869] = 0LL;
+        int64_t vl_ix_18174;
+        vela_bounds_check((vl_ix_18174 = vl_TW_NB()), 448, "selfhost/vm.vel", 5330);
+        vl_tb[vl_ix_18174] = vela_add_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5330);
+        int64_t vl_ix_18184;
+        vela_bounds_check((vl_ix_18184 = vela_add_range((vl_TW_WB()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5331)), 448, "selfhost/vm.vel", 5331);
+        vl_tb[vl_ix_18184] = vl_bn;
+        int64_t vl_ix_18192;
+        vela_bounds_check((vl_ix_18192 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5332)), 448, "selfhost/vm.vel", 5332);
+        vl_tb[vl_ix_18192] = 0LL;
+        int64_t vl_ix_18200;
+        vela_bounds_check((vl_ix_18200 = vela_add_range((vl_TW_WP()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5333)), 448, "selfhost/vm.vel", 5333);
+        vl_tb[vl_ix_18200] = 0LL;
+        int64_t vl_ix_18208;
+        vela_bounds_check((vl_ix_18208 = vela_add_range((vl_TW_WX()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5334)), 448, "selfhost/vm.vel", 5334);
+        vl_tb[vl_ix_18208] = 0LL;
     }
-    int64_t vl_ix_17878;
-    if (((vela_bounds_check((vl_ix_17878 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5188)), 448, "selfhost/vm.vel", 5188), vl_tb[vl_ix_17878]) >= vl_TW_KCAP())) {
+    int64_t vl_ix_18217;
+    if (((vela_bounds_check((vl_ix_18217 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5336)), 448, "selfhost/vm.vel", 5336), vl_tb[vl_ix_18217]) >= vl_TW_KCAP())) {
         return;
     }
     int64_t vl_j = 0LL;
-    int64_t vl_ix_17893;
-    while ((vl_j < (vela_bounds_check((vl_ix_17893 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5192)), 448, "selfhost/vm.vel", 5192), vl_tb[vl_ix_17893]))) {
-        int64_t vl_ix_17907;
-        if (vl_ck_same_expr(vl_nd, vl_idx, (vela_bounds_check((vl_ix_17907 = vela_add_range((vela_add_range((vl_TW_WK()), (vela_mul_range((vl_b), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5193)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5193)), (vl_j), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5193)), 448, "selfhost/vm.vel", 5193), vl_tb[vl_ix_17907]))) {
+    int64_t vl_ix_18232;
+    while ((vl_j < (vela_bounds_check((vl_ix_18232 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5340)), 448, "selfhost/vm.vel", 5340), vl_tb[vl_ix_18232]))) {
+        int64_t vl_ix_18246;
+        if (vl_ck_same_expr(vl_nd, vl_idx, (vela_bounds_check((vl_ix_18246 = vela_add_range((vela_add_range((vl_TW_WK()), (vela_mul_range((vl_b), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5341)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5341)), (vl_j), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5341)), 448, "selfhost/vm.vel", 5341), vl_tb[vl_ix_18246]))) {
             return;
         }
-        vl_j = vela_add_range(vl_j, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5196);
+        vl_j = vela_add_range(vl_j, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5344);
     }
-    int64_t vl_ix_17929;
-    int64_t vl_ix_17927;
-    vela_bounds_check((vl_ix_17929 = vela_add_range((vela_add_range((vl_TW_WK()), (vela_mul_range((vl_b), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5198)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5198)), ((vela_bounds_check((vl_ix_17927 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5198)), 448, "selfhost/vm.vel", 5198), vl_tb[vl_ix_17927])), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5198)), 448, "selfhost/vm.vel", 5198);
-    vl_tb[vl_ix_17929] = vl_idx;
-    int64_t vl_ix_17937;
-    int64_t vl_ix_17943;
-    vela_bounds_check((vl_ix_17937 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5199)), 448, "selfhost/vm.vel", 5199);
-    vl_tb[vl_ix_17937] = vela_add_range(((vela_bounds_check((vl_ix_17943 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5199)), 448, "selfhost/vm.vel", 5199), vl_tb[vl_ix_17943])), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5199);
-    int64_t vl_ix_17952;
-    if (((vela_bounds_check((vl_ix_17952 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5200)), 448, "selfhost/vm.vel", 5200), vl_tb[vl_ix_17952]) == 1LL)) {
-        int64_t vl_ix_17960;
-        vela_bounds_check((vl_ix_17960 = vela_add_range((vl_TW_WX()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5201)), 448, "selfhost/vm.vel", 5201);
-        vl_tb[vl_ix_17960] = vl_idx;
-        int64_t vl_ix_17977;
-        if (vl_ck_match_linear(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, vl_lb, vl_nlb, (vela_bounds_check((vl_ix_17977 = vela_add_range((vela_mul_range((vl_idx), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5202)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5202)), 655360, "selfhost/vm.vel", 5202), vl_nd[vl_ix_17977]), vl_var)) {
-            int64_t vl_ix_17985;
-            vela_bounds_check((vl_ix_17985 = vela_add_range((vl_TW_WP()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5203)), 448, "selfhost/vm.vel", 5203);
-            vl_tb[vl_ix_17985] = 1LL;
+    int64_t vl_ix_18268;
+    int64_t vl_ix_18266;
+    vela_bounds_check((vl_ix_18268 = vela_add_range((vela_add_range((vl_TW_WK()), (vela_mul_range((vl_b), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5346)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5346)), ((vela_bounds_check((vl_ix_18266 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5346)), 448, "selfhost/vm.vel", 5346), vl_tb[vl_ix_18266])), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5346)), 448, "selfhost/vm.vel", 5346);
+    vl_tb[vl_ix_18268] = vl_idx;
+    int64_t vl_ix_18276;
+    int64_t vl_ix_18282;
+    vela_bounds_check((vl_ix_18276 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5347)), 448, "selfhost/vm.vel", 5347);
+    vl_tb[vl_ix_18276] = vela_add_range(((vela_bounds_check((vl_ix_18282 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5347)), 448, "selfhost/vm.vel", 5347), vl_tb[vl_ix_18282])), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5347);
+    int64_t vl_ix_18291;
+    if (((vela_bounds_check((vl_ix_18291 = vela_add_range((vl_TW_WD()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5348)), 448, "selfhost/vm.vel", 5348), vl_tb[vl_ix_18291]) == 1LL)) {
+        int64_t vl_ix_18299;
+        vela_bounds_check((vl_ix_18299 = vela_add_range((vl_TW_WX()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5349)), 448, "selfhost/vm.vel", 5349);
+        vl_tb[vl_ix_18299] = vl_idx;
+        int64_t vl_ix_18316;
+        if (vl_ck_match_linear(vl_nd, vl_mem, vl_vm, vl_iv, vl_ni, vl_lb, vl_nlb, (vela_bounds_check((vl_ix_18316 = vela_add_range((vela_mul_range((vl_idx), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5350)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5350)), 655360, "selfhost/vm.vel", 5350), vl_nd[vl_ix_18316]), vl_var)) {
+            int64_t vl_ix_18324;
+            vela_bounds_check((vl_ix_18324 = vela_add_range((vl_TW_WP()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5351)), 448, "selfhost/vm.vel", 5351);
+            vl_tb[vl_ix_18324] = 1LL;
         }
     }
 }
 
 static void vl_ck_pname(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM vl_vm, int64_t vl_s, int64_t vl_aug) {
-    int64_t vl_ix_18009;
-    int64_t vl_ix_18004;
-    int64_t vl_nm = (vela_bounds_check((vl_ix_18009 = vela_add_range((vela_mul_range(((vela_bounds_check((vl_ix_18004 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5213)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5213)), 655360, "selfhost/vm.vel", 5213), vl_nd[vl_ix_18004])), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5213)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5213)), 655360, "selfhost/vm.vel", 5213), vl_nd[vl_ix_18009]);
+    int64_t vl_ix_18348;
+    int64_t vl_ix_18343;
+    int64_t vl_nm = (vela_bounds_check((vl_ix_18348 = vela_add_range((vela_mul_range(((vela_bounds_check((vl_ix_18343 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5361)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5361)), 655360, "selfhost/vm.vel", 5361), vl_nd[vl_ix_18343])), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5361)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5361)), 655360, "selfhost/vm.vel", 5361), vl_nd[vl_ix_18348]);
     if ((vl_ck_bound(vl_mem, vl_vm, vl_nm) < 0LL)) {
         return;
     }
@@ -6014,13 +6114,13 @@ static void vl_ck_pname(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struc
 }
 
 static void vl_ck_pure_method(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM vl_vm, int64_t vl_e, int64_t vl_callee) {
-    int64_t vl_ix_18065;
-    int64_t vl_recv = (vela_bounds_check((vl_ix_18065 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5232)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5232)), 655360, "selfhost/vm.vel", 5232), vl_nd[vl_ix_18065]);
+    int64_t vl_ix_18404;
+    int64_t vl_recv = (vela_bounds_check((vl_ix_18404 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5380)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5380)), 655360, "selfhost/vm.vel", 5380), vl_nd[vl_ix_18404]);
     if ((vl_nd_kind(vl_nd, vl_recv) != 25LL)) {
         return;
     }
-    int64_t vl_ix_18085;
-    int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_18085 = vela_add_range((vela_mul_range((vl_recv), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5236)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5236)), 655360, "selfhost/vm.vel", 5236), vl_nd[vl_ix_18085]));
+    int64_t vl_ix_18424;
+    int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_18424 = vela_add_range((vela_mul_range((vl_recv), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5384)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5384)), 655360, "selfhost/vm.vel", 5384), vl_nd[vl_ix_18424]));
     if ((vl_i < 0LL)) {
         return;
     }
@@ -6029,20 +6129,20 @@ static void vl_ck_pure_method(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path,
         return;
     }
     int64_t vl_sid = vl_unpack_len(vl_ck);
-    int64_t vl_ix_18119;
-    int64_t vl_nm = (vela_bounds_check((vl_ix_18119 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5245)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5245)), 655360, "selfhost/vm.vel", 5245), vl_nd[vl_ix_18119]);
+    int64_t vl_ix_18458;
+    int64_t vl_nm = (vela_bounds_check((vl_ix_18458 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5393)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5393)), 655360, "selfhost/vm.vel", 5393), vl_nd[vl_ix_18458]);
     int64_t vl_n = vl_stb_get(vl_mem, vl_sid, vl_STB_NMETH());
     int64_t vl_off = vl_stb_get(vl_mem, vl_sid, vl_STB_MOFF());
     int64_t vl_j = 0LL;
     while ((vl_j < vl_n)) {
-        if ((vl_met_get(vl_mem, vela_add_range((vl_off), (vl_j), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5250), vl_MET_NAME()) == vl_nm)) {
-            int64_t vl_fn = vl_met_get(vl_mem, vela_add_range((vl_off), (vl_j), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5251), vl_MET_FN());
+        if ((vl_met_get(vl_mem, vela_add_range((vl_off), (vl_j), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5398), vl_MET_NAME()) == vl_nm)) {
+            int64_t vl_fn = vl_met_get(vl_mem, vela_add_range((vl_off), (vl_j), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5399), vl_MET_FN());
             if ((vl_ft_get(vl_mem, vl_fn, vl_FT_PURE()) == 0LL)) {
                 (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_quoted(vela_str_lit("call to impure function '", 25), vl_nm, vela_str_lit("' inside 'parallel for'", 23))));
             }
             return;
         }
-        vl_j = vela_add_range(vl_j, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5259);
+        vl_j = vela_add_range(vl_j, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5407);
     }
 }
 
@@ -6052,8 +6152,8 @@ static void vl_ck_pure(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct
     }
     int64_t vl_k = vl_nd_kind(vl_nd, vl_e);
     if ((vl_k == 26LL)) {
-        int64_t vl_ix_18218;
-        int64_t vl_callee = (vela_bounds_check((vl_ix_18218 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5273)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5273)), 655360, "selfhost/vm.vel", 5273), vl_nd[vl_ix_18218]);
+        int64_t vl_ix_18557;
+        int64_t vl_callee = (vela_bounds_check((vl_ix_18557 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5421)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5421)), 655360, "selfhost/vm.vel", 5421), vl_nd[vl_ix_18557]);
         if ((vl_nd_kind(vl_nd, vl_callee) == 25LL)) {
             int64_t vl_s = vl_nt_get(vl_mem, vl_callee, vl_NT_SYM());
             if ((vl_s == vl_SYM_BUILTIN())) {
@@ -6065,16 +6165,16 @@ static void vl_ck_pure(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct
             if ((vl_s == vl_SYM_FUNC())) {
                 int64_t vl_fn = vl_nt_get(vl_mem, vl_callee, vl_NT_VAL());
                 if ((vl_ft_get(vl_mem, vl_fn, vl_FT_PURE()) == 0LL)) {
-                    int64_t vl_ix_18294;
-                    (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_quoted(vela_str_lit("call to impure function '", 25), (vela_bounds_check((vl_ix_18294 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5288)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5288)), 655360, "selfhost/vm.vel", 5288), vl_nd[vl_ix_18294]), vela_str_lit("' inside 'parallel for'", 23))));
+                    int64_t vl_ix_18633;
+                    (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_quoted(vela_str_lit("call to impure function '", 25), (vela_bounds_check((vl_ix_18633 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5436)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5436)), 655360, "selfhost/vm.vel", 5436), vl_nd[vl_ix_18633]), vela_str_lit("' inside 'parallel for'", 23))));
                     return;
                 }
             }
         } else if ((vl_nd_kind(vl_nd, vl_callee) == 32LL)) {
             (void)(vl_ck_pure_method(vl_nd, vl_mem, vl_path, vl_vm, vl_e, vl_callee));
         }
-        int64_t vl_ix_18325;
-        int64_t vl_a = (vela_bounds_check((vl_ix_18325 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5296)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5296)), 655360, "selfhost/vm.vel", 5296), vl_nd[vl_ix_18325]);
+        int64_t vl_ix_18664;
+        int64_t vl_a = (vela_bounds_check((vl_ix_18664 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5444)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5444)), 655360, "selfhost/vm.vel", 5444), vl_nd[vl_ix_18664]);
         while ((vl_a > 0LL)) {
             (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, vl_a));
             vl_a = vl_nd_nx(vl_nd, vl_a);
@@ -6082,32 +6182,32 @@ static void vl_ck_pure(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct
         return;
     }
     if ((((vl_k == 27LL) || (vl_k == 29LL)) || (vl_k == 30LL))) {
-        int64_t vl_ix_18370;
-        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18370 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5304)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5304)), 655360, "selfhost/vm.vel", 5304), vl_nd[vl_ix_18370])));
-        int64_t vl_ix_18384;
-        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18384 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5305)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5305)), 655360, "selfhost/vm.vel", 5305), vl_nd[vl_ix_18384])));
+        int64_t vl_ix_18709;
+        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18709 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5452)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5452)), 655360, "selfhost/vm.vel", 5452), vl_nd[vl_ix_18709])));
+        int64_t vl_ix_18723;
+        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18723 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5453)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5453)), 655360, "selfhost/vm.vel", 5453), vl_nd[vl_ix_18723])));
         return;
     }
     if ((vl_k == 28LL)) {
-        int64_t vl_ix_18403;
-        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18403 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5309)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5309)), 655360, "selfhost/vm.vel", 5309), vl_nd[vl_ix_18403])));
+        int64_t vl_ix_18742;
+        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18742 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5457)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5457)), 655360, "selfhost/vm.vel", 5457), vl_nd[vl_ix_18742])));
         return;
     }
     if ((vl_k == 31LL)) {
-        int64_t vl_ix_18422;
-        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18422 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5313)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5313)), 655360, "selfhost/vm.vel", 5313), vl_nd[vl_ix_18422])));
-        int64_t vl_ix_18436;
-        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18436 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5314)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5314)), 655360, "selfhost/vm.vel", 5314), vl_nd[vl_ix_18436])));
+        int64_t vl_ix_18761;
+        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18761 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5461)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5461)), 655360, "selfhost/vm.vel", 5461), vl_nd[vl_ix_18761])));
+        int64_t vl_ix_18775;
+        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18775 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5462)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5462)), 655360, "selfhost/vm.vel", 5462), vl_nd[vl_ix_18775])));
         return;
     }
     if ((vl_k == 32LL)) {
-        int64_t vl_ix_18455;
-        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18455 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5318)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5318)), 655360, "selfhost/vm.vel", 5318), vl_nd[vl_ix_18455])));
+        int64_t vl_ix_18794;
+        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18794 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5466)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5466)), 655360, "selfhost/vm.vel", 5466), vl_nd[vl_ix_18794])));
         return;
     }
     if ((vl_k == 33LL)) {
-        int64_t vl_ix_18469;
-        int64_t vl_el = (vela_bounds_check((vl_ix_18469 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5322)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5322)), 655360, "selfhost/vm.vel", 5322), vl_nd[vl_ix_18469]);
+        int64_t vl_ix_18808;
+        int64_t vl_el = (vela_bounds_check((vl_ix_18808 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5470)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5470)), 655360, "selfhost/vm.vel", 5470), vl_nd[vl_ix_18808]);
         while ((vl_el > 0LL)) {
             (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, vl_el));
             vl_el = vl_nd_nx(vl_nd, vl_el);
@@ -6115,12 +6215,12 @@ static void vl_ck_pure(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct
         return;
     }
     if ((vl_k == 34LL)) {
-        int64_t vl_ix_18506;
-        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18506 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5330)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5330)), 655360, "selfhost/vm.vel", 5330), vl_nd[vl_ix_18506])));
-        int64_t vl_ix_18520;
-        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18520 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5331)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5331)), 655360, "selfhost/vm.vel", 5331), vl_nd[vl_ix_18520])));
-        int64_t vl_ix_18534;
-        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18534 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5332)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5332)), 655360, "selfhost/vm.vel", 5332), vl_nd[vl_ix_18534])));
+        int64_t vl_ix_18845;
+        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18845 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5478)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5478)), 655360, "selfhost/vm.vel", 5478), vl_nd[vl_ix_18845])));
+        int64_t vl_ix_18859;
+        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18859 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5479)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5479)), 655360, "selfhost/vm.vel", 5479), vl_nd[vl_ix_18859])));
+        int64_t vl_ix_18873;
+        (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18873 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5480)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5480)), 655360, "selfhost/vm.vel", 5480), vl_nd[vl_ix_18873])));
     }
 }
 
@@ -6130,93 +6230,93 @@ static void vl_ck_pcol(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct
         int64_t vl_k = vl_nd_kind(vl_nd, vl_s);
         int64_t vl_line = vl_nd_line(vl_nd, vl_s);
         if ((vl_k == 6LL)) {
-            int64_t vl_ix_18576;
-            int64_t vl_tgt = (vela_bounds_check((vl_ix_18576 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5356)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5356)), 655360, "selfhost/vm.vel", 5356), vl_nd[vl_ix_18576]);
+            int64_t vl_ix_18915;
+            int64_t vl_tgt = (vela_bounds_check((vl_ix_18915 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5504)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5504)), 655360, "selfhost/vm.vel", 5504), vl_nd[vl_ix_18915]);
             int64_t vl_tk = vl_nd_kind(vl_nd, vl_tgt);
             if ((vl_tk == 31LL)) {
-                int64_t vl_ix_18594;
-                int64_t vl_base = (vela_bounds_check((vl_ix_18594 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5359)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5359)), 655360, "selfhost/vm.vel", 5359), vl_nd[vl_ix_18594]);
+                int64_t vl_ix_18933;
+                int64_t vl_base = (vela_bounds_check((vl_ix_18933 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5507)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5507)), 655360, "selfhost/vm.vel", 5507), vl_nd[vl_ix_18933]);
                 if ((vl_nd_kind(vl_nd, vl_base) != 25LL)) {
                     (void)(vl_ck_safety(vl_path, vl_line, vela_str_lit("'parallel for' may only write to a local array, not through a nested expression", 79)));
                     return;
                 }
-                int64_t vl_ix_18628;
-                (void)(vl_ck_pwrite(vl_nd, vl_mem, vl_vm, vl_iv, vl_p->f_ni, vl_lb, vl_p->f_nlb, vl_tb, (vela_bounds_check((vl_ix_18628 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5365)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5365)), 655360, "selfhost/vm.vel", 5365), vl_nd[vl_ix_18628]), vl_tgt, vl_var));
-                int64_t vl_ix_18639;
-                if (((vela_bounds_check((vl_ix_18639 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5367)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5367)), 655360, "selfhost/vm.vel", 5367), vl_nd[vl_ix_18639]) > 0LL)) {
-                    int64_t vl_ix_18653;
-                    (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18653 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5368)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5368)), 655360, "selfhost/vm.vel", 5368), vl_nd[vl_ix_18653])));
+                int64_t vl_ix_18967;
+                (void)(vl_ck_pwrite(vl_nd, vl_mem, vl_vm, vl_iv, vl_p->f_ni, vl_lb, vl_p->f_nlb, vl_tb, (vela_bounds_check((vl_ix_18967 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5513)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5513)), 655360, "selfhost/vm.vel", 5513), vl_nd[vl_ix_18967]), vl_tgt, vl_var));
+                int64_t vl_ix_18978;
+                if (((vela_bounds_check((vl_ix_18978 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5515)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5515)), 655360, "selfhost/vm.vel", 5515), vl_nd[vl_ix_18978]) > 0LL)) {
+                    int64_t vl_ix_18992;
+                    (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18992 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5516)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5516)), 655360, "selfhost/vm.vel", 5516), vl_nd[vl_ix_18992])));
                 }
             } else if ((vl_tk == 25LL)) {
                 (void)(vl_ck_pname(vl_nd, vl_mem, vl_path, vl_vm, vl_s, 0LL));
-                int64_t vl_ix_18675;
-                if (((vela_bounds_check((vl_ix_18675 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5372)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5372)), 655360, "selfhost/vm.vel", 5372), vl_nd[vl_ix_18675]) > 0LL)) {
-                    int64_t vl_ix_18689;
-                    (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18689 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5373)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5373)), 655360, "selfhost/vm.vel", 5373), vl_nd[vl_ix_18689])));
+                int64_t vl_ix_19014;
+                if (((vela_bounds_check((vl_ix_19014 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5520)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5520)), 655360, "selfhost/vm.vel", 5520), vl_nd[vl_ix_19014]) > 0LL)) {
+                    int64_t vl_ix_19028;
+                    (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_19028 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5521)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5521)), 655360, "selfhost/vm.vel", 5521), vl_nd[vl_ix_19028])));
                 }
             } else {
                 (void)(vl_ck_safety(vl_path, vl_line, vela_str_lit("'parallel for' may only write to array elements", 47)));
                 return;
             }
         } else if ((vl_k == 7LL)) {
-            int64_t vl_ix_18711;
-            int64_t vl_tgt = (vela_bounds_check((vl_ix_18711 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5381)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5381)), 655360, "selfhost/vm.vel", 5381), vl_nd[vl_ix_18711]);
+            int64_t vl_ix_19050;
+            int64_t vl_tgt = (vela_bounds_check((vl_ix_19050 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5529)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5529)), 655360, "selfhost/vm.vel", 5529), vl_nd[vl_ix_19050]);
             int64_t vl_tk = vl_nd_kind(vl_nd, vl_tgt);
             if ((vl_tk == 31LL)) {
-                int64_t vl_ix_18729;
-                int64_t vl_base = (vela_bounds_check((vl_ix_18729 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5384)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5384)), 655360, "selfhost/vm.vel", 5384), vl_nd[vl_ix_18729]);
+                int64_t vl_ix_19068;
+                int64_t vl_base = (vela_bounds_check((vl_ix_19068 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5532)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5532)), 655360, "selfhost/vm.vel", 5532), vl_nd[vl_ix_19068]);
                 if ((vl_nd_kind(vl_nd, vl_base) != 25LL)) {
                     (void)(vl_ck_safety(vl_path, vl_line, vela_str_lit("'parallel for' may only write to a local array", 46)));
                     return;
                 }
-                int64_t vl_ix_18763;
-                (void)(vl_ck_pwrite(vl_nd, vl_mem, vl_vm, vl_iv, vl_p->f_ni, vl_lb, vl_p->f_nlb, vl_tb, (vela_bounds_check((vl_ix_18763 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5390)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5390)), 655360, "selfhost/vm.vel", 5390), vl_nd[vl_ix_18763]), vl_tgt, vl_var));
-                int64_t vl_ix_18779;
-                (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18779 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5392)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5392)), 655360, "selfhost/vm.vel", 5392), vl_nd[vl_ix_18779])));
+                int64_t vl_ix_19102;
+                (void)(vl_ck_pwrite(vl_nd, vl_mem, vl_vm, vl_iv, vl_p->f_ni, vl_lb, vl_p->f_nlb, vl_tb, (vela_bounds_check((vl_ix_19102 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5538)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5538)), 655360, "selfhost/vm.vel", 5538), vl_nd[vl_ix_19102]), vl_tgt, vl_var));
+                int64_t vl_ix_19118;
+                (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_19118 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5540)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5540)), 655360, "selfhost/vm.vel", 5540), vl_nd[vl_ix_19118])));
             } else if ((vl_tk == 25LL)) {
                 (void)(vl_ck_pname(vl_nd, vl_mem, vl_path, vl_vm, vl_s, 1LL));
-                int64_t vl_ix_18805;
-                (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18805 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5395)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5395)), 655360, "selfhost/vm.vel", 5395), vl_nd[vl_ix_18805])));
+                int64_t vl_ix_19144;
+                (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_19144 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5543)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5543)), 655360, "selfhost/vm.vel", 5543), vl_nd[vl_ix_19144])));
             } else {
                 (void)(vl_ck_safety(vl_path, vl_line, vela_str_lit("'parallel for' may not write this target", 40)));
                 return;
             }
         } else if ((vl_k == 8LL)) {
-            int64_t vl_ix_18831;
-            (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18831 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5401)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5401)), 655360, "selfhost/vm.vel", 5401), vl_nd[vl_ix_18831])));
+            int64_t vl_ix_19170;
+            (void)(vl_ck_pure(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_19170 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5549)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5549)), 655360, "selfhost/vm.vel", 5549), vl_nd[vl_ix_19170])));
         } else if ((vl_k == 9LL)) {
             (void)(vl_ck_safety(vl_path, vl_line, vela_str_lit("'parallel for' bodies may not 'return'", 38)));
             return;
         } else if ((vl_k == 10LL)) {
-            int64_t vl_ix_18858;
-            (void)(vl_ck_pcol(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18858 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5406)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5406)), 655360, "selfhost/vm.vel", 5406), vl_nd[vl_ix_18858]), vl_var, vl_iv, vl_lb, vl_p, vl_tb));
-            int64_t vl_ix_18877;
-            (void)(vl_ck_pcol(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18877 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5407)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5407)), 655360, "selfhost/vm.vel", 5407), vl_nd[vl_ix_18877]), vl_var, vl_iv, vl_lb, vl_p, vl_tb));
+            int64_t vl_ix_19197;
+            (void)(vl_ck_pcol(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_19197 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5554)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5554)), 655360, "selfhost/vm.vel", 5554), vl_nd[vl_ix_19197]), vl_var, vl_iv, vl_lb, vl_p, vl_tb));
+            int64_t vl_ix_19216;
+            (void)(vl_ck_pcol(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_19216 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5555)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5555)), 655360, "selfhost/vm.vel", 5555), vl_nd[vl_ix_19216]), vl_var, vl_iv, vl_lb, vl_p, vl_tb));
         } else if ((vl_k == 11LL)) {
-            int64_t vl_ix_18899;
-            (void)(vl_ck_pcol(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_18899 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5411)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5411)), 655360, "selfhost/vm.vel", 5411), vl_nd[vl_ix_18899]), vl_var, vl_iv, vl_lb, vl_p, vl_tb));
+            int64_t vl_ix_19238;
+            (void)(vl_ck_pcol(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_19238 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5559)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5559)), 655360, "selfhost/vm.vel", 5559), vl_nd[vl_ix_19238]), vl_var, vl_iv, vl_lb, vl_p, vl_tb));
         } else if ((vl_k == 12LL)) {
-            int64_t vl_ix_18916;
-            if ((((vela_bounds_check((vl_ix_18916 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5413)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5413)), 655360, "selfhost/vm.vel", 5413), vl_nd[vl_ix_18916]) & 1LL) == 1LL)) {
+            int64_t vl_ix_19255;
+            if ((((vela_bounds_check((vl_ix_19255 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5561)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5561)), 655360, "selfhost/vm.vel", 5561), vl_nd[vl_ix_19255]) & 1LL) == 1LL)) {
                 (void)(vl_ck_safety(vl_path, vl_line, vela_str_lit("nested 'parallel for' is not supported in Vela 0.1", 50)));
                 return;
             }
             int64_t vl_sn = vl_p->f_ni;
             int64_t vl_sl = vl_p->f_nlb;
             struct vl_Iv vl_jv = (struct vl_Iv){ 0LL, 0LL, 0LL, 0LL };
-            int64_t vl_ix_18958;
-            int64_t vl_ix_18965;
-            int64_t vl_ix_18972;
-            (void)(vl_ck_range_iv(vl_nd, vl_mem, vl_vm, vl_iv, vl_p->f_ni, (vela_bounds_check((vl_ix_18958 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5421)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5421)), 655360, "selfhost/vm.vel", 5421), vl_nd[vl_ix_18958]), (vela_bounds_check((vl_ix_18965 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5421)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5421)), 655360, "selfhost/vm.vel", 5421), vl_nd[vl_ix_18965]), (vela_bounds_check((vl_ix_18972 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5422)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5422)), 655360, "selfhost/vm.vel", 5422), vl_nd[vl_ix_18972]), (&vl_jv)));
-            int64_t vl_ix_18985;
-            (void)(vl_ck_iv_push(vl_iv, vl_p, (vela_bounds_check((vl_ix_18985 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5423)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5423)), 655360, "selfhost/vm.vel", 5423), vl_nd[vl_ix_18985]), vl_jv));
-            int64_t vl_ix_18998;
-            int64_t vl_ix_19005;
-            int64_t vl_ix_19012;
-            int64_t vl_ix_19019;
-            (void)(vl_ck_lb_push(vl_lb, vl_p, (vela_bounds_check((vl_ix_18998 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5424)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5424)), 655360, "selfhost/vm.vel", 5424), vl_nd[vl_ix_18998]), (vela_bounds_check((vl_ix_19005 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5424)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5424)), 655360, "selfhost/vm.vel", 5424), vl_nd[vl_ix_19005]), (vela_bounds_check((vl_ix_19012 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5424)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5424)), 655360, "selfhost/vm.vel", 5424), vl_nd[vl_ix_19012]), (vela_bounds_check((vl_ix_19019 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5425)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5425)), 655360, "selfhost/vm.vel", 5425), vl_nd[vl_ix_19019])));
-            int64_t vl_ix_19033;
-            (void)(vl_ck_pcol(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_19033 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5426)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5426)), 655360, "selfhost/vm.vel", 5426), vl_nd[vl_ix_19033]), vl_var, vl_iv, vl_lb, vl_p, vl_tb));
+            int64_t vl_ix_19297;
+            int64_t vl_ix_19304;
+            int64_t vl_ix_19311;
+            (void)(vl_ck_range_iv(vl_nd, vl_mem, vl_vm, vl_iv, vl_p->f_ni, (vela_bounds_check((vl_ix_19297 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5569)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5569)), 655360, "selfhost/vm.vel", 5569), vl_nd[vl_ix_19297]), (vela_bounds_check((vl_ix_19304 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5569)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5569)), 655360, "selfhost/vm.vel", 5569), vl_nd[vl_ix_19304]), (vela_bounds_check((vl_ix_19311 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5570)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5570)), 655360, "selfhost/vm.vel", 5570), vl_nd[vl_ix_19311]), (&vl_jv)));
+            int64_t vl_ix_19324;
+            (void)(vl_ck_iv_push(vl_iv, vl_p, (vela_bounds_check((vl_ix_19324 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5571)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5571)), 655360, "selfhost/vm.vel", 5571), vl_nd[vl_ix_19324]), vl_jv));
+            int64_t vl_ix_19337;
+            int64_t vl_ix_19344;
+            int64_t vl_ix_19351;
+            int64_t vl_ix_19358;
+            (void)(vl_ck_lb_push(vl_lb, vl_p, (vela_bounds_check((vl_ix_19337 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5572)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5572)), 655360, "selfhost/vm.vel", 5572), vl_nd[vl_ix_19337]), (vela_bounds_check((vl_ix_19344 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5572)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5572)), 655360, "selfhost/vm.vel", 5572), vl_nd[vl_ix_19344]), (vela_bounds_check((vl_ix_19351 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5572)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5572)), 655360, "selfhost/vm.vel", 5572), vl_nd[vl_ix_19351]), (vela_bounds_check((vl_ix_19358 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5573)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5573)), 655360, "selfhost/vm.vel", 5573), vl_nd[vl_ix_19358])));
+            int64_t vl_ix_19372;
+            (void)(vl_ck_pcol(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_19372 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5574)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5574)), 655360, "selfhost/vm.vel", 5574), vl_nd[vl_ix_19372]), vl_var, vl_iv, vl_lb, vl_p, vl_tb));
             vl_p->f_ni = vl_sn;
             vl_p->f_nlb = vl_sl;
         } else if ((((vl_k != 13LL) && (vl_k != 14LL)) && (vl_k != 15LL))) {
@@ -6228,21 +6328,21 @@ static void vl_ck_pcol(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct
 }
 
 static int64_t vl_ck_twrow(int64_t* vl_tb, int64_t vl_bn) {
-    int64_t vl_ix_19088;
-    int64_t vl_n = (vela_bounds_check((vl_ix_19088 = vl_TW_NB()), 448, "selfhost/vm.vel", 5463), vl_tb[vl_ix_19088]);
+    int64_t vl_ix_19427;
+    int64_t vl_n = (vela_bounds_check((vl_ix_19427 = vl_TW_NB()), 448, "selfhost/vm.vel", 5611), vl_tb[vl_ix_19427]);
     int64_t vl_i = 0LL;
     while ((vl_i < vl_n)) {
-        int64_t vl_ix_19102;
-        if (((vela_bounds_check((vl_ix_19102 = vela_add_range((vl_TW_WB()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5466)), 448, "selfhost/vm.vel", 5466), vl_tb[vl_ix_19102]) == vl_bn)) {
+        int64_t vl_ix_19441;
+        if (((vela_bounds_check((vl_ix_19441 = vela_add_range((vl_TW_WB()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5614)), 448, "selfhost/vm.vel", 5614), vl_tb[vl_ix_19441]) == vl_bn)) {
             return vl_i;
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5469);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5617);
     }
-    return vela_neg_int(1LL, "selfhost/vm.vel", 5471);
+    return vela_neg_int(1LL, "selfhost/vm.vel", 5619);
 }
 
 static vela_str vl_ck_pread_msg(int64_t vl_name, int64_t vl_wline, int64_t vl_rline) {
-    vela_str vl_m = (vela_concat(vela_str_lit("'parallel for' reads '", 22), (vela_interned(vl_name, "selfhost/vm.vel", 5479))));
+    vela_str vl_m = (vela_concat(vela_str_lit("'parallel for' reads '", 22), (vela_interned(vl_name, "selfhost/vm.vel", 5627))));
     vl_m = (vela_concat(vl_m, vela_str_lit("' at an index other than the one it writes (written on line ", 60)));
     vl_m = (vela_concat(vl_m, vl_ck_int_text(vl_wline)));
     vl_m = (vela_concat(vl_m, vela_str_lit(", read on line ", 15)));
@@ -6256,33 +6356,33 @@ static void vl_ck_pread_expr(int64_t* vl_nd, vela_str vl_path, int64_t* vl_tb, i
     }
     int64_t vl_k = vl_nd_kind(vl_nd, vl_e);
     if ((vl_k == 31LL)) {
-        int64_t vl_ix_19185;
-        int64_t vl_base = (vela_bounds_check((vl_ix_19185 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5499)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5499)), 655360, "selfhost/vm.vel", 5499), vl_nd[vl_ix_19185]);
+        int64_t vl_ix_19524;
+        int64_t vl_base = (vela_bounds_check((vl_ix_19524 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5647)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5647)), 655360, "selfhost/vm.vel", 5647), vl_nd[vl_ix_19524]);
         if ((vl_nd_kind(vl_nd, vl_base) == 25LL)) {
-            int64_t vl_ix_19202;
-            int64_t vl_b = vl_ck_twrow(vl_tb, (vela_bounds_check((vl_ix_19202 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5501)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5501)), 655360, "selfhost/vm.vel", 5501), vl_nd[vl_ix_19202]));
+            int64_t vl_ix_19541;
+            int64_t vl_b = vl_ck_twrow(vl_tb, (vela_bounds_check((vl_ix_19541 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5649)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5649)), 655360, "selfhost/vm.vel", 5649), vl_nd[vl_ix_19541]));
             if ((vl_b >= 0LL)) {
-                int64_t vl_ix_19217;
-                int64_t vl_ix_19229;
-                int64_t vl_ix_19224;
-                if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_19217 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5503)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5503)), 655360, "selfhost/vm.vel", 5503), vl_nd[vl_ix_19217]), (vela_bounds_check((vl_ix_19229 = vela_add_range((vela_mul_range(((vela_bounds_check((vl_ix_19224 = vela_add_range((vl_TW_WX()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5504)), 448, "selfhost/vm.vel", 5504), vl_tb[vl_ix_19224])), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5504)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5504)), 655360, "selfhost/vm.vel", 5504), vl_nd[vl_ix_19229])))) {
-                    int64_t vl_ix_19245;
-                    int64_t vl_ix_19253;
-                    (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_pread_msg((vela_bounds_check((vl_ix_19245 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5506)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5506)), 655360, "selfhost/vm.vel", 5506), vl_nd[vl_ix_19245]), vl_nd_line(vl_nd, (vela_bounds_check((vl_ix_19253 = vela_add_range((vl_TW_WX()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5507)), 448, "selfhost/vm.vel", 5507), vl_tb[vl_ix_19253])), vl_nd_line(vl_nd, vl_e))));
+                int64_t vl_ix_19556;
+                int64_t vl_ix_19568;
+                int64_t vl_ix_19563;
+                if ((!vl_ck_same_expr(vl_nd, (vela_bounds_check((vl_ix_19556 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5651)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5651)), 655360, "selfhost/vm.vel", 5651), vl_nd[vl_ix_19556]), (vela_bounds_check((vl_ix_19568 = vela_add_range((vela_mul_range(((vela_bounds_check((vl_ix_19563 = vela_add_range((vl_TW_WX()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5652)), 448, "selfhost/vm.vel", 5652), vl_tb[vl_ix_19563])), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5652)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5652)), 655360, "selfhost/vm.vel", 5652), vl_nd[vl_ix_19568])))) {
+                    int64_t vl_ix_19584;
+                    int64_t vl_ix_19592;
+                    (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_pread_msg((vela_bounds_check((vl_ix_19584 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5654)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5654)), 655360, "selfhost/vm.vel", 5654), vl_nd[vl_ix_19584]), vl_nd_line(vl_nd, (vela_bounds_check((vl_ix_19592 = vela_add_range((vl_TW_WX()), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5655)), 448, "selfhost/vm.vel", 5655), vl_tb[vl_ix_19592])), vl_nd_line(vl_nd, vl_e))));
                     return;
                 }
             }
         }
         (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, vl_base));
-        int64_t vl_ix_19283;
-        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19283 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5514)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5514)), 655360, "selfhost/vm.vel", 5514), vl_nd[vl_ix_19283])));
+        int64_t vl_ix_19622;
+        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19622 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5662)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5662)), 655360, "selfhost/vm.vel", 5662), vl_nd[vl_ix_19622])));
         return;
     }
     if ((vl_k == 26LL)) {
-        int64_t vl_ix_19301;
-        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19301 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5518)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5518)), 655360, "selfhost/vm.vel", 5518), vl_nd[vl_ix_19301])));
-        int64_t vl_ix_19310;
-        int64_t vl_a = (vela_bounds_check((vl_ix_19310 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5519)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5519)), 655360, "selfhost/vm.vel", 5519), vl_nd[vl_ix_19310]);
+        int64_t vl_ix_19640;
+        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19640 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5666)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5666)), 655360, "selfhost/vm.vel", 5666), vl_nd[vl_ix_19640])));
+        int64_t vl_ix_19649;
+        int64_t vl_a = (vela_bounds_check((vl_ix_19649 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5667)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5667)), 655360, "selfhost/vm.vel", 5667), vl_nd[vl_ix_19649]);
         while ((vl_a > 0LL)) {
             (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, vl_a));
             vl_a = vl_nd_nx(vl_nd, vl_a);
@@ -6290,25 +6390,25 @@ static void vl_ck_pread_expr(int64_t* vl_nd, vela_str vl_path, int64_t* vl_tb, i
         return;
     }
     if ((((vl_k == 27LL) || (vl_k == 29LL)) || (vl_k == 30LL))) {
-        int64_t vl_ix_19353;
-        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19353 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5527)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5527)), 655360, "selfhost/vm.vel", 5527), vl_nd[vl_ix_19353])));
-        int64_t vl_ix_19366;
-        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19366 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5528)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5528)), 655360, "selfhost/vm.vel", 5528), vl_nd[vl_ix_19366])));
+        int64_t vl_ix_19692;
+        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19692 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5675)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5675)), 655360, "selfhost/vm.vel", 5675), vl_nd[vl_ix_19692])));
+        int64_t vl_ix_19705;
+        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19705 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5676)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5676)), 655360, "selfhost/vm.vel", 5676), vl_nd[vl_ix_19705])));
         return;
     }
     if ((vl_k == 28LL)) {
-        int64_t vl_ix_19384;
-        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19384 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5532)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5532)), 655360, "selfhost/vm.vel", 5532), vl_nd[vl_ix_19384])));
+        int64_t vl_ix_19723;
+        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19723 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5680)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5680)), 655360, "selfhost/vm.vel", 5680), vl_nd[vl_ix_19723])));
         return;
     }
     if ((vl_k == 32LL)) {
-        int64_t vl_ix_19402;
-        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19402 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5536)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5536)), 655360, "selfhost/vm.vel", 5536), vl_nd[vl_ix_19402])));
+        int64_t vl_ix_19741;
+        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19741 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5684)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5684)), 655360, "selfhost/vm.vel", 5684), vl_nd[vl_ix_19741])));
         return;
     }
     if ((vl_k == 33LL)) {
-        int64_t vl_ix_19416;
-        int64_t vl_el = (vela_bounds_check((vl_ix_19416 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5540)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5540)), 655360, "selfhost/vm.vel", 5540), vl_nd[vl_ix_19416]);
+        int64_t vl_ix_19755;
+        int64_t vl_el = (vela_bounds_check((vl_ix_19755 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5688)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5688)), 655360, "selfhost/vm.vel", 5688), vl_nd[vl_ix_19755]);
         while ((vl_el > 0LL)) {
             (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, vl_el));
             vl_el = vl_nd_nx(vl_nd, vl_el);
@@ -6316,12 +6416,12 @@ static void vl_ck_pread_expr(int64_t* vl_nd, vela_str vl_path, int64_t* vl_tb, i
         return;
     }
     if ((vl_k == 34LL)) {
-        int64_t vl_ix_19451;
-        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19451 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5548)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5548)), 655360, "selfhost/vm.vel", 5548), vl_nd[vl_ix_19451])));
-        int64_t vl_ix_19464;
-        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19464 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5549)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5549)), 655360, "selfhost/vm.vel", 5549), vl_nd[vl_ix_19464])));
-        int64_t vl_ix_19477;
-        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19477 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5550)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5550)), 655360, "selfhost/vm.vel", 5550), vl_nd[vl_ix_19477])));
+        int64_t vl_ix_19790;
+        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19790 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5696)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5696)), 655360, "selfhost/vm.vel", 5696), vl_nd[vl_ix_19790])));
+        int64_t vl_ix_19803;
+        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19803 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5697)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5697)), 655360, "selfhost/vm.vel", 5697), vl_nd[vl_ix_19803])));
+        int64_t vl_ix_19816;
+        (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19816 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5698)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5698)), 655360, "selfhost/vm.vel", 5698), vl_nd[vl_ix_19816])));
     }
 }
 
@@ -6330,34 +6430,34 @@ static void vl_ck_pread(int64_t* vl_nd, vela_str vl_path, int64_t* vl_tb, int64_
     while ((vl_s > 0LL)) {
         int64_t vl_k = vl_nd_kind(vl_nd, vl_s);
         if (((vl_k == 6LL) || (vl_k == 7LL))) {
-            int64_t vl_ix_19515;
-            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19515 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5565)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5565)), 655360, "selfhost/vm.vel", 5565), vl_nd[vl_ix_19515])));
-            int64_t vl_ix_19528;
-            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19528 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5566)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5566)), 655360, "selfhost/vm.vel", 5566), vl_nd[vl_ix_19528])));
+            int64_t vl_ix_19854;
+            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19854 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5713)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5713)), 655360, "selfhost/vm.vel", 5713), vl_nd[vl_ix_19854])));
+            int64_t vl_ix_19867;
+            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19867 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5714)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5714)), 655360, "selfhost/vm.vel", 5714), vl_nd[vl_ix_19867])));
         } else if ((vl_k == 8LL)) {
-            int64_t vl_ix_19544;
-            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19544 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5568)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5568)), 655360, "selfhost/vm.vel", 5568), vl_nd[vl_ix_19544])));
+            int64_t vl_ix_19883;
+            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19883 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5716)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5716)), 655360, "selfhost/vm.vel", 5716), vl_nd[vl_ix_19883])));
         } else if ((vl_k == 10LL)) {
-            int64_t vl_ix_19560;
-            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19560 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5570)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5570)), 655360, "selfhost/vm.vel", 5570), vl_nd[vl_ix_19560])));
-            int64_t vl_ix_19573;
-            (void)(vl_ck_pread(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19573 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5571)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5571)), 655360, "selfhost/vm.vel", 5571), vl_nd[vl_ix_19573])));
-            int64_t vl_ix_19586;
-            (void)(vl_ck_pread(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19586 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5572)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5572)), 655360, "selfhost/vm.vel", 5572), vl_nd[vl_ix_19586])));
+            int64_t vl_ix_19899;
+            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19899 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5718)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5718)), 655360, "selfhost/vm.vel", 5718), vl_nd[vl_ix_19899])));
+            int64_t vl_ix_19912;
+            (void)(vl_ck_pread(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19912 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5719)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5719)), 655360, "selfhost/vm.vel", 5719), vl_nd[vl_ix_19912])));
+            int64_t vl_ix_19925;
+            (void)(vl_ck_pread(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19925 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5720)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5720)), 655360, "selfhost/vm.vel", 5720), vl_nd[vl_ix_19925])));
         } else if ((vl_k == 11LL)) {
-            int64_t vl_ix_19602;
-            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19602 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5574)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5574)), 655360, "selfhost/vm.vel", 5574), vl_nd[vl_ix_19602])));
-            int64_t vl_ix_19615;
-            (void)(vl_ck_pread(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19615 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5575)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5575)), 655360, "selfhost/vm.vel", 5575), vl_nd[vl_ix_19615])));
+            int64_t vl_ix_19941;
+            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19941 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5722)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5722)), 655360, "selfhost/vm.vel", 5722), vl_nd[vl_ix_19941])));
+            int64_t vl_ix_19954;
+            (void)(vl_ck_pread(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19954 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5723)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5723)), 655360, "selfhost/vm.vel", 5723), vl_nd[vl_ix_19954])));
         } else if ((vl_k == 12LL)) {
-            int64_t vl_ix_19631;
-            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19631 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5577)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5577)), 655360, "selfhost/vm.vel", 5577), vl_nd[vl_ix_19631])));
-            int64_t vl_ix_19644;
-            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19644 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5578)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5578)), 655360, "selfhost/vm.vel", 5578), vl_nd[vl_ix_19644])));
-            int64_t vl_ix_19657;
-            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19657 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5579)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5579)), 655360, "selfhost/vm.vel", 5579), vl_nd[vl_ix_19657])));
-            int64_t vl_ix_19670;
-            (void)(vl_ck_pread(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19670 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5580)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5580)), 655360, "selfhost/vm.vel", 5580), vl_nd[vl_ix_19670])));
+            int64_t vl_ix_19970;
+            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19970 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5725)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5725)), 655360, "selfhost/vm.vel", 5725), vl_nd[vl_ix_19970])));
+            int64_t vl_ix_19983;
+            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19983 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5726)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5726)), 655360, "selfhost/vm.vel", 5726), vl_nd[vl_ix_19983])));
+            int64_t vl_ix_19996;
+            (void)(vl_ck_pread_expr(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19996 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5727)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5727)), 655360, "selfhost/vm.vel", 5727), vl_nd[vl_ix_19996])));
+            int64_t vl_ix_20009;
+            (void)(vl_ck_pread(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_20009 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5728)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5728)), 655360, "selfhost/vm.vel", 5728), vl_nd[vl_ix_20009])));
         }
         vl_s = vl_nd_nx(vl_nd, vl_s);
     }
@@ -6368,30 +6468,30 @@ static void vl_ck_parallel(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, st
     int64_t* vl_lb = (int64_t*)vela_arena_alloc((size_t)64 * sizeof(int64_t));
     int64_t* vl_tb = (int64_t*)vela_arena_alloc((size_t)448 * sizeof(int64_t));
     struct vl_Par vl_p = (struct vl_Par){ 0LL, 0LL };
-    int64_t vl_ix_19709;
-    int64_t vl_var = (vela_bounds_check((vl_ix_19709 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5595)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5595)), 655360, "selfhost/vm.vel", 5595), vl_nd[vl_ix_19709]);
+    int64_t vl_ix_20048;
+    int64_t vl_var = (vela_bounds_check((vl_ix_20048 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5743)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5743)), 655360, "selfhost/vm.vel", 5743), vl_nd[vl_ix_20048]);
     struct vl_Iv vl_li = (struct vl_Iv){ 0LL, 0LL, 0LL, 0LL };
-    int64_t vl_ix_19732;
-    int64_t vl_ix_19739;
-    int64_t vl_ix_19746;
-    (void)(vl_ck_range_iv(vl_nd, vl_mem, vl_vm, vl_iv, 0LL, (vela_bounds_check((vl_ix_19732 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5597)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5597)), 655360, "selfhost/vm.vel", 5597), vl_nd[vl_ix_19732]), (vela_bounds_check((vl_ix_19739 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5597)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5597)), 655360, "selfhost/vm.vel", 5597), vl_nd[vl_ix_19739]), (vela_bounds_check((vl_ix_19746 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5598)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5598)), 655360, "selfhost/vm.vel", 5598), vl_nd[vl_ix_19746]), (&vl_li)));
+    int64_t vl_ix_20071;
+    int64_t vl_ix_20078;
+    int64_t vl_ix_20085;
+    (void)(vl_ck_range_iv(vl_nd, vl_mem, vl_vm, vl_iv, 0LL, (vela_bounds_check((vl_ix_20071 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5745)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5745)), 655360, "selfhost/vm.vel", 5745), vl_nd[vl_ix_20071]), (vela_bounds_check((vl_ix_20078 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5745)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5745)), 655360, "selfhost/vm.vel", 5745), vl_nd[vl_ix_20078]), (vela_bounds_check((vl_ix_20085 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5746)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5746)), 655360, "selfhost/vm.vel", 5746), vl_nd[vl_ix_20085]), (&vl_li)));
     (void)(vl_ck_iv_push(vl_iv, (&vl_p), vl_var, vl_li));
-    int64_t vl_ix_19767;
-    int64_t vl_ix_19774;
-    int64_t vl_ix_19781;
-    (void)(vl_ck_lb_push(vl_lb, (&vl_p), vl_var, (vela_bounds_check((vl_ix_19767 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5600)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5600)), 655360, "selfhost/vm.vel", 5600), vl_nd[vl_ix_19767]), (vela_bounds_check((vl_ix_19774 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5600)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5600)), 655360, "selfhost/vm.vel", 5600), vl_nd[vl_ix_19774]), (vela_bounds_check((vl_ix_19781 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5600)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5600)), 655360, "selfhost/vm.vel", 5600), vl_nd[vl_ix_19781])));
-    int64_t vl_ix_19795;
-    (void)(vl_ck_pcol(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_19795 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5601)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5601)), 655360, "selfhost/vm.vel", 5601), vl_nd[vl_ix_19795]), vl_var, vl_iv, vl_lb, (&vl_p), vl_tb));
-    int64_t vl_ix_19806;
-    int64_t vl_n = (vela_bounds_check((vl_ix_19806 = vl_TW_NB()), 448, "selfhost/vm.vel", 5603), vl_tb[vl_ix_19806]);
+    int64_t vl_ix_20106;
+    int64_t vl_ix_20113;
+    int64_t vl_ix_20120;
+    (void)(vl_ck_lb_push(vl_lb, (&vl_p), vl_var, (vela_bounds_check((vl_ix_20106 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5748)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5748)), 655360, "selfhost/vm.vel", 5748), vl_nd[vl_ix_20106]), (vela_bounds_check((vl_ix_20113 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5748)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5748)), 655360, "selfhost/vm.vel", 5748), vl_nd[vl_ix_20113]), (vela_bounds_check((vl_ix_20120 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5748)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5748)), 655360, "selfhost/vm.vel", 5748), vl_nd[vl_ix_20120])));
+    int64_t vl_ix_20134;
+    (void)(vl_ck_pcol(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_20134 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5749)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5749)), 655360, "selfhost/vm.vel", 5749), vl_nd[vl_ix_20134]), vl_var, vl_iv, vl_lb, (&vl_p), vl_tb));
+    int64_t vl_ix_20145;
+    int64_t vl_n = (vela_bounds_check((vl_ix_20145 = vl_TW_NB()), 448, "selfhost/vm.vel", 5751), vl_tb[vl_ix_20145]);
     if ((vl_n == 0LL)) {
         (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_s), vela_str_lit("'parallel for' has no effect: the body writes nothing", 53)));
         return;
     }
     int64_t vl_i = 0LL;
     while ((vl_i < vl_n)) {
-        int64_t vl_ix_19834;
-        int64_t vl_bn = (vela_bounds_check((vl_ix_19834 = vela_add_range((vl_TW_WB()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5611)), 448, "selfhost/vm.vel", 5611), vl_tb[vl_ix_19834]);
+        int64_t vl_ix_20173;
+        int64_t vl_bn = (vela_bounds_check((vl_ix_20173 = vela_add_range((vl_TW_WB()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5759)), 448, "selfhost/vm.vel", 5759), vl_tb[vl_ix_20173]);
         bool vl_local = false;
         int64_t vl_j = vl_ck_bound(vl_mem, vl_vm, vl_bn);
         if ((vl_j >= 0LL)) {
@@ -6406,26 +6506,26 @@ static void vl_ck_parallel(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, st
             (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_s), vl_ck_quoted(vela_str_lit("'parallel for' writes to '", 26), vl_bn, vela_str_lit("', which is not a mutable array local to this function", 54))));
             return;
         }
-        int64_t vl_ix_19895;
-        if (((vela_bounds_check((vl_ix_19895 = vela_add_range((vl_TW_WD()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5628)), 448, "selfhost/vm.vel", 5628), vl_tb[vl_ix_19895]) > 1LL)) {
-            vela_str vl_m = (vela_concat(vela_str_lit("'parallel for' writes to '", 26), (vela_interned(vl_bn, "selfhost/vm.vel", 5629))));
+        int64_t vl_ix_20234;
+        if (((vela_bounds_check((vl_ix_20234 = vela_add_range((vl_TW_WD()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5776)), 448, "selfhost/vm.vel", 5776), vl_tb[vl_ix_20234]) > 1LL)) {
+            vela_str vl_m = (vela_concat(vela_str_lit("'parallel for' writes to '", 26), (vela_interned(vl_bn, "selfhost/vm.vel", 5777))));
             vl_m = (vela_concat(vl_m, vela_str_lit("' at ", 5)));
-            int64_t vl_ix_19921;
-            vl_m = (vela_concat(vl_m, vl_ck_int_text((vela_bounds_check((vl_ix_19921 = vela_add_range((vl_TW_WD()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5631)), 448, "selfhost/vm.vel", 5631), vl_tb[vl_ix_19921]))));
+            int64_t vl_ix_20260;
+            vl_m = (vela_concat(vl_m, vl_ck_int_text((vela_bounds_check((vl_ix_20260 = vela_add_range((vl_TW_WD()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5779)), 448, "selfhost/vm.vel", 5779), vl_tb[vl_ix_20260]))));
             vl_m = (vela_concat(vl_m, vela_str_lit(" different index expressions, so two iterations could land on the same element", 78)));
             (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_s), vl_m));
             return;
         }
-        int64_t vl_ix_19947;
-        if (((vela_bounds_check((vl_ix_19947 = vela_add_range((vl_TW_WP()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5636)), 448, "selfhost/vm.vel", 5636), vl_tb[vl_ix_19947]) == 0LL)) {
-            int64_t vl_ix_19959;
-            (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, (vela_bounds_check((vl_ix_19959 = vela_add_range((vl_TW_WX()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5637)), 448, "selfhost/vm.vel", 5637), vl_tb[vl_ix_19959])), vl_ck_quoted(vela_str_lit("cannot prove that 'parallel for' writes '", 41), vl_bn, vela_str_lit("' to distinct elements", 22))));
+        int64_t vl_ix_20286;
+        if (((vela_bounds_check((vl_ix_20286 = vela_add_range((vl_TW_WP()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5784)), 448, "selfhost/vm.vel", 5784), vl_tb[vl_ix_20286]) == 0LL)) {
+            int64_t vl_ix_20298;
+            (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, (vela_bounds_check((vl_ix_20298 = vela_add_range((vl_TW_WX()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5785)), 448, "selfhost/vm.vel", 5785), vl_tb[vl_ix_20298])), vl_ck_quoted(vela_str_lit("cannot prove that 'parallel for' writes '", 41), vl_bn, vela_str_lit("' to distinct elements", 22))));
             return;
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5642);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5790);
     }
-    int64_t vl_ix_19984;
-    (void)(vl_ck_pread(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_19984 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5647)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5647)), 655360, "selfhost/vm.vel", 5647), vl_nd[vl_ix_19984])));
+    int64_t vl_ix_20323;
+    (void)(vl_ck_pread(vl_nd, vl_path, vl_tb, (vela_bounds_check((vl_ix_20323 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5795)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5795)), 655360, "selfhost/vm.vel", 5795), vl_nd[vl_ix_20323])));
 }
 
 static void vl_ck_body(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_head) {
@@ -6448,30 +6548,30 @@ static void vl_ck_block(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struc
 static void vl_ck_stmt(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_s, int64_t vl_mark) {
     int64_t vl_k = vl_nd_kind(vl_nd, vl_s);
     if ((vl_k == 6LL)) {
-        int64_t vl_ix_20064;
-        int64_t vl_tgt = (vela_bounds_check((vl_ix_20064 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5675)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5675)), 655360, "selfhost/vm.vel", 5675), vl_nd[vl_ix_20064]);
-        int64_t vl_ix_20073;
-        int64_t vl_v = (vela_bounds_check((vl_ix_20073 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5676)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5676)), 655360, "selfhost/vm.vel", 5676), vl_nd[vl_ix_20073]);
-        int64_t vl_ix_20082;
-        if ((((vela_bounds_check((vl_ix_20082 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5677)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5677)), 655360, "selfhost/vm.vel", 5677), vl_nd[vl_ix_20082]) & 2LL) == 2LL)) {
+        int64_t vl_ix_20403;
+        int64_t vl_tgt = (vela_bounds_check((vl_ix_20403 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5823)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5823)), 655360, "selfhost/vm.vel", 5823), vl_nd[vl_ix_20403]);
+        int64_t vl_ix_20412;
+        int64_t vl_v = (vela_bounds_check((vl_ix_20412 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5824)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5824)), 655360, "selfhost/vm.vel", 5824), vl_nd[vl_ix_20412]);
+        int64_t vl_ix_20421;
+        if ((((vela_bounds_check((vl_ix_20421 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5825)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5825)), 655360, "selfhost/vm.vel", 5825), vl_nd[vl_ix_20421]) & 2LL) == 2LL)) {
             if ((vl_nd_kind(vl_nd, vl_tgt) != 25LL)) {
                 (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_s), vela_str_lit("invalid assignment target", 25)));
             }
-            int64_t vl_ix_20109;
-            int64_t vl_name = (vela_bounds_check((vl_ix_20109 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5681)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5681)), 655360, "selfhost/vm.vel", 5681), vl_nd[vl_ix_20109]);
+            int64_t vl_ix_20448;
+            int64_t vl_name = (vela_bounds_check((vl_ix_20448 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5829)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5829)), 655360, "selfhost/vm.vel", 5829), vl_nd[vl_ix_20448]);
             if (vl_ck_seen(vl_mem, (*vl_vm), vl_name, vl_mark)) {
                 (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_s), vl_ck_quoted(vela_str_lit("'", 1), vl_name, vela_str_lit("' is already declared in this scope", 35))));
             }
             if ((vl_v <= 0LL)) {
-                int64_t vl_ix_20141;
-                if (((vela_bounds_check((vl_ix_20141 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5690)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5690)), 655360, "selfhost/vm.vel", 5690), vl_nd[vl_ix_20141]) < 0LL)) {
+                int64_t vl_ix_20480;
+                if (((vela_bounds_check((vl_ix_20480 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5838)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5838)), 655360, "selfhost/vm.vel", 5838), vl_nd[vl_ix_20480]) < 0LL)) {
                     (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_s), vl_ck_quoted(vela_str_lit("'", 1), vl_name, vela_str_lit("' has no type and no initialiser", 32))));
                 } else if ((!vl_ck_is_array_ck(vl_nt_get(vl_mem, vl_s, vl_NT_LIT())))) {
                     (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_s), vl_ck_quoted(vela_str_lit("'", 1), vl_name, vela_str_lit("' is declared without an initialiser", 36))));
                 }
             }
-            int64_t vl_ix_20198;
-            (void)(vl_ck_push(vl_mem, vl_vm, vl_name, vl_nt_get(vl_mem, vl_s, vl_NT_LIT()), (((vela_bounds_check((vl_ix_20198 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5702)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5702)), 655360, "selfhost/vm.vel", 5702), vl_nd[vl_ix_20198]) & 1LL) == 1LL)));
+            int64_t vl_ix_20537;
+            (void)(vl_ck_push(vl_mem, vl_vm, vl_name, vl_nt_get(vl_mem, vl_s, vl_NT_LIT()), (((vela_bounds_check((vl_ix_20537 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5850)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5850)), 655360, "selfhost/vm.vel", 5850), vl_nd[vl_ix_20537]) & 1LL) == 1LL)));
         } else {
             (void)(vl_ck_store(vl_nd, vl_mem, vl_path, vl_vm, vl_s));
         }
@@ -6485,61 +6585,61 @@ static void vl_ck_stmt(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct
         return;
     }
     if ((vl_k == 8LL)) {
-        int64_t vl_ix_20252;
-        if ((vl_nd_kind(vl_nd, (vela_bounds_check((vl_ix_20252 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5718)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5718)), 655360, "selfhost/vm.vel", 5718), vl_nd[vl_ix_20252])) != 26LL)) {
+        int64_t vl_ix_20591;
+        if ((vl_nd_kind(vl_nd, (vela_bounds_check((vl_ix_20591 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5866)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5866)), 655360, "selfhost/vm.vel", 5866), vl_nd[vl_ix_20591])) != 26LL)) {
             (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_s), vela_str_lit("this expression statement has no effect", 39)));
         }
-        int64_t vl_ix_20277;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20277 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5722)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5722)), 655360, "selfhost/vm.vel", 5722), vl_nd[vl_ix_20277])));
+        int64_t vl_ix_20616;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20616 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5870)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5870)), 655360, "selfhost/vm.vel", 5870), vl_nd[vl_ix_20616])));
         return;
     }
     if ((vl_k == 9LL)) {
-        int64_t vl_ix_20291;
-        if (((vela_bounds_check((vl_ix_20291 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5726)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5726)), 655360, "selfhost/vm.vel", 5726), vl_nd[vl_ix_20291]) > 0LL)) {
+        int64_t vl_ix_20630;
+        if (((vela_bounds_check((vl_ix_20630 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5874)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5874)), 655360, "selfhost/vm.vel", 5874), vl_nd[vl_ix_20630]) > 0LL)) {
             if ((vl_unpack_kind(vl_vm->f_cret) == vl_K_NONE())) {
                 (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_s), vela_str_lit("this function is declared '-> None', so it cannot return a value", 64)));
             }
-            int64_t vl_ix_20322;
-            (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20322 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5731)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5731)), 655360, "selfhost/vm.vel", 5731), vl_nd[vl_ix_20322])));
+            int64_t vl_ix_20661;
+            (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20661 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5879)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5879)), 655360, "selfhost/vm.vel", 5879), vl_nd[vl_ix_20661])));
         }
         return;
     }
     if ((vl_k == 10LL)) {
         (void)(vl_ck_condition(vl_nd, vl_mem, vl_path, (*vl_vm), vl_s, vela_str_lit("if", 2)));
-        int64_t vl_ix_20351;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20351 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5737)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5737)), 655360, "selfhost/vm.vel", 5737), vl_nd[vl_ix_20351])));
-        int64_t vl_ix_20365;
-        (void)(vl_ck_block(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_20365 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5738)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5738)), 655360, "selfhost/vm.vel", 5738), vl_nd[vl_ix_20365])));
-        int64_t vl_ix_20379;
-        (void)(vl_ck_block(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_20379 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5739)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5739)), 655360, "selfhost/vm.vel", 5739), vl_nd[vl_ix_20379])));
+        int64_t vl_ix_20690;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20690 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5885)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5885)), 655360, "selfhost/vm.vel", 5885), vl_nd[vl_ix_20690])));
+        int64_t vl_ix_20704;
+        (void)(vl_ck_block(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_20704 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5886)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5886)), 655360, "selfhost/vm.vel", 5886), vl_nd[vl_ix_20704])));
+        int64_t vl_ix_20718;
+        (void)(vl_ck_block(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_20718 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5887)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5887)), 655360, "selfhost/vm.vel", 5887), vl_nd[vl_ix_20718])));
         return;
     }
     if ((vl_k == 11LL)) {
         (void)(vl_ck_condition(vl_nd, vl_mem, vl_path, (*vl_vm), vl_s, vela_str_lit("while", 5)));
-        int64_t vl_ix_20407;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20407 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5744)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5744)), 655360, "selfhost/vm.vel", 5744), vl_nd[vl_ix_20407])));
-        int64_t vl_ix_20421;
-        (void)(vl_ck_block(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_20421 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5745)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5745)), 655360, "selfhost/vm.vel", 5745), vl_nd[vl_ix_20421])));
+        int64_t vl_ix_20746;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20746 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5892)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5892)), 655360, "selfhost/vm.vel", 5892), vl_nd[vl_ix_20746])));
+        int64_t vl_ix_20760;
+        (void)(vl_ck_block(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_20760 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5893)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5893)), 655360, "selfhost/vm.vel", 5893), vl_nd[vl_ix_20760])));
         return;
     }
     if ((vl_k == 12LL)) {
-        int64_t vl_ix_20440;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20440 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5749)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5749)), 655360, "selfhost/vm.vel", 5749), vl_nd[vl_ix_20440])));
-        int64_t vl_ix_20454;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20454 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5750)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5750)), 655360, "selfhost/vm.vel", 5750), vl_nd[vl_ix_20454])));
-        int64_t vl_ix_20468;
-        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20468 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5751)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5751)), 655360, "selfhost/vm.vel", 5751), vl_nd[vl_ix_20468])));
-        int64_t vl_ix_20477;
-        int64_t vl_name = (vela_bounds_check((vl_ix_20477 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5752)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5752)), 655360, "selfhost/vm.vel", 5752), vl_nd[vl_ix_20477]);
+        int64_t vl_ix_20779;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20779 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5897)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5897)), 655360, "selfhost/vm.vel", 5897), vl_nd[vl_ix_20779])));
+        int64_t vl_ix_20793;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20793 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5898)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5898)), 655360, "selfhost/vm.vel", 5898), vl_nd[vl_ix_20793])));
+        int64_t vl_ix_20807;
+        (void)(vl_ck_expr(vl_nd, vl_mem, vl_path, (*vl_vm), (vela_bounds_check((vl_ix_20807 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5899)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5899)), 655360, "selfhost/vm.vel", 5899), vl_nd[vl_ix_20807])));
+        int64_t vl_ix_20816;
+        int64_t vl_name = (vela_bounds_check((vl_ix_20816 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5900)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5900)), 655360, "selfhost/vm.vel", 5900), vl_nd[vl_ix_20816]);
         if (vl_ck_seen(vl_mem, (*vl_vm), vl_name, vl_mark)) {
             (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_s), vl_ck_quoted(vela_str_lit("'", 1), vl_name, vela_str_lit("' is already declared in this scope", 35))));
         }
         int64_t vl_m2 = vl_vm->f_scn;
         (void)(vl_ck_push(vl_mem, vl_vm, vl_name, vl_K_INT(), false));
-        int64_t vl_ix_20524;
-        (void)(vl_ck_block(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_20524 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5760)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5760)), 655360, "selfhost/vm.vel", 5760), vl_nd[vl_ix_20524])));
-        int64_t vl_ix_20533;
-        if ((((vela_bounds_check((vl_ix_20533 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5767)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5767)), 655360, "selfhost/vm.vel", 5767), vl_nd[vl_ix_20533]) & 1LL) == 1LL)) {
+        int64_t vl_ix_20863;
+        (void)(vl_ck_block(vl_nd, vl_mem, vl_path, vl_vm, (vela_bounds_check((vl_ix_20863 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5908)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5908)), 655360, "selfhost/vm.vel", 5908), vl_nd[vl_ix_20863])));
+        int64_t vl_ix_20872;
+        if ((((vela_bounds_check((vl_ix_20872 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5915)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5915)), 655360, "selfhost/vm.vel", 5915), vl_nd[vl_ix_20872]) & 1LL) == 1LL)) {
             (void)(vl_ck_parallel(vl_nd, vl_mem, vl_path, (*vl_vm), vl_s));
         }
         vl_vm->f_scn = vl_m2;
@@ -6580,8 +6680,8 @@ static int64_t vl_ck_arg_kind(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_v
         return vl_k;
     }
     if ((vl_nd_kind(vl_nd, vl_e) == 25LL)) {
-        int64_t vl_ix_20647;
-        int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_20647 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5838)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5838)), 655360, "selfhost/vm.vel", 5838), vl_nd[vl_ix_20647]));
+        int64_t vl_ix_20986;
+        int64_t vl_i = vl_ck_bound(vl_mem, vl_vm, (vela_bounds_check((vl_ix_20986 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5986)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5986)), 655360, "selfhost/vm.vel", 5986), vl_nd[vl_ix_20986]));
         if ((vl_i >= 0LL)) {
             if ((vl_unpack_kind(vl_ck_kind_of_ck(vl_sc_ckind(vl_mem, vl_i))) == vl_K_ST())) {
                 return vl_K_ST();
@@ -6592,8 +6692,8 @@ static int64_t vl_ck_arg_kind(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl_v
     if ((vl_nd_kind(vl_nd, vl_e) != 26LL)) {
         return vl_K_BAD();
     }
-    int64_t vl_ix_20690;
-    int64_t vl_callee = (vela_bounds_check((vl_ix_20690 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5849)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5849)), 655360, "selfhost/vm.vel", 5849), vl_nd[vl_ix_20690]);
+    int64_t vl_ix_21029;
+    int64_t vl_callee = (vela_bounds_check((vl_ix_21029 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5997)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5997)), 655360, "selfhost/vm.vel", 5997), vl_nd[vl_ix_21029]);
     if ((vl_nd_kind(vl_nd, vl_callee) != 25LL)) {
         return vl_K_BAD();
     }
@@ -6612,18 +6712,18 @@ static void vl_ck_record_decls(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, 
     }
     int64_t vl_p = vl_ft_get(vl_mem, vl_f, vl_FT_PARAM());
     while ((vl_p > 0LL)) {
-        int64_t vl_ix_20804;
-        (void)(vl_nt_put(vl_mem, vl_p, vl_NT_TY(), vl_type_packed(vl_ty, (vela_bounds_check((vl_ix_20804 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5877)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5877)), 655360, "selfhost/vm.vel", 5877), vl_nd[vl_ix_20804]), vl_mem, vl_vm)));
+        int64_t vl_ix_21143;
+        (void)(vl_nt_put(vl_mem, vl_p, vl_NT_TY(), vl_type_packed(vl_ty, (vela_bounds_check((vl_ix_21143 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6025)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6025)), 655360, "selfhost/vm.vel", 6025), vl_nd[vl_ix_21143]), vl_mem, vl_vm)));
         vl_p = vl_nd_nx(vl_nd, vl_p);
     }
 }
 
 static vela_str vl_ck_extern_mismatch(int64_t vl_fn, int64_t vl_par, int64_t vl_ak, int64_t vl_pk) {
-    vela_str vl_m = (vela_concat(vela_str_lit("'extern c' argument to '", 24), (vela_interned(vl_fn, "selfhost/vm.vel", 5886))));
+    vela_str vl_m = (vela_concat(vela_str_lit("'extern c' argument to '", 24), (vela_interned(vl_fn, "selfhost/vm.vel", 6034))));
     vl_m = (vela_concat(vl_m, vela_str_lit("' has type ", 11)));
     vl_m = (vela_concat(vl_m, vl_ck_spell_ck(vl_ak)));
     vl_m = (vela_concat(vl_m, vela_str_lit(", but parameter '", 17)));
-    vl_m = (vela_concat(vl_m, (vela_interned(vl_par, "selfhost/vm.vel", 5890))));
+    vl_m = (vela_concat(vl_m, (vela_interned(vl_par, "selfhost/vm.vel", 6038))));
     vl_m = (vela_concat(vl_m, vela_str_lit("' has type ", 11)));
     return (vela_concat(vl_m, vl_ck_spell_ck(vl_pk)));
 }
@@ -6631,7 +6731,7 @@ static vela_str vl_ck_extern_mismatch(int64_t vl_fn, int64_t vl_par, int64_t vl_
 static vela_str vl_ck_extern_too_big(int64_t vl_fn, int64_t vl_v, int64_t vl_pk) {
     vela_str vl_m = (vela_concat(vela_str_lit("'extern c' argument ", 20), vl_ck_int_text(vl_v)));
     vl_m = (vela_concat(vl_m, vela_str_lit(" to '", 5)));
-    vl_m = (vela_concat(vl_m, (vela_interned(vl_fn, "selfhost/vm.vel", 5898))));
+    vl_m = (vela_concat(vl_m, (vela_interned(vl_fn, "selfhost/vm.vel", 6046))));
     vl_m = (vela_concat(vl_m, vela_str_lit("' does not fit in ", 18)));
     return (vela_concat(vl_m, vl_ck_spell_ck(vl_pk)));
 }
@@ -6648,8 +6748,8 @@ static void vl_ck_extern_arg(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, 
     if ((vl_unpack_kind(vl_ak) == vl_unpack_kind(vl_pk))) {
         return;
     }
-    int64_t vl_ix_20961;
-    int64_t vl_fn = (vela_bounds_check((vl_ix_20961 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5920)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5920)), 655360, "selfhost/vm.vel", 5920), vl_nd[vl_ix_20961]);
+    int64_t vl_ix_21300;
+    int64_t vl_fn = (vela_bounds_check((vl_ix_21300 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6068)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6068)), 655360, "selfhost/vm.vel", 6068), vl_nd[vl_ix_21300]);
     if ((vl_ck_is_int_kind(vl_unpack_kind(vl_ak)) && vl_ck_is_int_kind(vl_unpack_kind(vl_pk)))) {
         int64_t vl_v = vl_ck_const_int(vl_nd, vl_a);
         if ((vl_v != vl_ck_no_const())) {
@@ -6660,13 +6760,13 @@ static void vl_ck_extern_arg(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, 
             return;
         }
     }
-    int64_t vl_ix_21023;
-    (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_extern_mismatch(vl_fn, (vela_bounds_check((vl_ix_21023 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5931)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5931)), 655360, "selfhost/vm.vel", 5931), vl_nd[vl_ix_21023]), vl_ak, vl_pk)));
+    int64_t vl_ix_21362;
+    (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_e), vl_ck_extern_mismatch(vl_fn, (vela_bounds_check((vl_ix_21362 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6079)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6079)), 655360, "selfhost/vm.vel", 6079), vl_nd[vl_ix_21362]), vl_ak, vl_pk)));
 }
 
 static void vl_ck_extern_call(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM vl_vm, int64_t vl_e) {
-    int64_t vl_ix_21041;
-    int64_t vl_callee = (vela_bounds_check((vl_ix_21041 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5939)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5939)), 655360, "selfhost/vm.vel", 5939), vl_nd[vl_ix_21041]);
+    int64_t vl_ix_21380;
+    int64_t vl_callee = (vela_bounds_check((vl_ix_21380 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6087)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6087)), 655360, "selfhost/vm.vel", 6087), vl_nd[vl_ix_21380]);
     if ((vl_nd_kind(vl_nd, vl_callee) != 25LL)) {
         return;
     }
@@ -6678,8 +6778,8 @@ static void vl_ck_extern_call(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path,
         return;
     }
     int64_t vl_p = vl_ft_get(vl_mem, vl_f, vl_FT_PARAM());
-    int64_t vl_ix_21095;
-    int64_t vl_a = (vela_bounds_check((vl_ix_21095 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5957)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5957)), 655360, "selfhost/vm.vel", 5957), vl_nd[vl_ix_21095]);
+    int64_t vl_ix_21434;
+    int64_t vl_a = (vela_bounds_check((vl_ix_21434 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6105)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6105)), 655360, "selfhost/vm.vel", 6105), vl_nd[vl_ix_21434]);
     while ((vl_p > 0LL)) {
         if ((vl_a <= 0LL)) {
             return;
@@ -6694,16 +6794,16 @@ static void vl_ck_function(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, vela
     int64_t vl_d = vl_ft_get(vl_mem, vl_f, vl_FT_DEF());
     int64_t vl_retp = vl_type_packed(vl_ty, vl_ft_get(vl_mem, vl_f, vl_FT_RETTY()), vl_mem, (*vl_vm));
     if (vl_ck_is_array_ck(vl_retp)) {
-        int64_t vl_ix_21175;
-        (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_d), vl_ck_quoted(vela_str_lit("function '", 10), (vela_bounds_check((vl_ix_21175 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5977)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5977)), 655360, "selfhost/vm.vel", 5977), vl_nd[vl_ix_21175]), (vela_concat(vela_str_lit("' returns ", 10), vl_ck_spell_array(vl_retp))))));
+        int64_t vl_ix_21514;
+        (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_d), vl_ck_quoted(vela_str_lit("function '", 10), (vela_bounds_check((vl_ix_21514 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6125)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6125)), 655360, "selfhost/vm.vel", 6125), vl_nd[vl_ix_21514]), (vela_concat(vela_str_lit("' returns ", 10), vl_ck_spell_array(vl_retp))))));
         return;
     }
     bool vl_ext = false;
     if ((vl_ft_get(vl_mem, vl_f, vl_FT_BODY()) < 0LL)) {
         vl_ext = true;
         if ((!vl_ck_extern_ok(vl_retp))) {
-            int64_t vl_ix_21219;
-            (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_d), vl_ck_quoted(vela_str_lit("'extern c' function '", 21), (vela_bounds_check((vl_ix_21219 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5990)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 5990)), 655360, "selfhost/vm.vel", 5990), vl_nd[vl_ix_21219]), (vela_concat(vela_str_lit("' may not return ", 17), vl_ck_spell_ck(vl_retp))))));
+            int64_t vl_ix_21558;
+            (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_d), vl_ck_quoted(vela_str_lit("'extern c' function '", 21), (vela_bounds_check((vl_ix_21558 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6138)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6138)), 655360, "selfhost/vm.vel", 6138), vl_nd[vl_ix_21558]), (vela_concat(vela_str_lit("' may not return ", 17), vl_ck_spell_ck(vl_retp))))));
             return;
         }
     }
@@ -6718,21 +6818,21 @@ static void vl_ck_function(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, vela
     }
     int64_t vl_p = vl_ft_get(vl_mem, vl_f, vl_FT_PARAM());
     while ((vl_p > 0LL)) {
-        int64_t vl_ix_21282;
-        int64_t vl_name = (vela_bounds_check((vl_ix_21282 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6006)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6006)), 655360, "selfhost/vm.vel", 6006), vl_nd[vl_ix_21282]);
+        int64_t vl_ix_21621;
+        int64_t vl_name = (vela_bounds_check((vl_ix_21621 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6154)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6154)), 655360, "selfhost/vm.vel", 6154), vl_nd[vl_ix_21621]);
         if (vl_ck_seen(vl_mem, (*vl_vm), vl_name, vl_mark)) {
             (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_p), vl_ck_quoted(vela_str_lit("duplicate parameter '", 21), vl_name, vela_str_lit("'", 1))));
         }
-        int64_t vl_ix_21313;
-        int64_t vl_pk = vl_type_packed(vl_ty, (vela_bounds_check((vl_ix_21313 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6011)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6011)), 655360, "selfhost/vm.vel", 6011), vl_nd[vl_ix_21313]), vl_mem, (*vl_vm));
+        int64_t vl_ix_21652;
+        int64_t vl_pk = vl_type_packed(vl_ty, (vela_bounds_check((vl_ix_21652 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6159)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6159)), 655360, "selfhost/vm.vel", 6159), vl_nd[vl_ix_21652]), vl_mem, (*vl_vm));
         if (vl_ext) {
             if ((!vl_ck_is_extern_scalar(vl_pk))) {
                 (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_p), vl_ck_quoted(vela_str_lit("'extern c' parameter '", 22), vl_name, (vela_concat(vela_str_lit("' has type ", 11), vl_ck_spell_ck(vl_pk))))));
                 return;
             }
         }
-        int64_t vl_ix_21356;
-        (void)(vl_ck_push_par(vl_mem, vl_vm, vl_name, vl_pk, (((vela_bounds_check((vl_ix_21356 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6022)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6022)), 655360, "selfhost/vm.vel", 6022), vl_nd[vl_ix_21356]) & 1LL) == 1LL)));
+        int64_t vl_ix_21695;
+        (void)(vl_ck_push_par(vl_mem, vl_vm, vl_name, vl_pk, (((vela_bounds_check((vl_ix_21695 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6170)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6170)), 655360, "selfhost/vm.vel", 6170), vl_nd[vl_ix_21695]) & 1LL) == 1LL)));
         vl_p = vl_nd_nx(vl_nd, vl_p);
     }
     int64_t vl_body = vl_ft_get(vl_mem, vl_f, vl_FT_BODY());
@@ -6741,8 +6841,8 @@ static void vl_ck_function(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, vela
     }
     if (((vl_unpack_kind(vl_retp) != vl_K_NONE()) && (!vl_ext))) {
         if ((!vl_ck_always_returns(vl_nd, vl_body))) {
-            int64_t vl_ix_21417;
-            (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_d), vl_ck_quoted(vela_str_lit("function '", 10), (vela_bounds_check((vl_ix_21417 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6032)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6032)), 655360, "selfhost/vm.vel", 6032), vl_nd[vl_ix_21417]), (vela_concat(vela_str_lit("' may finish without returning ", 31), vl_ck_spell_ck(vl_retp))))));
+            int64_t vl_ix_21756;
+            (void)(vl_ck_type(vl_path, vl_nd_line(vl_nd, vl_d), vl_ck_quoted(vela_str_lit("function '", 10), (vela_bounds_check((vl_ix_21756 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6180)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6180)), 655360, "selfhost/vm.vel", 6180), vl_nd[vl_ix_21756]), (vela_concat(vela_str_lit("' may finish without returning ", 31), vl_ck_spell_ck(vl_retp))))));
         }
     }
     vl_vm->f_cret = vl_saved;
@@ -6755,11 +6855,11 @@ static void vl_ck_struct_fields(int64_t* vl_mem, vela_str vl_path, struct vl_VM 
     int64_t vl_off = vl_stb_get(vl_mem, vl_sid, vl_STB_FOFF());
     int64_t vl_i = 0LL;
     while ((vl_i < vl_n)) {
-        int64_t vl_ck = vl_sfl_get(vl_mem, vela_add_range((vela_add_range((vl_off), (vela_mul_range((vl_i), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6048)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6048)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6048));
+        int64_t vl_ck = vl_sfl_get(vl_mem, vela_add_range((vela_add_range((vl_off), (vela_mul_range((vl_i), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6196)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6196)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6196));
         if (vl_ck_is_array_ck(vl_ck)) {
-            (void)(vl_ck_type(vl_path, 0LL, vl_ck_quoted(vela_str_lit("field '", 7), vl_sfl_get(vl_mem, vela_add_range((vl_off), (vela_mul_range((vl_i), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6051)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6051)), vela_str_lit("' may not be an array", 21))));
+            (void)(vl_ck_type(vl_path, 0LL, vl_ck_quoted(vela_str_lit("field '", 7), vl_sfl_get(vl_mem, vela_add_range((vl_off), (vela_mul_range((vl_i), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6199)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6199)), vela_str_lit("' may not be an array", 21))));
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6054);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6202);
     }
 }
 
@@ -6767,17 +6867,17 @@ static void vl_ck_module(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, vela_s
     int64_t vl_sid = 0LL;
     while ((vl_sid < vl_vm->f_nstruct)) {
         (void)(vl_ck_struct_fields(vl_mem, vl_path, (*vl_vm), vl_sid));
-        vl_sid = vela_add_range(vl_sid, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6063);
+        vl_sid = vela_add_range(vl_sid, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6211);
     }
     int64_t vl_r = 0LL;
     while ((vl_r < vl_vm->f_nfn)) {
         (void)(vl_ck_record_decls(vl_nd, vl_ty, vl_mem, (*vl_vm), vl_r));
-        vl_r = vela_add_range(vl_r, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6071);
+        vl_r = vela_add_range(vl_r, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6219);
     }
     int64_t vl_i = 0LL;
     while ((vl_i < vl_vm->f_nfn)) {
         (void)(vl_ck_function(vl_nd, vl_ty, vl_mem, vl_path, vl_vm, vl_i));
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6076);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6224);
     }
     (void)(vl_ck_check_main(vl_nd, vl_ty, vl_mem, vl_path, (*vl_vm)));
 }
@@ -6814,189 +6914,189 @@ static int64_t vl_cell_alloc(struct vl_VM* vl_vm) {
         (void)(vl_selflimit(vela_str_lit("the interpreter ran out of stack cells", 38)));
     }
     int64_t vl_c = vl_vm->f_sp;
-    vl_vm->f_sp = vela_add_range(vl_vm->f_sp, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6144);
+    vl_vm->f_sp = vela_add_range(vl_vm->f_sp, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6292);
     return vl_c;
 }
 
 static void vl_set_int(int64_t* vl_mem, double* vl_fmem, int64_t vl_c, int64_t vl_v) {
-    int64_t vl_ix_21687;
-    vela_bounds_check((vl_ix_21687 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6150)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6150)), 3741696, "selfhost/vm.vel", 6150);
-    vl_mem[vl_ix_21687] = vl_K_INT();
-    int64_t vl_ix_21697;
-    vela_bounds_check((vl_ix_21697 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6151)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6151)), 3741696, "selfhost/vm.vel", 6151);
-    vl_mem[vl_ix_21697] = vl_v;
-    int64_t vl_ix_21706;
-    vela_bounds_check((vl_ix_21706 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6152)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6152)), 3741696, "selfhost/vm.vel", 6152);
-    vl_mem[vl_ix_21706] = 0LL;
-    int64_t vl_ix_21715;
-    vela_bounds_check((vl_ix_21715 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6153)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6153)), 3741696, "selfhost/vm.vel", 6153);
-    vl_mem[vl_ix_21715] = 0LL;
-    int64_t vl_ix_21720;
-    vela_bounds_check((vl_ix_21720 = vl_c), 786432, "selfhost/vm.vel", 6154);
-    vl_fmem[vl_ix_21720] = 0.0;
+    int64_t vl_ix_22026;
+    vela_bounds_check((vl_ix_22026 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6298)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6298)), 3741696, "selfhost/vm.vel", 6298);
+    vl_mem[vl_ix_22026] = vl_K_INT();
+    int64_t vl_ix_22036;
+    vela_bounds_check((vl_ix_22036 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6299)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6299)), 3741696, "selfhost/vm.vel", 6299);
+    vl_mem[vl_ix_22036] = vl_v;
+    int64_t vl_ix_22045;
+    vela_bounds_check((vl_ix_22045 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6300)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6300)), 3741696, "selfhost/vm.vel", 6300);
+    vl_mem[vl_ix_22045] = 0LL;
+    int64_t vl_ix_22054;
+    vela_bounds_check((vl_ix_22054 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6301)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6301)), 3741696, "selfhost/vm.vel", 6301);
+    vl_mem[vl_ix_22054] = 0LL;
+    int64_t vl_ix_22059;
+    vela_bounds_check((vl_ix_22059 = vl_c), 786432, "selfhost/vm.vel", 6302);
+    vl_fmem[vl_ix_22059] = 0.0;
 }
 
 static void vl_set_flt(int64_t* vl_mem, double* vl_fmem, int64_t vl_c, double vl_v) {
-    int64_t vl_ix_21734;
-    vela_bounds_check((vl_ix_21734 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6159)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6159)), 3741696, "selfhost/vm.vel", 6159);
-    vl_mem[vl_ix_21734] = vl_K_FLT();
-    int64_t vl_ix_21744;
-    vela_bounds_check((vl_ix_21744 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6160)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6160)), 3741696, "selfhost/vm.vel", 6160);
-    vl_mem[vl_ix_21744] = 0LL;
-    int64_t vl_ix_21753;
-    vela_bounds_check((vl_ix_21753 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6161)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6161)), 3741696, "selfhost/vm.vel", 6161);
-    vl_mem[vl_ix_21753] = 0LL;
-    int64_t vl_ix_21762;
-    vela_bounds_check((vl_ix_21762 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6162)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6162)), 3741696, "selfhost/vm.vel", 6162);
-    vl_mem[vl_ix_21762] = 0LL;
-    int64_t vl_ix_21767;
-    vela_bounds_check((vl_ix_21767 = vl_c), 786432, "selfhost/vm.vel", 6163);
-    vl_fmem[vl_ix_21767] = vl_v;
+    int64_t vl_ix_22073;
+    vela_bounds_check((vl_ix_22073 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6307)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6307)), 3741696, "selfhost/vm.vel", 6307);
+    vl_mem[vl_ix_22073] = vl_K_FLT();
+    int64_t vl_ix_22083;
+    vela_bounds_check((vl_ix_22083 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6308)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6308)), 3741696, "selfhost/vm.vel", 6308);
+    vl_mem[vl_ix_22083] = 0LL;
+    int64_t vl_ix_22092;
+    vela_bounds_check((vl_ix_22092 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6309)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6309)), 3741696, "selfhost/vm.vel", 6309);
+    vl_mem[vl_ix_22092] = 0LL;
+    int64_t vl_ix_22101;
+    vela_bounds_check((vl_ix_22101 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6310)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6310)), 3741696, "selfhost/vm.vel", 6310);
+    vl_mem[vl_ix_22101] = 0LL;
+    int64_t vl_ix_22106;
+    vela_bounds_check((vl_ix_22106 = vl_c), 786432, "selfhost/vm.vel", 6311);
+    vl_fmem[vl_ix_22106] = vl_v;
 }
 
 static void vl_set_bool(int64_t* vl_mem, double* vl_fmem, int64_t vl_c, bool vl_v) {
-    int64_t vl_ix_21781;
-    vela_bounds_check((vl_ix_21781 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6168)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6168)), 3741696, "selfhost/vm.vel", 6168);
-    vl_mem[vl_ix_21781] = vl_K_BOOL();
+    int64_t vl_ix_22120;
+    vela_bounds_check((vl_ix_22120 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6316)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6316)), 3741696, "selfhost/vm.vel", 6316);
+    vl_mem[vl_ix_22120] = vl_K_BOOL();
     if (vl_v) {
-        int64_t vl_ix_21792;
-        vela_bounds_check((vl_ix_21792 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6170)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6170)), 3741696, "selfhost/vm.vel", 6170);
-        vl_mem[vl_ix_21792] = 1LL;
+        int64_t vl_ix_22131;
+        vela_bounds_check((vl_ix_22131 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6318)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6318)), 3741696, "selfhost/vm.vel", 6318);
+        vl_mem[vl_ix_22131] = 1LL;
     } else {
-        int64_t vl_ix_21801;
-        vela_bounds_check((vl_ix_21801 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6172)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6172)), 3741696, "selfhost/vm.vel", 6172);
-        vl_mem[vl_ix_21801] = 0LL;
+        int64_t vl_ix_22140;
+        vela_bounds_check((vl_ix_22140 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6320)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6320)), 3741696, "selfhost/vm.vel", 6320);
+        vl_mem[vl_ix_22140] = 0LL;
     }
-    int64_t vl_ix_21811;
-    vela_bounds_check((vl_ix_21811 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6174)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6174)), 3741696, "selfhost/vm.vel", 6174);
-    vl_mem[vl_ix_21811] = 0LL;
-    int64_t vl_ix_21820;
-    vela_bounds_check((vl_ix_21820 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6175)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6175)), 3741696, "selfhost/vm.vel", 6175);
-    vl_mem[vl_ix_21820] = 0LL;
-    int64_t vl_ix_21825;
-    vela_bounds_check((vl_ix_21825 = vl_c), 786432, "selfhost/vm.vel", 6176);
-    vl_fmem[vl_ix_21825] = 0.0;
+    int64_t vl_ix_22150;
+    vela_bounds_check((vl_ix_22150 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6322)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6322)), 3741696, "selfhost/vm.vel", 6322);
+    vl_mem[vl_ix_22150] = 0LL;
+    int64_t vl_ix_22159;
+    vela_bounds_check((vl_ix_22159 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6323)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6323)), 3741696, "selfhost/vm.vel", 6323);
+    vl_mem[vl_ix_22159] = 0LL;
+    int64_t vl_ix_22164;
+    vela_bounds_check((vl_ix_22164 = vl_c), 786432, "selfhost/vm.vel", 6324);
+    vl_fmem[vl_ix_22164] = 0.0;
 }
 
 static void vl_set_str(int64_t* vl_mem, double* vl_fmem, int64_t vl_c, int64_t vl_handle) {
-    int64_t vl_ix_21839;
-    vela_bounds_check((vl_ix_21839 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6181)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6181)), 3741696, "selfhost/vm.vel", 6181);
-    vl_mem[vl_ix_21839] = vl_K_STR();
-    int64_t vl_ix_21849;
-    vela_bounds_check((vl_ix_21849 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6182)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6182)), 3741696, "selfhost/vm.vel", 6182);
-    vl_mem[vl_ix_21849] = vl_handle;
-    int64_t vl_ix_21858;
-    vela_bounds_check((vl_ix_21858 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6183)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6183)), 3741696, "selfhost/vm.vel", 6183);
-    vl_mem[vl_ix_21858] = 0LL;
-    int64_t vl_ix_21867;
-    vela_bounds_check((vl_ix_21867 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6184)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6184)), 3741696, "selfhost/vm.vel", 6184);
-    vl_mem[vl_ix_21867] = 0LL;
-    int64_t vl_ix_21872;
-    vela_bounds_check((vl_ix_21872 = vl_c), 786432, "selfhost/vm.vel", 6185);
-    vl_fmem[vl_ix_21872] = 0.0;
+    int64_t vl_ix_22178;
+    vela_bounds_check((vl_ix_22178 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6329)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6329)), 3741696, "selfhost/vm.vel", 6329);
+    vl_mem[vl_ix_22178] = vl_K_STR();
+    int64_t vl_ix_22188;
+    vela_bounds_check((vl_ix_22188 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6330)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6330)), 3741696, "selfhost/vm.vel", 6330);
+    vl_mem[vl_ix_22188] = vl_handle;
+    int64_t vl_ix_22197;
+    vela_bounds_check((vl_ix_22197 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6331)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6331)), 3741696, "selfhost/vm.vel", 6331);
+    vl_mem[vl_ix_22197] = 0LL;
+    int64_t vl_ix_22206;
+    vela_bounds_check((vl_ix_22206 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6332)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6332)), 3741696, "selfhost/vm.vel", 6332);
+    vl_mem[vl_ix_22206] = 0LL;
+    int64_t vl_ix_22211;
+    vela_bounds_check((vl_ix_22211 = vl_c), 786432, "selfhost/vm.vel", 6333);
+    vl_fmem[vl_ix_22211] = 0.0;
 }
 
 static void vl_set_none(int64_t* vl_mem, double* vl_fmem, int64_t vl_c) {
-    int64_t vl_ix_21885;
-    vela_bounds_check((vl_ix_21885 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6190)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6190)), 3741696, "selfhost/vm.vel", 6190);
-    vl_mem[vl_ix_21885] = vl_K_NONE();
-    int64_t vl_ix_21895;
-    vela_bounds_check((vl_ix_21895 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6191)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6191)), 3741696, "selfhost/vm.vel", 6191);
-    vl_mem[vl_ix_21895] = 0LL;
-    int64_t vl_ix_21904;
-    vela_bounds_check((vl_ix_21904 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6192)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6192)), 3741696, "selfhost/vm.vel", 6192);
-    vl_mem[vl_ix_21904] = 0LL;
-    int64_t vl_ix_21913;
-    vela_bounds_check((vl_ix_21913 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6193)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6193)), 3741696, "selfhost/vm.vel", 6193);
-    vl_mem[vl_ix_21913] = 0LL;
-    int64_t vl_ix_21918;
-    vela_bounds_check((vl_ix_21918 = vl_c), 786432, "selfhost/vm.vel", 6194);
-    vl_fmem[vl_ix_21918] = 0.0;
+    int64_t vl_ix_22224;
+    vela_bounds_check((vl_ix_22224 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6338)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6338)), 3741696, "selfhost/vm.vel", 6338);
+    vl_mem[vl_ix_22224] = vl_K_NONE();
+    int64_t vl_ix_22234;
+    vela_bounds_check((vl_ix_22234 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6339)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6339)), 3741696, "selfhost/vm.vel", 6339);
+    vl_mem[vl_ix_22234] = 0LL;
+    int64_t vl_ix_22243;
+    vela_bounds_check((vl_ix_22243 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6340)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6340)), 3741696, "selfhost/vm.vel", 6340);
+    vl_mem[vl_ix_22243] = 0LL;
+    int64_t vl_ix_22252;
+    vela_bounds_check((vl_ix_22252 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6341)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6341)), 3741696, "selfhost/vm.vel", 6341);
+    vl_mem[vl_ix_22252] = 0LL;
+    int64_t vl_ix_22257;
+    vela_bounds_check((vl_ix_22257 = vl_c), 786432, "selfhost/vm.vel", 6342);
+    vl_fmem[vl_ix_22257] = 0.0;
 }
 
 static void vl_copy_cell(int64_t* vl_mem, double* vl_fmem, int64_t vl_dst, int64_t vl_src) {
-    int64_t vl_ix_21932;
-    int64_t vl_ix_21939;
-    vela_bounds_check((vl_ix_21932 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6203)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6203)), 3741696, "selfhost/vm.vel", 6203);
-    vl_mem[vl_ix_21932] = (vela_bounds_check((vl_ix_21939 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6203)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6203)), 3741696, "selfhost/vm.vel", 6203), vl_mem[vl_ix_21939]);
-    int64_t vl_ix_21947;
-    int64_t vl_ix_21954;
-    vela_bounds_check((vl_ix_21947 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6204)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6204)), 3741696, "selfhost/vm.vel", 6204);
-    vl_mem[vl_ix_21947] = (vela_bounds_check((vl_ix_21954 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6204)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6204)), 3741696, "selfhost/vm.vel", 6204), vl_mem[vl_ix_21954]);
-    int64_t vl_ix_21962;
-    int64_t vl_ix_21969;
-    vela_bounds_check((vl_ix_21962 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6205)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6205)), 3741696, "selfhost/vm.vel", 6205);
-    vl_mem[vl_ix_21962] = (vela_bounds_check((vl_ix_21969 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6205)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6205)), 3741696, "selfhost/vm.vel", 6205), vl_mem[vl_ix_21969]);
-    int64_t vl_ix_21977;
-    int64_t vl_ix_21984;
-    vela_bounds_check((vl_ix_21977 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6206)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6206)), 3741696, "selfhost/vm.vel", 6206);
-    vl_mem[vl_ix_21977] = (vela_bounds_check((vl_ix_21984 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6206)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6206)), 3741696, "selfhost/vm.vel", 6206), vl_mem[vl_ix_21984]);
-    int64_t vl_ix_21988;
-    int64_t vl_ix_21991;
-    vela_bounds_check((vl_ix_21988 = vl_dst), 786432, "selfhost/vm.vel", 6207);
-    vl_fmem[vl_ix_21988] = (vela_bounds_check((vl_ix_21991 = vl_src), 786432, "selfhost/vm.vel", 6207), vl_fmem[vl_ix_21991]);
+    int64_t vl_ix_22271;
+    int64_t vl_ix_22278;
+    vela_bounds_check((vl_ix_22271 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6351)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6351)), 3741696, "selfhost/vm.vel", 6351);
+    vl_mem[vl_ix_22271] = (vela_bounds_check((vl_ix_22278 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6351)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6351)), 3741696, "selfhost/vm.vel", 6351), vl_mem[vl_ix_22278]);
+    int64_t vl_ix_22286;
+    int64_t vl_ix_22293;
+    vela_bounds_check((vl_ix_22286 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6352)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6352)), 3741696, "selfhost/vm.vel", 6352);
+    vl_mem[vl_ix_22286] = (vela_bounds_check((vl_ix_22293 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6352)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6352)), 3741696, "selfhost/vm.vel", 6352), vl_mem[vl_ix_22293]);
+    int64_t vl_ix_22301;
+    int64_t vl_ix_22308;
+    vela_bounds_check((vl_ix_22301 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6353)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6353)), 3741696, "selfhost/vm.vel", 6353);
+    vl_mem[vl_ix_22301] = (vela_bounds_check((vl_ix_22308 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6353)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6353)), 3741696, "selfhost/vm.vel", 6353), vl_mem[vl_ix_22308]);
+    int64_t vl_ix_22316;
+    int64_t vl_ix_22323;
+    vela_bounds_check((vl_ix_22316 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6354)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6354)), 3741696, "selfhost/vm.vel", 6354);
+    vl_mem[vl_ix_22316] = (vela_bounds_check((vl_ix_22323 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6354)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6354)), 3741696, "selfhost/vm.vel", 6354), vl_mem[vl_ix_22323]);
+    int64_t vl_ix_22327;
+    int64_t vl_ix_22330;
+    vela_bounds_check((vl_ix_22327 = vl_dst), 786432, "selfhost/vm.vel", 6355);
+    vl_fmem[vl_ix_22327] = (vela_bounds_check((vl_ix_22330 = vl_src), 786432, "selfhost/vm.vel", 6355), vl_fmem[vl_ix_22330]);
 }
 
 static void vl_copy_value(int64_t* vl_mem, double* vl_fmem, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_dst, int64_t vl_src) {
-    int64_t vl_ix_22006;
-    if (((vela_bounds_check((vl_ix_22006 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6216)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6216)), 3741696, "selfhost/vm.vel", 6216), vl_mem[vl_ix_22006]) != vl_K_ST())) {
+    int64_t vl_ix_22345;
+    if (((vela_bounds_check((vl_ix_22345 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6364)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6364)), 3741696, "selfhost/vm.vel", 6364), vl_mem[vl_ix_22345]) != vl_K_ST())) {
         (void)(vl_copy_cell(vl_mem, vl_fmem, vl_dst, vl_src));
         return;
     }
-    int64_t vl_ix_22025;
-    int64_t vl_nfield = (vela_bounds_check((vl_ix_22025 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6220)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6220)), 3741696, "selfhost/vm.vel", 6220), vl_mem[vl_ix_22025]);
-    int64_t vl_ix_22034;
-    int64_t vl_sbase = (vela_bounds_check((vl_ix_22034 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6221)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6221)), 3741696, "selfhost/vm.vel", 6221), vl_mem[vl_ix_22034]);
-    if ((vela_add_range((vl_vm->f_hp), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6222) >= vl_CELL_HEAP_MAX())) {
+    int64_t vl_ix_22364;
+    int64_t vl_nfield = (vela_bounds_check((vl_ix_22364 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6368)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6368)), 3741696, "selfhost/vm.vel", 6368), vl_mem[vl_ix_22364]);
+    int64_t vl_ix_22373;
+    int64_t vl_sbase = (vela_bounds_check((vl_ix_22373 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6369)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6369)), 3741696, "selfhost/vm.vel", 6369), vl_mem[vl_ix_22373]);
+    if ((vela_add_range((vl_vm->f_hp), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6370) >= vl_CELL_HEAP_MAX())) {
         (void)(vl_selflimit(vela_str_lit("the interpreter ran out of heap cells", 37)));
     }
     int64_t vl_base = vl_vm->f_hp;
-    vl_vm->f_hp = vela_add_range(vl_vm->f_hp, vl_nfield, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6226);
+    vl_vm->f_hp = vela_add_range(vl_vm->f_hp, vl_nfield, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6374);
     int64_t vl_f = 0LL;
     while ((vl_f < vl_nfield)) {
-        (void)(vl_copy_value(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_base), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6229), vela_add_range((vl_sbase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6229)));
-        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6230);
+        (void)(vl_copy_value(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_base), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6377), vela_add_range((vl_sbase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6377)));
+        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6378);
     }
-    int64_t vl_ix_22086;
-    vela_bounds_check((vl_ix_22086 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6232)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6232)), 3741696, "selfhost/vm.vel", 6232);
-    vl_mem[vl_ix_22086] = vl_K_ST();
-    int64_t vl_ix_22096;
-    vela_bounds_check((vl_ix_22096 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6233)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6233)), 3741696, "selfhost/vm.vel", 6233);
-    vl_mem[vl_ix_22096] = vl_base;
-    int64_t vl_ix_22105;
-    int64_t vl_ix_22112;
-    vela_bounds_check((vl_ix_22105 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6234)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6234)), 3741696, "selfhost/vm.vel", 6234);
-    vl_mem[vl_ix_22105] = (vela_bounds_check((vl_ix_22112 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6234)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6234)), 3741696, "selfhost/vm.vel", 6234), vl_mem[vl_ix_22112]);
-    int64_t vl_ix_22120;
-    vela_bounds_check((vl_ix_22120 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6235)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6235)), 3741696, "selfhost/vm.vel", 6235);
-    vl_mem[vl_ix_22120] = vl_nfield;
-    int64_t vl_ix_22125;
-    vela_bounds_check((vl_ix_22125 = vl_dst), 786432, "selfhost/vm.vel", 6236);
-    vl_fmem[vl_ix_22125] = 0.0;
+    int64_t vl_ix_22425;
+    vela_bounds_check((vl_ix_22425 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6380)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6380)), 3741696, "selfhost/vm.vel", 6380);
+    vl_mem[vl_ix_22425] = vl_K_ST();
+    int64_t vl_ix_22435;
+    vela_bounds_check((vl_ix_22435 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6381)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6381)), 3741696, "selfhost/vm.vel", 6381);
+    vl_mem[vl_ix_22435] = vl_base;
+    int64_t vl_ix_22444;
+    int64_t vl_ix_22451;
+    vela_bounds_check((vl_ix_22444 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6382)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6382)), 3741696, "selfhost/vm.vel", 6382);
+    vl_mem[vl_ix_22444] = (vela_bounds_check((vl_ix_22451 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6382)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6382)), 3741696, "selfhost/vm.vel", 6382), vl_mem[vl_ix_22451]);
+    int64_t vl_ix_22459;
+    vela_bounds_check((vl_ix_22459 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6383)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6383)), 3741696, "selfhost/vm.vel", 6383);
+    vl_mem[vl_ix_22459] = vl_nfield;
+    int64_t vl_ix_22464;
+    vela_bounds_check((vl_ix_22464 = vl_dst), 786432, "selfhost/vm.vel", 6384);
+    vl_fmem[vl_ix_22464] = 0.0;
 }
 
 static void vl_assign_value(int64_t* vl_mem, double* vl_fmem, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_dst, int64_t vl_src) {
-    int64_t vl_ix_22141;
-    if (((vela_bounds_check((vl_ix_22141 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6246)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6246)), 3741696, "selfhost/vm.vel", 6246), vl_mem[vl_ix_22141]) != vl_K_ST())) {
+    int64_t vl_ix_22480;
+    if (((vela_bounds_check((vl_ix_22480 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6394)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6394)), 3741696, "selfhost/vm.vel", 6394), vl_mem[vl_ix_22480]) != vl_K_ST())) {
         (void)(vl_copy_cell(vl_mem, vl_fmem, vl_dst, vl_src));
         return;
     }
-    int64_t vl_ix_22160;
-    if (((vela_bounds_check((vl_ix_22160 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6250)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6250)), 3741696, "selfhost/vm.vel", 6250), vl_mem[vl_ix_22160]) == vl_K_ST())) {
-        int64_t vl_ix_22170;
-        int64_t vl_ix_22177;
-        if (((vela_bounds_check((vl_ix_22170 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6251)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6251)), 3741696, "selfhost/vm.vel", 6251), vl_mem[vl_ix_22170]) == (vela_bounds_check((vl_ix_22177 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6251)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6251)), 3741696, "selfhost/vm.vel", 6251), vl_mem[vl_ix_22177]))) {
-            int64_t vl_ix_22185;
-            int64_t vl_dbase = (vela_bounds_check((vl_ix_22185 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6252)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6252)), 3741696, "selfhost/vm.vel", 6252), vl_mem[vl_ix_22185]);
-            int64_t vl_ix_22194;
-            int64_t vl_sbase = (vela_bounds_check((vl_ix_22194 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6253)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6253)), 3741696, "selfhost/vm.vel", 6253), vl_mem[vl_ix_22194]);
+    int64_t vl_ix_22499;
+    if (((vela_bounds_check((vl_ix_22499 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6398)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6398)), 3741696, "selfhost/vm.vel", 6398), vl_mem[vl_ix_22499]) == vl_K_ST())) {
+        int64_t vl_ix_22509;
+        int64_t vl_ix_22516;
+        if (((vela_bounds_check((vl_ix_22509 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6399)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6399)), 3741696, "selfhost/vm.vel", 6399), vl_mem[vl_ix_22509]) == (vela_bounds_check((vl_ix_22516 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6399)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6399)), 3741696, "selfhost/vm.vel", 6399), vl_mem[vl_ix_22516]))) {
+            int64_t vl_ix_22524;
+            int64_t vl_dbase = (vela_bounds_check((vl_ix_22524 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6400)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6400)), 3741696, "selfhost/vm.vel", 6400), vl_mem[vl_ix_22524]);
+            int64_t vl_ix_22533;
+            int64_t vl_sbase = (vela_bounds_check((vl_ix_22533 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6401)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6401)), 3741696, "selfhost/vm.vel", 6401), vl_mem[vl_ix_22533]);
             if ((vl_dbase != vl_sbase)) {
-                int64_t vl_ix_22206;
-                int64_t vl_nfield = (vela_bounds_check((vl_ix_22206 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6255)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6255)), 3741696, "selfhost/vm.vel", 6255), vl_mem[vl_ix_22206]);
+                int64_t vl_ix_22545;
+                int64_t vl_nfield = (vela_bounds_check((vl_ix_22545 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6403)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6403)), 3741696, "selfhost/vm.vel", 6403), vl_mem[vl_ix_22545]);
                 int64_t vl_f = 0LL;
                 while ((vl_f < vl_nfield)) {
-                    (void)(vl_assign_value(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_dbase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6258), vela_add_range((vl_sbase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6258)));
-                    vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6259);
+                    (void)(vl_assign_value(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_dbase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6406), vela_add_range((vl_sbase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6406)));
+                    vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6407);
                 }
             }
             return;
@@ -7006,7 +7106,7 @@ static void vl_assign_value(int64_t* vl_mem, double* vl_fmem, vela_str vl_path, 
 }
 
 static int64_t vl_add_int(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_a, int64_t vl_b) {
-    int64_t vl_r = vela_add_range((vl_a), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6285);
+    int64_t vl_r = vela_add_range((vl_a), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6433);
     if ((vl_b > 0LL)) {
         if ((vl_r < vl_a)) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("integer overflow (addition)", 27)));
@@ -7020,7 +7120,7 @@ static int64_t vl_add_int(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_a, i
 }
 
 static int64_t vl_sub_int(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_a, int64_t vl_b) {
-    int64_t vl_r = vela_sub_range((vl_a), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6299);
+    int64_t vl_r = vela_sub_range((vl_a), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6447);
     if ((vl_b > 0LL)) {
         if ((vl_r > vl_a)) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("integer overflow (subtraction)", 30)));
@@ -7034,9 +7134,9 @@ static int64_t vl_sub_int(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_a, i
 }
 
 static int64_t vl_mul_int(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_a, int64_t vl_b) {
-    int64_t vl_r = vela_mul_range((vl_a), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6318);
+    int64_t vl_r = vela_mul_range((vl_a), (vl_b), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6466);
     if ((vl_a != 0LL)) {
-        if ((vela_floor_div((vl_r), (vl_a), "selfhost/vm.vel", 6320) != vl_b)) {
+        if ((vela_floor_div((vl_r), (vl_a), "selfhost/vm.vel", 6468) != vl_b)) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("integer overflow (multiply)", 27)));
         }
     }
@@ -7047,31 +7147,31 @@ static int64_t vl_floor_div(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_a,
     if ((vl_b == 0LL)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("division by zero", 16)));
     }
-    if ((vl_a == vela_sub_range((vela_neg_int(9223372036854775807LL, "selfhost/vm.vel", 6336)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6336))) {
-        if ((vl_b == vela_neg_int(1LL, "selfhost/vm.vel", 6337))) {
+    if ((vl_a == vela_sub_range((vela_neg_int(9223372036854775807LL, "selfhost/vm.vel", 6484)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6484))) {
+        if ((vl_b == vela_neg_int(1LL, "selfhost/vm.vel", 6485))) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("integer overflow (division)", 27)));
         }
     }
-    return vela_floor_div((vl_a), (vl_b), "selfhost/vm.vel", 6341);
+    return vela_floor_div((vl_a), (vl_b), "selfhost/vm.vel", 6489);
 }
 
 static int64_t vl_floor_mod(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_a, int64_t vl_b) {
     if ((vl_b == 0LL)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("remainder by zero", 17)));
     }
-    if ((vl_a == vela_sub_range((vela_neg_int(9223372036854775807LL, "selfhost/vm.vel", 6348)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6348))) {
-        if ((vl_b == vela_neg_int(1LL, "selfhost/vm.vel", 6349))) {
+    if ((vl_a == vela_sub_range((vela_neg_int(9223372036854775807LL, "selfhost/vm.vel", 6496)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6496))) {
+        if ((vl_b == vela_neg_int(1LL, "selfhost/vm.vel", 6497))) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("integer overflow (remainder)", 28)));
         }
     }
-    return vela_floor_mod((vl_a), (vl_b), "selfhost/vm.vel", 6353);
+    return vela_floor_mod((vl_a), (vl_b), "selfhost/vm.vel", 6501);
 }
 
 static int64_t vl_neg_int(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_a) {
-    if ((vl_a == vela_sub_range((vela_neg_int(9223372036854775807LL, "selfhost/vm.vel", 6357)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6357))) {
+    if ((vl_a == vela_sub_range((vela_neg_int(9223372036854775807LL, "selfhost/vm.vel", 6505)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6505))) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("integer overflow (negation)", 27)));
     }
-    return vela_neg_int(vl_a, "selfhost/vm.vel", 6360);
+    return vela_neg_int(vl_a, "selfhost/vm.vel", 6508);
 }
 
 static int64_t vl_pow_int(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_base, int64_t vl_exp) {
@@ -7085,7 +7185,7 @@ static int64_t vl_pow_int(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_base
         if (((vl_e & 1LL) == 1LL)) {
             vl_result = vl_mul_int(vl_path, vl_vm, vl_result, vl_b);
         }
-        vl_e = vela_shr_int((vl_e), (1LL), "selfhost/vm.vel", 6374);
+        vl_e = vela_shr_int((vl_e), (1LL), "selfhost/vm.vel", 6522);
         if ((vl_e > 0LL)) {
             vl_b = vl_mul_int(vl_path, vl_vm, vl_b, vl_b);
         }
@@ -7101,36 +7201,36 @@ static int64_t vl_shift_int(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_a,
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("shift count out of range 0..63", 30)));
     }
     if (vl_left) {
-        return vela_shl_int((vl_a), (vl_b), "selfhost/vm.vel", 6392);
+        return vela_shl_int((vl_a), (vl_b), "selfhost/vm.vel", 6540);
     }
-    return vela_shr_int((vl_a), (vl_b), "selfhost/vm.vel", 6394);
+    return vela_shr_int((vl_a), (vl_b), "selfhost/vm.vel", 6542);
 }
 
 static bool vl_as_bool(vela_str vl_path, struct vl_VM* vl_vm, int64_t* vl_mem, int64_t vl_c) {
-    int64_t vl_ix_22568;
-    if (((vela_bounds_check((vl_ix_22568 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6400)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6400)), 3741696, "selfhost/vm.vel", 6400), vl_mem[vl_ix_22568]) != vl_K_BOOL())) {
+    int64_t vl_ix_22907;
+    if (((vela_bounds_check((vl_ix_22907 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6548)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6548)), 3741696, "selfhost/vm.vel", 6548), vl_mem[vl_ix_22907]) != vl_K_BOOL())) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("a condition must be a bool", 26)));
     }
-    int64_t vl_ix_22587;
-    return ((vela_bounds_check((vl_ix_22587 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6403)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6403)), 3741696, "selfhost/vm.vel", 6403), vl_mem[vl_ix_22587]) == 1LL);
+    int64_t vl_ix_22926;
+    return ((vela_bounds_check((vl_ix_22926 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6551)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6551)), 3741696, "selfhost/vm.vel", 6551), vl_mem[vl_ix_22926]) == 1LL);
 }
 
 static void vl_print_cell(int64_t* vl_mem, double* vl_fmem, int64_t vl_c, vela_str vl_path, int64_t vl_line) {
-    int64_t vl_ix_22602;
-    int64_t vl_t = (vela_bounds_check((vl_ix_22602 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6408)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6408)), 3741696, "selfhost/vm.vel", 6408), vl_mem[vl_ix_22602]);
+    int64_t vl_ix_22941;
+    int64_t vl_t = (vela_bounds_check((vl_ix_22941 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6556)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6556)), 3741696, "selfhost/vm.vel", 6556), vl_mem[vl_ix_22941]);
     if ((vl_t == vl_K_INT())) {
-        int64_t vl_ix_22616;
-        (void)((vela_emit_int((vela_bounds_check((vl_ix_22616 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6410)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6410)), 3741696, "selfhost/vm.vel", 6410), vl_mem[vl_ix_22616]))));
+        int64_t vl_ix_22955;
+        (void)((vela_emit_int((vela_bounds_check((vl_ix_22955 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6558)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6558)), 3741696, "selfhost/vm.vel", 6558), vl_mem[vl_ix_22955]))));
         return;
     }
     if ((vl_t == vl_K_FLT())) {
-        int64_t vl_ix_22628;
-        (void)((vela_emit_float((vela_bounds_check((vl_ix_22628 = vl_c), 786432, "selfhost/vm.vel", 6414), vl_fmem[vl_ix_22628]))));
+        int64_t vl_ix_22967;
+        (void)((vela_emit_float((vela_bounds_check((vl_ix_22967 = vl_c), 786432, "selfhost/vm.vel", 6562), vl_fmem[vl_ix_22967]))));
         return;
     }
     if ((vl_t == vl_K_BOOL())) {
-        int64_t vl_ix_22643;
-        if (((vela_bounds_check((vl_ix_22643 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6418)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6418)), 3741696, "selfhost/vm.vel", 6418), vl_mem[vl_ix_22643]) == 1LL)) {
+        int64_t vl_ix_22982;
+        if (((vela_bounds_check((vl_ix_22982 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6566)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6566)), 3741696, "selfhost/vm.vel", 6566), vl_mem[vl_ix_22982]) == 1LL)) {
             (void)((vela_emit_str(vela_str_lit("True", 4))));
         } else {
             (void)((vela_emit_str(vela_str_lit("False", 5))));
@@ -7138,8 +7238,8 @@ static void vl_print_cell(int64_t* vl_mem, double* vl_fmem, int64_t vl_c, vela_s
         return;
     }
     if ((vl_t == vl_K_STR())) {
-        int64_t vl_ix_22669;
-        (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_22669 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6426)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6426)), 3741696, "selfhost/vm.vel", 6426), vl_mem[vl_ix_22669]), "selfhost/vm.vel", 6426)))));
+        int64_t vl_ix_23008;
+        (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_23008 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6574)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6574)), 3741696, "selfhost/vm.vel", 6574), vl_mem[vl_ix_23008]), "selfhost/vm.vel", 6574)))));
         return;
     }
     if ((vl_t == vl_K_NONE())) {
@@ -7150,8 +7250,8 @@ static void vl_print_cell(int64_t* vl_mem, double* vl_fmem, int64_t vl_c, vela_s
 }
 
 static int64_t vl_cell_text_kind(int64_t* vl_mem, int64_t vl_c) {
-    int64_t vl_ix_22701;
-    return (vela_bounds_check((vl_ix_22701 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6437)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6437)), 3741696, "selfhost/vm.vel", 6437), vl_mem[vl_ix_22701]);
+    int64_t vl_ix_23040;
+    return (vela_bounds_check((vl_ix_23040 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6585)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6585)), 3741696, "selfhost/vm.vel", 6585), vl_mem[vl_ix_23040]);
 }
 
 static bool vl_is_array(int64_t vl_tag) {
@@ -7180,7 +7280,7 @@ static bool vl_is_array(int64_t vl_tag) {
 }
 
 static void vl_pool_room(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_base, int64_t vl_n, int64_t vl_cap, vela_str vl_what) {
-    if ((vela_add_range((vl_base), (vl_n), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6462) > vl_cap)) {
+    if ((vela_add_range((vl_base), (vl_n), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6610) > vl_cap)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vl_what));
     }
 }
@@ -7193,48 +7293,48 @@ static void vl_alloc_array(int64_t* vl_mem, double* vl_fmem, int64_t* vl_ipool, 
     if ((vl_tag == vl_K_AB())) {
         (void)(vl_pool_room(vl_path, vl_vm, vl_vm->f_bpc, vl_n, 33554432LL, vela_str_lit("the byte arrays this program asked for are too large", 52)));
         vl_base = vl_vm->f_bpc;
-        vl_vm->f_bpc = vela_add_range(vl_vm->f_bpc, vl_n, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6480);
+        vl_vm->f_bpc = vela_add_range(vl_vm->f_bpc, vl_n, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6628);
     } else if ((vl_tag == vl_K_AA())) {
         (void)(vl_pool_room(vl_path, vl_vm, vl_vm->f_bpc, vl_n, 33554432LL, vela_str_lit("the byte arrays this program asked for are too large", 52)));
         vl_base = vl_vm->f_bpc;
-        vl_vm->f_bpc = vela_add_range(vl_vm->f_bpc, vl_n, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6484);
+        vl_vm->f_bpc = vela_add_range(vl_vm->f_bpc, vl_n, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6632);
     } else if ((vl_tag == vl_K_AF())) {
         (void)(vl_pool_room(vl_path, vl_vm, vl_vm->f_fpc, vl_n, 1048576LL, vela_str_lit("the float arrays this program asked for are too large", 53)));
         vl_base = vl_vm->f_fpc;
-        vl_vm->f_fpc = vela_add_range(vl_vm->f_fpc, vl_n, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6488);
+        vl_vm->f_fpc = vela_add_range(vl_vm->f_fpc, vl_n, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6636);
     } else if ((vl_tag == vl_K_AX())) {
         int64_t vl_nfield = vl_stb_get(vl_mem, vl_sid, vl_STB_SIZE());
         if ((vl_nfield <= 0LL)) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("an array of structs needs a struct with fields", 46)));
         }
-        (void)(vl_pool_room(vl_path, vl_vm, vl_vm->f_hp, vela_mul_range((vl_n), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6494), vl_CELL_HEAP_MAX(), vela_str_lit("the struct arrays this program asked for are too large", 54)));
+        (void)(vl_pool_room(vl_path, vl_vm, vl_vm->f_hp, vela_mul_range((vl_n), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6642), vl_CELL_HEAP_MAX(), vela_str_lit("the struct arrays this program asked for are too large", 54)));
         vl_base = vl_vm->f_hp;
         int64_t vl_c = 0LL;
-        while ((vl_c < vela_mul_range((vl_n), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6500))) {
-            (void)(vl_set_int(vl_mem, vl_fmem, vela_add_range((vl_base), (vl_c), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6501), 0LL));
-            vl_c = vela_add_range(vl_c, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6502);
+        while ((vl_c < vela_mul_range((vl_n), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6648))) {
+            (void)(vl_set_int(vl_mem, vl_fmem, vela_add_range((vl_base), (vl_c), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6649), 0LL));
+            vl_c = vela_add_range(vl_c, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6650);
         }
-        vl_vm->f_hp = vela_add_range(vl_vm->f_hp, vela_mul_range((vl_n), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6504), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6504);
+        vl_vm->f_hp = vela_add_range(vl_vm->f_hp, vela_mul_range((vl_n), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6652), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6652);
     } else {
         (void)(vl_pool_room(vl_path, vl_vm, vl_vm->f_ipc, vl_n, 2097152LL, vela_str_lit("the arrays this program asked for are too large", 47)));
         vl_base = vl_vm->f_ipc;
-        vl_vm->f_ipc = vela_add_range(vl_vm->f_ipc, vl_n, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6508);
+        vl_vm->f_ipc = vela_add_range(vl_vm->f_ipc, vl_n, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6656);
     }
-    int64_t vl_ix_22962;
-    vela_bounds_check((vl_ix_22962 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6510)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6510)), 3741696, "selfhost/vm.vel", 6510);
-    vl_mem[vl_ix_22962] = vl_tag;
-    int64_t vl_ix_22971;
-    vela_bounds_check((vl_ix_22971 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6511)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6511)), 3741696, "selfhost/vm.vel", 6511);
-    vl_mem[vl_ix_22971] = vl_base;
-    int64_t vl_ix_22980;
-    vela_bounds_check((vl_ix_22980 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6512)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6512)), 3741696, "selfhost/vm.vel", 6512);
-    vl_mem[vl_ix_22980] = vl_n;
-    int64_t vl_ix_22989;
-    vela_bounds_check((vl_ix_22989 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6513)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6513)), 3741696, "selfhost/vm.vel", 6513);
-    vl_mem[vl_ix_22989] = vl_sid;
-    int64_t vl_ix_22994;
-    vela_bounds_check((vl_ix_22994 = vl_dst), 786432, "selfhost/vm.vel", 6514);
-    vl_fmem[vl_ix_22994] = 0.0;
+    int64_t vl_ix_23301;
+    vela_bounds_check((vl_ix_23301 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6658)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6658)), 3741696, "selfhost/vm.vel", 6658);
+    vl_mem[vl_ix_23301] = vl_tag;
+    int64_t vl_ix_23310;
+    vela_bounds_check((vl_ix_23310 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6659)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6659)), 3741696, "selfhost/vm.vel", 6659);
+    vl_mem[vl_ix_23310] = vl_base;
+    int64_t vl_ix_23319;
+    vela_bounds_check((vl_ix_23319 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6660)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6660)), 3741696, "selfhost/vm.vel", 6660);
+    vl_mem[vl_ix_23319] = vl_n;
+    int64_t vl_ix_23328;
+    vela_bounds_check((vl_ix_23328 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6661)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6661)), 3741696, "selfhost/vm.vel", 6661);
+    vl_mem[vl_ix_23328] = vl_sid;
+    int64_t vl_ix_23333;
+    vela_bounds_check((vl_ix_23333 = vl_dst), 786432, "selfhost/vm.vel", 6662);
+    vl_fmem[vl_ix_23333] = 0.0;
 }
 
 static void vl_elem_bounds(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_n, int64_t vl_idx) {
@@ -7247,12 +7347,12 @@ static void vl_elem_bounds(vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_n, 
 }
 
 static void vl_elem_load(int64_t* vl_mem, double* vl_fmem, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_ac, int64_t vl_idx, int64_t vl_dst) {
-    int64_t vl_ix_23041;
-    int64_t vl_tag = (vela_bounds_check((vl_ix_23041 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6530)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6530)), 3741696, "selfhost/vm.vel", 6530), vl_mem[vl_ix_23041]);
-    int64_t vl_ix_23050;
-    int64_t vl_base = (vela_bounds_check((vl_ix_23050 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6531)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6531)), 3741696, "selfhost/vm.vel", 6531), vl_mem[vl_ix_23050]);
-    int64_t vl_ix_23059;
-    int64_t vl_n = (vela_bounds_check((vl_ix_23059 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6532)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6532)), 3741696, "selfhost/vm.vel", 6532), vl_mem[vl_ix_23059]);
+    int64_t vl_ix_23380;
+    int64_t vl_tag = (vela_bounds_check((vl_ix_23380 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6678)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6678)), 3741696, "selfhost/vm.vel", 6678), vl_mem[vl_ix_23380]);
+    int64_t vl_ix_23389;
+    int64_t vl_base = (vela_bounds_check((vl_ix_23389 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6679)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6679)), 3741696, "selfhost/vm.vel", 6679), vl_mem[vl_ix_23389]);
+    int64_t vl_ix_23398;
+    int64_t vl_n = (vela_bounds_check((vl_ix_23398 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6680)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6680)), 3741696, "selfhost/vm.vel", 6680), vl_mem[vl_ix_23398]);
     if ((!vl_is_array(vl_tag))) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this value cannot be indexed", 28)));
     }
@@ -7261,91 +7361,91 @@ static void vl_elem_load(int64_t* vl_mem, double* vl_fmem, int64_t* vl_ipool, do
         (void)(vl_selflimit(vela_str_lit("Array[u8]: reading a byte needs an integer width conversion, which Vela 0.1 does not have (SPEC 3.1)", 100)));
     }
     if ((vl_tag == vl_K_AA())) {
-        int64_t vl_ix_23102;
-        (void)(vl_set_bool(vl_mem, vl_fmem, vl_dst, ((vela_bounds_check((vl_ix_23102 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6541)), 33554432, "selfhost/vm.vel", 6541), vl_bpool[vl_ix_23102]) != 0LL)));
+        int64_t vl_ix_23441;
+        (void)(vl_set_bool(vl_mem, vl_fmem, vl_dst, ((vela_bounds_check((vl_ix_23441 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6689)), 33554432, "selfhost/vm.vel", 6689), vl_bpool[vl_ix_23441]) != 0LL)));
         return;
     }
     if ((vl_tag == vl_K_AF())) {
-        int64_t vl_ix_23121;
-        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (vela_bounds_check((vl_ix_23121 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6545)), 1048576, "selfhost/vm.vel", 6545), vl_fpool[vl_ix_23121])));
+        int64_t vl_ix_23460;
+        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (vela_bounds_check((vl_ix_23460 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6693)), 1048576, "selfhost/vm.vel", 6693), vl_fpool[vl_ix_23460])));
         return;
     }
     if ((vl_tag == vl_K_AS())) {
-        int64_t vl_ix_23138;
-        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_bounds_check((vl_ix_23138 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6549)), 2097152, "selfhost/vm.vel", 6549), vl_ipool[vl_ix_23138])));
+        int64_t vl_ix_23477;
+        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_bounds_check((vl_ix_23477 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6697)), 2097152, "selfhost/vm.vel", 6697), vl_ipool[vl_ix_23477])));
         return;
     }
     if ((vl_tag == vl_K_AX())) {
-        int64_t vl_ix_23153;
-        int64_t vl_sid = (vela_bounds_check((vl_ix_23153 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6553)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6553)), 3741696, "selfhost/vm.vel", 6553), vl_mem[vl_ix_23153]);
+        int64_t vl_ix_23492;
+        int64_t vl_sid = (vela_bounds_check((vl_ix_23492 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6701)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6701)), 3741696, "selfhost/vm.vel", 6701), vl_mem[vl_ix_23492]);
         int64_t vl_nfield = vl_stb_get(vl_mem, vl_sid, vl_STB_SIZE());
-        int64_t vl_ix_23170;
-        vela_bounds_check((vl_ix_23170 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6555)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6555)), 3741696, "selfhost/vm.vel", 6555);
-        vl_mem[vl_ix_23170] = vl_K_ST();
-        int64_t vl_ix_23180;
-        vela_bounds_check((vl_ix_23180 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6556)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6556)), 3741696, "selfhost/vm.vel", 6556);
-        vl_mem[vl_ix_23180] = vela_add_range((vl_base), (vela_mul_range((vl_idx), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6556)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6556);
-        int64_t vl_ix_23193;
-        vela_bounds_check((vl_ix_23193 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6557)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6557)), 3741696, "selfhost/vm.vel", 6557);
-        vl_mem[vl_ix_23193] = vl_sid;
-        int64_t vl_ix_23202;
-        vela_bounds_check((vl_ix_23202 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6558)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6558)), 3741696, "selfhost/vm.vel", 6558);
-        vl_mem[vl_ix_23202] = vl_nfield;
-        int64_t vl_ix_23207;
-        vela_bounds_check((vl_ix_23207 = vl_dst), 786432, "selfhost/vm.vel", 6559);
-        vl_fmem[vl_ix_23207] = 0.0;
+        int64_t vl_ix_23509;
+        vela_bounds_check((vl_ix_23509 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6703)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6703)), 3741696, "selfhost/vm.vel", 6703);
+        vl_mem[vl_ix_23509] = vl_K_ST();
+        int64_t vl_ix_23519;
+        vela_bounds_check((vl_ix_23519 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6704)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6704)), 3741696, "selfhost/vm.vel", 6704);
+        vl_mem[vl_ix_23519] = vela_add_range((vl_base), (vela_mul_range((vl_idx), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6704)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6704);
+        int64_t vl_ix_23532;
+        vela_bounds_check((vl_ix_23532 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6705)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6705)), 3741696, "selfhost/vm.vel", 6705);
+        vl_mem[vl_ix_23532] = vl_sid;
+        int64_t vl_ix_23541;
+        vela_bounds_check((vl_ix_23541 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6706)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6706)), 3741696, "selfhost/vm.vel", 6706);
+        vl_mem[vl_ix_23541] = vl_nfield;
+        int64_t vl_ix_23546;
+        vela_bounds_check((vl_ix_23546 = vl_dst), 786432, "selfhost/vm.vel", 6707);
+        vl_fmem[vl_ix_23546] = 0.0;
         return;
     }
-    int64_t vl_ix_23220;
-    (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_bounds_check((vl_ix_23220 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6563)), 2097152, "selfhost/vm.vel", 6563), vl_ipool[vl_ix_23220])));
+    int64_t vl_ix_23559;
+    (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_bounds_check((vl_ix_23559 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6711)), 2097152, "selfhost/vm.vel", 6711), vl_ipool[vl_ix_23559])));
 }
 
 static void vl_elem_store(int64_t* vl_mem, double* vl_fmem, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_ac, int64_t vl_idx, int64_t vl_src) {
-    int64_t vl_ix_23240;
-    int64_t vl_tag = (vela_bounds_check((vl_ix_23240 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6570)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6570)), 3741696, "selfhost/vm.vel", 6570), vl_mem[vl_ix_23240]);
-    int64_t vl_ix_23249;
-    int64_t vl_base = (vela_bounds_check((vl_ix_23249 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6571)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6571)), 3741696, "selfhost/vm.vel", 6571), vl_mem[vl_ix_23249]);
-    int64_t vl_ix_23258;
-    int64_t vl_n = (vela_bounds_check((vl_ix_23258 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6572)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6572)), 3741696, "selfhost/vm.vel", 6572), vl_mem[vl_ix_23258]);
+    int64_t vl_ix_23579;
+    int64_t vl_tag = (vela_bounds_check((vl_ix_23579 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6718)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6718)), 3741696, "selfhost/vm.vel", 6718), vl_mem[vl_ix_23579]);
+    int64_t vl_ix_23588;
+    int64_t vl_base = (vela_bounds_check((vl_ix_23588 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6719)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6719)), 3741696, "selfhost/vm.vel", 6719), vl_mem[vl_ix_23588]);
+    int64_t vl_ix_23597;
+    int64_t vl_n = (vela_bounds_check((vl_ix_23597 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6720)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6720)), 3741696, "selfhost/vm.vel", 6720), vl_mem[vl_ix_23597]);
     if ((!vl_is_array(vl_tag))) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this value cannot be assigned by index", 38)));
     }
     (void)(vl_elem_bounds(vl_path, vl_vm, vl_n, vl_idx));
-    int64_t vl_ix_23286;
-    int64_t vl_st = (vela_bounds_check((vl_ix_23286 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6577)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6577)), 3741696, "selfhost/vm.vel", 6577), vl_mem[vl_ix_23286]);
+    int64_t vl_ix_23625;
+    int64_t vl_st = (vela_bounds_check((vl_ix_23625 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6725)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6725)), 3741696, "selfhost/vm.vel", 6725), vl_mem[vl_ix_23625]);
     if ((vl_tag == vl_K_AF())) {
         if ((vl_st != vl_K_FLT())) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this array holds floats", 23)));
         }
-        int64_t vl_ix_23309;
-        int64_t vl_ix_23312;
-        vela_bounds_check((vl_ix_23309 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6582)), 1048576, "selfhost/vm.vel", 6582);
-        vl_fpool[vl_ix_23309] = (vela_bounds_check((vl_ix_23312 = vl_src), 786432, "selfhost/vm.vel", 6582), vl_fmem[vl_ix_23312]);
+        int64_t vl_ix_23648;
+        int64_t vl_ix_23651;
+        vela_bounds_check((vl_ix_23648 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6730)), 1048576, "selfhost/vm.vel", 6730);
+        vl_fpool[vl_ix_23648] = (vela_bounds_check((vl_ix_23651 = vl_src), 786432, "selfhost/vm.vel", 6730), vl_fmem[vl_ix_23651]);
         return;
     }
     if ((vl_tag == vl_K_AS())) {
         if ((vl_st != vl_K_STR())) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this array holds strings", 24)));
         }
-        int64_t vl_ix_23336;
-        int64_t vl_ix_23343;
-        vela_bounds_check((vl_ix_23336 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6589)), 2097152, "selfhost/vm.vel", 6589);
-        vl_ipool[vl_ix_23336] = (vela_bounds_check((vl_ix_23343 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6589)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6589)), 3741696, "selfhost/vm.vel", 6589), vl_mem[vl_ix_23343]);
+        int64_t vl_ix_23675;
+        int64_t vl_ix_23682;
+        vela_bounds_check((vl_ix_23675 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6737)), 2097152, "selfhost/vm.vel", 6737);
+        vl_ipool[vl_ix_23675] = (vela_bounds_check((vl_ix_23682 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6737)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6737)), 3741696, "selfhost/vm.vel", 6737), vl_mem[vl_ix_23682]);
         return;
     }
     if ((vl_tag == vl_K_AA())) {
         if ((vl_st != vl_K_BOOL())) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this array holds bools", 22)));
         }
-        int64_t vl_ix_23369;
-        if (((vela_bounds_check((vl_ix_23369 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6596)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6596)), 3741696, "selfhost/vm.vel", 6596), vl_mem[vl_ix_23369]) == 1LL)) {
-            int64_t vl_ix_23376;
-            vela_bounds_check((vl_ix_23376 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6597)), 33554432, "selfhost/vm.vel", 6597);
-            vl_bpool[vl_ix_23376] = 1LL;
+        int64_t vl_ix_23708;
+        if (((vela_bounds_check((vl_ix_23708 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6744)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6744)), 3741696, "selfhost/vm.vel", 6744), vl_mem[vl_ix_23708]) == 1LL)) {
+            int64_t vl_ix_23715;
+            vela_bounds_check((vl_ix_23715 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6745)), 33554432, "selfhost/vm.vel", 6745);
+            vl_bpool[vl_ix_23715] = 1LL;
         } else {
-            int64_t vl_ix_23383;
-            vela_bounds_check((vl_ix_23383 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6599)), 33554432, "selfhost/vm.vel", 6599);
-            vl_bpool[vl_ix_23383] = 0LL;
+            int64_t vl_ix_23722;
+            vela_bounds_check((vl_ix_23722 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6747)), 33554432, "selfhost/vm.vel", 6747);
+            vl_bpool[vl_ix_23722] = 0LL;
         }
         return;
     }
@@ -7356,20 +7456,20 @@ static void vl_elem_store(int64_t* vl_mem, double* vl_fmem, int64_t* vl_ipool, d
         if ((vl_st != vl_K_ST())) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this array holds structs", 24)));
         }
-        int64_t vl_ix_23420;
-        int64_t vl_sid = (vela_bounds_check((vl_ix_23420 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6610)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6610)), 3741696, "selfhost/vm.vel", 6610), vl_mem[vl_ix_23420]);
-        int64_t vl_ix_23429;
-        if (((vela_bounds_check((vl_ix_23429 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6611)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6611)), 3741696, "selfhost/vm.vel", 6611), vl_mem[vl_ix_23429]) != vl_sid)) {
+        int64_t vl_ix_23759;
+        int64_t vl_sid = (vela_bounds_check((vl_ix_23759 = vela_add_range((vela_mul_range((vl_ac), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6758)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6758)), 3741696, "selfhost/vm.vel", 6758), vl_mem[vl_ix_23759]);
+        int64_t vl_ix_23768;
+        if (((vela_bounds_check((vl_ix_23768 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6759)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6759)), 3741696, "selfhost/vm.vel", 6759), vl_mem[vl_ix_23768]) != vl_sid)) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this array holds a different struct", 35)));
         }
         int64_t vl_nfield = vl_stb_get(vl_mem, vl_sid, vl_STB_SIZE());
-        int64_t vl_ebase = vela_add_range((vl_base), (vela_mul_range((vl_idx), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6615)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6615);
-        int64_t vl_ix_23461;
-        int64_t vl_sbase = (vela_bounds_check((vl_ix_23461 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6616)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6616)), 3741696, "selfhost/vm.vel", 6616), vl_mem[vl_ix_23461]);
+        int64_t vl_ebase = vela_add_range((vl_base), (vela_mul_range((vl_idx), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6763)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6763);
+        int64_t vl_ix_23800;
+        int64_t vl_sbase = (vela_bounds_check((vl_ix_23800 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6764)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6764)), 3741696, "selfhost/vm.vel", 6764), vl_mem[vl_ix_23800]);
         int64_t vl_f = 0LL;
         while ((vl_f < vl_nfield)) {
-            (void)(vl_assign_value(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_ebase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6619), vela_add_range((vl_sbase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6619)));
-            vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6620);
+            (void)(vl_assign_value(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_ebase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6767), vela_add_range((vl_sbase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6767)));
+            vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6768);
         }
         return;
     }
@@ -7377,16 +7477,16 @@ static void vl_elem_store(int64_t* vl_mem, double* vl_fmem, int64_t* vl_ipool, d
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this array holds ints", 21)));
     }
     if ((vl_tag == vl_K_A32())) {
-        int64_t vl_ix_23509;
-        int64_t vl_ix_23516;
-        vela_bounds_check((vl_ix_23509 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6629)), 2097152, "selfhost/vm.vel", 6629);
-        vl_ipool[vl_ix_23509] = vela_shr_int((vela_shl_int(((vela_bounds_check((vl_ix_23516 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6629)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6629)), 3741696, "selfhost/vm.vel", 6629), vl_mem[vl_ix_23516])), (32LL), "selfhost/vm.vel", 6629)), (32LL), "selfhost/vm.vel", 6629);
+        int64_t vl_ix_23848;
+        int64_t vl_ix_23855;
+        vela_bounds_check((vl_ix_23848 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6777)), 2097152, "selfhost/vm.vel", 6777);
+        vl_ipool[vl_ix_23848] = vela_shr_int((vela_shl_int(((vela_bounds_check((vl_ix_23855 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6777)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6777)), 3741696, "selfhost/vm.vel", 6777), vl_mem[vl_ix_23855])), (32LL), "selfhost/vm.vel", 6777)), (32LL), "selfhost/vm.vel", 6777);
         return;
     }
-    int64_t vl_ix_23528;
-    int64_t vl_ix_23535;
-    vela_bounds_check((vl_ix_23528 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6632)), 2097152, "selfhost/vm.vel", 6632);
-    vl_ipool[vl_ix_23528] = (vela_bounds_check((vl_ix_23535 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6632)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6632)), 3741696, "selfhost/vm.vel", 6632), vl_mem[vl_ix_23535]);
+    int64_t vl_ix_23867;
+    int64_t vl_ix_23874;
+    vela_bounds_check((vl_ix_23867 = vela_add_range((vl_base), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6780)), 2097152, "selfhost/vm.vel", 6780);
+    vl_ipool[vl_ix_23867] = (vela_bounds_check((vl_ix_23874 = vela_add_range((vela_mul_range((vl_src), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6780)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6780)), 3741696, "selfhost/vm.vel", 6780), vl_mem[vl_ix_23874]);
 }
 
 static void vl_fill_literal(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double* vl_fmem, double* vl_flt, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_src, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_lit, int64_t vl_ac) {
@@ -7396,23 +7496,23 @@ static void vl_fill_literal(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, dou
     int64_t vl_mark = vl_vm->f_sp;
     int64_t vl_tmp = vl_cell_alloc(vl_vm);
     int64_t vl_i = 0LL;
-    int64_t vl_ix_23580;
-    int64_t vl_a = (vela_bounds_check((vl_ix_23580 = vela_add_range((vela_mul_range((vl_lit), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6649)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6649)), 655360, "selfhost/vm.vel", 6649), vl_nd[vl_ix_23580]);
+    int64_t vl_ix_23919;
+    int64_t vl_a = (vela_bounds_check((vl_ix_23919 = vela_add_range((vela_mul_range((vl_lit), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6797)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6797)), 655360, "selfhost/vm.vel", 6797), vl_nd[vl_ix_23919]);
     while ((vl_a > 0LL)) {
         int64_t vl_keep = vl_vm->f_dst;
         vl_vm->f_dst = vl_tmp;
         (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_a));
         vl_vm->f_dst = vl_keep;
         (void)(vl_elem_store(vl_mem, vl_fmem, vl_ipool, vl_fpool, vl_bpool, vl_path, vl_vm, vl_ac, vl_i, vl_tmp));
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6656);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6804);
         vl_a = vl_nd_nx(vl_nd, vl_a);
     }
     vl_vm->f_sp = vl_mark;
 }
 
 static void vl_exec_array_decl(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double* vl_fmem, double* vl_flt, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_src, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_s, int64_t vl_dstc, int64_t vl_kind) {
-    int64_t vl_ix_23663;
-    int64_t vl_n = vl_ty_len(vl_ty, (vela_bounds_check((vl_ix_23663 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6668)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6668)), 655360, "selfhost/vm.vel", 6668), vl_nd[vl_ix_23663]));
+    int64_t vl_ix_24002;
+    int64_t vl_n = vl_ty_len(vl_ty, (vela_bounds_check((vl_ix_24002 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6816)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6816)), 655360, "selfhost/vm.vel", 6816), vl_nd[vl_ix_24002]));
     if ((vl_n < 0LL)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this array declaration has no length", 36)));
     }
@@ -7421,36 +7521,36 @@ static void vl_exec_array_decl(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, 
     }
     int64_t vl_sid = vl_nt_get(vl_mem, vl_s, vl_NT_VAL());
     (void)(vl_alloc_array(vl_mem, vl_fmem, vl_ipool, vl_fpool, vl_bpool, vl_path, vl_vm, vl_kind, vl_n, vl_sid, vl_dstc));
-    int64_t vl_ix_23715;
-    int64_t vl_v = (vela_bounds_check((vl_ix_23715 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6681)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6681)), 655360, "selfhost/vm.vel", 6681), vl_nd[vl_ix_23715]);
+    int64_t vl_ix_24054;
+    int64_t vl_v = (vela_bounds_check((vl_ix_24054 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6829)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6829)), 655360, "selfhost/vm.vel", 6829), vl_nd[vl_ix_24054]);
     if ((vl_v > 0LL)) {
         (void)(vl_fill_literal(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_v, vl_dstc));
     }
 }
 
 static void vl_eval_str_lit(int64_t* vl_mem, double* vl_fmem, vela_str vl_src, int64_t* vl_nd, int64_t vl_e, int64_t vl_dst) {
-    int64_t vl_ix_23751;
-    int64_t vl_off = (vela_bounds_check((vl_ix_23751 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6692)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6692)), 655360, "selfhost/vm.vel", 6692), vl_nd[vl_ix_23751]);
-    int64_t vl_ix_23760;
-    int64_t vl_ln = (vela_bounds_check((vl_ix_23760 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6693)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6693)), 655360, "selfhost/vm.vel", 6693), vl_nd[vl_ix_23760]);
-    vela_str vl_raw = (vela_substr(vl_src, vl_off, vela_add_range((vl_off), (vl_ln), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6694)));
-    int64_t vl_ix_23778;
-    if ((((vela_bounds_check((vl_ix_23778 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6695)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6695)), 655360, "selfhost/vm.vel", 6695), vl_nd[vl_ix_23778]) & 1LL) == 1LL)) {
+    int64_t vl_ix_24090;
+    int64_t vl_off = (vela_bounds_check((vl_ix_24090 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6840)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6840)), 655360, "selfhost/vm.vel", 6840), vl_nd[vl_ix_24090]);
+    int64_t vl_ix_24099;
+    int64_t vl_ln = (vela_bounds_check((vl_ix_24099 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6841)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6841)), 655360, "selfhost/vm.vel", 6841), vl_nd[vl_ix_24099]);
+    vela_str vl_raw = (vela_substr(vl_src, vl_off, vela_add_range((vl_off), (vl_ln), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6842)));
+    int64_t vl_ix_24117;
+    if ((((vela_bounds_check((vl_ix_24117 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6843)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6843)), 655360, "selfhost/vm.vel", 6843), vl_nd[vl_ix_24117]) & 1LL) == 1LL)) {
         vl_raw = (vela_unescape(vl_raw));
     }
     int64_t vl_cached = vl_nt_get(vl_mem, vl_e, vl_NT_LIT());
     if ((vl_cached == 0LL)) {
-        vl_cached = vela_add_range(((vela_intern(vl_raw))), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6700);
+        vl_cached = vela_add_range(((vela_intern(vl_raw))), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6848);
         (void)(vl_nt_put(vl_mem, vl_e, vl_NT_LIT(), vl_cached));
     }
-    (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, vela_sub_range((vl_cached), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6703)));
+    (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, vela_sub_range((vl_cached), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6851)));
 }
 
 static void vl_eval_name(int64_t* vl_mem, double* vl_fmem, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_e) {
     int64_t vl_sk = vl_nt_get(vl_mem, vl_e, vl_NT_SYM());
     int64_t vl_sv = vl_nt_get(vl_mem, vl_e, vl_NT_VAL());
     if ((vl_sk == vl_SYM_LOCAL())) {
-        (void)(vl_copy_cell(vl_mem, vl_fmem, vl_vm->f_dst, vela_add_range((vl_vm->f_fp), (vl_sv), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6711)));
+        (void)(vl_copy_cell(vl_mem, vl_fmem, vl_vm->f_dst, vela_add_range((vl_vm->f_fp), (vl_sv), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6859)));
         return;
     }
     if ((vl_sk == vl_SYM_FUNC())) {
@@ -7466,20 +7566,20 @@ static void vl_eval_name(int64_t* vl_mem, double* vl_fmem, vela_str vl_path, str
 }
 
 static int64_t vl_cmp_sign(vela_str vl_path, struct vl_VM* vl_vm, int64_t* vl_mem, double* vl_fmem, int64_t vl_l, int64_t vl_r) {
-    int64_t vl_ix_23920;
-    int64_t vl_lt = (vela_bounds_check((vl_ix_23920 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6730)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6730)), 3741696, "selfhost/vm.vel", 6730), vl_mem[vl_ix_23920]);
-    int64_t vl_ix_23929;
-    int64_t vl_rt = (vela_bounds_check((vl_ix_23929 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6731)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6731)), 3741696, "selfhost/vm.vel", 6731), vl_mem[vl_ix_23929]);
+    int64_t vl_ix_24259;
+    int64_t vl_lt = (vela_bounds_check((vl_ix_24259 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6878)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6878)), 3741696, "selfhost/vm.vel", 6878), vl_mem[vl_ix_24259]);
+    int64_t vl_ix_24268;
+    int64_t vl_rt = (vela_bounds_check((vl_ix_24268 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6879)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6879)), 3741696, "selfhost/vm.vel", 6879), vl_mem[vl_ix_24268]);
     if ((vl_lt != vl_rt)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("a comparison needs two values of the same type", 46)));
     }
     if ((vl_lt == vl_K_INT())) {
-        int64_t vl_ix_23953;
-        int64_t vl_a = (vela_bounds_check((vl_ix_23953 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6736)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6736)), 3741696, "selfhost/vm.vel", 6736), vl_mem[vl_ix_23953]);
-        int64_t vl_ix_23962;
-        int64_t vl_b = (vela_bounds_check((vl_ix_23962 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6737)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6737)), 3741696, "selfhost/vm.vel", 6737), vl_mem[vl_ix_23962]);
+        int64_t vl_ix_24292;
+        int64_t vl_a = (vela_bounds_check((vl_ix_24292 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6884)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6884)), 3741696, "selfhost/vm.vel", 6884), vl_mem[vl_ix_24292]);
+        int64_t vl_ix_24301;
+        int64_t vl_b = (vela_bounds_check((vl_ix_24301 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6885)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6885)), 3741696, "selfhost/vm.vel", 6885), vl_mem[vl_ix_24301]);
         if ((vl_a < vl_b)) {
-            return vela_neg_int(1LL, "selfhost/vm.vel", 6739);
+            return vela_neg_int(1LL, "selfhost/vm.vel", 6887);
         }
         if ((vl_a > vl_b)) {
             return 1LL;
@@ -7487,12 +7587,12 @@ static int64_t vl_cmp_sign(vela_str vl_path, struct vl_VM* vl_vm, int64_t* vl_me
         return 0LL;
     }
     if ((vl_lt == vl_K_FLT())) {
-        int64_t vl_ix_23987;
-        double vl_a2 = (vela_bounds_check((vl_ix_23987 = vl_l), 786432, "selfhost/vm.vel", 6747), vl_fmem[vl_ix_23987]);
-        int64_t vl_ix_23992;
-        double vl_b2 = (vela_bounds_check((vl_ix_23992 = vl_r), 786432, "selfhost/vm.vel", 6748), vl_fmem[vl_ix_23992]);
+        int64_t vl_ix_24326;
+        double vl_a2 = (vela_bounds_check((vl_ix_24326 = vl_l), 786432, "selfhost/vm.vel", 6895), vl_fmem[vl_ix_24326]);
+        int64_t vl_ix_24331;
+        double vl_b2 = (vela_bounds_check((vl_ix_24331 = vl_r), 786432, "selfhost/vm.vel", 6896), vl_fmem[vl_ix_24331]);
         if ((vl_a2 < vl_b2)) {
-            return vela_neg_int(1LL, "selfhost/vm.vel", 6750);
+            return vela_neg_int(1LL, "selfhost/vm.vel", 6898);
         }
         if ((vl_a2 > vl_b2)) {
             return 1LL;
@@ -7500,12 +7600,12 @@ static int64_t vl_cmp_sign(vela_str vl_path, struct vl_VM* vl_vm, int64_t* vl_me
         return 0LL;
     }
     if ((vl_lt == vl_K_BOOL())) {
-        int64_t vl_ix_24021;
-        int64_t vl_a3 = (vela_bounds_check((vl_ix_24021 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6758)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6758)), 3741696, "selfhost/vm.vel", 6758), vl_mem[vl_ix_24021]);
-        int64_t vl_ix_24030;
-        int64_t vl_b3 = (vela_bounds_check((vl_ix_24030 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6759)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6759)), 3741696, "selfhost/vm.vel", 6759), vl_mem[vl_ix_24030]);
+        int64_t vl_ix_24360;
+        int64_t vl_a3 = (vela_bounds_check((vl_ix_24360 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6906)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6906)), 3741696, "selfhost/vm.vel", 6906), vl_mem[vl_ix_24360]);
+        int64_t vl_ix_24369;
+        int64_t vl_b3 = (vela_bounds_check((vl_ix_24369 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6907)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6907)), 3741696, "selfhost/vm.vel", 6907), vl_mem[vl_ix_24369]);
         if ((vl_a3 < vl_b3)) {
-            return vela_neg_int(1LL, "selfhost/vm.vel", 6761);
+            return vela_neg_int(1LL, "selfhost/vm.vel", 6909);
         }
         if ((vl_a3 > vl_b3)) {
             return 1LL;
@@ -7513,10 +7613,10 @@ static int64_t vl_cmp_sign(vela_str vl_path, struct vl_VM* vl_vm, int64_t* vl_me
         return 0LL;
     }
     if ((vl_lt == vl_K_STR())) {
-        int64_t vl_ix_24059;
-        int64_t vl_ha = (vela_bounds_check((vl_ix_24059 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6770)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6770)), 3741696, "selfhost/vm.vel", 6770), vl_mem[vl_ix_24059]);
-        int64_t vl_ix_24068;
-        int64_t vl_hb = (vela_bounds_check((vl_ix_24068 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6771)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6771)), 3741696, "selfhost/vm.vel", 6771), vl_mem[vl_ix_24068]);
+        int64_t vl_ix_24398;
+        int64_t vl_ha = (vela_bounds_check((vl_ix_24398 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6918)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6918)), 3741696, "selfhost/vm.vel", 6918), vl_mem[vl_ix_24398]);
+        int64_t vl_ix_24407;
+        int64_t vl_hb = (vela_bounds_check((vl_ix_24407 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6919)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6919)), 3741696, "selfhost/vm.vel", 6919), vl_mem[vl_ix_24407]);
         if ((vl_ha == vl_hb)) {
             return 0LL;
         }
@@ -7549,8 +7649,8 @@ static bool vl_rel_ok(int64_t vl_op, int64_t vl_sign) {
 }
 
 static void vl_cmp_op_ok(vela_str vl_path, struct vl_VM* vl_vm, int64_t* vl_mem, int64_t vl_l, int64_t vl_op) {
-    int64_t vl_ix_24154;
-    int64_t vl_lt = (vela_bounds_check((vl_ix_24154 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6807)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6807)), 3741696, "selfhost/vm.vel", 6807), vl_mem[vl_ix_24154]);
+    int64_t vl_ix_24493;
+    int64_t vl_lt = (vela_bounds_check((vl_ix_24493 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6955)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6955)), 3741696, "selfhost/vm.vel", 6955), vl_mem[vl_ix_24493]);
     if ((vl_lt == vl_K_BOOL())) {
         if ((vl_op != 22LL)) {
             if ((vl_op != 23LL)) {
@@ -7568,18 +7668,18 @@ static void vl_cmp_op_ok(vela_str vl_path, struct vl_VM* vl_vm, int64_t* vl_mem,
 }
 
 static void vl_combine(int64_t* vl_mem, double* vl_fmem, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_op, int64_t vl_l, int64_t vl_r, int64_t vl_dst) {
-    int64_t vl_ix_24212;
-    int64_t vl_lt = (vela_bounds_check((vl_ix_24212 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6826)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6826)), 3741696, "selfhost/vm.vel", 6826), vl_mem[vl_ix_24212]);
-    int64_t vl_ix_24221;
-    int64_t vl_rt = (vela_bounds_check((vl_ix_24221 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6827)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6827)), 3741696, "selfhost/vm.vel", 6827), vl_mem[vl_ix_24221]);
+    int64_t vl_ix_24551;
+    int64_t vl_lt = (vela_bounds_check((vl_ix_24551 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6974)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6974)), 3741696, "selfhost/vm.vel", 6974), vl_mem[vl_ix_24551]);
+    int64_t vl_ix_24560;
+    int64_t vl_rt = (vela_bounds_check((vl_ix_24560 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6975)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6975)), 3741696, "selfhost/vm.vel", 6975), vl_mem[vl_ix_24560]);
     if ((vl_lt != vl_rt)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this operator needs two values of the same type", 47)));
     }
     if ((vl_lt == vl_K_INT())) {
-        int64_t vl_ix_24245;
-        int64_t vl_a = (vela_bounds_check((vl_ix_24245 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6832)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6832)), 3741696, "selfhost/vm.vel", 6832), vl_mem[vl_ix_24245]);
-        int64_t vl_ix_24254;
-        int64_t vl_b = (vela_bounds_check((vl_ix_24254 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6833)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6833)), 3741696, "selfhost/vm.vel", 6833), vl_mem[vl_ix_24254]);
+        int64_t vl_ix_24584;
+        int64_t vl_a = (vela_bounds_check((vl_ix_24584 = vela_add_range((vela_mul_range((vl_l), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6980)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6980)), 3741696, "selfhost/vm.vel", 6980), vl_mem[vl_ix_24584]);
+        int64_t vl_ix_24593;
+        int64_t vl_b = (vela_bounds_check((vl_ix_24593 = vela_add_range((vela_mul_range((vl_r), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6981)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6981)), 3741696, "selfhost/vm.vel", 6981), vl_mem[vl_ix_24593]);
         if ((vl_op == 1LL)) {
             (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, vl_add_int(vl_path, vl_vm, vl_a, vl_b)));
             return;
@@ -7627,10 +7727,10 @@ static void vl_combine(int64_t* vl_mem, double* vl_fmem, vela_str vl_path, struc
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this operator does not apply to two ints", 40)));
     }
     if ((vl_lt == vl_K_FLT())) {
-        int64_t vl_ix_24451;
-        double vl_a2 = (vela_bounds_check((vl_ix_24451 = vl_l), 786432, "selfhost/vm.vel", 6881), vl_fmem[vl_ix_24451]);
-        int64_t vl_ix_24456;
-        double vl_b2 = (vela_bounds_check((vl_ix_24456 = vl_r), 786432, "selfhost/vm.vel", 6882), vl_fmem[vl_ix_24456]);
+        int64_t vl_ix_24790;
+        double vl_a2 = (vela_bounds_check((vl_ix_24790 = vl_l), 786432, "selfhost/vm.vel", 7029), vl_fmem[vl_ix_24790]);
+        int64_t vl_ix_24795;
+        double vl_b2 = (vela_bounds_check((vl_ix_24795 = vl_r), 786432, "selfhost/vm.vel", 7030), vl_fmem[vl_ix_24795]);
         if ((vl_op == 1LL)) {
             (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (vl_a2 + vl_b2)));
             return;
@@ -7653,25 +7753,25 @@ static void vl_combine(int64_t* vl_mem, double* vl_fmem, vela_str vl_path, struc
 }
 
 static void vl_check_kinds(vela_str vl_path, struct vl_VM* vl_vm, int64_t* vl_mem, int64_t vl_c, int64_t vl_want, vela_str vl_what) {
-    int64_t vl_ix_24543;
-    if (((vela_bounds_check((vl_ix_24543 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6906)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6906)), 3741696, "selfhost/vm.vel", 6906), vl_mem[vl_ix_24543]) != vl_want)) {
+    int64_t vl_ix_24882;
+    if (((vela_bounds_check((vl_ix_24882 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7054)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7054)), 3741696, "selfhost/vm.vel", 7054), vl_mem[vl_ix_24882]) != vl_want)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vl_what));
     }
 }
 
 static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double* vl_fmem, double* vl_flt, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_src, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_24575;
-    vl_vm->f_line = (vela_bounds_check((vl_ix_24575 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6916)), (5LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6916)), 655360, "selfhost/vm.vel", 6916), vl_nd[vl_ix_24575]);
+    int64_t vl_ix_24914;
+    vl_vm->f_line = (vela_bounds_check((vl_ix_24914 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7064)), (5LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7064)), 655360, "selfhost/vm.vel", 7064), vl_nd[vl_ix_24914]);
     int64_t vl_k = vl_nd_kind(vl_nd, vl_e);
     if ((vl_k == 20LL)) {
-        int64_t vl_ix_24597;
-        (void)(vl_set_int(vl_mem, vl_fmem, vl_vm->f_dst, (vela_bounds_check((vl_ix_24597 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6919)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6919)), 655360, "selfhost/vm.vel", 6919), vl_nd[vl_ix_24597])));
+        int64_t vl_ix_24936;
+        (void)(vl_set_int(vl_mem, vl_fmem, vl_vm->f_dst, (vela_bounds_check((vl_ix_24936 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7067)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7067)), 655360, "selfhost/vm.vel", 7067), vl_nd[vl_ix_24936])));
         return;
     }
     if ((vl_k == 21LL)) {
-        int64_t vl_ix_24618;
-        int64_t vl_ix_24617;
-        (void)(vl_set_flt(vl_mem, vl_fmem, vl_vm->f_dst, (vela_bounds_check((vl_ix_24618 = (vela_bounds_check((vl_ix_24617 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6923)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6923)), 655360, "selfhost/vm.vel", 6923), vl_nd[vl_ix_24617])), 65536, "selfhost/vm.vel", 6923), vl_flt[vl_ix_24618])));
+        int64_t vl_ix_24957;
+        int64_t vl_ix_24956;
+        (void)(vl_set_flt(vl_mem, vl_fmem, vl_vm->f_dst, (vela_bounds_check((vl_ix_24957 = (vela_bounds_check((vl_ix_24956 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7071)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7071)), 655360, "selfhost/vm.vel", 7071), vl_nd[vl_ix_24956])), 65536, "selfhost/vm.vel", 7071), vl_flt[vl_ix_24957])));
         return;
     }
     if ((vl_k == 22LL)) {
@@ -7679,8 +7779,8 @@ static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
         return;
     }
     if ((vl_k == 23LL)) {
-        int64_t vl_ix_24652;
-        (void)(vl_set_bool(vl_mem, vl_fmem, vl_vm->f_dst, ((vela_bounds_check((vl_ix_24652 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6931)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6931)), 655360, "selfhost/vm.vel", 6931), vl_nd[vl_ix_24652]) == 1LL)));
+        int64_t vl_ix_24991;
+        (void)(vl_set_bool(vl_mem, vl_fmem, vl_vm->f_dst, ((vela_bounds_check((vl_ix_24991 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7079)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7079)), 655360, "selfhost/vm.vel", 7079), vl_nd[vl_ix_24991]) == 1LL)));
         return;
     }
     if ((vl_k == 24LL)) {
@@ -7701,14 +7801,14 @@ static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
         int64_t vl_rc = vl_cell_alloc(vl_vm);
         int64_t vl_keep = vl_vm->f_dst;
         vl_vm->f_dst = vl_lc;
-        int64_t vl_ix_24747;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_24747 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6953)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6953)), 655360, "selfhost/vm.vel", 6953), vl_nd[vl_ix_24747])));
+        int64_t vl_ix_25086;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25086 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7101)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7101)), 655360, "selfhost/vm.vel", 7101), vl_nd[vl_ix_25086])));
         vl_vm->f_dst = vl_rc;
-        int64_t vl_ix_24772;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_24772 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6956)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6956)), 655360, "selfhost/vm.vel", 6956), vl_nd[vl_ix_24772])));
+        int64_t vl_ix_25111;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25111 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7104)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7104)), 655360, "selfhost/vm.vel", 7104), vl_nd[vl_ix_25111])));
         vl_vm->f_dst = vl_keep;
-        int64_t vl_ix_24790;
-        (void)(vl_combine(vl_mem, vl_fmem, vl_path, vl_vm, (vela_bounds_check((vl_ix_24790 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6958)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6958)), 655360, "selfhost/vm.vel", 6958), vl_nd[vl_ix_24790]), vl_lc, vl_rc, vl_keep));
+        int64_t vl_ix_25129;
+        (void)(vl_combine(vl_mem, vl_fmem, vl_path, vl_vm, (vela_bounds_check((vl_ix_25129 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7106)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7106)), 655360, "selfhost/vm.vel", 7106), vl_nd[vl_ix_25129]), vl_lc, vl_rc, vl_keep));
         vl_vm->f_sp = vl_mark;
         return;
     }
@@ -7717,23 +7817,23 @@ static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
         int64_t vl_oc = vl_cell_alloc(vl_vm);
         int64_t vl_keep2 = vl_vm->f_dst;
         vl_vm->f_dst = vl_oc;
-        int64_t vl_ix_24840;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_24840 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6968)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6968)), 655360, "selfhost/vm.vel", 6968), vl_nd[vl_ix_24840])));
+        int64_t vl_ix_25179;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25179 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7116)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7116)), 655360, "selfhost/vm.vel", 7116), vl_nd[vl_ix_25179])));
         vl_vm->f_dst = vl_keep2;
-        int64_t vl_ix_24853;
-        int64_t vl_op = (vela_bounds_check((vl_ix_24853 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6970)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6970)), 655360, "selfhost/vm.vel", 6970), vl_nd[vl_ix_24853]);
-        int64_t vl_ix_24862;
-        int64_t vl_t = (vela_bounds_check((vl_ix_24862 = vela_add_range((vela_mul_range((vl_oc), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6971)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6971)), 3741696, "selfhost/vm.vel", 6971), vl_mem[vl_ix_24862]);
+        int64_t vl_ix_25192;
+        int64_t vl_op = (vela_bounds_check((vl_ix_25192 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7118)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7118)), 655360, "selfhost/vm.vel", 7118), vl_nd[vl_ix_25192]);
+        int64_t vl_ix_25201;
+        int64_t vl_t = (vela_bounds_check((vl_ix_25201 = vela_add_range((vela_mul_range((vl_oc), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7119)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7119)), 3741696, "selfhost/vm.vel", 7119), vl_mem[vl_ix_25201]);
         if ((vl_op == 2LL)) {
             if ((vl_t == vl_K_INT())) {
-                int64_t vl_ix_24885;
-                (void)(vl_set_int(vl_mem, vl_fmem, vl_keep2, vl_neg_int(vl_path, vl_vm, (vela_bounds_check((vl_ix_24885 = vela_add_range((vela_mul_range((vl_oc), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6974)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 6974)), 3741696, "selfhost/vm.vel", 6974), vl_mem[vl_ix_24885]))));
+                int64_t vl_ix_25224;
+                (void)(vl_set_int(vl_mem, vl_fmem, vl_keep2, vl_neg_int(vl_path, vl_vm, (vela_bounds_check((vl_ix_25224 = vela_add_range((vela_mul_range((vl_oc), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7122)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7122)), 3741696, "selfhost/vm.vel", 7122), vl_mem[vl_ix_25224]))));
                 vl_vm->f_sp = vl_mark2;
                 return;
             }
             if ((vl_t == vl_K_FLT())) {
-                int64_t vl_ix_24905;
-                (void)(vl_set_flt(vl_mem, vl_fmem, vl_keep2, (-(vela_bounds_check((vl_ix_24905 = vl_oc), 786432, "selfhost/vm.vel", 6979), vl_fmem[vl_ix_24905]))));
+                int64_t vl_ix_25244;
+                (void)(vl_set_flt(vl_mem, vl_fmem, vl_keep2, (-(vela_bounds_check((vl_ix_25244 = vl_oc), 786432, "selfhost/vm.vel", 7127), vl_fmem[vl_ix_25244]))));
                 vl_vm->f_sp = vl_mark2;
                 return;
             }
@@ -7754,8 +7854,8 @@ static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
         }
         if ((vl_op == 32LL)) {
             if ((vl_t == vl_K_INT())) {
-                int64_t vl_ix_24985;
-                (void)(vl_set_int(vl_mem, vl_fmem, vl_keep2, (~(vela_bounds_check((vl_ix_24985 = vela_add_range((vela_mul_range((vl_oc), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7000)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7000)), 3741696, "selfhost/vm.vel", 7000), vl_mem[vl_ix_24985]))));
+                int64_t vl_ix_25324;
+                (void)(vl_set_int(vl_mem, vl_fmem, vl_keep2, (~(vela_bounds_check((vl_ix_25324 = vela_add_range((vela_mul_range((vl_oc), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7148)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7148)), 3741696, "selfhost/vm.vel", 7148), vl_mem[vl_ix_25324]))));
                 vl_vm->f_sp = vl_mark2;
                 return;
             }
@@ -7765,8 +7865,8 @@ static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
             if ((vl_t != vl_K_BOOL())) {
                 (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("not needs a bool", 16)));
             }
-            int64_t vl_ix_25024;
-            if (((vela_bounds_check((vl_ix_25024 = vela_add_range((vela_mul_range((vl_oc), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7011)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7011)), 3741696, "selfhost/vm.vel", 7011), vl_mem[vl_ix_25024]) == 1LL)) {
+            int64_t vl_ix_25363;
+            if (((vela_bounds_check((vl_ix_25363 = vela_add_range((vela_mul_range((vl_oc), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7159)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7159)), 3741696, "selfhost/vm.vel", 7159), vl_mem[vl_ix_25363]) == 1LL)) {
                 (void)(vl_set_bool(vl_mem, vl_fmem, vl_keep2, false));
             } else {
                 (void)(vl_set_bool(vl_mem, vl_fmem, vl_keep2, true));
@@ -7781,20 +7881,20 @@ static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
         int64_t vl_lc2 = vl_cell_alloc(vl_vm);
         int64_t vl_keep3 = vl_vm->f_dst;
         vl_vm->f_dst = vl_lc2;
-        int64_t vl_ix_25094;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25094 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7028)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7028)), 655360, "selfhost/vm.vel", 7028), vl_nd[vl_ix_25094])));
+        int64_t vl_ix_25433;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25433 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7176)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7176)), 655360, "selfhost/vm.vel", 7176), vl_nd[vl_ix_25433])));
         vl_vm->f_dst = vl_keep3;
         bool vl_b = vl_as_bool(vl_path, vl_vm, vl_mem, vl_lc2);
-        int64_t vl_ix_25115;
-        int64_t vl_op2 = (vela_bounds_check((vl_ix_25115 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7031)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7031)), 655360, "selfhost/vm.vel", 7031), vl_nd[vl_ix_25115]);
+        int64_t vl_ix_25454;
+        int64_t vl_op2 = (vela_bounds_check((vl_ix_25454 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7179)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7179)), 655360, "selfhost/vm.vel", 7179), vl_nd[vl_ix_25454]);
         if ((vl_op2 == 13LL)) {
             if ((!vl_b)) {
                 (void)(vl_set_bool(vl_mem, vl_fmem, vl_keep3, false));
                 vl_vm->f_sp = vl_mark3;
                 return;
             }
-            int64_t vl_ix_25154;
-            (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25154 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7039)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7039)), 655360, "selfhost/vm.vel", 7039), vl_nd[vl_ix_25154])));
+            int64_t vl_ix_25493;
+            (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25493 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7187)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7187)), 655360, "selfhost/vm.vel", 7187), vl_nd[vl_ix_25493])));
             vl_vm->f_sp = vl_mark3;
             return;
         }
@@ -7803,8 +7903,8 @@ static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
             vl_vm->f_sp = vl_mark3;
             return;
         }
-        int64_t vl_ix_25195;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25195 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7049)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7049)), 655360, "selfhost/vm.vel", 7049), vl_nd[vl_ix_25195])));
+        int64_t vl_ix_25534;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25534 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7197)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7197)), 655360, "selfhost/vm.vel", 7197), vl_nd[vl_ix_25534])));
         vl_vm->f_sp = vl_mark3;
         return;
     }
@@ -7814,17 +7914,17 @@ static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
         int64_t vl_rc3 = vl_cell_alloc(vl_vm);
         int64_t vl_keep4 = vl_vm->f_dst;
         vl_vm->f_dst = vl_lc3;
-        int64_t vl_ix_25247;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25247 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7060)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7060)), 655360, "selfhost/vm.vel", 7060), vl_nd[vl_ix_25247])));
+        int64_t vl_ix_25586;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25586 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7208)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7208)), 655360, "selfhost/vm.vel", 7208), vl_nd[vl_ix_25586])));
         vl_vm->f_dst = vl_rc3;
-        int64_t vl_ix_25272;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25272 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7063)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7063)), 655360, "selfhost/vm.vel", 7063), vl_nd[vl_ix_25272])));
+        int64_t vl_ix_25611;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25611 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7211)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7211)), 655360, "selfhost/vm.vel", 7211), vl_nd[vl_ix_25611])));
         vl_vm->f_dst = vl_keep4;
-        int64_t vl_ix_25290;
-        (void)(vl_cmp_op_ok(vl_path, vl_vm, vl_mem, vl_lc3, (vela_bounds_check((vl_ix_25290 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7065)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7065)), 655360, "selfhost/vm.vel", 7065), vl_nd[vl_ix_25290])));
+        int64_t vl_ix_25629;
+        (void)(vl_cmp_op_ok(vl_path, vl_vm, vl_mem, vl_lc3, (vela_bounds_check((vl_ix_25629 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7213)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7213)), 655360, "selfhost/vm.vel", 7213), vl_nd[vl_ix_25629])));
         int64_t vl_sign = vl_cmp_sign(vl_path, vl_vm, vl_mem, vl_fmem, vl_lc3, vl_rc3);
-        int64_t vl_ix_25314;
-        (void)(vl_set_bool(vl_mem, vl_fmem, vl_keep4, vl_rel_ok((vela_bounds_check((vl_ix_25314 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7067)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7067)), 655360, "selfhost/vm.vel", 7067), vl_nd[vl_ix_25314]), vl_sign)));
+        int64_t vl_ix_25653;
+        (void)(vl_set_bool(vl_mem, vl_fmem, vl_keep4, vl_rel_ok((vela_bounds_check((vl_ix_25653 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7215)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7215)), 655360, "selfhost/vm.vel", 7215), vl_nd[vl_ix_25653]), vl_sign)));
         vl_vm->f_sp = vl_mark4;
         return;
     }
@@ -7834,18 +7934,18 @@ static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
         int64_t vl_ic = vl_cell_alloc(vl_vm);
         int64_t vl_keepA = vl_vm->f_dst;
         vl_vm->f_dst = vl_ac;
-        int64_t vl_ix_25368;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25368 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7078)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7078)), 655360, "selfhost/vm.vel", 7078), vl_nd[vl_ix_25368])));
+        int64_t vl_ix_25707;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25707 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7226)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7226)), 655360, "selfhost/vm.vel", 7226), vl_nd[vl_ix_25707])));
         vl_vm->f_dst = vl_ic;
-        int64_t vl_ix_25393;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25393 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7081)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7081)), 655360, "selfhost/vm.vel", 7081), vl_nd[vl_ix_25393])));
+        int64_t vl_ix_25732;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25732 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7229)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7229)), 655360, "selfhost/vm.vel", 7229), vl_nd[vl_ix_25732])));
         vl_vm->f_dst = vl_keepA;
-        int64_t vl_ix_25406;
-        if (((vela_bounds_check((vl_ix_25406 = vela_add_range((vela_mul_range((vl_ic), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7083)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7083)), 3741696, "selfhost/vm.vel", 7083), vl_mem[vl_ix_25406]) != vl_K_INT())) {
+        int64_t vl_ix_25745;
+        if (((vela_bounds_check((vl_ix_25745 = vela_add_range((vela_mul_range((vl_ic), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7231)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7231)), 3741696, "selfhost/vm.vel", 7231), vl_mem[vl_ix_25745]) != vl_K_INT())) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("an index must be an int", 23)));
         }
-        int64_t vl_ix_25433;
-        (void)(vl_elem_load(vl_mem, vl_fmem, vl_ipool, vl_fpool, vl_bpool, vl_path, vl_vm, vl_ac, (vela_bounds_check((vl_ix_25433 = vela_add_range((vela_mul_range((vl_ic), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7086)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7086)), 3741696, "selfhost/vm.vel", 7086), vl_mem[vl_ix_25433]), vl_keepA));
+        int64_t vl_ix_25772;
+        (void)(vl_elem_load(vl_mem, vl_fmem, vl_ipool, vl_fpool, vl_bpool, vl_path, vl_vm, vl_ac, (vela_bounds_check((vl_ix_25772 = vela_add_range((vela_mul_range((vl_ic), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7234)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7234)), 3741696, "selfhost/vm.vel", 7234), vl_mem[vl_ix_25772]), vl_keepA));
         vl_vm->f_sp = vl_markA;
         return;
     }
@@ -7854,11 +7954,11 @@ static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
         int64_t vl_rc = vl_cell_alloc(vl_vm);
         int64_t vl_keepG = vl_vm->f_dst;
         vl_vm->f_dst = vl_rc;
-        int64_t vl_ix_25481;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25481 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7097)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7097)), 655360, "selfhost/vm.vel", 7097), vl_nd[vl_ix_25481])));
+        int64_t vl_ix_25820;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_25820 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7245)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7245)), 655360, "selfhost/vm.vel", 7245), vl_nd[vl_ix_25820])));
         vl_vm->f_dst = vl_keepG;
-        int64_t vl_ix_25505;
-        (void)(vl_copy_value(vl_mem, vl_fmem, vl_path, vl_vm, vl_keepG, vl_field_cell(vl_mem, vl_path, vl_vm, vl_rc, (vela_bounds_check((vl_ix_25505 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7100)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7100)), 655360, "selfhost/vm.vel", 7100), vl_nd[vl_ix_25505]))));
+        int64_t vl_ix_25844;
+        (void)(vl_copy_value(vl_mem, vl_fmem, vl_path, vl_vm, vl_keepG, vl_field_cell(vl_mem, vl_path, vl_vm, vl_rc, (vela_bounds_check((vl_ix_25844 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7248)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7248)), 655360, "selfhost/vm.vel", 7248), vl_nd[vl_ix_25844]))));
         vl_vm->f_sp = vl_markG;
         return;
     }
@@ -7872,8 +7972,8 @@ static void vl_eval_expr(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
 }
 
 static void vl_arg_cell(int64_t* vl_mem, double* vl_fmem, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_c, int64_t vl_want) {
-    int64_t vl_ix_25549;
-    if (((vela_bounds_check((vl_ix_25549 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7117)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7117)), 3741696, "selfhost/vm.vel", 7117), vl_mem[vl_ix_25549]) != vl_want)) {
+    int64_t vl_ix_25888;
+    if (((vela_bounds_check((vl_ix_25888 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7265)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7265)), 3741696, "selfhost/vm.vel", 7265), vl_mem[vl_ix_25888]) != vl_want)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this builtin was given a value of the wrong type", 48)));
     }
 }
@@ -7881,13 +7981,13 @@ static void vl_arg_cell(int64_t* vl_mem, double* vl_fmem, vela_str vl_path, stru
 static void vl_do_len(int64_t* vl_mem, double* vl_fmem, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_c, int64_t vl_dst) {
     int64_t vl_t = vl_cell_text_kind(vl_mem, vl_c);
     if ((vl_t == vl_K_STR())) {
-        int64_t vl_ix_25592;
-        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (((int64_t)(vela_interned((vela_bounds_check((vl_ix_25592 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7128)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7128)), 3741696, "selfhost/vm.vel", 7128), vl_mem[vl_ix_25592]), "selfhost/vm.vel", 7128)).len))));
+        int64_t vl_ix_25931;
+        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (((int64_t)(vela_interned((vela_bounds_check((vl_ix_25931 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7276)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7276)), 3741696, "selfhost/vm.vel", 7276), vl_mem[vl_ix_25931]), "selfhost/vm.vel", 7276)).len))));
         return;
     }
     if (vl_is_array(vl_t)) {
-        int64_t vl_ix_25612;
-        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_bounds_check((vl_ix_25612 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7132)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7132)), 3741696, "selfhost/vm.vel", 7132), vl_mem[vl_ix_25612])));
+        int64_t vl_ix_25951;
+        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_bounds_check((vl_ix_25951 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7280)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7280)), 3741696, "selfhost/vm.vel", 7280), vl_mem[vl_ix_25951])));
         return;
     }
     (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("len needs a string or an array", 30)));
@@ -7900,160 +8000,160 @@ static void vl_do_builtin(int64_t* vl_nd, int64_t* vl_mem, double* vl_fmem, int6
     }
     if ((vl_b == vl_B_TO_FLOAT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_INT()));
-        int64_t vl_ix_25680;
-        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (((double)(vela_bounds_check((vl_ix_25680 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7149)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7149)), 3741696, "selfhost/vm.vel", 7149), vl_mem[vl_ix_25680])))));
+        int64_t vl_ix_26019;
+        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (((double)(vela_bounds_check((vl_ix_26019 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7297)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7297)), 3741696, "selfhost/vm.vel", 7297), vl_mem[vl_ix_26019])))));
         return;
     }
     if ((vl_b == vl_B_TO_INT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_FLT()));
-        int64_t vl_ix_25707;
-        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (((int64_t)(vela_bounds_check((vl_ix_25707 = vl_argbase), 786432, "selfhost/vm.vel", 7154), vl_fmem[vl_ix_25707])))));
+        int64_t vl_ix_26046;
+        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (((int64_t)(vela_bounds_check((vl_ix_26046 = vl_argbase), 786432, "selfhost/vm.vel", 7302), vl_fmem[vl_ix_26046])))));
         return;
     }
     if ((vl_b == vl_B_SQRT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_FLT()));
-        int64_t vl_ix_25734;
-        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (sqrt((vela_bounds_check((vl_ix_25734 = vl_argbase), 786432, "selfhost/vm.vel", 7159), vl_fmem[vl_ix_25734])))));
+        int64_t vl_ix_26073;
+        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (sqrt((vela_bounds_check((vl_ix_26073 = vl_argbase), 786432, "selfhost/vm.vel", 7307), vl_fmem[vl_ix_26073])))));
         return;
     }
     if ((vl_b == vl_B_FABS())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_FLT()));
-        int64_t vl_ix_25761;
-        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (fabs((vela_bounds_check((vl_ix_25761 = vl_argbase), 786432, "selfhost/vm.vel", 7164), vl_fmem[vl_ix_25761])))));
+        int64_t vl_ix_26100;
+        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (fabs((vela_bounds_check((vl_ix_26100 = vl_argbase), 786432, "selfhost/vm.vel", 7312), vl_fmem[vl_ix_26100])))));
         return;
     }
     if ((vl_b == vl_B_FLOOR())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_FLT()));
-        int64_t vl_ix_25788;
-        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (floor((vela_bounds_check((vl_ix_25788 = vl_argbase), 786432, "selfhost/vm.vel", 7169), vl_fmem[vl_ix_25788])))));
+        int64_t vl_ix_26127;
+        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (floor((vela_bounds_check((vl_ix_26127 = vl_argbase), 786432, "selfhost/vm.vel", 7317), vl_fmem[vl_ix_26127])))));
         return;
     }
     if ((vl_b == vl_B_POW())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_FLT()));
-        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7174), vl_K_FLT()));
-        int64_t vl_ix_25827;
-        int64_t vl_ix_25832;
-        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (pow((vela_bounds_check((vl_ix_25827 = vl_argbase), 786432, "selfhost/vm.vel", 7175), vl_fmem[vl_ix_25827]), (vela_bounds_check((vl_ix_25832 = vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7175)), 786432, "selfhost/vm.vel", 7175), vl_fmem[vl_ix_25832])))));
+        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7322), vl_K_FLT()));
+        int64_t vl_ix_26166;
+        int64_t vl_ix_26171;
+        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (pow((vela_bounds_check((vl_ix_26166 = vl_argbase), 786432, "selfhost/vm.vel", 7323), vl_fmem[vl_ix_26166]), (vela_bounds_check((vl_ix_26171 = vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7323)), 786432, "selfhost/vm.vel", 7323), vl_fmem[vl_ix_26171])))));
         return;
     }
     if ((vl_b == vl_B_ABS())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_INT()));
-        int64_t vl_ix_25863;
-        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_abs_int((vela_bounds_check((vl_ix_25863 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7180)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7180)), 3741696, "selfhost/vm.vel", 7180), vl_mem[vl_ix_25863]), "selfhost/vm.vel", 7180))));
+        int64_t vl_ix_26202;
+        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_abs_int((vela_bounds_check((vl_ix_26202 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7328)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7328)), 3741696, "selfhost/vm.vel", 7328), vl_mem[vl_ix_26202]), "selfhost/vm.vel", 7328))));
         return;
     }
     if ((vl_b == vl_B_MIN_INT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_INT()));
-        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7185), vl_K_INT()));
-        int64_t vl_ix_25906;
-        int64_t vl_ix_25915;
-        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (((vela_bounds_check((vl_ix_25906 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7186)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7186)), 3741696, "selfhost/vm.vel", 7186), vl_mem[vl_ix_25906]) < (vela_bounds_check((vl_ix_25915 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7187)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7187)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7187)), 3741696, "selfhost/vm.vel", 7187), vl_mem[vl_ix_25915]) ? (vela_bounds_check((vl_ix_25906 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7186)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7186)), 3741696, "selfhost/vm.vel", 7186), vl_mem[vl_ix_25906]) : (vela_bounds_check((vl_ix_25915 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7187)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7187)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7187)), 3741696, "selfhost/vm.vel", 7187), vl_mem[vl_ix_25915])))));
+        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7333), vl_K_INT()));
+        int64_t vl_ix_26245;
+        int64_t vl_ix_26254;
+        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (((vela_bounds_check((vl_ix_26245 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7334)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7334)), 3741696, "selfhost/vm.vel", 7334), vl_mem[vl_ix_26245]) < (vela_bounds_check((vl_ix_26254 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7335)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7335)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7335)), 3741696, "selfhost/vm.vel", 7335), vl_mem[vl_ix_26254]) ? (vela_bounds_check((vl_ix_26245 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7334)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7334)), 3741696, "selfhost/vm.vel", 7334), vl_mem[vl_ix_26245]) : (vela_bounds_check((vl_ix_26254 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7335)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7335)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7335)), 3741696, "selfhost/vm.vel", 7335), vl_mem[vl_ix_26254])))));
         return;
     }
     if ((vl_b == vl_B_MAX_INT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_INT()));
-        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7192), vl_K_INT()));
-        int64_t vl_ix_25958;
-        int64_t vl_ix_25967;
-        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (((vela_bounds_check((vl_ix_25958 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7193)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7193)), 3741696, "selfhost/vm.vel", 7193), vl_mem[vl_ix_25958]) > (vela_bounds_check((vl_ix_25967 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7194)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7194)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7194)), 3741696, "selfhost/vm.vel", 7194), vl_mem[vl_ix_25967]) ? (vela_bounds_check((vl_ix_25958 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7193)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7193)), 3741696, "selfhost/vm.vel", 7193), vl_mem[vl_ix_25958]) : (vela_bounds_check((vl_ix_25967 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7194)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7194)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7194)), 3741696, "selfhost/vm.vel", 7194), vl_mem[vl_ix_25967])))));
+        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7340), vl_K_INT()));
+        int64_t vl_ix_26297;
+        int64_t vl_ix_26306;
+        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (((vela_bounds_check((vl_ix_26297 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7341)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7341)), 3741696, "selfhost/vm.vel", 7341), vl_mem[vl_ix_26297]) > (vela_bounds_check((vl_ix_26306 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7342)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7342)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7342)), 3741696, "selfhost/vm.vel", 7342), vl_mem[vl_ix_26306]) ? (vela_bounds_check((vl_ix_26297 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7341)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7341)), 3741696, "selfhost/vm.vel", 7341), vl_mem[vl_ix_26297]) : (vela_bounds_check((vl_ix_26306 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7342)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7342)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7342)), 3741696, "selfhost/vm.vel", 7342), vl_mem[vl_ix_26306])))));
         return;
     }
     if ((vl_b == vl_B_MIN_FLT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_FLT()));
-        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7199), vl_K_FLT()));
-        int64_t vl_ix_26006;
-        int64_t vl_ix_26011;
-        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (((vela_bounds_check((vl_ix_26006 = vl_argbase), 786432, "selfhost/vm.vel", 7200), vl_fmem[vl_ix_26006]) < (vela_bounds_check((vl_ix_26011 = vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7200)), 786432, "selfhost/vm.vel", 7200), vl_fmem[vl_ix_26011]) ? (vela_bounds_check((vl_ix_26006 = vl_argbase), 786432, "selfhost/vm.vel", 7200), vl_fmem[vl_ix_26006]) : (vela_bounds_check((vl_ix_26011 = vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7200)), 786432, "selfhost/vm.vel", 7200), vl_fmem[vl_ix_26011])))));
+        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7347), vl_K_FLT()));
+        int64_t vl_ix_26345;
+        int64_t vl_ix_26350;
+        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (((vela_bounds_check((vl_ix_26345 = vl_argbase), 786432, "selfhost/vm.vel", 7348), vl_fmem[vl_ix_26345]) < (vela_bounds_check((vl_ix_26350 = vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7348)), 786432, "selfhost/vm.vel", 7348), vl_fmem[vl_ix_26350]) ? (vela_bounds_check((vl_ix_26345 = vl_argbase), 786432, "selfhost/vm.vel", 7348), vl_fmem[vl_ix_26345]) : (vela_bounds_check((vl_ix_26350 = vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7348)), 786432, "selfhost/vm.vel", 7348), vl_fmem[vl_ix_26350])))));
         return;
     }
     if ((vl_b == vl_B_MAX_FLT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_FLT()));
-        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7205), vl_K_FLT()));
-        int64_t vl_ix_26050;
-        int64_t vl_ix_26055;
-        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (((vela_bounds_check((vl_ix_26050 = vl_argbase), 786432, "selfhost/vm.vel", 7206), vl_fmem[vl_ix_26050]) > (vela_bounds_check((vl_ix_26055 = vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7206)), 786432, "selfhost/vm.vel", 7206), vl_fmem[vl_ix_26055]) ? (vela_bounds_check((vl_ix_26050 = vl_argbase), 786432, "selfhost/vm.vel", 7206), vl_fmem[vl_ix_26050]) : (vela_bounds_check((vl_ix_26055 = vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7206)), 786432, "selfhost/vm.vel", 7206), vl_fmem[vl_ix_26055])))));
+        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7353), vl_K_FLT()));
+        int64_t vl_ix_26389;
+        int64_t vl_ix_26394;
+        (void)(vl_set_flt(vl_mem, vl_fmem, vl_dst, (((vela_bounds_check((vl_ix_26389 = vl_argbase), 786432, "selfhost/vm.vel", 7354), vl_fmem[vl_ix_26389]) > (vela_bounds_check((vl_ix_26394 = vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7354)), 786432, "selfhost/vm.vel", 7354), vl_fmem[vl_ix_26394]) ? (vela_bounds_check((vl_ix_26389 = vl_argbase), 786432, "selfhost/vm.vel", 7354), vl_fmem[vl_ix_26389]) : (vela_bounds_check((vl_ix_26394 = vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7354)), 786432, "selfhost/vm.vel", 7354), vl_fmem[vl_ix_26394])))));
         return;
     }
     if ((vl_b == vl_B_BYTES_AT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7211), vl_K_INT()));
-        int64_t vl_ix_26094;
-        vela_str vl_s = (vela_interned((vela_bounds_check((vl_ix_26094 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7212)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7212)), 3741696, "selfhost/vm.vel", 7212), vl_mem[vl_ix_26094]), "selfhost/vm.vel", 7212));
-        int64_t vl_ix_26106;
-        int64_t vl_i = (vela_bounds_check((vl_ix_26106 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7213)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7213)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7213)), 3741696, "selfhost/vm.vel", 7213), vl_mem[vl_ix_26106]);
+        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7359), vl_K_INT()));
+        int64_t vl_ix_26433;
+        vela_str vl_s = (vela_interned((vela_bounds_check((vl_ix_26433 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7360)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7360)), 3741696, "selfhost/vm.vel", 7360), vl_mem[vl_ix_26433]), "selfhost/vm.vel", 7360));
+        int64_t vl_ix_26445;
+        int64_t vl_i = (vela_bounds_check((vl_ix_26445 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7361)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7361)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7361)), 3741696, "selfhost/vm.vel", 7361), vl_mem[vl_ix_26445]);
         if ((vl_i < 0LL)) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("index out of range for bytes_at", 31)));
         }
         if ((vl_i >= (((int64_t)vl_s.len)))) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("index out of range for bytes_at", 31)));
         }
-        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 7220))));
+        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 7368))));
         return;
     }
     if ((vl_b == vl_B_SUBSTR())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7225), vl_K_INT()));
-        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7226), vl_K_INT()));
-        int64_t vl_ix_26190;
-        vela_str vl_s2 = (vela_interned((vela_bounds_check((vl_ix_26190 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7227)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7227)), 3741696, "selfhost/vm.vel", 7227), vl_mem[vl_ix_26190]), "selfhost/vm.vel", 7227));
-        int64_t vl_ix_26209;
-        int64_t vl_ix_26218;
-        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_substr(vl_s2, (vela_bounds_check((vl_ix_26209 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7228)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7228)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7228)), 3741696, "selfhost/vm.vel", 7228), vl_mem[vl_ix_26209]), (vela_bounds_check((vl_ix_26218 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7229)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7229)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7229)), 3741696, "selfhost/vm.vel", 7229), vl_mem[vl_ix_26218])))))));
+        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7373), vl_K_INT()));
+        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7374), vl_K_INT()));
+        int64_t vl_ix_26529;
+        vela_str vl_s2 = (vela_interned((vela_bounds_check((vl_ix_26529 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7375)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7375)), 3741696, "selfhost/vm.vel", 7375), vl_mem[vl_ix_26529]), "selfhost/vm.vel", 7375));
+        int64_t vl_ix_26548;
+        int64_t vl_ix_26557;
+        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_substr(vl_s2, (vela_bounds_check((vl_ix_26548 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7376)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7376)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7376)), 3741696, "selfhost/vm.vel", 7376), vl_mem[vl_ix_26548]), (vela_bounds_check((vl_ix_26557 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7377)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7377)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7377)), 3741696, "selfhost/vm.vel", 7377), vl_mem[vl_ix_26557])))))));
         return;
     }
     if ((vl_b == vl_B_UNESCAPE())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        int64_t vl_ix_26252;
-        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_unescape((vela_interned((vela_bounds_check((vl_ix_26252 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7234)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7234)), 3741696, "selfhost/vm.vel", 7234), vl_mem[vl_ix_26252]), "selfhost/vm.vel", 7234))))))));
+        int64_t vl_ix_26591;
+        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_unescape((vela_interned((vela_bounds_check((vl_ix_26591 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7382)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7382)), 3741696, "selfhost/vm.vel", 7382), vl_mem[vl_ix_26591]), "selfhost/vm.vel", 7382))))))));
         return;
     }
     if ((vl_b == vl_B_INTERN())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        int64_t vl_ix_26284;
-        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_bounds_check((vl_ix_26284 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7241)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7241)), 3741696, "selfhost/vm.vel", 7241), vl_mem[vl_ix_26284])));
+        int64_t vl_ix_26623;
+        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_bounds_check((vl_ix_26623 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7389)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7389)), 3741696, "selfhost/vm.vel", 7389), vl_mem[vl_ix_26623])));
         return;
     }
     if ((vl_b == vl_B_INTERNED())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_INT()));
-        int64_t vl_ix_26309;
-        int64_t vl_h = (vela_bounds_check((vl_ix_26309 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7246)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7246)), 3741696, "selfhost/vm.vel", 7246), vl_mem[vl_ix_26309]);
-        vela_str vl_check = (vela_interned(vl_h, "selfhost/vm.vel", 7247));
+        int64_t vl_ix_26648;
+        int64_t vl_h = (vela_bounds_check((vl_ix_26648 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7394)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7394)), 3741696, "selfhost/vm.vel", 7394), vl_mem[vl_ix_26648]);
+        vela_str vl_check = (vela_interned(vl_h, "selfhost/vm.vel", 7395));
         (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, vl_h));
         return;
     }
     if ((vl_b == vl_B_ARGC())) {
-        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, vela_sub_range((vela_sub_range(((vela_argc())), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7260)), (vl_vm->f_dbg_on), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7260)));
+        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, vela_sub_range((vela_sub_range(((vela_argc())), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7408)), (vl_vm->f_dbg_on), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7408)));
         return;
     }
     if ((vl_b == vl_B_ARG())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_INT()));
-        int64_t vl_ix_26365;
-        int64_t vl_i2 = (vela_bounds_check((vl_ix_26365 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7265)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7265)), 3741696, "selfhost/vm.vel", 7265), vl_mem[vl_ix_26365]);
+        int64_t vl_ix_26704;
+        int64_t vl_i2 = (vela_bounds_check((vl_ix_26704 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7413)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7413)), 3741696, "selfhost/vm.vel", 7413), vl_mem[vl_ix_26704]);
         if ((vl_i2 < 0LL)) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("index out of range for the argument list", 40)));
         }
-        if ((vl_i2 >= vela_sub_range((vela_sub_range(((vela_argc())), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7269)), (vl_vm->f_dbg_on), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7269))) {
+        if ((vl_i2 >= vela_sub_range((vela_sub_range(((vela_argc())), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7417)), (vl_vm->f_dbg_on), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7417))) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("index out of range for the argument list", 40)));
         }
         if ((vl_i2 == 0LL)) {
-            (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_arg(vela_add_range((2LL), (vl_vm->f_dbg_on), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7273), "selfhost/vm.vel", 7273))))));
+            (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_arg(vela_add_range((2LL), (vl_vm->f_dbg_on), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7421), "selfhost/vm.vel", 7421))))));
             return;
         }
-        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_arg(vela_add_range((vela_add_range((vl_i2), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7276)), (vl_vm->f_dbg_on), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7276), "selfhost/vm.vel", 7276))))));
+        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_arg(vela_add_range((vela_add_range((vl_i2), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7424)), (vl_vm->f_dbg_on), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7424), "selfhost/vm.vel", 7424))))));
         return;
     }
     if ((vl_b == vl_B_READ_TEXT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        int64_t vl_ix_26460;
-        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_read_text((vela_interned((vela_bounds_check((vl_ix_26460 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7282)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7282)), 3741696, "selfhost/vm.vel", 7282), vl_mem[vl_ix_26460]), "selfhost/vm.vel", 7282))))))));
+        int64_t vl_ix_26799;
+        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_read_text((vela_interned((vela_bounds_check((vl_ix_26799 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7430)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7430)), 3741696, "selfhost/vm.vel", 7430), vl_mem[vl_ix_26799]), "selfhost/vm.vel", 7430))))))));
         return;
     }
     if ((vl_b == vl_B_WRITE_TEXT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7287), vl_K_STR()));
-        int64_t vl_ix_26502;
-        int64_t vl_ix_26513;
-        bool vl_ok = (((bool)vela_write_text((vela_interned((vela_bounds_check((vl_ix_26502 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7288)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7288)), 3741696, "selfhost/vm.vel", 7288), vl_mem[vl_ix_26502]), "selfhost/vm.vel", 7288)), (vela_interned((vela_bounds_check((vl_ix_26513 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7289)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7289)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7289)), 3741696, "selfhost/vm.vel", 7289), vl_mem[vl_ix_26513]), "selfhost/vm.vel", 7289)))));
+        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7435), vl_K_STR()));
+        int64_t vl_ix_26841;
+        int64_t vl_ix_26852;
+        bool vl_ok = (((bool)vela_write_text((vela_interned((vela_bounds_check((vl_ix_26841 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7436)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7436)), 3741696, "selfhost/vm.vel", 7436), vl_mem[vl_ix_26841]), "selfhost/vm.vel", 7436)), (vela_interned((vela_bounds_check((vl_ix_26852 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7437)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7437)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7437)), 3741696, "selfhost/vm.vel", 7437), vl_mem[vl_ix_26852]), "selfhost/vm.vel", 7437)))));
         (void)(vl_set_bool(vl_mem, vl_fmem, vl_dst, vl_ok));
         return;
     }
@@ -8063,28 +8163,28 @@ static void vl_do_builtin(int64_t* vl_nd, int64_t* vl_mem, double* vl_fmem, int6
     }
     if ((vl_b == vl_B_CONCAT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7299), vl_K_STR()));
-        int64_t vl_ix_26580;
-        int64_t vl_ix_26591;
-        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_concat((vela_interned((vela_bounds_check((vl_ix_26580 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7301)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7301)), 3741696, "selfhost/vm.vel", 7301), vl_mem[vl_ix_26580]), "selfhost/vm.vel", 7301)), (vela_interned((vela_bounds_check((vl_ix_26591 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7302)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7302)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7302)), 3741696, "selfhost/vm.vel", 7302), vl_mem[vl_ix_26591]), "selfhost/vm.vel", 7302))))))));
+        (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7447), vl_K_STR()));
+        int64_t vl_ix_26919;
+        int64_t vl_ix_26930;
+        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_concat((vela_interned((vela_bounds_check((vl_ix_26919 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7449)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7449)), 3741696, "selfhost/vm.vel", 7449), vl_mem[vl_ix_26919]), "selfhost/vm.vel", 7449)), (vela_interned((vela_bounds_check((vl_ix_26930 = vela_add_range((vela_mul_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7450)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7450)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7450)), 3741696, "selfhost/vm.vel", 7450), vl_mem[vl_ix_26930]), "selfhost/vm.vel", 7450))))))));
         return;
     }
     if ((vl_b == vl_B_RUN_CMD())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        int64_t vl_ix_26625;
-        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_run_command((vela_interned((vela_bounds_check((vl_ix_26625 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7307)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7307)), 3741696, "selfhost/vm.vel", 7307), vl_mem[vl_ix_26625]), "selfhost/vm.vel", 7307))))));
+        int64_t vl_ix_26964;
+        (void)(vl_set_int(vl_mem, vl_fmem, vl_dst, (vela_run_command((vela_interned((vela_bounds_check((vl_ix_26964 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7455)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7455)), 3741696, "selfhost/vm.vel", 7455), vl_mem[vl_ix_26964]), "selfhost/vm.vel", 7455))))));
         return;
     }
     if ((vl_b == vl_B_ENV())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        int64_t vl_ix_26659;
-        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_env((vela_interned((vela_bounds_check((vl_ix_26659 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7313)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7313)), 3741696, "selfhost/vm.vel", 7313), vl_mem[vl_ix_26659]), "selfhost/vm.vel", 7313))))))));
+        int64_t vl_ix_26998;
+        (void)(vl_set_str(vl_mem, vl_fmem, vl_dst, (vela_intern((vela_env((vela_interned((vela_bounds_check((vl_ix_26998 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7461)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7461)), 3741696, "selfhost/vm.vel", 7461), vl_mem[vl_ix_26998]), "selfhost/vm.vel", 7461))))))));
         return;
     }
     if ((vl_b == vl_B_PANIC())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        int64_t vl_ix_26692;
-        (void)(vl_trap(vl_path, vl_vm->f_line, (vela_interned((vela_bounds_check((vl_ix_26692 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7318)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7318)), 3741696, "selfhost/vm.vel", 7318), vl_mem[vl_ix_26692]), "selfhost/vm.vel", 7318))));
+        int64_t vl_ix_27031;
+        (void)(vl_trap(vl_path, vl_vm->f_line, (vela_interned((vela_bounds_check((vl_ix_27031 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7466)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7466)), 3741696, "selfhost/vm.vel", 7466), vl_mem[vl_ix_27031]), "selfhost/vm.vel", 7466))));
     }
     if ((vl_b == vl_B_EMIT_NL())) {
         (void)((vela_emit_nl()));
@@ -8093,22 +8193,22 @@ static void vl_do_builtin(int64_t* vl_nd, int64_t* vl_mem, double* vl_fmem, int6
     }
     if ((vl_b == vl_B_EMIT_STR())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        int64_t vl_ix_26734;
-        (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_26734 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7327)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7327)), 3741696, "selfhost/vm.vel", 7327), vl_mem[vl_ix_26734]), "selfhost/vm.vel", 7327)))));
+        int64_t vl_ix_27073;
+        (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_27073 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7475)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7475)), 3741696, "selfhost/vm.vel", 7475), vl_mem[vl_ix_27073]), "selfhost/vm.vel", 7475)))));
         (void)(vl_set_none(vl_mem, vl_fmem, vl_dst));
         return;
     }
     if ((vl_b == vl_B_EMIT_INT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_INT()));
-        int64_t vl_ix_26767;
-        (void)((vela_emit_int((vela_bounds_check((vl_ix_26767 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7333)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7333)), 3741696, "selfhost/vm.vel", 7333), vl_mem[vl_ix_26767]))));
+        int64_t vl_ix_27106;
+        (void)((vela_emit_int((vela_bounds_check((vl_ix_27106 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7481)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7481)), 3741696, "selfhost/vm.vel", 7481), vl_mem[vl_ix_27106]))));
         (void)(vl_set_none(vl_mem, vl_fmem, vl_dst));
         return;
     }
     if ((vl_b == vl_B_EMIT_FLT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_FLT()));
-        int64_t vl_ix_26795;
-        (void)((vela_emit_float((vela_bounds_check((vl_ix_26795 = vl_argbase), 786432, "selfhost/vm.vel", 7339), vl_fmem[vl_ix_26795]))));
+        int64_t vl_ix_27134;
+        (void)((vela_emit_float((vela_bounds_check((vl_ix_27134 = vl_argbase), 786432, "selfhost/vm.vel", 7487), vl_fmem[vl_ix_27134]))));
         (void)(vl_set_none(vl_mem, vl_fmem, vl_dst));
         return;
     }
@@ -8119,15 +8219,15 @@ static void vl_do_builtin(int64_t* vl_nd, int64_t* vl_mem, double* vl_fmem, int6
     }
     if ((vl_b == vl_B_WARN_STR())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_STR()));
-        int64_t vl_ix_26843;
-        (void)((vela_warn_str((vela_interned((vela_bounds_check((vl_ix_26843 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7350)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7350)), 3741696, "selfhost/vm.vel", 7350), vl_mem[vl_ix_26843]), "selfhost/vm.vel", 7350)))));
+        int64_t vl_ix_27182;
+        (void)((vela_warn_str((vela_interned((vela_bounds_check((vl_ix_27182 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7498)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7498)), 3741696, "selfhost/vm.vel", 7498), vl_mem[vl_ix_27182]), "selfhost/vm.vel", 7498)))));
         (void)(vl_set_none(vl_mem, vl_fmem, vl_dst));
         return;
     }
     if ((vl_b == vl_B_WARN_INT())) {
         (void)(vl_arg_cell(vl_mem, vl_fmem, vl_path, vl_vm, vl_argbase, vl_K_INT()));
-        int64_t vl_ix_26876;
-        (void)((vela_warn_int((vela_bounds_check((vl_ix_26876 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7356)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7356)), 3741696, "selfhost/vm.vel", 7356), vl_mem[vl_ix_26876]))));
+        int64_t vl_ix_27215;
+        (void)((vela_warn_int((vela_bounds_check((vl_ix_27215 = vela_add_range((vela_mul_range((vl_argbase), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7504)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7504)), 3741696, "selfhost/vm.vel", 7504), vl_mem[vl_ix_27215]))));
         (void)(vl_set_none(vl_mem, vl_fmem, vl_dst));
         return;
     }
@@ -8137,8 +8237,8 @@ static void vl_do_builtin(int64_t* vl_nd, int64_t* vl_mem, double* vl_fmem, int6
             if ((vl_i3 > 0LL)) {
                 (void)((vela_emit_str(vela_str_lit(" ", 1))));
             }
-            (void)(vl_print_cell(vl_mem, vl_fmem, vela_add_range((vl_argbase), (vl_i3), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7366), vl_path, vl_vm->f_line));
-            vl_i3 = vela_add_range(vl_i3, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7367);
+            (void)(vl_print_cell(vl_mem, vl_fmem, vela_add_range((vl_argbase), (vl_i3), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7514), vl_path, vl_vm->f_line));
+            vl_i3 = vela_add_range(vl_i3, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7515);
         }
         (void)((vela_emit_nl()));
         (void)(vl_set_none(vl_mem, vl_fmem, vl_dst));
@@ -8152,7 +8252,7 @@ static int64_t vl_reserve_args(int64_t* vl_nd, struct vl_VM* vl_vm, int64_t vl_a
     int64_t vl_i = 0LL;
     while ((vl_i < vl_n)) {
         int64_t vl_c = vl_cell_alloc(vl_vm);
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7386);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7534);
     }
     return vl_n;
 }
@@ -8162,12 +8262,12 @@ static int64_t vl_find_field(int64_t* vl_mem, int64_t vl_sid, int64_t vl_name) {
     int64_t vl_off = vl_stb_get(vl_mem, vl_sid, vl_STB_FOFF());
     int64_t vl_i = 0LL;
     while ((vl_i < vl_n)) {
-        if ((vl_sfl_get(vl_mem, vela_add_range((vl_off), (vela_mul_range((vl_i), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7404)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7404)) == vl_name)) {
+        if ((vl_sfl_get(vl_mem, vela_add_range((vl_off), (vela_mul_range((vl_i), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7552)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7552)) == vl_name)) {
             return vl_i;
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7407);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7555);
     }
-    return vela_neg_int(1LL, "selfhost/vm.vel", 7409);
+    return vela_neg_int(1LL, "selfhost/vm.vel", 7557);
 }
 
 static int64_t vl_find_method(int64_t* vl_mem, int64_t vl_sid, int64_t vl_name) {
@@ -8175,27 +8275,27 @@ static int64_t vl_find_method(int64_t* vl_mem, int64_t vl_sid, int64_t vl_name) 
     int64_t vl_off = vl_stb_get(vl_mem, vl_sid, vl_STB_MOFF());
     int64_t vl_i = 0LL;
     while ((vl_i < vl_n)) {
-        if ((vl_met_get(vl_mem, vela_add_range((vl_off), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7417), vl_MET_NAME()) == vl_name)) {
-            return vela_add_range((vl_off), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7418);
+        if ((vl_met_get(vl_mem, vela_add_range((vl_off), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7565), vl_MET_NAME()) == vl_name)) {
+            return vela_add_range((vl_off), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7566);
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7420);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7568);
     }
-    return vela_neg_int(1LL, "selfhost/vm.vel", 7422);
+    return vela_neg_int(1LL, "selfhost/vm.vel", 7570);
 }
 
 static int64_t vl_field_cell(int64_t* vl_mem, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_recv, int64_t vl_name) {
-    int64_t vl_ix_27068;
-    if (((vela_bounds_check((vl_ix_27068 = vela_add_range((vela_mul_range((vl_recv), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7427)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7427)), 3741696, "selfhost/vm.vel", 7427), vl_mem[vl_ix_27068]) != vl_K_ST())) {
+    int64_t vl_ix_27407;
+    if (((vela_bounds_check((vl_ix_27407 = vela_add_range((vela_mul_range((vl_recv), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7575)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7575)), 3741696, "selfhost/vm.vel", 7575), vl_mem[vl_ix_27407]) != vl_K_ST())) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("only a struct has fields", 24)));
     }
-    int64_t vl_ix_27086;
-    int64_t vl_sid = (vela_bounds_check((vl_ix_27086 = vela_add_range((vela_mul_range((vl_recv), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7430)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7430)), 3741696, "selfhost/vm.vel", 7430), vl_mem[vl_ix_27086]);
+    int64_t vl_ix_27425;
+    int64_t vl_sid = (vela_bounds_check((vl_ix_27425 = vela_add_range((vela_mul_range((vl_recv), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7578)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7578)), 3741696, "selfhost/vm.vel", 7578), vl_mem[vl_ix_27425]);
     int64_t vl_idx = vl_find_field(vl_mem, vl_sid, vl_name);
     if ((vl_idx < 0LL)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this struct has no field of that name", 37)));
     }
-    int64_t vl_ix_27114;
-    return vela_add_range(((vela_bounds_check((vl_ix_27114 = vela_add_range((vela_mul_range((vl_recv), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7435)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7435)), 3741696, "selfhost/vm.vel", 7435), vl_mem[vl_ix_27114])), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7435);
+    int64_t vl_ix_27453;
+    return vela_add_range(((vela_bounds_check((vl_ix_27453 = vela_add_range((vela_mul_range((vl_recv), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7583)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7583)), 3741696, "selfhost/vm.vel", 7583), vl_mem[vl_ix_27453])), (vl_idx), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7583);
 }
 
 static void vl_exec_construct(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double* vl_fmem, double* vl_flt, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_src, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_sid, int64_t vl_args, int64_t vl_dst) {
@@ -8207,48 +8307,48 @@ static void vl_exec_construct(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, d
     int64_t vl_i = 0LL;
     while ((vl_a > 0LL)) {
         int64_t vl_keep = vl_vm->f_dst;
-        vl_vm->f_dst = vela_add_range((vl_argbase), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7452);
+        vl_vm->f_dst = vela_add_range((vl_argbase), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7600);
         (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_a));
         vl_vm->f_dst = vl_keep;
         vl_a = vl_nd_nx(vl_nd, vl_a);
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7456);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7604);
     }
     if ((vl_i != vl_nfield)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this struct needs one value for each of its fields", 50)));
     }
-    if ((vela_add_range((vl_vm->f_hp), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7461) >= vl_CELL_HEAP_MAX())) {
+    if ((vela_add_range((vl_vm->f_hp), (vl_nfield), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7609) >= vl_CELL_HEAP_MAX())) {
         (void)(vl_selflimit(vela_str_lit("the interpreter ran out of heap cells", 37)));
     }
     int64_t vl_base = vl_vm->f_hp;
-    vl_vm->f_hp = vela_add_range(vl_vm->f_hp, vl_nfield, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7465);
+    vl_vm->f_hp = vela_add_range(vl_vm->f_hp, vl_nfield, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7613);
     int64_t vl_f = 0LL;
     while ((vl_f < vl_nfield)) {
-        (void)(vl_copy_value(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_base), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7468), vela_add_range((vl_argbase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7468)));
-        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7469);
+        (void)(vl_copy_value(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_base), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7616), vela_add_range((vl_argbase), (vl_f), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7616)));
+        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7617);
     }
-    int64_t vl_ix_27262;
-    vela_bounds_check((vl_ix_27262 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7471)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7471)), 3741696, "selfhost/vm.vel", 7471);
-    vl_mem[vl_ix_27262] = vl_K_ST();
-    int64_t vl_ix_27272;
-    vela_bounds_check((vl_ix_27272 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7472)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7472)), 3741696, "selfhost/vm.vel", 7472);
-    vl_mem[vl_ix_27272] = vl_base;
-    int64_t vl_ix_27281;
-    vela_bounds_check((vl_ix_27281 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7473)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7473)), 3741696, "selfhost/vm.vel", 7473);
-    vl_mem[vl_ix_27281] = vl_sid;
-    int64_t vl_ix_27290;
-    vela_bounds_check((vl_ix_27290 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7474)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7474)), 3741696, "selfhost/vm.vel", 7474);
-    vl_mem[vl_ix_27290] = vl_nfield;
-    int64_t vl_ix_27295;
-    vela_bounds_check((vl_ix_27295 = vl_dst), 786432, "selfhost/vm.vel", 7475);
-    vl_fmem[vl_ix_27295] = 0.0;
+    int64_t vl_ix_27601;
+    vela_bounds_check((vl_ix_27601 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7619)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7619)), 3741696, "selfhost/vm.vel", 7619);
+    vl_mem[vl_ix_27601] = vl_K_ST();
+    int64_t vl_ix_27611;
+    vela_bounds_check((vl_ix_27611 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7620)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7620)), 3741696, "selfhost/vm.vel", 7620);
+    vl_mem[vl_ix_27611] = vl_base;
+    int64_t vl_ix_27620;
+    vela_bounds_check((vl_ix_27620 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7621)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7621)), 3741696, "selfhost/vm.vel", 7621);
+    vl_mem[vl_ix_27620] = vl_sid;
+    int64_t vl_ix_27629;
+    vela_bounds_check((vl_ix_27629 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7622)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7622)), 3741696, "selfhost/vm.vel", 7622);
+    vl_mem[vl_ix_27629] = vl_nfield;
+    int64_t vl_ix_27634;
+    vela_bounds_check((vl_ix_27634 = vl_dst), 786432, "selfhost/vm.vel", 7623);
+    vl_fmem[vl_ix_27634] = 0.0;
     vl_vm->f_sp = vl_mark;
 }
 
 static void vl_call_method(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double* vl_fmem, double* vl_flt, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_src, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_27321;
-    int64_t vl_callee = (vela_bounds_check((vl_ix_27321 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7484)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7484)), 655360, "selfhost/vm.vel", 7484), vl_nd[vl_ix_27321]);
-    int64_t vl_ix_27330;
-    int64_t vl_args = (vela_bounds_check((vl_ix_27330 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7485)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7485)), 655360, "selfhost/vm.vel", 7485), vl_nd[vl_ix_27330]);
+    int64_t vl_ix_27660;
+    int64_t vl_callee = (vela_bounds_check((vl_ix_27660 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7632)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7632)), 655360, "selfhost/vm.vel", 7632), vl_nd[vl_ix_27660]);
+    int64_t vl_ix_27669;
+    int64_t vl_args = (vela_bounds_check((vl_ix_27669 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7633)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7633)), 655360, "selfhost/vm.vel", 7633), vl_nd[vl_ix_27669]);
     if ((vl_vm->f_depth >= 500LL)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("call depth exceeded (500 frames)", 32)));
     }
@@ -8256,41 +8356,41 @@ static void vl_call_method(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, doub
     int64_t vl_recv = vl_cell_alloc(vl_vm);
     int64_t vl_keep = vl_vm->f_dst;
     vl_vm->f_dst = vl_recv;
-    int64_t vl_ix_27380;
-    (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_27380 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7494)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7494)), 655360, "selfhost/vm.vel", 7494), vl_nd[vl_ix_27380])));
+    int64_t vl_ix_27719;
+    (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_27719 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7642)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7642)), 655360, "selfhost/vm.vel", 7642), vl_nd[vl_ix_27719])));
     vl_vm->f_dst = vl_keep;
-    int64_t vl_ix_27393;
-    if (((vela_bounds_check((vl_ix_27393 = vela_add_range((vela_mul_range((vl_recv), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7496)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7496)), 3741696, "selfhost/vm.vel", 7496), vl_mem[vl_ix_27393]) != vl_K_ST())) {
+    int64_t vl_ix_27732;
+    if (((vela_bounds_check((vl_ix_27732 = vela_add_range((vela_mul_range((vl_recv), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7644)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7644)), 3741696, "selfhost/vm.vel", 7644), vl_mem[vl_ix_27732]) != vl_K_ST())) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("only a struct has methods", 25)));
     }
-    int64_t vl_ix_27411;
-    int64_t vl_sid = (vela_bounds_check((vl_ix_27411 = vela_add_range((vela_mul_range((vl_recv), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7499)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7499)), 3741696, "selfhost/vm.vel", 7499), vl_mem[vl_ix_27411]);
-    int64_t vl_ix_27423;
-    int64_t vl_mi = vl_find_method(vl_mem, vl_sid, (vela_bounds_check((vl_ix_27423 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7500)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7500)), 655360, "selfhost/vm.vel", 7500), vl_nd[vl_ix_27423]));
+    int64_t vl_ix_27750;
+    int64_t vl_sid = (vela_bounds_check((vl_ix_27750 = vela_add_range((vela_mul_range((vl_recv), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7647)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7647)), 3741696, "selfhost/vm.vel", 7647), vl_mem[vl_ix_27750]);
+    int64_t vl_ix_27762;
+    int64_t vl_mi = vl_find_method(vl_mem, vl_sid, (vela_bounds_check((vl_ix_27762 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7648)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7648)), 655360, "selfhost/vm.vel", 7648), vl_nd[vl_ix_27762]));
     if ((vl_mi < 0LL)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this struct has no method of that name", 38)));
     }
     int64_t vl_fn = vl_met_get(vl_mem, vl_mi, vl_MET_FN());
     int64_t vl_nargs = vl_count_chain(vl_nd, vl_args);
-    if ((vl_ft_get(vl_mem, vl_fn, vl_FT_NPARAM()) != vela_add_range((vl_nargs), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7506))) {
+    if ((vl_ft_get(vl_mem, vl_fn, vl_FT_NPARAM()) != vela_add_range((vl_nargs), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7654))) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("wrong number of arguments for this method", 41)));
     }
     int64_t vl_argbase = vl_vm->f_sp;
     int64_t vl_r = 0LL;
-    while ((vl_r < vela_add_range((vl_nargs), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7511))) {
+    while ((vl_r < vela_add_range((vl_nargs), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7659))) {
         int64_t vl_c = vl_cell_alloc(vl_vm);
-        vl_r = vela_add_range(vl_r, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7513);
+        vl_r = vela_add_range(vl_r, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7661);
     }
     (void)(vl_copy_cell(vl_mem, vl_fmem, vl_argbase, vl_recv));
     int64_t vl_a = vl_args;
     int64_t vl_i = 0LL;
     while ((vl_a > 0LL)) {
         int64_t vl_keep2 = vl_vm->f_dst;
-        vl_vm->f_dst = vela_add_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7523)), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7523);
+        vl_vm->f_dst = vela_add_range((vela_add_range((vl_argbase), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7671)), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7671);
         (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_a));
         vl_vm->f_dst = vl_keep2;
         vl_a = vl_nd_nx(vl_nd, vl_a);
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7527);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7675);
     }
     (void)(vl_enter_call(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_fn, vl_argbase, vl_keep));
     vl_vm->f_sp = vl_mark;
@@ -8304,11 +8404,11 @@ static void vl_call_builtin(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, dou
     int64_t vl_i = 0LL;
     while ((vl_a > 0LL)) {
         int64_t vl_keep = vl_vm->f_dst;
-        vl_vm->f_dst = vela_add_range((vl_argbase), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7547);
+        vl_vm->f_dst = vela_add_range((vl_argbase), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7695);
         (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_a));
         vl_vm->f_dst = vl_keep;
         vl_a = vl_nd_nx(vl_nd, vl_a);
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7551);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7699);
     }
     vl_vm->f_dst = vl_dst;
     (void)(vl_do_builtin(vl_nd, vl_mem, vl_fmem, vl_ipool, vl_fpool, vl_bpool, vl_path, vl_vm, vl_b, vl_argbase, vl_nargs, vl_dst));
@@ -8316,10 +8416,10 @@ static void vl_call_builtin(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, dou
 }
 
 static void vl_eval_call(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double* vl_fmem, double* vl_flt, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_src, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_27689;
-    int64_t vl_callee = (vela_bounds_check((vl_ix_27689 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7564)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7564)), 655360, "selfhost/vm.vel", 7564), vl_nd[vl_ix_27689]);
-    int64_t vl_ix_27698;
-    int64_t vl_args = (vela_bounds_check((vl_ix_27698 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7565)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7565)), 655360, "selfhost/vm.vel", 7565), vl_nd[vl_ix_27698]);
+    int64_t vl_ix_28028;
+    int64_t vl_callee = (vela_bounds_check((vl_ix_28028 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7712)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7712)), 655360, "selfhost/vm.vel", 7712), vl_nd[vl_ix_28028]);
+    int64_t vl_ix_28037;
+    int64_t vl_args = (vela_bounds_check((vl_ix_28037 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7713)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7713)), 655360, "selfhost/vm.vel", 7713), vl_nd[vl_ix_28037]);
     if ((vl_nd_kind(vl_nd, vl_callee) == 32LL)) {
         (void)(vl_call_method(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_e));
         return;
@@ -8352,11 +8452,11 @@ static void vl_call_user(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double
     int64_t vl_i = 0LL;
     while ((vl_a > 0LL)) {
         int64_t vl_keep0 = vl_vm->f_dst;
-        vl_vm->f_dst = vela_add_range((vl_argbase), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7614);
+        vl_vm->f_dst = vela_add_range((vl_argbase), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7762);
         (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_a));
         vl_vm->f_dst = vl_keep0;
         vl_a = vl_nd_nx(vl_nd, vl_a);
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7618);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7766);
     }
     vl_vm->f_dst = vl_saved_dst;
     (void)(vl_enter_call(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_fn, vl_argbase, vl_dst));
@@ -8366,7 +8466,7 @@ static void vl_enter_call(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, doubl
     int64_t vl_nparam = vl_ft_get(vl_mem, vl_fn, vl_FT_NPARAM());
     int64_t vl_nlocal = vl_ft_get(vl_mem, vl_fn, vl_FT_NLOCAL());
     int64_t vl_fp = vl_vm->f_sp;
-    if ((vela_add_range((vl_fp), (vl_nlocal), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7638) >= vl_CELL_STACK_MAX())) {
+    if ((vela_add_range((vl_fp), (vl_nlocal), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7786) >= vl_CELL_STACK_MAX())) {
         (void)(vl_selflimit(vela_str_lit("the interpreter ran out of stack cells", 38)));
     }
     int64_t vl_saved_dst = vl_vm->f_dst;
@@ -8376,35 +8476,35 @@ static void vl_enter_call(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, doubl
     int64_t vl_saved_fpm = vl_vm->f_fpm;
     int64_t vl_saved_bpm = vl_vm->f_bpm;
     vl_vm->f_fp = vl_fp;
-    vl_vm->f_sp = vela_add_range((vl_fp), (vl_nlocal), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7648);
+    vl_vm->f_sp = vela_add_range((vl_fp), (vl_nlocal), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7796);
     vl_vm->f_hmark = vl_vm->f_hp;
     vl_vm->f_ipm = vl_vm->f_ipc;
     vl_vm->f_fpm = vl_vm->f_fpc;
     vl_vm->f_bpm = vl_vm->f_bpc;
-    vl_vm->f_depth = vela_add_range(vl_vm->f_depth, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7653);
+    vl_vm->f_depth = vela_add_range(vl_vm->f_depth, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7801);
     if ((vl_vm->f_dbg_on == 1LL)) {
-        vl_vm->f_vdepth = vela_add_range(vl_vm->f_vdepth, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7661);
+        vl_vm->f_vdepth = vela_add_range(vl_vm->f_vdepth, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7809);
         (void)(vl_dbg_tr_set(vl_mem, vl_vm->f_vdepth, vl_fn, vl_fn, vl_vm->f_line));
     }
     int64_t vl_k = 0LL;
     while ((vl_k < vl_nparam)) {
-        (void)(vl_copy_cell(vl_mem, vl_fmem, vela_add_range((vl_fp), (vl_k), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7667), vela_add_range((vl_argbase), (vl_k), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7667)));
-        vl_k = vela_add_range(vl_k, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7668);
+        (void)(vl_copy_cell(vl_mem, vl_fmem, vela_add_range((vl_fp), (vl_k), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7815), vela_add_range((vl_argbase), (vl_k), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7815)));
+        vl_k = vela_add_range(vl_k, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7816);
     }
     vl_vm->f_dst = vl_dst;
     (void)(vl_run_body(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_ft_get(vl_mem, vl_fn, vl_FT_BODY())));
     bool vl_escaped = false;
-    int64_t vl_ix_28106;
-    if (((vela_bounds_check((vl_ix_28106 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7680)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7680)), 3741696, "selfhost/vm.vel", 7680), vl_mem[vl_ix_28106]) == vl_K_ST())) {
-        int64_t vl_ix_28116;
-        if (((vela_bounds_check((vl_ix_28116 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7681)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7681)), 3741696, "selfhost/vm.vel", 7681), vl_mem[vl_ix_28116]) >= vl_vm->f_hmark)) {
+    int64_t vl_ix_28445;
+    if (((vela_bounds_check((vl_ix_28445 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7828)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7828)), 3741696, "selfhost/vm.vel", 7828), vl_mem[vl_ix_28445]) == vl_K_ST())) {
+        int64_t vl_ix_28455;
+        if (((vela_bounds_check((vl_ix_28455 = vela_add_range((vela_mul_range((vl_dst), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7829)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7829)), 3741696, "selfhost/vm.vel", 7829), vl_mem[vl_ix_28455]) >= vl_vm->f_hmark)) {
             vl_escaped = true;
         }
     }
-    vl_vm->f_depth = vela_sub_range(vl_vm->f_depth, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7686);
+    vl_vm->f_depth = vela_sub_range(vl_vm->f_depth, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7834);
     if ((vl_vm->f_dbg_on == 1LL)) {
         if ((vl_vm->f_vdepth > 0LL)) {
-            vl_vm->f_vdepth = vela_sub_range(vl_vm->f_vdepth, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7692);
+            vl_vm->f_vdepth = vela_sub_range(vl_vm->f_vdepth, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7840);
         }
     }
     vl_vm->f_sp = vl_fp;
@@ -8431,7 +8531,7 @@ static void vl_store_name(int64_t* vl_mem, double* vl_fmem, vela_str vl_path, st
     if ((vl_sk != vl_SYM_LOCAL())) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("this assignment target is not a local variable", 46)));
     }
-    (void)(vl_assign_value(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_vm->f_fp), (vl_sv), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7723), vl_src));
+    (void)(vl_assign_value(vl_mem, vl_fmem, vl_path, vl_vm, vela_add_range((vl_vm->f_fp), (vl_sv), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7871), vl_src));
 }
 
 static void vl_store_place(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double* vl_fmem, double* vl_flt, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_src, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_tgt, int64_t vl_value) {
@@ -8445,18 +8545,18 @@ static void vl_store_place(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, doub
         int64_t vl_ic = vl_cell_alloc(vl_vm);
         int64_t vl_keep = vl_vm->f_dst;
         vl_vm->f_dst = vl_ac;
-        int64_t vl_ix_28331;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_28331 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7745)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7745)), 655360, "selfhost/vm.vel", 7745), vl_nd[vl_ix_28331])));
+        int64_t vl_ix_28670;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_28670 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7893)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7893)), 655360, "selfhost/vm.vel", 7893), vl_nd[vl_ix_28670])));
         vl_vm->f_dst = vl_ic;
-        int64_t vl_ix_28356;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_28356 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7748)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7748)), 655360, "selfhost/vm.vel", 7748), vl_nd[vl_ix_28356])));
+        int64_t vl_ix_28695;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_28695 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7896)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7896)), 655360, "selfhost/vm.vel", 7896), vl_nd[vl_ix_28695])));
         vl_vm->f_dst = vl_keep;
-        int64_t vl_ix_28369;
-        if (((vela_bounds_check((vl_ix_28369 = vela_add_range((vela_mul_range((vl_ic), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7750)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7750)), 3741696, "selfhost/vm.vel", 7750), vl_mem[vl_ix_28369]) != vl_K_INT())) {
+        int64_t vl_ix_28708;
+        if (((vela_bounds_check((vl_ix_28708 = vela_add_range((vela_mul_range((vl_ic), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7898)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7898)), 3741696, "selfhost/vm.vel", 7898), vl_mem[vl_ix_28708]) != vl_K_INT())) {
             (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("an index must be an int", 23)));
         }
-        int64_t vl_ix_28396;
-        (void)(vl_elem_store(vl_mem, vl_fmem, vl_ipool, vl_fpool, vl_bpool, vl_path, vl_vm, vl_ac, (vela_bounds_check((vl_ix_28396 = vela_add_range((vela_mul_range((vl_ic), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7754)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7754)), 3741696, "selfhost/vm.vel", 7754), vl_mem[vl_ix_28396]), vl_value));
+        int64_t vl_ix_28735;
+        (void)(vl_elem_store(vl_mem, vl_fmem, vl_ipool, vl_fpool, vl_bpool, vl_path, vl_vm, vl_ac, (vela_bounds_check((vl_ix_28735 = vela_add_range((vela_mul_range((vl_ic), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7902)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7902)), 3741696, "selfhost/vm.vel", 7902), vl_mem[vl_ix_28735]), vl_value));
         vl_vm->f_sp = vl_mark;
         return;
     }
@@ -8465,11 +8565,11 @@ static void vl_store_place(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, doub
         int64_t vl_rc = vl_cell_alloc(vl_vm);
         int64_t vl_keep = vl_vm->f_dst;
         vl_vm->f_dst = vl_rc;
-        int64_t vl_ix_28447;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_28447 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7764)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7764)), 655360, "selfhost/vm.vel", 7764), vl_nd[vl_ix_28447])));
+        int64_t vl_ix_28786;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_28786 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7912)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7912)), 655360, "selfhost/vm.vel", 7912), vl_nd[vl_ix_28786])));
         vl_vm->f_dst = vl_keep;
-        int64_t vl_ix_28470;
-        (void)(vl_assign_value(vl_mem, vl_fmem, vl_path, vl_vm, vl_field_cell(vl_mem, vl_path, vl_vm, vl_rc, (vela_bounds_check((vl_ix_28470 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7767)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7767)), 655360, "selfhost/vm.vel", 7767), vl_nd[vl_ix_28470])), vl_value));
+        int64_t vl_ix_28809;
+        (void)(vl_assign_value(vl_mem, vl_fmem, vl_path, vl_vm, vl_field_cell(vl_mem, vl_path, vl_vm, vl_rc, (vela_bounds_check((vl_ix_28809 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7915)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7915)), 655360, "selfhost/vm.vel", 7915), vl_nd[vl_ix_28809])), vl_value));
         vl_vm->f_sp = vl_mark;
         return;
     }
@@ -8497,13 +8597,13 @@ static int64_t vl_exec_for(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, doub
     int64_t vl_st = vl_cell_alloc(vl_vm);
     int64_t vl_keep = vl_vm->f_dst;
     vl_vm->f_dst = vl_lo;
-    int64_t vl_ix_28603;
-    (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_28603 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7809)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7809)), 655360, "selfhost/vm.vel", 7809), vl_nd[vl_ix_28603])));
+    int64_t vl_ix_28942;
+    (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_28942 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7957)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7957)), 655360, "selfhost/vm.vel", 7957), vl_nd[vl_ix_28942])));
     vl_vm->f_dst = vl_hi;
-    int64_t vl_ix_28628;
-    (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_28628 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7812)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7812)), 655360, "selfhost/vm.vel", 7812), vl_nd[vl_ix_28628])));
-    int64_t vl_ix_28637;
-    int64_t vl_stepnode = (vela_bounds_check((vl_ix_28637 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7813)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7813)), 655360, "selfhost/vm.vel", 7813), vl_nd[vl_ix_28637]);
+    int64_t vl_ix_28967;
+    (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_28967 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7960)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7960)), 655360, "selfhost/vm.vel", 7960), vl_nd[vl_ix_28967])));
+    int64_t vl_ix_28976;
+    int64_t vl_stepnode = (vela_bounds_check((vl_ix_28976 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7961)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7961)), 655360, "selfhost/vm.vel", 7961), vl_nd[vl_ix_28976]);
     if ((vl_stepnode > 0LL)) {
         vl_vm->f_dst = vl_st;
         (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_stepnode));
@@ -8514,17 +8614,17 @@ static int64_t vl_exec_for(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, doub
     (void)(vl_check_kinds(vl_path, vl_vm, vl_mem, vl_lo, vl_K_INT(), vela_str_lit("a range needs int bounds", 24)));
     (void)(vl_check_kinds(vl_path, vl_vm, vl_mem, vl_hi, vl_K_INT(), vela_str_lit("a range needs int bounds", 24)));
     (void)(vl_check_kinds(vl_path, vl_vm, vl_mem, vl_st, vl_K_INT(), vela_str_lit("a range needs an int step", 25)));
-    int64_t vl_ix_28710;
-    int64_t vl_start = (vela_bounds_check((vl_ix_28710 = vela_add_range((vela_mul_range((vl_lo), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7825)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7825)), 3741696, "selfhost/vm.vel", 7825), vl_mem[vl_ix_28710]);
-    int64_t vl_ix_28719;
-    int64_t vl_stop = (vela_bounds_check((vl_ix_28719 = vela_add_range((vela_mul_range((vl_hi), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7826)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7826)), 3741696, "selfhost/vm.vel", 7826), vl_mem[vl_ix_28719]);
-    int64_t vl_ix_28728;
-    int64_t vl_step = (vela_bounds_check((vl_ix_28728 = vela_add_range((vela_mul_range((vl_st), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7827)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7827)), 3741696, "selfhost/vm.vel", 7827), vl_mem[vl_ix_28728]);
+    int64_t vl_ix_29049;
+    int64_t vl_start = (vela_bounds_check((vl_ix_29049 = vela_add_range((vela_mul_range((vl_lo), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7973)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7973)), 3741696, "selfhost/vm.vel", 7973), vl_mem[vl_ix_29049]);
+    int64_t vl_ix_29058;
+    int64_t vl_stop = (vela_bounds_check((vl_ix_29058 = vela_add_range((vela_mul_range((vl_hi), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7974)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7974)), 3741696, "selfhost/vm.vel", 7974), vl_mem[vl_ix_29058]);
+    int64_t vl_ix_29067;
+    int64_t vl_step = (vela_bounds_check((vl_ix_29067 = vela_add_range((vela_mul_range((vl_st), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7975)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7975)), 3741696, "selfhost/vm.vel", 7975), vl_mem[vl_ix_29067]);
     if ((vl_step == 0LL)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("a range step of zero never ends", 31)));
     }
     int64_t vl_slot = vl_nt_get(vl_mem, vl_s, vl_NT_SLOT());
-    int64_t vl_var = vela_add_range((vl_vm->f_fp), (vl_slot), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7832);
+    int64_t vl_var = vela_add_range((vl_vm->f_fp), (vl_slot), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7980);
     int64_t vl_i = vl_start;
     bool vl_go = true;
     if ((vl_step > 0LL)) {
@@ -8536,8 +8636,8 @@ static int64_t vl_exec_for(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, doub
     }
     while (vl_go) {
         (void)(vl_set_int(vl_mem, vl_fmem, vl_var, vl_i));
-        int64_t vl_ix_28806;
-        int64_t vl_c = vl_run_body(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_28806 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7847)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7847)), 655360, "selfhost/vm.vel", 7847), vl_nd[vl_ix_28806]));
+        int64_t vl_ix_29145;
+        int64_t vl_c = vl_run_body(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29145 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7995)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7995)), 655360, "selfhost/vm.vel", 7995), vl_nd[vl_ix_29145]));
         if ((vl_c == vl_C_RET())) {
             vl_vm->f_sp = vl_mark;
             return vl_C_RET();
@@ -8560,25 +8660,25 @@ static int64_t vl_exec_for(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, doub
 }
 
 static int64_t vl_exec_stmt(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double* vl_fmem, double* vl_flt, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_src, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_s) {
-    int64_t vl_ix_28889;
-    vl_vm->f_line = (vela_bounds_check((vl_ix_28889 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7876)), (5LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7876)), 655360, "selfhost/vm.vel", 7876), vl_nd[vl_ix_28889]);
+    int64_t vl_ix_29228;
+    vl_vm->f_line = (vela_bounds_check((vl_ix_29228 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8024)), (5LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8024)), 655360, "selfhost/vm.vel", 8024), vl_nd[vl_ix_29228]);
     if ((vl_vm->f_dbg_on == 1LL)) {
         (void)(vl_dbg_gate(vl_mem, vl_fmem, vl_nd, vl_path, vl_vm, vl_s));
     }
-    vl_vm->f_steps = vela_add_range(vl_vm->f_steps, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7886);
+    vl_vm->f_steps = vela_add_range(vl_vm->f_steps, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8034);
     if ((vl_vm->f_steps > 1000000000LL)) {
         (void)(vl_trap(vl_path, vl_vm->f_line, vela_str_lit("the step limit was reached (1000000000 steps)", 45)));
     }
     int64_t vl_k = vl_nd_kind(vl_nd, vl_s);
     if ((vl_k == 6LL)) {
-        int64_t vl_ix_28936;
-        int64_t vl_tgt = (vela_bounds_check((vl_ix_28936 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7892)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7892)), 655360, "selfhost/vm.vel", 7892), vl_nd[vl_ix_28936]);
-        int64_t vl_ix_28945;
-        int64_t vl_v = (vela_bounds_check((vl_ix_28945 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7893)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7893)), 655360, "selfhost/vm.vel", 7893), vl_nd[vl_ix_28945]);
-        int64_t vl_ix_28954;
-        if ((((vela_bounds_check((vl_ix_28954 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7894)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7894)), 655360, "selfhost/vm.vel", 7894), vl_nd[vl_ix_28954]) & 2LL) == 2LL)) {
+        int64_t vl_ix_29275;
+        int64_t vl_tgt = (vela_bounds_check((vl_ix_29275 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8040)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8040)), 655360, "selfhost/vm.vel", 8040), vl_nd[vl_ix_29275]);
+        int64_t vl_ix_29284;
+        int64_t vl_v = (vela_bounds_check((vl_ix_29284 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8041)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8041)), 655360, "selfhost/vm.vel", 8041), vl_nd[vl_ix_29284]);
+        int64_t vl_ix_29293;
+        if ((((vela_bounds_check((vl_ix_29293 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8042)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8042)), 655360, "selfhost/vm.vel", 8042), vl_nd[vl_ix_29293]) & 2LL) == 2LL)) {
             int64_t vl_slot = vl_nt_get(vl_mem, vl_s, vl_NT_SLOT());
-            int64_t vl_dstc = vela_add_range((vl_vm->f_fp), (vl_slot), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7898);
+            int64_t vl_dstc = vela_add_range((vl_vm->f_fp), (vl_slot), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8046);
             int64_t vl_kind = vl_unpack_kind(vl_nt_get(vl_mem, vl_s, vl_NT_LIT()));
             if (vl_is_array(vl_kind)) {
                 (void)(vl_exec_array_decl(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_s, vl_dstc, vl_kind));
@@ -8619,8 +8719,8 @@ static int64_t vl_exec_stmt(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, dou
         return vl_C_NEXT();
     }
     if ((vl_k == 7LL)) {
-        int64_t vl_ix_29183;
-        int64_t vl_tgt2 = (vela_bounds_check((vl_ix_29183 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7945)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7945)), 655360, "selfhost/vm.vel", 7945), vl_nd[vl_ix_29183]);
+        int64_t vl_ix_29522;
+        int64_t vl_tgt2 = (vela_bounds_check((vl_ix_29522 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8093)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8093)), 655360, "selfhost/vm.vel", 8093), vl_nd[vl_ix_29522]);
         int64_t vl_mark2 = vl_vm->f_sp;
         int64_t vl_cur = vl_cell_alloc(vl_vm);
         int64_t vl_add = vl_cell_alloc(vl_vm);
@@ -8628,11 +8728,11 @@ static int64_t vl_exec_stmt(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, dou
         vl_vm->f_dst = vl_cur;
         (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_tgt2));
         vl_vm->f_dst = vl_add;
-        int64_t vl_ix_29245;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29245 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7955)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7955)), 655360, "selfhost/vm.vel", 7955), vl_nd[vl_ix_29245])));
+        int64_t vl_ix_29584;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29584 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8103)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8103)), 655360, "selfhost/vm.vel", 8103), vl_nd[vl_ix_29584])));
         vl_vm->f_dst = vl_keep2;
-        int64_t vl_ix_29263;
-        (void)(vl_combine(vl_mem, vl_fmem, vl_path, vl_vm, (vela_bounds_check((vl_ix_29263 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7957)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7957)), 655360, "selfhost/vm.vel", 7957), vl_nd[vl_ix_29263]), vl_cur, vl_add, vl_cur));
+        int64_t vl_ix_29602;
+        (void)(vl_combine(vl_mem, vl_fmem, vl_path, vl_vm, (vela_bounds_check((vl_ix_29602 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8105)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8105)), 655360, "selfhost/vm.vel", 8105), vl_nd[vl_ix_29602]), vl_cur, vl_add, vl_cur));
         (void)(vl_store_place(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_tgt2, vl_cur));
         vl_vm->f_sp = vl_mark2;
         return vl_C_NEXT();
@@ -8640,14 +8740,14 @@ static int64_t vl_exec_stmt(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, dou
     if ((vl_k == 8LL)) {
         int64_t vl_keep3 = vl_vm->f_dst;
         vl_vm->f_dst = vl_keep3;
-        int64_t vl_ix_29322;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29322 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7967)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7967)), 655360, "selfhost/vm.vel", 7967), vl_nd[vl_ix_29322])));
+        int64_t vl_ix_29661;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29661 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8115)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8115)), 655360, "selfhost/vm.vel", 8115), vl_nd[vl_ix_29661])));
         vl_vm->f_dst = vl_keep3;
         return vl_C_NEXT();
     }
     if ((vl_k == 9LL)) {
-        int64_t vl_ix_29342;
-        int64_t vl_v2 = (vela_bounds_check((vl_ix_29342 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7972)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7972)), 655360, "selfhost/vm.vel", 7972), vl_nd[vl_ix_29342]);
+        int64_t vl_ix_29681;
+        int64_t vl_v2 = (vela_bounds_check((vl_ix_29681 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8120)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8120)), 655360, "selfhost/vm.vel", 8120), vl_nd[vl_ix_29681]);
         if ((vl_v2 < 0LL)) {
             (void)(vl_set_none(vl_mem, vl_fmem, vl_vm->f_dst));
             return vl_C_RET();
@@ -8660,17 +8760,17 @@ static int64_t vl_exec_stmt(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, dou
         int64_t vl_cond = vl_cell_alloc(vl_vm);
         int64_t vl_keep4 = vl_vm->f_dst;
         vl_vm->f_dst = vl_cond;
-        int64_t vl_ix_29416;
-        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29416 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7986)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7986)), 655360, "selfhost/vm.vel", 7986), vl_nd[vl_ix_29416])));
+        int64_t vl_ix_29755;
+        (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29755 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8134)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8134)), 655360, "selfhost/vm.vel", 8134), vl_nd[vl_ix_29755])));
         vl_vm->f_dst = vl_keep4;
         bool vl_take = vl_as_bool(vl_path, vl_vm, vl_mem, vl_cond);
         vl_vm->f_sp = vl_mark3;
         if (vl_take) {
-            int64_t vl_ix_29455;
-            return vl_run_body(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29455 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7992)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7992)), 655360, "selfhost/vm.vel", 7992), vl_nd[vl_ix_29455]));
+            int64_t vl_ix_29794;
+            return vl_run_body(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29794 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8140)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8140)), 655360, "selfhost/vm.vel", 8140), vl_nd[vl_ix_29794]));
         }
-        int64_t vl_ix_29464;
-        int64_t vl_e = (vela_bounds_check((vl_ix_29464 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7994)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 7994)), 655360, "selfhost/vm.vel", 7994), vl_nd[vl_ix_29464]);
+        int64_t vl_ix_29803;
+        int64_t vl_e = (vela_bounds_check((vl_ix_29803 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8142)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8142)), 655360, "selfhost/vm.vel", 8142), vl_nd[vl_ix_29803]);
         if ((vl_e > 0LL)) {
             return vl_run_body(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_e);
         }
@@ -8683,16 +8783,16 @@ static int64_t vl_exec_stmt(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, dou
             int64_t vl_cond2 = vl_cell_alloc(vl_vm);
             int64_t vl_keep5 = vl_vm->f_dst;
             vl_vm->f_dst = vl_cond2;
-            int64_t vl_ix_29532;
-            (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29532 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8009)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8009)), 655360, "selfhost/vm.vel", 8009), vl_nd[vl_ix_29532])));
+            int64_t vl_ix_29871;
+            (void)(vl_eval_expr(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29871 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8157)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8157)), 655360, "selfhost/vm.vel", 8157), vl_nd[vl_ix_29871])));
             vl_vm->f_dst = vl_keep5;
             bool vl_run = vl_as_bool(vl_path, vl_vm, vl_mem, vl_cond2);
             vl_vm->f_sp = vl_mark4;
             if ((!vl_run)) {
                 return vl_C_NEXT();
             }
-            int64_t vl_ix_29575;
-            int64_t vl_c2 = vl_run_body(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29575 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8017)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8017)), 655360, "selfhost/vm.vel", 8017), vl_nd[vl_ix_29575]));
+            int64_t vl_ix_29914;
+            int64_t vl_c2 = vl_run_body(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, (vela_bounds_check((vl_ix_29914 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8165)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8165)), 655360, "selfhost/vm.vel", 8165), vl_nd[vl_ix_29914]));
             if ((vl_c2 == vl_C_RET())) {
                 return vl_C_RET();
             }
@@ -8758,8 +8858,8 @@ static int64_t vl_D_BP_MAX(void) {
 }
 
 static int64_t vl_dbg_bp_get(int64_t* vl_mem, int64_t vl_i) {
-    int64_t vl_ix_29708;
-    return (vela_bounds_check((vl_ix_29708 = vela_add_range((vl_D_BP_BASE()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8112)), 3741696, "selfhost/vm.vel", 8112), vl_mem[vl_ix_29708]);
+    int64_t vl_ix_30047;
+    return (vela_bounds_check((vl_ix_30047 = vela_add_range((vl_D_BP_BASE()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8260)), 3741696, "selfhost/vm.vel", 8260), vl_mem[vl_ix_30047]);
 }
 
 static void vl_dbg_bp_put(int64_t* vl_mem, int64_t vl_i, int64_t vl_v) {
@@ -8769,42 +8869,42 @@ static void vl_dbg_bp_put(int64_t* vl_mem, int64_t vl_i, int64_t vl_v) {
     if ((vl_i >= vl_D_BP_MAX())) {
         return;
     }
-    int64_t vl_ix_29729;
-    vela_bounds_check((vl_ix_29729 = vela_add_range((vl_D_BP_BASE()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8122)), 3741696, "selfhost/vm.vel", 8122);
-    vl_mem[vl_ix_29729] = vl_v;
+    int64_t vl_ix_30068;
+    vela_bounds_check((vl_ix_30068 = vela_add_range((vl_D_BP_BASE()), (vl_i), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8270)), 3741696, "selfhost/vm.vel", 8270);
+    vl_mem[vl_ix_30068] = vl_v;
 }
 
 static int64_t vl_dbg_tr_fn(int64_t* vl_mem, int64_t vl_d) {
-    int64_t vl_ix_29745;
-    return (vela_bounds_check((vl_ix_29745 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8126)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8126)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8126)), 3741696, "selfhost/vm.vel", 8126), vl_mem[vl_ix_29745]);
+    int64_t vl_ix_30084;
+    return (vela_bounds_check((vl_ix_30084 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8274)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8274)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8274)), 3741696, "selfhost/vm.vel", 8274), vl_mem[vl_ix_30084]);
 }
 
 static int64_t vl_dbg_tr_line(int64_t* vl_mem, int64_t vl_d) {
-    int64_t vl_ix_29759;
-    return (vela_bounds_check((vl_ix_29759 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8130)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8130)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8130)), 3741696, "selfhost/vm.vel", 8130), vl_mem[vl_ix_29759]);
+    int64_t vl_ix_30098;
+    return (vela_bounds_check((vl_ix_30098 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8278)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8278)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8278)), 3741696, "selfhost/vm.vel", 8278), vl_mem[vl_ix_30098]);
 }
 
 static int64_t vl_dbg_tr_eval(int64_t* vl_mem, int64_t vl_d) {
-    int64_t vl_ix_29773;
-    return (vela_bounds_check((vl_ix_29773 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8138)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8138)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8138)), 3741696, "selfhost/vm.vel", 8138), vl_mem[vl_ix_29773]);
+    int64_t vl_ix_30112;
+    return (vela_bounds_check((vl_ix_30112 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8286)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8286)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8286)), 3741696, "selfhost/vm.vel", 8286), vl_mem[vl_ix_30112]);
 }
 
 static void vl_dbg_tr_set(int64_t* vl_mem, int64_t vl_d, int64_t vl_fn, int64_t vl_ev, int64_t vl_line) {
     if ((vl_d < 0LL)) {
         return;
     }
-    if ((vela_add_range((vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8146)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8146) >= vl_D_STATE_MAX())) {
+    if ((vela_add_range((vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8294)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8294) >= vl_D_STATE_MAX())) {
         return;
     }
-    int64_t vl_ix_29804;
-    vela_bounds_check((vl_ix_29804 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8149)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8149)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8149)), 3741696, "selfhost/vm.vel", 8149);
-    vl_mem[vl_ix_29804] = vl_fn;
-    int64_t vl_ix_29816;
-    vela_bounds_check((vl_ix_29816 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8150)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8150)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8150)), 3741696, "selfhost/vm.vel", 8150);
-    vl_mem[vl_ix_29816] = vl_ev;
-    int64_t vl_ix_29828;
-    vela_bounds_check((vl_ix_29828 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8151)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8151)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8151)), 3741696, "selfhost/vm.vel", 8151);
-    vl_mem[vl_ix_29828] = vl_line;
+    int64_t vl_ix_30143;
+    vela_bounds_check((vl_ix_30143 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8297)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8297)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8297)), 3741696, "selfhost/vm.vel", 8297);
+    vl_mem[vl_ix_30143] = vl_fn;
+    int64_t vl_ix_30155;
+    vela_bounds_check((vl_ix_30155 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8298)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8298)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8298)), 3741696, "selfhost/vm.vel", 8298);
+    vl_mem[vl_ix_30155] = vl_ev;
+    int64_t vl_ix_30167;
+    vela_bounds_check((vl_ix_30167 = vela_add_range((vela_add_range((vl_D_STATE_BASE()), (vela_mul_range((vl_d), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8299)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8299)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8299)), 3741696, "selfhost/vm.vel", 8299);
+    vl_mem[vl_ix_30167] = vl_line;
 }
 
 static int64_t vl_D_REC(void) {
@@ -8814,10 +8914,10 @@ static int64_t vl_D_REC(void) {
 static vela_str vl_dbg_word(vela_str vl_s) {
     int64_t vl_i = 0LL;
     while ((vl_i < (((int64_t)vl_s.len)))) {
-        if (((vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 8160)) == 32LL)) {
+        if (((vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 8308)) == 32LL)) {
             return (vela_substr(vl_s, 0LL, vl_i));
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8163);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8311);
     }
     return vl_s;
 }
@@ -8826,15 +8926,15 @@ static int64_t vl_dbg_digits(vela_str vl_s, int64_t vl_from) {
     int64_t vl_v = 0LL;
     int64_t vl_i = vl_from;
     while ((vl_i < (((int64_t)vl_s.len)))) {
-        int64_t vl_c = (vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 8174));
+        int64_t vl_c = (vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 8322));
         if ((vl_c < 48LL)) {
             return vl_v;
         }
         if ((vl_c > 57LL)) {
             return vl_v;
         }
-        vl_v = vela_add_range((vela_mul_range((vl_v), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8181)), (vela_sub_range((vl_c), (48LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8181)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8181);
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8182);
+        vl_v = vela_add_range((vela_mul_range((vl_v), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8329)), (vela_sub_range((vl_c), (48LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8329)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8329);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8330);
     }
     return vl_v;
 }
@@ -8857,14 +8957,14 @@ static vela_str vl_dbg_component(int64_t vl_n) {
         vl_rest = 0LL;
     }
     if ((vl_rest >= 1000LL)) {
-        vl_rest = vela_floor_mod((vl_rest), (1000LL), "selfhost/vm.vel", 8242);
+        vl_rest = vela_floor_mod((vl_rest), (1000LL), "selfhost/vm.vel", 8390);
     }
-    int64_t vl_d = vela_floor_div((vl_rest), (100LL), "selfhost/vm.vel", 8244);
+    int64_t vl_d = vela_floor_div((vl_rest), (100LL), "selfhost/vm.vel", 8392);
     vela_str vl_s = vl_dbg_digit(vl_d);
-    vl_rest = vela_sub_range((vl_rest), (vela_mul_range((vl_d), (100LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8246)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8246);
-    vl_d = vela_floor_div((vl_rest), (10LL), "selfhost/vm.vel", 8247);
+    vl_rest = vela_sub_range((vl_rest), (vela_mul_range((vl_d), (100LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8394)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8394);
+    vl_d = vela_floor_div((vl_rest), (10LL), "selfhost/vm.vel", 8395);
     vl_s = (vela_concat(vl_s, vl_dbg_digit(vl_d)));
-    vl_d = vela_sub_range((vl_rest), (vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8249)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8249);
+    vl_d = vela_sub_range((vl_rest), (vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8397)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8397);
     return (vela_concat(vl_s, vl_dbg_digit(vl_d)));
 }
 
@@ -8900,7 +9000,7 @@ static vela_str vl_dbg_digit(int64_t vl_d) {
 }
 
 static vela_str vl_dbg_cmd_path(struct vl_VM vl_vm, vela_str vl_dir) {
-    return (vela_concat((vela_concat(vl_dir, vela_str_lit("/cmd.", 5))), vl_dbg_component(vela_add_range((vl_vm.f_dbg_cur), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8267))));
+    return (vela_concat((vela_concat(vl_dir, vela_str_lit("/cmd.", 5))), vl_dbg_component(vela_add_range((vl_vm.f_dbg_cur), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8415))));
 }
 
 static vela_str vl_dbg_next_file(struct vl_VM* vl_vm, vela_str vl_dir) {
@@ -8910,13 +9010,13 @@ static vela_str vl_dbg_next_file(struct vl_VM* vl_vm, vela_str vl_dir) {
     while (((((int64_t)vl_t.len)) == 0LL)) {
         if ((vl_n >= 6000000LL)) {
             (void)(vl_dbg_say(vela_str_lit("error no command file from the driver; running to the end", 57)));
-            vl_vm->f_dbg_cur = vela_add_range(vl_vm->f_dbg_cur, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8295);
+            vl_vm->f_dbg_cur = vela_add_range(vl_vm->f_dbg_cur, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8443);
             return vela_str_lit("clearall\nquit\n", 14);
         }
-        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8298);
+        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8446);
         vl_t = (vela_read_text(vl_path));
     }
-    vl_vm->f_dbg_cur = vela_add_range(vl_vm->f_dbg_cur, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8301);
+    vl_vm->f_dbg_cur = vela_add_range(vl_vm->f_dbg_cur, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8449);
     return vl_t;
 }
 
@@ -8926,13 +9026,13 @@ static bool vl_dbg_bp_set(struct vl_VM* vl_vm, int64_t* vl_mem, int64_t vl_line)
         if ((vl_dbg_bp_get(vl_mem, vl_i) == vl_line)) {
             return false;
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8317);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8465);
     }
     if ((vl_vm->f_dbg_nbp >= vl_D_BP_MAX())) {
         return false;
     }
     (void)(vl_dbg_bp_put(vl_mem, vl_vm->f_dbg_nbp, vl_line));
-    vl_vm->f_dbg_nbp = vela_add_range(vl_vm->f_dbg_nbp, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8323);
+    vl_vm->f_dbg_nbp = vela_add_range(vl_vm->f_dbg_nbp, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8471);
     return true;
 }
 
@@ -8941,14 +9041,14 @@ static bool vl_dbg_bp_clear(struct vl_VM* vl_vm, int64_t* vl_mem, int64_t vl_lin
     while ((vl_i < vl_vm->f_dbg_nbp)) {
         if ((vl_dbg_bp_get(vl_mem, vl_i) == vl_line)) {
             int64_t vl_j = vl_i;
-            while ((vela_add_range((vl_j), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8332) < vl_vm->f_dbg_nbp)) {
-                (void)(vl_dbg_bp_put(vl_mem, vl_j, vl_dbg_bp_get(vl_mem, vela_add_range((vl_j), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8333))));
-                vl_j = vela_add_range(vl_j, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8334);
+            while ((vela_add_range((vl_j), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8480) < vl_vm->f_dbg_nbp)) {
+                (void)(vl_dbg_bp_put(vl_mem, vl_j, vl_dbg_bp_get(vl_mem, vela_add_range((vl_j), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8481))));
+                vl_j = vela_add_range(vl_j, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8482);
             }
-            vl_vm->f_dbg_nbp = vela_sub_range(vl_vm->f_dbg_nbp, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8336);
+            vl_vm->f_dbg_nbp = vela_sub_range(vl_vm->f_dbg_nbp, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8484);
             return true;
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8339);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8487);
     }
     return false;
 }
@@ -8968,7 +9068,7 @@ static bool vl_dbg_bp_hit(int64_t* vl_mem, struct vl_VM vl_vm, int64_t vl_line) 
         if ((vl_dbg_bp_get(vl_mem, vl_i) == vl_line)) {
             return true;
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8361);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8509);
     }
     return false;
 }
@@ -8993,8 +9093,8 @@ static int64_t vl_dbg_step_stop(int64_t* vl_nd, struct vl_VM vl_vm, int64_t vl_s
         return 0LL;
     }
     if ((vl_vm.f_dbg_step == vl_D_STEP())) {
-        int64_t vl_ix_30337;
-        if (((vela_bounds_check((vl_ix_30337 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8395)), (5LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8395)), 655360, "selfhost/vm.vel", 8395), vl_nd[vl_ix_30337]) != vl_vm.f_dbg_line)) {
+        int64_t vl_ix_30676;
+        if (((vela_bounds_check((vl_ix_30676 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8543)), (5LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8543)), 655360, "selfhost/vm.vel", 8543), vl_nd[vl_ix_30676]) != vl_vm.f_dbg_line)) {
             return vl_D_STEP();
         }
         return 0LL;
@@ -9026,29 +9126,29 @@ static void vl_dbg_gate(int64_t* vl_mem, double* vl_fmem, int64_t* vl_nd, vela_s
 }
 
 static void vl_dbg_cell(int64_t* vl_mem, double* vl_fmem, int64_t vl_c, vela_str vl_path, int64_t vl_line) {
-    int64_t vl_ix_30439;
-    int64_t vl_t = (vela_bounds_check((vl_ix_30439 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8436)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8436)), 3741696, "selfhost/vm.vel", 8436), vl_mem[vl_ix_30439]);
+    int64_t vl_ix_30778;
+    int64_t vl_t = (vela_bounds_check((vl_ix_30778 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8584)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8584)), 3741696, "selfhost/vm.vel", 8584), vl_mem[vl_ix_30778]);
     if ((vl_t == vl_K_STR())) {
         (void)((vela_warn_str(vela_str_lit("\"", 1))));
-        int64_t vl_ix_30458;
-        (void)((vela_warn_str((vela_interned((vela_bounds_check((vl_ix_30458 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8439)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8439)), 3741696, "selfhost/vm.vel", 8439), vl_mem[vl_ix_30458]), "selfhost/vm.vel", 8439)))));
+        int64_t vl_ix_30797;
+        (void)((vela_warn_str((vela_interned((vela_bounds_check((vl_ix_30797 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8587)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8587)), 3741696, "selfhost/vm.vel", 8587), vl_mem[vl_ix_30797]), "selfhost/vm.vel", 8587)))));
         (void)((vela_warn_str(vela_str_lit("\"", 1))));
         return;
     }
     if (vl_is_array(vl_t)) {
         (void)((vela_warn_str(vela_str_lit("<array of ", 10))));
-        int64_t vl_ix_30482;
-        (void)((vela_warn_int((vela_bounds_check((vl_ix_30482 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8445)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8445)), 3741696, "selfhost/vm.vel", 8445), vl_mem[vl_ix_30482]))));
+        int64_t vl_ix_30821;
+        (void)((vela_warn_int((vela_bounds_check((vl_ix_30821 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8593)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8593)), 3741696, "selfhost/vm.vel", 8593), vl_mem[vl_ix_30821]))));
         (void)((vela_warn_str(vela_str_lit(">", 1))));
         return;
     }
     if ((vl_t == vl_K_ST())) {
         (void)((vela_warn_str(vela_str_lit("<struct ", 8))));
-        int64_t vl_ix_30506;
-        (void)((vela_warn_int((vela_bounds_check((vl_ix_30506 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8451)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8451)), 3741696, "selfhost/vm.vel", 8451), vl_mem[vl_ix_30506]))));
+        int64_t vl_ix_30845;
+        (void)((vela_warn_int((vela_bounds_check((vl_ix_30845 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8599)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8599)), 3741696, "selfhost/vm.vel", 8599), vl_mem[vl_ix_30845]))));
         (void)((vela_warn_str(vela_str_lit(" with ", 6))));
-        int64_t vl_ix_30520;
-        (void)((vela_warn_int((vela_bounds_check((vl_ix_30520 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8453)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8453)), 3741696, "selfhost/vm.vel", 8453), vl_mem[vl_ix_30520]))));
+        int64_t vl_ix_30859;
+        (void)((vela_warn_int((vela_bounds_check((vl_ix_30859 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8601)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8601)), 3741696, "selfhost/vm.vel", 8601), vl_mem[vl_ix_30859]))));
         (void)((vela_warn_str(vela_str_lit(" fields>", 8))));
         return;
     }
@@ -9056,23 +9156,23 @@ static void vl_dbg_cell(int64_t* vl_mem, double* vl_fmem, int64_t vl_c, vela_str
 }
 
 static void vl_dbg_cell_scalar(int64_t* vl_mem, double* vl_fmem, int64_t vl_c, vela_str vl_path, int64_t vl_line) {
-    int64_t vl_ix_30549;
-    int64_t vl_t = (vela_bounds_check((vl_ix_30549 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8468)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8468)), 3741696, "selfhost/vm.vel", 8468), vl_mem[vl_ix_30549]);
+    int64_t vl_ix_30888;
+    int64_t vl_t = (vela_bounds_check((vl_ix_30888 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8616)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8616)), 3741696, "selfhost/vm.vel", 8616), vl_mem[vl_ix_30888]);
     if ((vl_t == vl_K_INT())) {
-        int64_t vl_ix_30563;
-        (void)((vela_warn_int((vela_bounds_check((vl_ix_30563 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8470)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8470)), 3741696, "selfhost/vm.vel", 8470), vl_mem[vl_ix_30563]))));
+        int64_t vl_ix_30902;
+        (void)((vela_warn_int((vela_bounds_check((vl_ix_30902 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8618)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8618)), 3741696, "selfhost/vm.vel", 8618), vl_mem[vl_ix_30902]))));
         return;
     }
     if ((vl_t == vl_K_FLT())) {
         (void)((vela_warn_str(vela_str_lit("<float ", 7))));
-        int64_t vl_ix_30580;
-        (void)((vela_warn_int((((int64_t)(vela_bounds_check((vl_ix_30580 = vl_c), 786432, "selfhost/vm.vel", 8479), vl_fmem[vl_ix_30580]))))));
+        int64_t vl_ix_30919;
+        (void)((vela_warn_int((((int64_t)(vela_bounds_check((vl_ix_30919 = vl_c), 786432, "selfhost/vm.vel", 8627), vl_fmem[vl_ix_30919]))))));
         (void)((vela_warn_str(vela_str_lit(">", 1))));
         return;
     }
     if ((vl_t == vl_K_BOOL())) {
-        int64_t vl_ix_30600;
-        if (((vela_bounds_check((vl_ix_30600 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8484)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8484)), 3741696, "selfhost/vm.vel", 8484), vl_mem[vl_ix_30600]) == 1LL)) {
+        int64_t vl_ix_30939;
+        if (((vela_bounds_check((vl_ix_30939 = vela_add_range((vela_mul_range((vl_c), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8632)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8632)), 3741696, "selfhost/vm.vel", 8632), vl_mem[vl_ix_30939]) == 1LL)) {
             (void)((vela_warn_str(vela_str_lit("True", 4))));
             return;
         }
@@ -9090,64 +9190,64 @@ static void vl_dbg_mark(int64_t* vl_recs, int64_t vl_n, int64_t vl_decl, int64_t
     if ((vl_slot < 0LL)) {
         return;
     }
-    if ((vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8516)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8516) >= 8192LL)) {
+    if ((vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8664)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8664) >= 8192LL)) {
         return;
     }
-    int64_t vl_ix_30659;
-    int64_t vl_tgt = (vela_bounds_check((vl_ix_30659 = vela_add_range((vela_mul_range((vl_decl), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8519)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8519)), 655360, "selfhost/vm.vel", 8519), vl_nd[vl_ix_30659]);
+    int64_t vl_ix_30998;
+    int64_t vl_tgt = (vela_bounds_check((vl_ix_30998 = vela_add_range((vela_mul_range((vl_decl), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8667)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8667)), 655360, "selfhost/vm.vel", 8667), vl_nd[vl_ix_30998]);
     if ((vl_nd_kind(vl_nd, vl_tgt) != 25LL)) {
         return;
     }
-    int64_t vl_ix_30676;
-    int64_t vl_h = (vela_bounds_check((vl_ix_30676 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8523)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8523)), 655360, "selfhost/vm.vel", 8523), vl_nd[vl_ix_30676]);
-    vela_str vl_s = (vela_interned(vl_h, "selfhost/vm.vel", 8524));
-    int64_t vl_ix_30691;
-    vela_bounds_check((vl_ix_30691 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8527)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8527)), 8192, "selfhost/vm.vel", 8527);
-    vl_recs[vl_ix_30691] = vela_add_range((vl_slot), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8527);
-    int64_t vl_ix_30703;
-    vela_bounds_check((vl_ix_30703 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8528)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8528)), 8192, "selfhost/vm.vel", 8528);
-    vl_recs[vl_ix_30703] = (vela_intern((vela_substr(vl_s, 0LL, 1LL))));
-    int64_t vl_ix_30719;
-    vela_bounds_check((vl_ix_30719 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8529)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8529)), 8192, "selfhost/vm.vel", 8529);
-    vl_recs[vl_ix_30719] = (vela_intern((vela_substr(vl_s, 1LL, (((int64_t)vl_s.len))))));
-    int64_t vl_ix_30737;
-    int64_t vl_ix_30744;
-    vela_bounds_check((vl_ix_30737 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8530)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8530)), 8192, "selfhost/vm.vel", 8530);
-    vl_recs[vl_ix_30737] = (vela_bounds_check((vl_ix_30744 = vela_add_range((vela_mul_range((vl_decl), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8530)), (5LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8530)), 655360, "selfhost/vm.vel", 8530), vl_nd[vl_ix_30744]);
-    vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8531);
+    int64_t vl_ix_31015;
+    int64_t vl_h = (vela_bounds_check((vl_ix_31015 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8671)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8671)), 655360, "selfhost/vm.vel", 8671), vl_nd[vl_ix_31015]);
+    vela_str vl_s = (vela_interned(vl_h, "selfhost/vm.vel", 8672));
+    int64_t vl_ix_31030;
+    vela_bounds_check((vl_ix_31030 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8675)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8675)), 8192, "selfhost/vm.vel", 8675);
+    vl_recs[vl_ix_31030] = vela_add_range((vl_slot), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8675);
+    int64_t vl_ix_31042;
+    vela_bounds_check((vl_ix_31042 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8676)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8676)), 8192, "selfhost/vm.vel", 8676);
+    vl_recs[vl_ix_31042] = (vela_intern((vela_substr(vl_s, 0LL, 1LL))));
+    int64_t vl_ix_31058;
+    vela_bounds_check((vl_ix_31058 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8677)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8677)), 8192, "selfhost/vm.vel", 8677);
+    vl_recs[vl_ix_31058] = (vela_intern((vela_substr(vl_s, 1LL, (((int64_t)vl_s.len))))));
+    int64_t vl_ix_31076;
+    int64_t vl_ix_31083;
+    vela_bounds_check((vl_ix_31076 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8678)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8678)), 8192, "selfhost/vm.vel", 8678);
+    vl_recs[vl_ix_31076] = (vela_bounds_check((vl_ix_31083 = vela_add_range((vela_mul_range((vl_decl), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8678)), (5LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8678)), 655360, "selfhost/vm.vel", 8678), vl_nd[vl_ix_31083]);
+    vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8679);
 }
 
 static void vl_dbg_walk_body(int64_t* vl_recs, int64_t vl_n, int64_t* vl_mem, int64_t* vl_nd, int64_t vl_head, int64_t vl_upto) {
     int64_t vl_s = vl_head;
     while ((vl_s > 0LL)) {
-        int64_t vl_ix_30768;
-        if (((vela_bounds_check((vl_ix_30768 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8539)), (5LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8539)), 655360, "selfhost/vm.vel", 8539), vl_nd[vl_ix_30768]) >= vl_upto)) {
+        int64_t vl_ix_31107;
+        if (((vela_bounds_check((vl_ix_31107 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8687)), (5LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8687)), 655360, "selfhost/vm.vel", 8687), vl_nd[vl_ix_31107]) >= vl_upto)) {
             return;
         }
         int64_t vl_k = vl_nd_kind(vl_nd, vl_s);
         if ((vl_k == 6LL)) {
-            int64_t vl_ix_30788;
-            if ((((vela_bounds_check((vl_ix_30788 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8544)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8544)), 655360, "selfhost/vm.vel", 8544), vl_nd[vl_ix_30788]) & 2LL) == 2LL)) {
+            int64_t vl_ix_31127;
+            if ((((vela_bounds_check((vl_ix_31127 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8692)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8692)), 655360, "selfhost/vm.vel", 8692), vl_nd[vl_ix_31127]) & 2LL) == 2LL)) {
                 (void)(vl_dbg_mark(vl_recs, vl_n, vl_s, vl_nt_get(vl_mem, vl_s, vl_NT_SLOT()), vl_mem, vl_nd));
             }
         }
         if ((vl_k == 12LL)) {
             (void)(vl_dbg_mark(vl_recs, vl_n, vl_s, vl_nt_get(vl_mem, vl_s, vl_NT_SLOT()), vl_mem, vl_nd));
-            int64_t vl_ix_30837;
-            (void)(vl_dbg_walk_body(vl_recs, vl_n, vl_mem, vl_nd, (vela_bounds_check((vl_ix_30837 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8550)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8550)), 655360, "selfhost/vm.vel", 8550), vl_nd[vl_ix_30837]), vl_upto));
+            int64_t vl_ix_31176;
+            (void)(vl_dbg_walk_body(vl_recs, vl_n, vl_mem, vl_nd, (vela_bounds_check((vl_ix_31176 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8698)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8698)), 655360, "selfhost/vm.vel", 8698), vl_nd[vl_ix_31176]), vl_upto));
         }
         if ((vl_k == 10LL)) {
-            int64_t vl_ix_30856;
-            (void)(vl_dbg_walk_body(vl_recs, vl_n, vl_mem, vl_nd, (vela_bounds_check((vl_ix_30856 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8553)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8553)), 655360, "selfhost/vm.vel", 8553), vl_nd[vl_ix_30856]), vl_upto));
-            int64_t vl_ix_30866;
-            if (((vela_bounds_check((vl_ix_30866 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8554)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8554)), 655360, "selfhost/vm.vel", 8554), vl_nd[vl_ix_30866]) > 0LL)) {
-                int64_t vl_ix_30880;
-                (void)(vl_dbg_walk_body(vl_recs, vl_n, vl_mem, vl_nd, (vela_bounds_check((vl_ix_30880 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8555)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8555)), 655360, "selfhost/vm.vel", 8555), vl_nd[vl_ix_30880]), vl_upto));
+            int64_t vl_ix_31195;
+            (void)(vl_dbg_walk_body(vl_recs, vl_n, vl_mem, vl_nd, (vela_bounds_check((vl_ix_31195 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8701)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8701)), 655360, "selfhost/vm.vel", 8701), vl_nd[vl_ix_31195]), vl_upto));
+            int64_t vl_ix_31205;
+            if (((vela_bounds_check((vl_ix_31205 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8702)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8702)), 655360, "selfhost/vm.vel", 8702), vl_nd[vl_ix_31205]) > 0LL)) {
+                int64_t vl_ix_31219;
+                (void)(vl_dbg_walk_body(vl_recs, vl_n, vl_mem, vl_nd, (vela_bounds_check((vl_ix_31219 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8703)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8703)), 655360, "selfhost/vm.vel", 8703), vl_nd[vl_ix_31219]), vl_upto));
             }
         }
         if ((vl_k == 11LL)) {
-            int64_t vl_ix_30900;
-            (void)(vl_dbg_walk_body(vl_recs, vl_n, vl_mem, vl_nd, (vela_bounds_check((vl_ix_30900 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8559)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8559)), 655360, "selfhost/vm.vel", 8559), vl_nd[vl_ix_30900]), vl_upto));
+            int64_t vl_ix_31239;
+            (void)(vl_dbg_walk_body(vl_recs, vl_n, vl_mem, vl_nd, (vela_bounds_check((vl_ix_31239 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8707)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8707)), 655360, "selfhost/vm.vel", 8707), vl_nd[vl_ix_31239]), vl_upto));
         }
         vl_s = vl_nd_nx(vl_nd, vl_s);
     }
@@ -9156,23 +9256,23 @@ static void vl_dbg_walk_body(int64_t* vl_recs, int64_t vl_n, int64_t* vl_mem, in
 static void vl_dbg_walk_decls(int64_t* vl_recs, int64_t vl_n, int64_t* vl_mem, int64_t* vl_nd, int64_t vl_f, int64_t vl_upto) {
     int64_t vl_p = vl_ft_get(vl_mem, vl_f, vl_FT_PARAM());
     while ((vl_p > 0LL)) {
-        if ((vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8570)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8570) < 8192LL)) {
-            int64_t vl_ix_30944;
-            int64_t vl_h = (vela_bounds_check((vl_ix_30944 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8571)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8571)), 655360, "selfhost/vm.vel", 8571), vl_nd[vl_ix_30944]);
-            vela_str vl_s = (vela_interned(vl_h, "selfhost/vm.vel", 8572));
-            int64_t vl_ix_30959;
-            vela_bounds_check((vl_ix_30959 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8573)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8573)), 8192, "selfhost/vm.vel", 8573);
-            vl_recs[vl_ix_30959] = vela_neg_int(1LL, "selfhost/vm.vel", 8573);
-            int64_t vl_ix_30970;
-            vela_bounds_check((vl_ix_30970 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8574)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8574)), 8192, "selfhost/vm.vel", 8574);
-            vl_recs[vl_ix_30970] = (vela_intern((vela_substr(vl_s, 0LL, 1LL))));
-            int64_t vl_ix_30986;
-            vela_bounds_check((vl_ix_30986 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8575)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8575)), 8192, "selfhost/vm.vel", 8575);
-            vl_recs[vl_ix_30986] = (vela_intern((vela_substr(vl_s, 1LL, (((int64_t)vl_s.len))))));
-            int64_t vl_ix_31004;
-            vela_bounds_check((vl_ix_31004 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8576)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8576)), 8192, "selfhost/vm.vel", 8576);
-            vl_recs[vl_ix_31004] = 0LL;
-            vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8577);
+        if ((vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8718)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8718) < 8192LL)) {
+            int64_t vl_ix_31283;
+            int64_t vl_h = (vela_bounds_check((vl_ix_31283 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8719)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8719)), 655360, "selfhost/vm.vel", 8719), vl_nd[vl_ix_31283]);
+            vela_str vl_s = (vela_interned(vl_h, "selfhost/vm.vel", 8720));
+            int64_t vl_ix_31298;
+            vela_bounds_check((vl_ix_31298 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8721)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8721)), 8192, "selfhost/vm.vel", 8721);
+            vl_recs[vl_ix_31298] = vela_neg_int(1LL, "selfhost/vm.vel", 8721);
+            int64_t vl_ix_31309;
+            vela_bounds_check((vl_ix_31309 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8722)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8722)), 8192, "selfhost/vm.vel", 8722);
+            vl_recs[vl_ix_31309] = (vela_intern((vela_substr(vl_s, 0LL, 1LL))));
+            int64_t vl_ix_31325;
+            vela_bounds_check((vl_ix_31325 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8723)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8723)), 8192, "selfhost/vm.vel", 8723);
+            vl_recs[vl_ix_31325] = (vela_intern((vela_substr(vl_s, 1LL, (((int64_t)vl_s.len))))));
+            int64_t vl_ix_31343;
+            vela_bounds_check((vl_ix_31343 = vela_add_range((vela_mul_range((vl_n), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8724)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8724)), 8192, "selfhost/vm.vel", 8724);
+            vl_recs[vl_ix_31343] = 0LL;
+            vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8725);
         }
         vl_p = vl_nd_nx(vl_nd, vl_p);
     }
@@ -9195,30 +9295,30 @@ static void vl_dbg_dump_vars(int64_t* vl_mem, double* vl_fmem, int64_t* vl_nd, v
     int64_t vl_shown = 0LL;
     int64_t vl_i = 0LL;
     while ((vl_i < vl_n)) {
-        int64_t vl_ix_31093;
-        if (((vela_bounds_check((vl_ix_31093 = vela_add_range((vela_mul_range((vl_i), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8607)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8607)), 8192, "selfhost/vm.vel", 8607), vl_recs[vl_ix_31093]) != 0LL)) {
-            vl_shown = vela_add_range(vl_shown, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8608);
+        int64_t vl_ix_31432;
+        if (((vela_bounds_check((vl_ix_31432 = vela_add_range((vela_mul_range((vl_i), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8755)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8755)), 8192, "selfhost/vm.vel", 8755), vl_recs[vl_ix_31432]) != 0LL)) {
+            vl_shown = vela_add_range(vl_shown, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8756);
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8610);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8758);
     }
     (void)((vela_warn_str(vela_str_lit("locals ", 7))));
     (void)((vela_warn_int(vl_shown)));
     (void)((vela_warn_nl()));
     int64_t vl_i2 = 0LL;
     while ((vl_i2 < vl_n)) {
-        int64_t vl_ix_31128;
-        int64_t vl_s1 = (vela_bounds_check((vl_ix_31128 = vela_add_range((vela_mul_range((vl_i2), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8617)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8617)), 8192, "selfhost/vm.vel", 8617), vl_recs[vl_ix_31128]);
+        int64_t vl_ix_31467;
+        int64_t vl_s1 = (vela_bounds_check((vl_ix_31467 = vela_add_range((vela_mul_range((vl_i2), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8765)), (0LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8765)), 8192, "selfhost/vm.vel", 8765), vl_recs[vl_ix_31467]);
         if ((vl_s1 != 0LL)) {
             (void)((vela_warn_str(vela_str_lit("local ", 6))));
-            int64_t vl_ix_31147;
-            (void)((vela_warn_str((vela_interned((vela_bounds_check((vl_ix_31147 = vela_add_range((vela_mul_range((vl_i2), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8620)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8620)), 8192, "selfhost/vm.vel", 8620), vl_recs[vl_ix_31147]), "selfhost/vm.vel", 8620)))));
-            int64_t vl_ix_31160;
-            (void)((vela_warn_str((vela_interned((vela_bounds_check((vl_ix_31160 = vela_add_range((vela_mul_range((vl_i2), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8621)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8621)), 8192, "selfhost/vm.vel", 8621), vl_recs[vl_ix_31160]), "selfhost/vm.vel", 8621)))));
+            int64_t vl_ix_31486;
+            (void)((vela_warn_str((vela_interned((vela_bounds_check((vl_ix_31486 = vela_add_range((vela_mul_range((vl_i2), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8768)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8768)), 8192, "selfhost/vm.vel", 8768), vl_recs[vl_ix_31486]), "selfhost/vm.vel", 8768)))));
+            int64_t vl_ix_31499;
+            (void)((vela_warn_str((vela_interned((vela_bounds_check((vl_ix_31499 = vela_add_range((vela_mul_range((vl_i2), (vl_D_REC()), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8769)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8769)), 8192, "selfhost/vm.vel", 8769), vl_recs[vl_ix_31499]), "selfhost/vm.vel", 8769)))));
             (void)((vela_warn_str(vela_str_lit(" = ", 3))));
-            (void)(vl_dbg_cell(vl_mem, vl_fmem, vela_sub_range((vela_add_range((vl_vm->f_fp), (vl_s1), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8623)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8623), vl_path, vl_vm->f_line));
+            (void)(vl_dbg_cell(vl_mem, vl_fmem, vela_sub_range((vela_add_range((vl_vm->f_fp), (vl_s1), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8771)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8771), vl_path, vl_vm->f_line));
             (void)((vela_warn_nl()));
         }
-        vl_i2 = vela_add_range(vl_i2, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8626);
+        vl_i2 = vela_add_range(vl_i2, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8774);
     }
 }
 
@@ -9233,13 +9333,13 @@ static vela_str vl_dbg_fn_name(int64_t* vl_mem, int64_t* vl_nd, int64_t vl_f) {
     if ((vl_d <= 0LL)) {
         return vela_str_lit("<main>", 6);
     }
-    int64_t vl_ix_31228;
-    return (vela_interned((vela_bounds_check((vl_ix_31228 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8643)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8643)), 655360, "selfhost/vm.vel", 8643), vl_nd[vl_ix_31228]), "selfhost/vm.vel", 8643));
+    int64_t vl_ix_31567;
+    return (vela_interned((vela_bounds_check((vl_ix_31567 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8791)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8791)), 655360, "selfhost/vm.vel", 8791), vl_nd[vl_ix_31567]), "selfhost/vm.vel", 8791));
 }
 
 static void vl_dbg_dump_stack(int64_t* vl_mem, int64_t* vl_nd, struct vl_VM vl_vm) {
     (void)((vela_warn_str(vela_str_lit("stack ", 6))));
-    (void)((vela_warn_int(vela_add_range((vela_sub_range((vl_vm.f_vdepth), (vl_vm.f_dbg_depth), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8649)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8649))));
+    (void)((vela_warn_int(vela_add_range((vela_sub_range((vl_vm.f_vdepth), (vl_vm.f_dbg_depth), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8797)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8797))));
     (void)((vela_warn_nl()));
     int64_t vl_d = vl_vm.f_vdepth;
     while ((vl_d >= vl_vm.f_dbg_depth)) {
@@ -9251,13 +9351,13 @@ static void vl_dbg_dump_stack(int64_t* vl_mem, int64_t* vl_nd, struct vl_VM vl_v
             (void)((vela_warn_int(vl_dbg_tr_line(vl_mem, vl_d))));
         }
         (void)((vela_warn_str(vela_str_lit(" ", 1))));
-        int64_t vl_f = vela_neg_int(1LL, "selfhost/vm.vel", 8662);
+        int64_t vl_f = vela_neg_int(1LL, "selfhost/vm.vel", 8810);
         if ((vl_d > 0LL)) {
             vl_f = vl_dbg_tr_fn(vl_mem, vl_d);
         }
         (void)((vela_warn_str(vl_dbg_fn_name(vl_mem, vl_nd, vl_f))));
         (void)((vela_warn_nl()));
-        vl_d = vela_sub_range(vl_d, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8668);
+        vl_d = vela_sub_range(vl_d, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8816);
     }
 }
 
@@ -9297,7 +9397,7 @@ static int64_t vl_dbg_cmd(int64_t* vl_mem, double* vl_fmem, int64_t* vl_nd, vela
             (void)((vela_warn_str(vela_str_lit("cleared ", 8))));
             (void)((vela_warn_int(vl_dbg_bp_get(vl_mem, vl_i))));
             (void)((vela_warn_nl()));
-            vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8714);
+            vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8862);
         }
         vl_vm->f_dbg_nbp = 0LL;
         return 1LL;
@@ -9352,7 +9452,7 @@ static void vl_dbg_pause(int64_t* vl_mem, double* vl_fmem, int64_t* vl_nd, vela_
     vl_vm->f_dbg_arm = 0LL;
     vl_vm->f_dbg_line = vl_vm->f_line;
     vl_vm->f_dbg_depth = vl_vm->f_vdepth;
-    vl_vm->f_dbg_fn = vela_neg_int(1LL, "selfhost/vm.vel", 8775);
+    vl_vm->f_dbg_fn = vela_neg_int(1LL, "selfhost/vm.vel", 8923);
     if ((vl_vm->f_vdepth > 0LL)) {
         vl_vm->f_dbg_fn = vl_dbg_tr_eval(vl_mem, vl_vm->f_vdepth);
     }
@@ -9384,16 +9484,16 @@ static int64_t vl_dbg_lines(int64_t* vl_mem, double* vl_fmem, int64_t* vl_nd, ve
     int64_t vl_pos = 0LL;
     int64_t vl_i = 0LL;
     while ((vl_i < (((int64_t)vl_text.len)))) {
-        if (((vela_bytes_at(vl_text, vl_i, "selfhost/vm.vel", 8810)) == 10LL)) {
+        if (((vela_bytes_at(vl_text, vl_i, "selfhost/vm.vel", 8958)) == 10LL)) {
             vela_str vl_ln = vl_dbg_rstrip((vela_substr(vl_text, vl_pos, vl_i)));
             if (((((int64_t)vl_ln.len)) > 0LL)) {
                 if ((vl_dbg_cmd(vl_mem, vl_fmem, vl_nd, vl_path, vl_vm, vl_ln) == 0LL)) {
                     return 0LL;
                 }
             }
-            vl_pos = vela_add_range((vl_i), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8817);
+            vl_pos = vela_add_range((vl_i), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8965);
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8819);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8967);
     }
     vela_str vl_ln2 = vl_dbg_rstrip((vela_substr(vl_text, vl_pos, (((int64_t)vl_text.len)))));
     if (((((int64_t)vl_ln2.len)) > 0LL)) {
@@ -9407,13 +9507,13 @@ static int64_t vl_dbg_lines(int64_t* vl_mem, double* vl_fmem, int64_t* vl_nd, ve
 static vela_str vl_dbg_rstrip(vela_str vl_s) {
     int64_t vl_e = (((int64_t)vl_s.len));
     while ((vl_e > 0LL)) {
-        int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_e), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8834), "selfhost/vm.vel", 8834));
+        int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_e), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8982), "selfhost/vm.vel", 8982));
         if ((vl_c == 32LL)) {
-            vl_e = vela_sub_range(vl_e, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8836);
+            vl_e = vela_sub_range(vl_e, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8984);
         } else if ((vl_c == 9LL)) {
-            vl_e = vela_sub_range(vl_e, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8838);
+            vl_e = vela_sub_range(vl_e, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8986);
         } else if ((vl_c == 13LL)) {
-            vl_e = vela_sub_range(vl_e, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8840);
+            vl_e = vela_sub_range(vl_e, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8988);
         } else {
             return (vela_substr(vl_s, 0LL, vl_e));
         }
@@ -9428,7 +9528,7 @@ static void vl_dbg_session(struct vl_VM* vl_vm, vela_str vl_dir) {
     vl_vm->f_dbg_cur = 0LL;
     vl_vm->f_dbg_step = 0LL;
     vl_vm->f_dbg_arm = 1LL;
-    vl_vm->f_dbg_fn = vela_neg_int(1LL, "selfhost/vm.vel", 8857);
+    vl_vm->f_dbg_fn = vela_neg_int(1LL, "selfhost/vm.vel", 9005);
     vl_vm->f_dbg_line = 0LL;
     vl_vm->f_dbg_depth = 0LL;
     vl_vm->f_vdepth = 0LL;
@@ -9452,15 +9552,15 @@ static int64_t vl_find_main(int64_t* vl_mem, struct vl_VM* vl_vm, int64_t* vl_nd
     int64_t vl_f = 0LL;
     while ((vl_f < vl_vm->f_nfn)) {
         int64_t vl_d = vl_ft_get(vl_mem, vl_f, vl_FT_DEF());
-        int64_t vl_ix_31959;
-        if (((vela_bounds_check((vl_ix_31959 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8897)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8897)), 655360, "selfhost/vm.vel", 8897), vl_nd[vl_ix_31959]) == vl_m)) {
+        int64_t vl_ix_32298;
+        if (((vela_bounds_check((vl_ix_32298 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9045)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9045)), 655360, "selfhost/vm.vel", 9045), vl_nd[vl_ix_32298]) == vl_m)) {
             if ((vl_ft_get(vl_mem, vl_f, vl_FT_OWNER()) < 0LL)) {
                 return vl_f;
             }
         }
-        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 8902);
+        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9050);
     }
-    return vela_neg_int(1LL, "selfhost/vm.vel", 8904);
+    return vela_neg_int(1LL, "selfhost/vm.vel", 9052);
 }
 
 static void vl_run_main(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double* vl_fmem, double* vl_flt, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_src, vela_str vl_path, vela_str vl_dir, struct vl_VM* vl_vm) {
@@ -9476,7 +9576,7 @@ static void vl_run_main(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double*
         (void)(vl_dbg_start(vl_mem, vl_fmem, vl_nd, vl_path, vl_vm));
     }
     int64_t vl_dst = vl_cell_alloc(vl_vm);
-    (void)(vl_call_user(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_fn, vela_neg_int(1LL, "selfhost/vm.vel", 8931), vl_dst));
+    (void)(vl_call_user(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_fn, vela_neg_int(1LL, "selfhost/vm.vel", 9079), vl_dst));
     if ((vl_vm->f_after_main >= 0LL)) {
         if ((vl_vm->f_dbg_on == 1LL)) {
             (void)(vl_dbg_call_name(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_vm->f_after_main));
@@ -9486,37 +9586,37 @@ static void vl_run_main(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double*
 
 static void vl_dbg_call_name(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, double* vl_fmem, double* vl_flt, int64_t* vl_ipool, double* vl_fpool, uint8_t* vl_bpool, vela_str vl_src, vela_str vl_path, struct vl_VM* vl_vm, int64_t vl_fn) {
     int64_t vl_dst = vl_cell_alloc(vl_vm);
-    (void)(vl_call_user(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_fn, vela_neg_int(1LL, "selfhost/vm.vel", 8956), vl_dst));
+    (void)(vl_call_user(vl_nd, vl_ty, vl_mem, vl_fmem, vl_flt, vl_ipool, vl_fpool, vl_bpool, vl_src, vl_path, vl_vm, vl_fn, vela_neg_int(1LL, "selfhost/vm.vel", 9104), vl_dst));
 }
 
 static void vl_emit_indent(int64_t vl_n) {
     int64_t vl_i = 0LL;
     while ((vl_i < vl_n)) {
         (void)((vela_emit_str(vela_str_lit("    ", 4))));
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9006);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9154);
     }
 }
 
 static void vl_emit_cname(int64_t vl_h) {
     (void)((vela_emit_str(vela_str_lit("vl_", 3))));
-    (void)((vela_emit_str((vela_interned(vl_h, "selfhost/vm.vel", 9012)))));
+    (void)((vela_emit_str((vela_interned(vl_h, "selfhost/vm.vel", 9160)))));
 }
 
 static void vl_emit_fn_name(int64_t* vl_nd, int64_t* vl_mem, int64_t vl_f) {
     int64_t vl_d = vl_ft_get(vl_mem, vl_f, vl_FT_DEF());
     int64_t vl_owner = vl_ft_get(vl_mem, vl_f, vl_FT_OWNER());
     if ((vl_ft_get(vl_mem, vl_f, vl_FT_BODY()) < 0LL)) {
-        int64_t vl_ix_32201;
-        (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_32201 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9027)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9027)), 655360, "selfhost/vm.vel", 9027), vl_nd[vl_ix_32201]), "selfhost/vm.vel", 9027)))));
+        int64_t vl_ix_32540;
+        (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_32540 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9175)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9175)), 655360, "selfhost/vm.vel", 9175), vl_nd[vl_ix_32540]), "selfhost/vm.vel", 9175)))));
         return;
     }
     (void)((vela_emit_str(vela_str_lit("vl_", 3))));
     if ((vl_owner >= 0LL)) {
-        (void)((vela_emit_str((vela_interned(vl_stb_get(vl_mem, vl_owner, vl_STB_NAME()), "selfhost/vm.vel", 9032)))));
+        (void)((vela_emit_str((vela_interned(vl_stb_get(vl_mem, vl_owner, vl_STB_NAME()), "selfhost/vm.vel", 9180)))));
         (void)((vela_emit_str(vela_str_lit("__", 2))));
     }
-    int64_t vl_ix_32238;
-    (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_32238 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9035)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9035)), 655360, "selfhost/vm.vel", 9035), vl_nd[vl_ix_32238]), "selfhost/vm.vel", 9035)))));
+    int64_t vl_ix_32577;
+    (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_32577 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9183)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9183)), 655360, "selfhost/vm.vel", 9183), vl_nd[vl_ix_32577]), "selfhost/vm.vel", 9183)))));
 }
 
 static void vl_emit_fn_ret_ctype(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, struct vl_VM vl_vm, vela_str vl_path, int64_t vl_f) {
@@ -9533,20 +9633,20 @@ static void vl_emit_struct_defs(int64_t* vl_mem, struct vl_VM vl_vm) {
     int64_t vl_s = 0LL;
     while ((vl_s < vl_vm.f_nstruct)) {
         (void)((vela_emit_str(vela_str_lit("struct vl_", 10))));
-        (void)((vela_emit_str((vela_interned(vl_stb_get(vl_mem, vl_s, vl_STB_NAME()), "selfhost/vm.vel", 9057)))));
+        (void)((vela_emit_str((vela_interned(vl_stb_get(vl_mem, vl_s, vl_STB_NAME()), "selfhost/vm.vel", 9205)))));
         (void)((vela_emit_str(vela_str_lit(" {", 2))));
         int64_t vl_n = vl_stb_get(vl_mem, vl_s, vl_STB_NFIELD());
         int64_t vl_off = vl_stb_get(vl_mem, vl_s, vl_STB_FOFF());
         int64_t vl_i = 0LL;
         while ((vl_i < vl_n)) {
-            (void)(vl_emit_packed_ctype(vl_mem, vl_vm, vela_str_lit("<struct field>", 14), 0LL, vl_sfl_get(vl_mem, vela_add_range((vela_add_range((vl_off), (vela_mul_range((vl_i), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9064)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9064)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9064))));
+            (void)(vl_emit_packed_ctype(vl_mem, vl_vm, vela_str_lit("<struct field>", 14), 0LL, vl_sfl_get(vl_mem, vela_add_range((vela_add_range((vl_off), (vela_mul_range((vl_i), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9212)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9212)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9212))));
             (void)((vela_emit_str(vela_str_lit(" ", 1))));
-            (void)(vl_emit_field_name(vl_mem, vl_sfl_get(vl_mem, vela_add_range((vl_off), (vela_mul_range((vl_i), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9066)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9066))));
+            (void)(vl_emit_field_name(vl_mem, vl_sfl_get(vl_mem, vela_add_range((vl_off), (vela_mul_range((vl_i), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9214)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9214))));
             (void)((vela_emit_str(vela_str_lit("; ", 2))));
-            vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9068);
+            vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9216);
         }
         (void)((vela_emit_str(vela_str_lit("};\n\n", 4))));
-        vl_s = vela_add_range(vl_s, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9071);
+        vl_s = vela_add_range(vl_s, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9219);
     }
 }
 
@@ -9554,7 +9654,7 @@ static void vl_emit_c_quoted(vela_str vl_s) {
     (void)((vela_emit_str(vela_str_lit("\"", 1))));
     int64_t vl_i = 0LL;
     while ((vl_i < (((int64_t)vl_s.len)))) {
-        int64_t vl_b = (vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 9082));
+        int64_t vl_b = (vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 9230));
         if ((vl_b == 34LL)) {
             (void)((vela_emit_str(vela_str_lit("\\\"", 2))));
         } else if ((vl_b == 92LL)) {
@@ -9567,18 +9667,18 @@ static void vl_emit_c_quoted(vela_str vl_s) {
             (void)((vela_emit_str(vela_str_lit("\\r", 2))));
         } else if ((vl_b < 32LL)) {
             (void)((vela_emit_str(vela_str_lit("\\", 1))));
-            (void)((vela_emit_int((vela_shr_int((vl_b), (6LL), "selfhost/vm.vel", 9095) & 7LL))));
-            (void)((vela_emit_int((vela_shr_int((vl_b), (3LL), "selfhost/vm.vel", 9096) & 7LL))));
+            (void)((vela_emit_int((vela_shr_int((vl_b), (6LL), "selfhost/vm.vel", 9243) & 7LL))));
+            (void)((vela_emit_int((vela_shr_int((vl_b), (3LL), "selfhost/vm.vel", 9244) & 7LL))));
             (void)((vela_emit_int((vl_b & 7LL))));
         } else if ((vl_b > 126LL)) {
             (void)((vela_emit_str(vela_str_lit("\\", 1))));
-            (void)((vela_emit_int((vela_shr_int((vl_b), (6LL), "selfhost/vm.vel", 9100) & 7LL))));
-            (void)((vela_emit_int((vela_shr_int((vl_b), (3LL), "selfhost/vm.vel", 9101) & 7LL))));
+            (void)((vela_emit_int((vela_shr_int((vl_b), (6LL), "selfhost/vm.vel", 9248) & 7LL))));
+            (void)((vela_emit_int((vela_shr_int((vl_b), (3LL), "selfhost/vm.vel", 9249) & 7LL))));
             (void)((vela_emit_int((vl_b & 7LL))));
         } else {
-            (void)((vela_emit_str((vela_substr(vl_s, vl_i, vela_add_range((vl_i), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9104))))));
+            (void)((vela_emit_str((vela_substr(vl_s, vl_i, vela_add_range((vl_i), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9252))))));
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9106);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9254);
     }
     (void)((vela_emit_str(vela_str_lit("\"", 1))));
 }
@@ -9596,12 +9696,12 @@ static void vl_emit_location(vela_str vl_path, int64_t vl_line) {
 
 static void vl_emit_struct_name(int64_t* vl_mem, int64_t vl_sid) {
     (void)((vela_emit_str(vela_str_lit("struct vl_", 10))));
-    (void)((vela_emit_str((vela_interned(vl_stb_get(vl_mem, vl_sid, vl_STB_NAME()), "selfhost/vm.vel", 9129)))));
+    (void)((vela_emit_str((vela_interned(vl_stb_get(vl_mem, vl_sid, vl_STB_NAME()), "selfhost/vm.vel", 9277)))));
 }
 
 static void vl_emit_field_name(int64_t* vl_mem, int64_t vl_h) {
     (void)((vela_emit_str(vela_str_lit("f_", 2))));
-    (void)((vela_emit_str((vela_interned(vl_h, "selfhost/vm.vel", 9134)))));
+    (void)((vela_emit_str((vela_interned(vl_h, "selfhost/vm.vel", 9282)))));
 }
 
 static void vl_emit_ctype(int64_t vl_kind, vela_str vl_path, int64_t vl_line) {
@@ -9686,24 +9786,24 @@ static bool vl_is_ptr_ctype(int64_t vl_kind) {
 }
 
 static void vl_emit_param_decl(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, struct vl_VM vl_vm, vela_str vl_path, int64_t vl_p) {
-    int64_t vl_ix_32827;
-    (void)(vl_emit_ty_ctype(vl_ty, (vela_bounds_check((vl_ix_32827 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9227)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9227)), 655360, "selfhost/vm.vel", 9227), vl_nd[vl_ix_32827]), vl_mem, vl_vm, vl_path, vl_nd_line(vl_nd, vl_p)));
+    int64_t vl_ix_33166;
+    (void)(vl_emit_ty_ctype(vl_ty, (vela_bounds_check((vl_ix_33166 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9375)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9375)), 655360, "selfhost/vm.vel", 9375), vl_nd[vl_ix_33166]), vl_mem, vl_vm, vl_path, vl_nd_line(vl_nd, vl_p)));
     (void)((vela_emit_str(vela_str_lit(" ", 1))));
-    int64_t vl_ix_32848;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_32848 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9229)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9229)), 655360, "selfhost/vm.vel", 9229), vl_nd[vl_ix_32848])));
+    int64_t vl_ix_33187;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_33187 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9377)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9377)), 655360, "selfhost/vm.vel", 9377), vl_nd[vl_ix_33187])));
 }
 
 static void vl_emit_decl_head(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, struct vl_VM vl_vm, vela_str vl_path, int64_t vl_d) {
     (void)(vl_emit_binding_ctype(vl_nd, vl_ty, vl_mem, vl_vm, vl_path, vl_nt_get(vl_mem, vl_d, vl_NT_LIT()), vl_nd_line(vl_nd, vl_d)));
     (void)((vela_emit_str(vela_str_lit(" ", 1))));
-    int64_t vl_ix_32886;
-    int64_t vl_tgt = (vela_bounds_check((vl_ix_32886 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9238)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9238)), 655360, "selfhost/vm.vel", 9238), vl_nd[vl_ix_32886]);
-    int64_t vl_ix_32896;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_32896 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9239)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9239)), 655360, "selfhost/vm.vel", 9239), vl_nd[vl_ix_32896])));
+    int64_t vl_ix_33225;
+    int64_t vl_tgt = (vela_bounds_check((vl_ix_33225 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9386)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9386)), 655360, "selfhost/vm.vel", 9386), vl_nd[vl_ix_33225]);
+    int64_t vl_ix_33235;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_33235 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9387)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9387)), 655360, "selfhost/vm.vel", 9387), vl_nd[vl_ix_33235])));
 }
 
 static void vl_emit_int_lit(int64_t vl_v) {
-    if ((vl_v == vela_sub_range((vela_neg_int(9223372036854775807LL, "selfhost/vm.vel", 9245)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9245))) {
+    if ((vl_v == vela_sub_range((vela_neg_int(9223372036854775807LL, "selfhost/vm.vel", 9393)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9393))) {
         (void)((vela_emit_str(vela_str_lit("(-9223372036854775807LL - 1)", 28))));
         return;
     }
@@ -9712,11 +9812,11 @@ static void vl_emit_int_lit(int64_t vl_v) {
 }
 
 static int64_t vl_emit_binop_operands(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_32944;
-    int64_t vl_lt = vl_emit_paren_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_32944 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9258)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9258)), 655360, "selfhost/vm.vel", 9258), vl_nd[vl_ix_32944]));
+    int64_t vl_ix_33283;
+    int64_t vl_lt = vl_emit_paren_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33283 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9406)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9406)), 655360, "selfhost/vm.vel", 9406), vl_nd[vl_ix_33283]));
     (void)((vela_emit_str(vela_str_lit(", ", 2))));
-    int64_t vl_ix_32966;
-    (void)(vl_emit_paren_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_32966 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9260)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9260)), 655360, "selfhost/vm.vel", 9260), vl_nd[vl_ix_32966])));
+    int64_t vl_ix_33305;
+    (void)(vl_emit_paren_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33305 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9408)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9408)), 655360, "selfhost/vm.vel", 9408), vl_nd[vl_ix_33305])));
     return vl_lt;
 }
 
@@ -9728,11 +9828,11 @@ static int64_t vl_emit_paren_expr(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt
 }
 
 static int64_t vl_emit_binop(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_33017;
-    int64_t vl_op = (vela_bounds_check((vl_ix_33017 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9276)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9276)), 655360, "selfhost/vm.vel", 9276), vl_nd[vl_ix_33017]);
+    int64_t vl_ix_33356;
+    int64_t vl_op = (vela_bounds_check((vl_ix_33356 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9424)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9424)), 655360, "selfhost/vm.vel", 9424), vl_nd[vl_ix_33356]);
     int64_t vl_line = vl_nd_line(vl_nd, vl_e);
-    int64_t vl_ix_33037;
-    int64_t vl_lk = vl_expr_kind(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_33037 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9279)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9279)), 655360, "selfhost/vm.vel", 9279), vl_nd[vl_ix_33037]));
+    int64_t vl_ix_33376;
+    int64_t vl_lk = vl_expr_kind(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_33376 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9427)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9427)), 655360, "selfhost/vm.vel", 9427), vl_nd[vl_ix_33376]));
     if ((vl_lk == vl_K_INT())) {
         if ((vl_op == 1LL)) {
             (void)((vela_emit_str(vela_str_lit("vela_add_range(", 15))));
@@ -9795,13 +9895,13 @@ static int64_t vl_emit_binop(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vel
         }
     }
     (void)((vela_emit_str(vela_str_lit("(", 1))));
-    int64_t vl_ix_33324;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33324 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9344)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9344)), 655360, "selfhost/vm.vel", 9344), vl_nd[vl_ix_33324])));
+    int64_t vl_ix_33663;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33663 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9492)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9492)), 655360, "selfhost/vm.vel", 9492), vl_nd[vl_ix_33663])));
     (void)((vela_emit_str(vela_str_lit(" ", 1))));
     (void)(vl_emit_op_text(vl_op));
     (void)((vela_emit_str(vela_str_lit(" ", 1))));
-    int64_t vl_ix_33353;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33353 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9348)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9348)), 655360, "selfhost/vm.vel", 9348), vl_nd[vl_ix_33353])));
+    int64_t vl_ix_33692;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33692 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9496)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9496)), 655360, "selfhost/vm.vel", 9496), vl_nd[vl_ix_33692])));
     (void)((vela_emit_str(vela_str_lit(")", 1))));
     return vl_lk;
 }
@@ -9879,10 +9979,10 @@ static void vl_emit_op_text(int64_t vl_op) {
 }
 
 static int64_t vl_emit_cmp(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_33536;
-    int64_t vl_op = (vela_bounds_check((vl_ix_33536 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9428)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9428)), 655360, "selfhost/vm.vel", 9428), vl_nd[vl_ix_33536]);
-    int64_t vl_ix_33550;
-    int64_t vl_lk = vl_expr_kind(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_33550 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9429)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9429)), 655360, "selfhost/vm.vel", 9429), vl_nd[vl_ix_33550]));
+    int64_t vl_ix_33875;
+    int64_t vl_op = (vela_bounds_check((vl_ix_33875 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9576)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9576)), 655360, "selfhost/vm.vel", 9576), vl_nd[vl_ix_33875]);
+    int64_t vl_ix_33889;
+    int64_t vl_lk = vl_expr_kind(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_33889 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9577)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9577)), 655360, "selfhost/vm.vel", 9577), vl_nd[vl_ix_33889]));
     if ((vl_lk == vl_K_STR())) {
         if ((vl_op == 23LL)) {
             (void)((vela_emit_str(vela_str_lit("(!", 2))));
@@ -9890,48 +9990,48 @@ static int64_t vl_emit_cmp(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_
             (void)((vela_emit_str(vela_str_lit("(", 1))));
         }
         (void)((vela_emit_str(vela_str_lit("vela_str_eq(", 12))));
-        int64_t vl_ix_33588;
-        (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33588 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9438)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9438)), 655360, "selfhost/vm.vel", 9438), vl_nd[vl_ix_33588])));
+        int64_t vl_ix_33927;
+        (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33927 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9586)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9586)), 655360, "selfhost/vm.vel", 9586), vl_nd[vl_ix_33927])));
         (void)((vela_emit_str(vela_str_lit(", ", 2))));
-        int64_t vl_ix_33609;
-        (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33609 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9440)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9440)), 655360, "selfhost/vm.vel", 9440), vl_nd[vl_ix_33609])));
+        int64_t vl_ix_33948;
+        (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33948 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9588)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9588)), 655360, "selfhost/vm.vel", 9588), vl_nd[vl_ix_33948])));
         (void)((vela_emit_str(vela_str_lit("))", 2))));
         return vl_K_BOOL();
     }
     (void)((vela_emit_str(vela_str_lit("(", 1))));
-    int64_t vl_ix_33638;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33638 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9445)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9445)), 655360, "selfhost/vm.vel", 9445), vl_nd[vl_ix_33638])));
+    int64_t vl_ix_33977;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33977 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9593)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9593)), 655360, "selfhost/vm.vel", 9593), vl_nd[vl_ix_33977])));
     (void)((vela_emit_str(vela_str_lit(" ", 1))));
     (void)(vl_emit_op_text(vl_op));
     (void)((vela_emit_str(vela_str_lit(" ", 1))));
-    int64_t vl_ix_33667;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33667 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9449)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9449)), 655360, "selfhost/vm.vel", 9449), vl_nd[vl_ix_33667])));
+    int64_t vl_ix_34006;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_34006 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9597)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9597)), 655360, "selfhost/vm.vel", 9597), vl_nd[vl_ix_34006])));
     (void)((vela_emit_str(vela_str_lit(")", 1))));
     return vl_K_BOOL();
 }
 
 static int64_t vl_emit_boolop(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_33692;
-    int64_t vl_op = (vela_bounds_check((vl_ix_33692 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9457)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9457)), 655360, "selfhost/vm.vel", 9457), vl_nd[vl_ix_33692]);
+    int64_t vl_ix_34031;
+    int64_t vl_op = (vela_bounds_check((vl_ix_34031 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9605)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9605)), 655360, "selfhost/vm.vel", 9605), vl_nd[vl_ix_34031]);
     (void)((vela_emit_str(vela_str_lit("(", 1))));
-    int64_t vl_ix_33713;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33713 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9459)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9459)), 655360, "selfhost/vm.vel", 9459), vl_nd[vl_ix_33713])));
+    int64_t vl_ix_34052;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_34052 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9607)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9607)), 655360, "selfhost/vm.vel", 9607), vl_nd[vl_ix_34052])));
     if ((vl_op == 13LL)) {
         (void)((vela_emit_str(vela_str_lit(" && ", 4))));
     } else {
         (void)((vela_emit_str(vela_str_lit(" || ", 4))));
     }
-    int64_t vl_ix_33742;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_33742 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9465)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9465)), 655360, "selfhost/vm.vel", 9465), vl_nd[vl_ix_33742])));
+    int64_t vl_ix_34081;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_34081 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9613)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9613)), 655360, "selfhost/vm.vel", 9613), vl_nd[vl_ix_34081])));
     (void)((vela_emit_str(vela_str_lit(")", 1))));
     return vl_K_BOOL();
 }
 
 static int64_t vl_emit_unary(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_33767;
-    int64_t vl_op = (vela_bounds_check((vl_ix_33767 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9473)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9473)), 655360, "selfhost/vm.vel", 9473), vl_nd[vl_ix_33767]);
-    int64_t vl_ix_33776;
-    int64_t vl_operand = (vela_bounds_check((vl_ix_33776 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9474)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9474)), 655360, "selfhost/vm.vel", 9474), vl_nd[vl_ix_33776]);
+    int64_t vl_ix_34106;
+    int64_t vl_op = (vela_bounds_check((vl_ix_34106 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9621)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9621)), 655360, "selfhost/vm.vel", 9621), vl_nd[vl_ix_34106]);
+    int64_t vl_ix_34115;
+    int64_t vl_operand = (vela_bounds_check((vl_ix_34115 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9622)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9622)), 655360, "selfhost/vm.vel", 9622), vl_nd[vl_ix_34115]);
     int64_t vl_k = vl_expr_kind(vl_nd, vl_ty, vl_mem, (*vl_vm), vl_operand);
     if ((vl_op == 2LL)) {
         if ((vl_k == vl_K_INT())) {
@@ -9971,8 +10071,8 @@ static int64_t vl_emit_unary(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vel
 static int64_t vl_emit_name(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, struct vl_VM vl_vm, int64_t vl_e) {
     int64_t vl_sk = vl_nt_get(vl_mem, vl_e, vl_NT_SYM());
     if ((vl_sk == vl_SYM_LOCAL())) {
-        int64_t vl_ix_33961;
-        (void)(vl_emit_cname((vela_bounds_check((vl_ix_33961 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9515)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9515)), 655360, "selfhost/vm.vel", 9515), vl_nd[vl_ix_33961])));
+        int64_t vl_ix_34300;
+        (void)(vl_emit_cname((vela_bounds_check((vl_ix_34300 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9663)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9663)), 655360, "selfhost/vm.vel", 9663), vl_nd[vl_ix_34300])));
         return vl_local_kind(vl_mem, vl_e);
     }
     if ((vl_sk == vl_SYM_FUNC())) {
@@ -9995,8 +10095,8 @@ static int64_t vl_local_kind(int64_t* vl_mem, int64_t vl_e) {
 static void vl_emit_field_base(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_base) {
     if ((vl_nd_kind(vl_nd, vl_base) == 25LL)) {
         int64_t vl_packed = vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), vl_base);
-        int64_t vl_ix_34065;
-        (void)(vl_emit_cname((vela_bounds_check((vl_ix_34065 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9546)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9546)), 655360, "selfhost/vm.vel", 9546), vl_nd[vl_ix_34065])));
+        int64_t vl_ix_34404;
+        (void)(vl_emit_cname((vela_bounds_check((vl_ix_34404 = vela_add_range((vela_mul_range((vl_base), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9694)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9694)), 655360, "selfhost/vm.vel", 9694), vl_nd[vl_ix_34404])));
         if (vl_is_ptr_binding(vl_packed)) {
             (void)((vela_emit_str(vela_str_lit("->", 2))));
         } else {
@@ -10009,37 +10109,37 @@ static void vl_emit_field_base(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, v
 }
 
 static int64_t vl_emit_field(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_34112;
-    int64_t vl_base = (vela_bounds_check((vl_ix_34112 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9561)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9561)), 655360, "selfhost/vm.vel", 9561), vl_nd[vl_ix_34112]);
+    int64_t vl_ix_34451;
+    int64_t vl_base = (vela_bounds_check((vl_ix_34451 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9709)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9709)), 655360, "selfhost/vm.vel", 9709), vl_nd[vl_ix_34451]);
     (void)(vl_emit_field_base(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_base));
-    int64_t vl_ix_34134;
-    (void)(vl_emit_field_name(vl_mem, (vela_bounds_check((vl_ix_34134 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9563)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9563)), 655360, "selfhost/vm.vel", 9563), vl_nd[vl_ix_34134])));
+    int64_t vl_ix_34473;
+    (void)(vl_emit_field_name(vl_mem, (vela_bounds_check((vl_ix_34473 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9711)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9711)), 655360, "selfhost/vm.vel", 9711), vl_nd[vl_ix_34473])));
     int64_t vl_sid = vl_unpack_len(vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), vl_base));
-    int64_t vl_ix_34157;
-    int64_t vl_idx = vl_find_field(vl_mem, vl_sid, (vela_bounds_check((vl_ix_34157 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9567)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9567)), 655360, "selfhost/vm.vel", 9567), vl_nd[vl_ix_34157]));
+    int64_t vl_ix_34496;
+    int64_t vl_idx = vl_find_field(vl_mem, vl_sid, (vela_bounds_check((vl_ix_34496 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9715)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9715)), 655360, "selfhost/vm.vel", 9715), vl_nd[vl_ix_34496]));
     if ((vl_idx < 0LL)) {
         (void)(vl_trap(vl_path, vl_nd_line(vl_nd, vl_e), vela_str_lit("this struct has no field of that name", 37)));
     }
-    return vl_sfl_get(vl_mem, vela_add_range((vela_add_range((vl_stb_get(vl_mem, vl_sid, vl_STB_FOFF())), (vela_mul_range((vl_idx), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9571)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9571)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9571));
+    return vl_sfl_get(vl_mem, vela_add_range((vela_add_range((vl_stb_get(vl_mem, vl_sid, vl_STB_FOFF())), (vela_mul_range((vl_idx), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9719)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9719)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9719));
 }
 
 static int64_t vl_field_kind(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, struct vl_VM vl_vm, int64_t vl_e) {
-    int64_t vl_ix_34202;
-    int64_t vl_base = (vela_bounds_check((vl_ix_34202 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9578)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9578)), 655360, "selfhost/vm.vel", 9578), vl_nd[vl_ix_34202]);
+    int64_t vl_ix_34541;
+    int64_t vl_base = (vela_bounds_check((vl_ix_34541 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9726)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9726)), 655360, "selfhost/vm.vel", 9726), vl_nd[vl_ix_34541]);
     int64_t vl_packed = vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, vl_base);
     int64_t vl_sid = vl_unpack_len(vl_packed);
-    int64_t vl_ix_34228;
-    int64_t vl_idx = vl_find_field(vl_mem, vl_sid, (vela_bounds_check((vl_ix_34228 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9581)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9581)), 655360, "selfhost/vm.vel", 9581), vl_nd[vl_ix_34228]));
+    int64_t vl_ix_34567;
+    int64_t vl_idx = vl_find_field(vl_mem, vl_sid, (vela_bounds_check((vl_ix_34567 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9729)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9729)), 655360, "selfhost/vm.vel", 9729), vl_nd[vl_ix_34567]));
     if ((vl_idx < 0LL)) {
         return vl_K_NONE();
     }
     int64_t vl_off = vl_stb_get(vl_mem, vl_sid, vl_STB_FOFF());
-    return vl_unpack_kind(vl_sfl_get(vl_mem, vela_add_range((vela_add_range((vl_off), (vela_mul_range((vl_idx), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9586)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9586)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9586)));
+    return vl_unpack_kind(vl_sfl_get(vl_mem, vela_add_range((vela_add_range((vl_off), (vela_mul_range((vl_idx), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9734)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9734)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9734)));
 }
 
 static int64_t vl_emit_call(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_34275;
-    int64_t vl_callee = (vela_bounds_check((vl_ix_34275 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9592)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9592)), 655360, "selfhost/vm.vel", 9592), vl_nd[vl_ix_34275]);
+    int64_t vl_ix_34614;
+    int64_t vl_callee = (vela_bounds_check((vl_ix_34614 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9740)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9740)), 655360, "selfhost/vm.vel", 9740), vl_nd[vl_ix_34614]);
     if ((vl_nd_kind(vl_nd, vl_callee) == 32LL)) {
         return vl_emit_method_call(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_e);
     }
@@ -10048,8 +10148,8 @@ static int64_t vl_emit_call(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela
     if ((vl_sk == vl_SYM_FUNC())) {
         (void)(vl_emit_fn_name(vl_nd, vl_mem, vl_sv));
         (void)((vela_emit_str(vela_str_lit("(", 1))));
-        int64_t vl_ix_34340;
-        (void)(vl_emit_args_vs_params(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_34340 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9601)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9601)), 655360, "selfhost/vm.vel", 9601), vl_nd[vl_ix_34340]), vl_ft_get(vl_mem, vl_sv, vl_FT_PARAM())));
+        int64_t vl_ix_34679;
+        (void)(vl_emit_args_vs_params(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_34679 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9749)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9749)), 655360, "selfhost/vm.vel", 9749), vl_nd[vl_ix_34679]), vl_ft_get(vl_mem, vl_sv, vl_FT_PARAM())));
         (void)((vela_emit_str(vela_str_lit(")", 1))));
         return vl_ft_ret_kind(vl_nd, vl_ty, vl_mem, (*vl_vm), vl_sv);
     }
@@ -10061,10 +10161,10 @@ static int64_t vl_emit_call(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela
     }
     if ((vl_sk == vl_SYM_STRUCT())) {
         (void)((vela_emit_str(vela_str_lit("(struct vl_", 11))));
-        (void)((vela_emit_str((vela_interned(vl_stb_get(vl_mem, vl_sv, vl_STB_NAME()), "selfhost/vm.vel", 9616)))));
+        (void)((vela_emit_str((vela_interned(vl_stb_get(vl_mem, vl_sv, vl_STB_NAME()), "selfhost/vm.vel", 9764)))));
         (void)((vela_emit_str(vela_str_lit("){ ", 3))));
-        int64_t vl_ix_34428;
-        (void)(vl_emit_args(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_34428 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9618)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9618)), 655360, "selfhost/vm.vel", 9618), vl_nd[vl_ix_34428])));
+        int64_t vl_ix_34767;
+        (void)(vl_emit_args(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_34767 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9766)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9766)), 655360, "selfhost/vm.vel", 9766), vl_nd[vl_ix_34767])));
         (void)((vela_emit_str(vela_str_lit(" }", 2))));
         return vl_pack_kind(vl_K_ST(), vl_sv);
     }
@@ -10073,12 +10173,12 @@ static int64_t vl_emit_call(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela
 }
 
 static int64_t vl_emit_method_call(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_34469;
-    int64_t vl_callee = (vela_bounds_check((vl_ix_34469 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9632)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9632)), 655360, "selfhost/vm.vel", 9632), vl_nd[vl_ix_34469]);
-    int64_t vl_ix_34478;
-    int64_t vl_recv = (vela_bounds_check((vl_ix_34478 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9633)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9633)), 655360, "selfhost/vm.vel", 9633), vl_nd[vl_ix_34478]);
-    int64_t vl_ix_34487;
-    int64_t vl_name = (vela_bounds_check((vl_ix_34487 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9634)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9634)), 655360, "selfhost/vm.vel", 9634), vl_nd[vl_ix_34487]);
+    int64_t vl_ix_34808;
+    int64_t vl_callee = (vela_bounds_check((vl_ix_34808 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9780)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9780)), 655360, "selfhost/vm.vel", 9780), vl_nd[vl_ix_34808]);
+    int64_t vl_ix_34817;
+    int64_t vl_recv = (vela_bounds_check((vl_ix_34817 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9781)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9781)), 655360, "selfhost/vm.vel", 9781), vl_nd[vl_ix_34817]);
+    int64_t vl_ix_34826;
+    int64_t vl_name = (vela_bounds_check((vl_ix_34826 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9782)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9782)), 655360, "selfhost/vm.vel", 9782), vl_nd[vl_ix_34826]);
     int64_t vl_rp = vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), vl_recv);
     int64_t vl_sid = vl_unpack_len(vl_rp);
     int64_t vl_mi = vl_find_method(vl_mem, vl_sid, vl_name);
@@ -10089,11 +10189,11 @@ static int64_t vl_emit_method_call(int64_t* vl_nd, int64_t* vl_ty, double* vl_fl
     (void)(vl_emit_fn_name(vl_nd, vl_mem, vl_fn));
     (void)((vela_emit_str(vela_str_lit("(", 1))));
     (void)(vl_emit_arg_for_param(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_recv, vl_param_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), vl_ft_get(vl_mem, vl_fn, vl_FT_PARAM()))));
-    int64_t vl_ix_34571;
-    if (((vela_bounds_check((vl_ix_34571 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9649)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9649)), 655360, "selfhost/vm.vel", 9649), vl_nd[vl_ix_34571]) > 0LL)) {
+    int64_t vl_ix_34910;
+    if (((vela_bounds_check((vl_ix_34910 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9797)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9797)), 655360, "selfhost/vm.vel", 9797), vl_nd[vl_ix_34910]) > 0LL)) {
         (void)((vela_emit_str(vela_str_lit(", ", 2))));
-        int64_t vl_ix_34592;
-        (void)(vl_emit_args_vs_params(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_34592 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9651)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9651)), 655360, "selfhost/vm.vel", 9651), vl_nd[vl_ix_34592]), vl_nd_nx(vl_nd, vl_ft_get(vl_mem, vl_fn, vl_FT_PARAM()))));
+        int64_t vl_ix_34931;
+        (void)(vl_emit_args_vs_params(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_34931 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9799)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9799)), 655360, "selfhost/vm.vel", 9799), vl_nd[vl_ix_34931]), vl_nd_nx(vl_nd, vl_ft_get(vl_mem, vl_fn, vl_FT_PARAM()))));
     }
     (void)((vela_emit_str(vela_str_lit(")", 1))));
     return vl_ft_ret_kind(vl_nd, vl_ty, vl_mem, (*vl_vm), vl_fn);
@@ -10192,25 +10292,25 @@ static void vl_emit_arg_for_param(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt
         bool vl_arg_is_ptr = vl_is_ptr_binding(vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), vl_arg));
         if (vl_wants_ptr) {
             if (vl_arg_is_ptr) {
-                int64_t vl_ix_34900;
-                (void)(vl_emit_cname((vela_bounds_check((vl_ix_34900 = vela_add_range((vela_mul_range((vl_arg), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9710)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9710)), 655360, "selfhost/vm.vel", 9710), vl_nd[vl_ix_34900])));
+                int64_t vl_ix_35239;
+                (void)(vl_emit_cname((vela_bounds_check((vl_ix_35239 = vela_add_range((vela_mul_range((vl_arg), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9858)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9858)), 655360, "selfhost/vm.vel", 9858), vl_nd[vl_ix_35239])));
                 return;
             }
             (void)((vela_emit_str(vela_str_lit("(&", 2))));
-            int64_t vl_ix_34916;
-            (void)(vl_emit_cname((vela_bounds_check((vl_ix_34916 = vela_add_range((vela_mul_range((vl_arg), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9714)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9714)), 655360, "selfhost/vm.vel", 9714), vl_nd[vl_ix_34916])));
+            int64_t vl_ix_35255;
+            (void)(vl_emit_cname((vela_bounds_check((vl_ix_35255 = vela_add_range((vela_mul_range((vl_arg), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9862)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9862)), 655360, "selfhost/vm.vel", 9862), vl_nd[vl_ix_35255])));
             (void)((vela_emit_str(vela_str_lit(")", 1))));
             return;
         }
         if (vl_arg_is_ptr) {
             (void)((vela_emit_str(vela_str_lit("(*", 2))));
-            int64_t vl_ix_34937;
-            (void)(vl_emit_cname((vela_bounds_check((vl_ix_34937 = vela_add_range((vela_mul_range((vl_arg), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9720)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9720)), 655360, "selfhost/vm.vel", 9720), vl_nd[vl_ix_34937])));
+            int64_t vl_ix_35276;
+            (void)(vl_emit_cname((vela_bounds_check((vl_ix_35276 = vela_add_range((vela_mul_range((vl_arg), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9868)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9868)), 655360, "selfhost/vm.vel", 9868), vl_nd[vl_ix_35276])));
             (void)((vela_emit_str(vela_str_lit(")", 1))));
             return;
         }
-        int64_t vl_ix_34953;
-        (void)(vl_emit_cname((vela_bounds_check((vl_ix_34953 = vela_add_range((vela_mul_range((vl_arg), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9724)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9724)), 655360, "selfhost/vm.vel", 9724), vl_nd[vl_ix_34953])));
+        int64_t vl_ix_35292;
+        (void)(vl_emit_cname((vela_bounds_check((vl_ix_35292 = vela_add_range((vela_mul_range((vl_arg), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9872)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9872)), 655360, "selfhost/vm.vel", 9872), vl_nd[vl_ix_35292])));
         return;
     }
     if (vl_wants_ptr) {
@@ -10234,7 +10334,7 @@ static void vl_emit_args_vs_params(int64_t* vl_nd, int64_t* vl_ty, double* vl_fl
         }
         (void)(vl_emit_arg_for_param(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_a, vl_pp));
         vl_a = vl_nd_nx(vl_nd, vl_a);
-        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9752);
+        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9900);
     }
 }
 
@@ -10247,34 +10347,34 @@ static void vl_emit_args(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_st
         }
         (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_a));
         vl_a = vl_nd_nx(vl_nd, vl_a);
-        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9767);
+        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9915);
     }
 }
 
 static void vl_emit_one_arg(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_35124;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_35124 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9774)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9774)), 655360, "selfhost/vm.vel", 9774), vl_nd[vl_ix_35124])));
+    int64_t vl_ix_35463;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_35463 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9922)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9922)), 655360, "selfhost/vm.vel", 9922), vl_nd[vl_ix_35463])));
 }
 
 static void vl_emit_two_args(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
-    int64_t vl_ix_35150;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_35150 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9780)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9780)), 655360, "selfhost/vm.vel", 9780), vl_nd[vl_ix_35150])));
+    int64_t vl_ix_35489;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_35489 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9928)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9928)), 655360, "selfhost/vm.vel", 9928), vl_nd[vl_ix_35489])));
     (void)((vela_emit_str(vela_str_lit(", ", 2))));
-    int64_t vl_ix_35173;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_nd_nx(vl_nd, (vela_bounds_check((vl_ix_35173 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9782)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9782)), 655360, "selfhost/vm.vel", 9782), vl_nd[vl_ix_35173]))));
+    int64_t vl_ix_35512;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_nd_nx(vl_nd, (vela_bounds_check((vl_ix_35512 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9930)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9930)), 655360, "selfhost/vm.vel", 9930), vl_nd[vl_ix_35512]))));
 }
 
 static void vl_emit_three_args(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
     (void)(vl_emit_two_args(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_e));
     (void)((vela_emit_str(vela_str_lit(", ", 2))));
-    int64_t vl_ix_35207;
-    int64_t vl_a1 = (vela_bounds_check((vl_ix_35207 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9790)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9790)), 655360, "selfhost/vm.vel", 9790), vl_nd[vl_ix_35207]);
+    int64_t vl_ix_35546;
+    int64_t vl_a1 = (vela_bounds_check((vl_ix_35546 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9938)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9938)), 655360, "selfhost/vm.vel", 9938), vl_nd[vl_ix_35546]);
     (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_nd_nx(vl_nd, vl_nd_nx(vl_nd, vl_a1))));
 }
 
 static void vl_emit_choice(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e, vela_str vl_rel) {
-    int64_t vl_ix_35243;
-    int64_t vl_a1 = (vela_bounds_check((vl_ix_35243 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9803)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9803)), 655360, "selfhost/vm.vel", 9803), vl_nd[vl_ix_35243]);
+    int64_t vl_ix_35582;
+    int64_t vl_a1 = (vela_bounds_check((vl_ix_35582 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9951)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9951)), 655360, "selfhost/vm.vel", 9951), vl_nd[vl_ix_35582]);
     int64_t vl_a2 = vl_nd_nx(vl_nd, vl_a1);
     (void)((vela_emit_str(vela_str_lit("(", 1))));
     (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_a1));
@@ -10292,8 +10392,8 @@ static void vl_emit_choice(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_
 static void vl_emit_builtin(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_b, int64_t vl_e) {
     int64_t vl_line = vl_nd_line(vl_nd, vl_e);
     if ((vl_b == vl_B_LEN())) {
-        int64_t vl_ix_35355;
-        int64_t vl_argpacked = vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_35355 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9825)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9825)), 655360, "selfhost/vm.vel", 9825), vl_nd[vl_ix_35355]));
+        int64_t vl_ix_35694;
+        int64_t vl_argpacked = vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_35694 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9973)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 9973)), 655360, "selfhost/vm.vel", 9973), vl_nd[vl_ix_35694]));
         if (vl_is_array(vl_unpack_kind(vl_argpacked))) {
             (void)((vela_emit_int(vl_unpack_len(vl_argpacked))));
             (void)((vela_emit_str(vela_str_lit("LL", 2))));
@@ -10488,8 +10588,8 @@ static void vl_emit_builtin(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela
 }
 
 static void vl_emit_print(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e, int64_t vl_indent) {
-    int64_t vl_ix_36151;
-    int64_t vl_a = (vela_bounds_check((vl_ix_36151 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10025)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10025)), 655360, "selfhost/vm.vel", 10025), vl_nd[vl_ix_36151]);
+    int64_t vl_ix_36490;
+    int64_t vl_a = (vela_bounds_check((vl_ix_36490 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10173)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10173)), 655360, "selfhost/vm.vel", 10173), vl_nd[vl_ix_36490]);
     int64_t vl_n = 0LL;
     while ((vl_a > 0LL)) {
         if ((vl_n > 0LL)) {
@@ -10515,7 +10615,7 @@ static void vl_emit_print(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_s
             (void)((vela_emit_str(vela_str_lit(");\n", 3))));
         }
         vl_a = vl_nd_nx(vl_nd, vl_a);
-        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10051);
+        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10199);
         if ((vl_a > 0LL)) {
             (void)(vl_emit_indent(vl_indent));
         }
@@ -10525,12 +10625,12 @@ static void vl_emit_print(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_s
 }
 
 static void vl_emit_assign(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_s, int64_t vl_indent) {
-    int64_t vl_ix_36314;
-    int64_t vl_tgt = (vela_bounds_check((vl_ix_36314 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10064)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10064)), 655360, "selfhost/vm.vel", 10064), vl_nd[vl_ix_36314]);
-    int64_t vl_ix_36323;
-    int64_t vl_v = (vela_bounds_check((vl_ix_36323 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10065)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10065)), 655360, "selfhost/vm.vel", 10065), vl_nd[vl_ix_36323]);
-    int64_t vl_ix_36332;
-    if ((((vela_bounds_check((vl_ix_36332 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10066)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10066)), 655360, "selfhost/vm.vel", 10066), vl_nd[vl_ix_36332]) & 2LL) == 2LL)) {
+    int64_t vl_ix_36653;
+    int64_t vl_tgt = (vela_bounds_check((vl_ix_36653 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10212)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10212)), 655360, "selfhost/vm.vel", 10212), vl_nd[vl_ix_36653]);
+    int64_t vl_ix_36662;
+    int64_t vl_v = (vela_bounds_check((vl_ix_36662 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10213)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10213)), 655360, "selfhost/vm.vel", 10213), vl_nd[vl_ix_36662]);
+    int64_t vl_ix_36671;
+    if ((((vela_bounds_check((vl_ix_36671 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10214)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10214)), 655360, "selfhost/vm.vel", 10214), vl_nd[vl_ix_36671]) & 2LL) == 2LL)) {
         (void)(vl_emit_decl_head(vl_nd, vl_ty, vl_mem, (*vl_vm), vl_path, vl_s));
         if ((vl_v <= 0LL)) {
             (void)(vl_trap(vl_path, vl_nd_line(vl_nd, vl_s), vela_str_lit("this declaration needs an initialiser", 37)));
@@ -10557,10 +10657,10 @@ static void vl_emit_lvalue(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_
         return;
     }
     if ((vl_nd_kind(vl_nd, vl_tgt) == 32LL)) {
-        int64_t vl_ix_36484;
-        (void)(vl_emit_field_base(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_36484 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10102)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10102)), 655360, "selfhost/vm.vel", 10102), vl_nd[vl_ix_36484])));
-        int64_t vl_ix_36495;
-        (void)(vl_emit_field_name(vl_mem, (vela_bounds_check((vl_ix_36495 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10103)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10103)), 655360, "selfhost/vm.vel", 10103), vl_nd[vl_ix_36495])));
+        int64_t vl_ix_36823;
+        (void)(vl_emit_field_base(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_36823 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10250)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10250)), 655360, "selfhost/vm.vel", 10250), vl_nd[vl_ix_36823])));
+        int64_t vl_ix_36834;
+        (void)(vl_emit_field_name(vl_mem, (vela_bounds_check((vl_ix_36834 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10251)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10251)), 655360, "selfhost/vm.vel", 10251), vl_nd[vl_ix_36834])));
         return;
     }
     (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_tgt));
@@ -10570,22 +10670,22 @@ static void vl_emit_index_check(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, 
     (void)((vela_emit_str(vela_str_lit("vela_bounds_check((", 19))));
     (void)(vl_emit_index_temp(vl_tgt));
     (void)((vela_emit_str(vela_str_lit(" = ", 3))));
-    int64_t vl_ix_36546;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_36546 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10120)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10120)), 655360, "selfhost/vm.vel", 10120), vl_nd[vl_ix_36546])));
+    int64_t vl_ix_36885;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_36885 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10268)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10268)), 655360, "selfhost/vm.vel", 10268), vl_nd[vl_ix_36885])));
     (void)((vela_emit_str(vela_str_lit("), ", 3))));
-    int64_t vl_ix_36566;
-    (void)((vela_emit_int(vl_unpack_len(vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_36566 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10122)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10122)), 655360, "selfhost/vm.vel", 10122), vl_nd[vl_ix_36566]))))));
+    int64_t vl_ix_36905;
+    (void)((vela_emit_int(vl_unpack_len(vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_36905 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10270)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10270)), 655360, "selfhost/vm.vel", 10270), vl_nd[vl_ix_36905]))))));
     (void)(vl_emit_location(vl_path, vl_nd_line(vl_nd, vl_tgt)));
     (void)((vela_emit_str(vela_str_lit(")", 1))));
 }
 
 static void vl_emit_augassign(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_s, int64_t vl_indent) {
-    int64_t vl_ix_36599;
-    int64_t vl_tgt = (vela_bounds_check((vl_ix_36599 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10131)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10131)), 655360, "selfhost/vm.vel", 10131), vl_nd[vl_ix_36599]);
-    int64_t vl_ix_36608;
-    int64_t vl_v = (vela_bounds_check((vl_ix_36608 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10132)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10132)), 655360, "selfhost/vm.vel", 10132), vl_nd[vl_ix_36608]);
-    int64_t vl_ix_36617;
-    int64_t vl_op = (vela_bounds_check((vl_ix_36617 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10133)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10133)), 655360, "selfhost/vm.vel", 10133), vl_nd[vl_ix_36617]);
+    int64_t vl_ix_36938;
+    int64_t vl_tgt = (vela_bounds_check((vl_ix_36938 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10279)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10279)), 655360, "selfhost/vm.vel", 10279), vl_nd[vl_ix_36938]);
+    int64_t vl_ix_36947;
+    int64_t vl_v = (vela_bounds_check((vl_ix_36947 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10280)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10280)), 655360, "selfhost/vm.vel", 10280), vl_nd[vl_ix_36947]);
+    int64_t vl_ix_36956;
+    int64_t vl_op = (vela_bounds_check((vl_ix_36956 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10281)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10281)), 655360, "selfhost/vm.vel", 10281), vl_nd[vl_ix_36956]);
     int64_t vl_line = vl_nd_line(vl_nd, vl_s);
     if ((vl_nd_kind(vl_nd, vl_tgt) == 31LL)) {
         (void)(vl_emit_index_check(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_tgt));
@@ -10643,15 +10743,15 @@ static void vl_emit_augassign(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, ve
 
 static void vl_emit_if(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_s, int64_t vl_indent) {
     (void)((vela_emit_str(vela_str_lit("if (", 4))));
-    int64_t vl_ix_36887;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_36887 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10197)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10197)), 655360, "selfhost/vm.vel", 10197), vl_nd[vl_ix_36887])));
+    int64_t vl_ix_37226;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37226 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10345)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10345)), 655360, "selfhost/vm.vel", 10345), vl_nd[vl_ix_37226])));
     (void)((vela_emit_str(vela_str_lit(") {\n", 4))));
-    int64_t vl_ix_36908;
-    (void)(vl_emit_body(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_36908 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10199)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10199)), 655360, "selfhost/vm.vel", 10199), vl_nd[vl_ix_36908]), vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10199)));
+    int64_t vl_ix_37247;
+    (void)(vl_emit_body(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37247 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10347)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10347)), 655360, "selfhost/vm.vel", 10347), vl_nd[vl_ix_37247]), vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10347)));
     (void)(vl_emit_indent(vl_indent));
     (void)((vela_emit_str(vela_str_lit("}", 1))));
-    int64_t vl_ix_36928;
-    int64_t vl_e = (vela_bounds_check((vl_ix_36928 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10202)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10202)), 655360, "selfhost/vm.vel", 10202), vl_nd[vl_ix_36928]);
+    int64_t vl_ix_37267;
+    int64_t vl_e = (vela_bounds_check((vl_ix_37267 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10350)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10350)), 655360, "selfhost/vm.vel", 10350), vl_nd[vl_ix_37267]);
     if ((vl_e > 0LL)) {
         if ((vl_nd_kind(vl_nd, vl_e) == 10LL)) {
             (void)((vela_emit_str(vela_str_lit(" else ", 6))));
@@ -10659,7 +10759,7 @@ static void vl_emit_if(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str 
             return;
         }
         (void)((vela_emit_str(vela_str_lit(" else {\n", 8))));
-        (void)(vl_emit_body(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_e, vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10212)));
+        (void)(vl_emit_body(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_e, vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10360)));
         (void)(vl_emit_indent(vl_indent));
         (void)((vela_emit_str(vela_str_lit("}", 1))));
     }
@@ -10668,18 +10768,18 @@ static void vl_emit_if(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str 
 
 static void vl_emit_while(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_s, int64_t vl_indent) {
     (void)((vela_emit_str(vela_str_lit("while (", 7))));
-    int64_t vl_ix_37017;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37017 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10224)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10224)), 655360, "selfhost/vm.vel", 10224), vl_nd[vl_ix_37017])));
+    int64_t vl_ix_37356;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37356 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10372)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10372)), 655360, "selfhost/vm.vel", 10372), vl_nd[vl_ix_37356])));
     (void)((vela_emit_str(vela_str_lit(") {\n", 4))));
-    int64_t vl_ix_37038;
-    (void)(vl_emit_body(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37038 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10226)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10226)), 655360, "selfhost/vm.vel", 10226), vl_nd[vl_ix_37038]), vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10226)));
+    int64_t vl_ix_37377;
+    (void)(vl_emit_body(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37377 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10374)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10374)), 655360, "selfhost/vm.vel", 10374), vl_nd[vl_ix_37377]), vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10374)));
     (void)(vl_emit_indent(vl_indent));
     (void)((vela_emit_str(vela_str_lit("}\n", 2))));
 }
 
 static bool vl_par_step_is_one(int64_t* vl_nd, int64_t vl_s) {
-    int64_t vl_ix_37062;
-    return ((vela_bounds_check((vl_ix_37062 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10244)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10244)), 655360, "selfhost/vm.vel", 10244), vl_nd[vl_ix_37062]) <= 0LL);
+    int64_t vl_ix_37401;
+    return ((vela_bounds_check((vl_ix_37401 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10392)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10392)), 655360, "selfhost/vm.vel", 10392), vl_nd[vl_ix_37401]) <= 0LL);
 }
 
 static bool vl_par_chain_ok(int64_t* vl_nd, int64_t vl_head) {
@@ -10696,12 +10796,12 @@ static bool vl_par_chain_ok(int64_t* vl_nd, int64_t vl_head) {
             return false;
         }
         if ((vl_k == 10LL)) {
-            int64_t vl_ix_37109;
-            if ((!vl_par_chain_ok(vl_nd, (vela_bounds_check((vl_ix_37109 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10271)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10271)), 655360, "selfhost/vm.vel", 10271), vl_nd[vl_ix_37109])))) {
+            int64_t vl_ix_37448;
+            if ((!vl_par_chain_ok(vl_nd, (vela_bounds_check((vl_ix_37448 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10419)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10419)), 655360, "selfhost/vm.vel", 10419), vl_nd[vl_ix_37448])))) {
                 return false;
             }
-            int64_t vl_ix_37121;
-            int64_t vl_e = (vela_bounds_check((vl_ix_37121 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10274)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10274)), 655360, "selfhost/vm.vel", 10274), vl_nd[vl_ix_37121]);
+            int64_t vl_ix_37460;
+            int64_t vl_e = (vela_bounds_check((vl_ix_37460 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10422)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10422)), 655360, "selfhost/vm.vel", 10422), vl_nd[vl_ix_37460]);
             if ((vl_e > 0LL)) {
                 if ((!vl_par_chain_ok(vl_nd, vl_e))) {
                     return false;
@@ -10715,116 +10815,166 @@ static bool vl_par_chain_ok(int64_t* vl_nd, int64_t vl_head) {
 
 static void vl_emit_for_omp(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_s, int64_t vl_indent) {
     (void)((vela_emit_str(vela_str_lit("{\n", 2))));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10314)));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10462)));
     (void)((vela_emit_str(vela_str_lit("int64_t vl_start_", 17))));
     (void)((vela_emit_int(vl_s)));
     (void)((vela_emit_str(vela_str_lit(" = ", 3))));
-    int64_t vl_ix_37192;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37192 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10318)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10318)), 655360, "selfhost/vm.vel", 10318), vl_nd[vl_ix_37192])));
+    int64_t vl_ix_37531;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37531 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10466)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10466)), 655360, "selfhost/vm.vel", 10466), vl_nd[vl_ix_37531])));
     (void)((vela_emit_str(vela_str_lit(";\n", 2))));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10320)));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10468)));
     (void)((vela_emit_str(vela_str_lit("int64_t vl_stop_", 16))));
     (void)((vela_emit_int(vl_s)));
     (void)((vela_emit_str(vela_str_lit(" = ", 3))));
-    int64_t vl_ix_37231;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37231 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10324)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10324)), 655360, "selfhost/vm.vel", 10324), vl_nd[vl_ix_37231])));
+    int64_t vl_ix_37570;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37570 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10472)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10472)), 655360, "selfhost/vm.vel", 10472), vl_nd[vl_ix_37570])));
     (void)((vela_emit_str(vela_str_lit(";\n", 2))));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10326)));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10474)));
     (void)((vela_emit_str(vela_str_lit("int64_t ", 8))));
-    int64_t vl_ix_37255;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37255 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10328)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10328)), 655360, "selfhost/vm.vel", 10328), vl_nd[vl_ix_37255])));
+    int64_t vl_ix_37594;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37594 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10476)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10476)), 655360, "selfhost/vm.vel", 10476), vl_nd[vl_ix_37594])));
     (void)((vela_emit_str(vela_str_lit(";\n", 2))));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10330)));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10478)));
     (void)((vela_emit_str(vela_str_lit("#pragma omp parallel for\n", 25))));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10332)));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10480)));
     (void)((vela_emit_str(vela_str_lit("for (", 5))));
-    int64_t vl_ix_37289;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37289 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10334)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10334)), 655360, "selfhost/vm.vel", 10334), vl_nd[vl_ix_37289])));
+    int64_t vl_ix_37628;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37628 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10482)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10482)), 655360, "selfhost/vm.vel", 10482), vl_nd[vl_ix_37628])));
     (void)((vela_emit_str(vela_str_lit(" = vl_start_", 12))));
     (void)((vela_emit_int(vl_s)));
     (void)((vela_emit_str(vela_str_lit("; ", 2))));
-    int64_t vl_ix_37311;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37311 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10338)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10338)), 655360, "selfhost/vm.vel", 10338), vl_nd[vl_ix_37311])));
+    int64_t vl_ix_37650;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37650 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10486)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10486)), 655360, "selfhost/vm.vel", 10486), vl_nd[vl_ix_37650])));
     (void)((vela_emit_str(vela_str_lit(" < vl_stop_", 11))));
     (void)((vela_emit_int(vl_s)));
     (void)((vela_emit_str(vela_str_lit("; ", 2))));
-    int64_t vl_ix_37333;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37333 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10342)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10342)), 655360, "selfhost/vm.vel", 10342), vl_nd[vl_ix_37333])));
+    int64_t vl_ix_37672;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37672 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10490)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10490)), 655360, "selfhost/vm.vel", 10490), vl_nd[vl_ix_37672])));
     (void)((vela_emit_str(vela_str_lit(" += 1) {\n", 9))));
-    int64_t vl_ix_37354;
-    (void)(vl_emit_body(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37354 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10344)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10344)), 655360, "selfhost/vm.vel", 10344), vl_nd[vl_ix_37354]), vela_add_range((vl_indent), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10344)));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10345)));
+    int64_t vl_ix_37693;
+    (void)(vl_emit_body(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37693 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10492)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10492)), 655360, "selfhost/vm.vel", 10492), vl_nd[vl_ix_37693]), vela_add_range((vl_indent), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10492)));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10493)));
     (void)((vela_emit_str(vela_str_lit("}\n", 2))));
     (void)(vl_emit_indent(vl_indent));
     (void)((vela_emit_str(vela_str_lit("}\n", 2))));
 }
 
+static bool vl_for_body_continues(int64_t* vl_nd, int64_t vl_head) {
+    int64_t vl_s = vl_head;
+    while ((vl_s > 0LL)) {
+        int64_t vl_k = vl_nd_kind(vl_nd, vl_s);
+        if ((vl_k == 14LL)) {
+            return true;
+        }
+        if ((vl_k == 10LL)) {
+            int64_t vl_ix_37749;
+            if (vl_for_body_continues(vl_nd, (vela_bounds_check((vl_ix_37749 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10527)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10527)), 655360, "selfhost/vm.vel", 10527), vl_nd[vl_ix_37749]))) {
+                return true;
+            }
+            int64_t vl_ix_37760;
+            int64_t vl_e = (vela_bounds_check((vl_ix_37760 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10530)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10530)), 655360, "selfhost/vm.vel", 10530), vl_nd[vl_ix_37760]);
+            if ((vl_e > 0LL)) {
+                if (vl_for_body_continues(vl_nd, vl_e)) {
+                    return true;
+                }
+            }
+        }
+        vl_s = vl_nd_nx(vl_nd, vl_s);
+    }
+    return false;
+}
+
+static void vl_emit_for_cond(int64_t* vl_nd, int64_t vl_s) {
+    (void)((vela_emit_str(vela_str_lit("vl_step_", 8))));
+    (void)((vela_emit_int(vl_s)));
+    (void)((vela_emit_str(vela_str_lit(" > 0 ? ", 7))));
+    int64_t vl_ix_37806;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37806 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10549)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10549)), 655360, "selfhost/vm.vel", 10549), vl_nd[vl_ix_37806])));
+    (void)((vela_emit_str(vela_str_lit(" < vl_stop_", 11))));
+    (void)((vela_emit_int(vl_s)));
+    (void)((vela_emit_str(vela_str_lit(" : ", 3))));
+    int64_t vl_ix_37828;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37828 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10553)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10553)), 655360, "selfhost/vm.vel", 10553), vl_nd[vl_ix_37828])));
+    (void)((vela_emit_str(vela_str_lit(" > vl_stop_", 11))));
+    (void)((vela_emit_int(vl_s)));
+}
+
+static void vl_emit_for_incr(int64_t* vl_nd, vela_str vl_path, int64_t vl_s, int64_t vl_line) {
+    int64_t vl_ix_37851;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37851 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10559)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10559)), 655360, "selfhost/vm.vel", 10559), vl_nd[vl_ix_37851])));
+    (void)((vela_emit_str(vela_str_lit(" = vela_add_range(", 18))));
+    int64_t vl_ix_37865;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37865 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10561)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10561)), 655360, "selfhost/vm.vel", 10561), vl_nd[vl_ix_37865])));
+    (void)((vela_emit_str(vela_str_lit(", vl_step_", 10))));
+    (void)((vela_emit_int(vl_s)));
+    (void)((vela_emit_str(vela_str_lit(", INT64_MIN, INT64_MAX", 22))));
+    (void)(vl_emit_location(vl_path, vl_line));
+    (void)((vela_emit_str(vela_str_lit(")", 1))));
+}
+
 static void vl_emit_for(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_s, int64_t vl_indent) {
     int64_t vl_line = vl_nd_line(vl_nd, vl_s);
     (void)((vela_emit_str(vela_str_lit("{\n", 2))));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10356)));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10574)));
     (void)((vela_emit_str(vela_str_lit("int64_t ", 8))));
-    int64_t vl_ix_37415;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37415 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10358)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10358)), 655360, "selfhost/vm.vel", 10358), vl_nd[vl_ix_37415])));
+    int64_t vl_ix_37926;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37926 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10576)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10576)), 655360, "selfhost/vm.vel", 10576), vl_nd[vl_ix_37926])));
     (void)((vela_emit_str(vela_str_lit(" = ", 3))));
-    int64_t vl_ix_37436;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37436 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10360)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10360)), 655360, "selfhost/vm.vel", 10360), vl_nd[vl_ix_37436])));
+    int64_t vl_ix_37947;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37947 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10578)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10578)), 655360, "selfhost/vm.vel", 10578), vl_nd[vl_ix_37947])));
     (void)((vela_emit_str(vela_str_lit(";\n", 2))));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10362)));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10580)));
     (void)((vela_emit_str(vela_str_lit("int64_t vl_stop_", 16))));
     (void)((vela_emit_int(vl_s)));
     (void)((vela_emit_str(vela_str_lit(" = ", 3))));
-    int64_t vl_ix_37475;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37475 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10366)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10366)), 655360, "selfhost/vm.vel", 10366), vl_nd[vl_ix_37475])));
+    int64_t vl_ix_37986;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37986 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10584)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10584)), 655360, "selfhost/vm.vel", 10584), vl_nd[vl_ix_37986])));
     (void)((vela_emit_str(vela_str_lit(";\n", 2))));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10368)));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10586)));
     (void)((vela_emit_str(vela_str_lit("int64_t vl_step_", 16))));
     (void)((vela_emit_int(vl_s)));
     (void)((vela_emit_str(vela_str_lit(" = ", 3))));
-    int64_t vl_ix_37506;
-    int64_t vl_stepnode = (vela_bounds_check((vl_ix_37506 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10372)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10372)), 655360, "selfhost/vm.vel", 10372), vl_nd[vl_ix_37506]);
+    int64_t vl_ix_38017;
+    int64_t vl_stepnode = (vela_bounds_check((vl_ix_38017 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10590)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10590)), 655360, "selfhost/vm.vel", 10590), vl_nd[vl_ix_38017]);
     if ((vl_stepnode > 0LL)) {
         (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_stepnode));
     } else {
         (void)((vela_emit_str(vela_str_lit("1LL", 3))));
     }
     (void)((vela_emit_str(vela_str_lit(";\n", 2))));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10379)));
-    (void)((vela_emit_str(vela_str_lit("while (vl_step_", 15))));
-    (void)((vela_emit_int(vl_s)));
-    (void)((vela_emit_str(vela_str_lit(" > 0 ? ", 7))));
-    int64_t vl_ix_37557;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37557 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10383)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10383)), 655360, "selfhost/vm.vel", 10383), vl_nd[vl_ix_37557])));
-    (void)((vela_emit_str(vela_str_lit(" < vl_stop_", 11))));
-    (void)((vela_emit_int(vl_s)));
-    (void)((vela_emit_str(vela_str_lit(" : ", 3))));
-    int64_t vl_ix_37579;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37579 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10387)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10387)), 655360, "selfhost/vm.vel", 10387), vl_nd[vl_ix_37579])));
-    (void)((vela_emit_str(vela_str_lit(" > vl_stop_", 11))));
-    (void)((vela_emit_int(vl_s)));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10597)));
+    int64_t vl_ix_38057;
+    if (vl_for_body_continues(vl_nd, (vela_bounds_check((vl_ix_38057 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10598)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10598)), 655360, "selfhost/vm.vel", 10598), vl_nd[vl_ix_38057]))) {
+        (void)((vela_emit_str(vela_str_lit("for (; ", 7))));
+        (void)(vl_emit_for_cond(vl_nd, vl_s));
+        (void)((vela_emit_str(vela_str_lit("; ", 2))));
+        (void)(vl_emit_for_incr(vl_nd, vl_path, vl_s, vl_line));
+        (void)((vela_emit_str(vela_str_lit(") {\n", 4))));
+        int64_t vl_ix_38097;
+        (void)(vl_emit_body(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_38097 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10621)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10621)), 655360, "selfhost/vm.vel", 10621), vl_nd[vl_ix_38097]), vela_add_range((vl_indent), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10621)));
+        (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10622)));
+        (void)((vela_emit_str(vela_str_lit("}\n", 2))));
+        (void)(vl_emit_indent(vl_indent));
+        (void)((vela_emit_str(vela_str_lit("}\n", 2))));
+        return;
+    }
+    (void)((vela_emit_str(vela_str_lit("while (", 7))));
+    (void)(vl_emit_for_cond(vl_nd, vl_s));
     (void)((vela_emit_str(vela_str_lit(") {\n", 4))));
-    int64_t vl_ix_37608;
-    (void)(vl_emit_body(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_37608 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10391)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10391)), 655360, "selfhost/vm.vel", 10391), vl_nd[vl_ix_37608]), vela_add_range((vl_indent), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10391)));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10392)));
-    int64_t vl_ix_37627;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37627 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10393)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10393)), 655360, "selfhost/vm.vel", 10393), vl_nd[vl_ix_37627])));
-    (void)((vela_emit_str(vela_str_lit(" = vela_add_range(", 18))));
-    int64_t vl_ix_37641;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37641 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10395)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10395)), 655360, "selfhost/vm.vel", 10395), vl_nd[vl_ix_37641])));
-    (void)((vela_emit_str(vela_str_lit(", vl_step_", 10))));
-    (void)((vela_emit_int(vl_s)));
-    (void)((vela_emit_str(vela_str_lit(", INT64_MIN, INT64_MAX", 22))));
-    (void)(vl_emit_location(vl_path, vl_line));
-    (void)((vela_emit_str(vela_str_lit(");\n", 3))));
-    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10401)));
+    int64_t vl_ix_38150;
+    (void)(vl_emit_body(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_38150 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10631)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10631)), 655360, "selfhost/vm.vel", 10631), vl_nd[vl_ix_38150]), vela_add_range((vl_indent), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10631)));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10632)));
+    (void)(vl_emit_for_incr(vl_nd, vl_path, vl_s, vl_line));
+    (void)((vela_emit_str(vela_str_lit(";\n", 2))));
+    (void)(vl_emit_indent(vela_add_range((vl_indent), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10635)));
     (void)((vela_emit_str(vela_str_lit("}\n", 2))));
     (void)(vl_emit_indent(vl_indent));
     (void)((vela_emit_str(vela_str_lit("}\n", 2))));
 }
 
 static void vl_emit_array_decl(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_s, int64_t vl_indent) {
-    int64_t vl_ix_37699;
-    int64_t vl_t = (vela_bounds_check((vl_ix_37699 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10414)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10414)), 655360, "selfhost/vm.vel", 10414), vl_nd[vl_ix_37699]);
+    int64_t vl_ix_38207;
+    int64_t vl_t = (vela_bounds_check((vl_ix_38207 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10648)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10648)), 655360, "selfhost/vm.vel", 10648), vl_nd[vl_ix_38207]);
     if ((vl_t < 0LL)) {
         (void)(vl_trap(vl_path, vl_nd_line(vl_nd, vl_s), vela_str_lit("this array declaration has no declared length", 45)));
     }
@@ -10835,10 +10985,10 @@ static void vl_emit_array_decl(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, v
     }
     (void)(vl_emit_ctype(vl_ek, vl_path, vl_nd_line(vl_nd, vl_s)));
     (void)((vela_emit_str(vela_str_lit("* ", 2))));
-    int64_t vl_ix_37764;
-    int64_t vl_tgt = (vela_bounds_check((vl_ix_37764 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10425)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10425)), 655360, "selfhost/vm.vel", 10425), vl_nd[vl_ix_37764]);
-    int64_t vl_ix_37774;
-    (void)(vl_emit_cname((vela_bounds_check((vl_ix_37774 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10426)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10426)), 655360, "selfhost/vm.vel", 10426), vl_nd[vl_ix_37774])));
+    int64_t vl_ix_38272;
+    int64_t vl_tgt = (vela_bounds_check((vl_ix_38272 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10659)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10659)), 655360, "selfhost/vm.vel", 10659), vl_nd[vl_ix_38272]);
+    int64_t vl_ix_38282;
+    (void)(vl_emit_cname((vela_bounds_check((vl_ix_38282 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10660)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10660)), 655360, "selfhost/vm.vel", 10660), vl_nd[vl_ix_38282])));
     (void)((vela_emit_str(vela_str_lit(" = (", 4))));
     (void)(vl_emit_ctype(vl_ek, vl_path, vl_nd_line(vl_nd, vl_s)));
     (void)((vela_emit_str(vela_str_lit("*)vela_arena_alloc((size_t)", 27))));
@@ -10846,8 +10996,8 @@ static void vl_emit_array_decl(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, v
     (void)((vela_emit_str(vela_str_lit(" * sizeof(", 10))));
     (void)(vl_emit_ctype(vl_ek, vl_path, vl_nd_line(vl_nd, vl_s)));
     (void)((vela_emit_str(vela_str_lit("));\n", 4))));
-    int64_t vl_ix_37821;
-    int64_t vl_v = (vela_bounds_check((vl_ix_37821 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10434)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10434)), 655360, "selfhost/vm.vel", 10434), vl_nd[vl_ix_37821]);
+    int64_t vl_ix_38329;
+    int64_t vl_v = (vela_bounds_check((vl_ix_38329 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10668)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10668)), 655360, "selfhost/vm.vel", 10668), vl_nd[vl_ix_38329]);
     if ((vl_v <= 0LL)) {
         return;
     }
@@ -10855,18 +11005,18 @@ static void vl_emit_array_decl(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, v
         (void)(vl_trap(vl_path, vl_nd_line(vl_nd, vl_s), vela_str_lit("an array declaration needs an array literal", 43)));
     }
     int64_t vl_i = 0LL;
-    int64_t vl_ix_37854;
-    int64_t vl_a = (vela_bounds_check((vl_ix_37854 = vela_add_range((vela_mul_range((vl_v), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10442)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10442)), 655360, "selfhost/vm.vel", 10442), vl_nd[vl_ix_37854]);
+    int64_t vl_ix_38362;
+    int64_t vl_a = (vela_bounds_check((vl_ix_38362 = vela_add_range((vela_mul_range((vl_v), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10676)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10676)), 655360, "selfhost/vm.vel", 10676), vl_nd[vl_ix_38362]);
     while ((vl_a > 0LL)) {
         (void)(vl_emit_indent(vl_indent));
-        int64_t vl_ix_37871;
-        (void)(vl_emit_cname((vela_bounds_check((vl_ix_37871 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10445)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10445)), 655360, "selfhost/vm.vel", 10445), vl_nd[vl_ix_37871])));
+        int64_t vl_ix_38379;
+        (void)(vl_emit_cname((vela_bounds_check((vl_ix_38379 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10679)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10679)), 655360, "selfhost/vm.vel", 10679), vl_nd[vl_ix_38379])));
         (void)((vela_emit_str(vela_str_lit("[", 1))));
         (void)((vela_emit_int(vl_i)));
         (void)((vela_emit_str(vela_str_lit("] = ", 4))));
         (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_a));
         (void)((vela_emit_str(vela_str_lit(";\n", 2))));
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10451);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10685);
         vl_a = vl_nd_nx(vl_nd, vl_a);
     }
 }
@@ -10876,8 +11026,8 @@ static void vl_emit_stmt(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_st
     (void)(vl_emit_index_decls(vl_nd, vl_s, vl_indent));
     (void)(vl_emit_indent(vl_indent));
     if ((vl_k == 6LL)) {
-        int64_t vl_ix_37946;
-        if ((((vela_bounds_check((vl_ix_37946 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10466)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10466)), 655360, "selfhost/vm.vel", 10466), vl_nd[vl_ix_37946]) & 2LL) == 2LL)) {
+        int64_t vl_ix_38454;
+        if ((((vela_bounds_check((vl_ix_38454 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10700)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10700)), 655360, "selfhost/vm.vel", 10700), vl_nd[vl_ix_38454]) & 2LL) == 2LL)) {
             int64_t vl_dk = vl_unpack_kind(vl_nt_get(vl_mem, vl_s, vl_NT_LIT()));
             if (vl_is_array(vl_dk)) {
                 (void)(vl_emit_array_decl(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_s, vl_indent));
@@ -10892,11 +11042,11 @@ static void vl_emit_stmt(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_st
         return;
     }
     if ((vl_k == 8LL)) {
-        int64_t vl_ix_38019;
-        int64_t vl_v = (vela_bounds_check((vl_ix_38019 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10481)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10481)), 655360, "selfhost/vm.vel", 10481), vl_nd[vl_ix_38019]);
+        int64_t vl_ix_38527;
+        int64_t vl_v = (vela_bounds_check((vl_ix_38527 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10715)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10715)), 655360, "selfhost/vm.vel", 10715), vl_nd[vl_ix_38527]);
         if ((vl_nd_kind(vl_nd, vl_v) == 26LL)) {
-            int64_t vl_ix_38034;
-            int64_t vl_callee = (vela_bounds_check((vl_ix_38034 = vela_add_range((vela_mul_range((vl_v), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10483)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10483)), 655360, "selfhost/vm.vel", 10483), vl_nd[vl_ix_38034]);
+            int64_t vl_ix_38542;
+            int64_t vl_callee = (vela_bounds_check((vl_ix_38542 = vela_add_range((vela_mul_range((vl_v), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10717)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10717)), 655360, "selfhost/vm.vel", 10717), vl_nd[vl_ix_38542]);
             if ((vl_nd_kind(vl_nd, vl_callee) == 25LL)) {
                 if ((vl_nt_get(vl_mem, vl_callee, vl_NT_SYM()) == vl_SYM_BUILTIN())) {
                     if ((vl_nt_get(vl_mem, vl_callee, vl_NT_VAL()) == vl_B_PRINT())) {
@@ -10912,8 +11062,8 @@ static void vl_emit_stmt(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_st
         return;
     }
     if ((vl_k == 9LL)) {
-        int64_t vl_ix_38108;
-        int64_t vl_v2 = (vela_bounds_check((vl_ix_38108 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10500)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10500)), 655360, "selfhost/vm.vel", 10500), vl_nd[vl_ix_38108]);
+        int64_t vl_ix_38616;
+        int64_t vl_v2 = (vela_bounds_check((vl_ix_38616 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10734)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10734)), 655360, "selfhost/vm.vel", 10734), vl_nd[vl_ix_38616]);
         if ((vl_v2 <= 0LL)) {
             (void)((vela_emit_str(vela_str_lit("return;\n", 8))));
             return;
@@ -10932,11 +11082,11 @@ static void vl_emit_stmt(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_st
         return;
     }
     if ((vl_k == 12LL)) {
-        int64_t vl_ix_38184;
-        if ((((vela_bounds_check((vl_ix_38184 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10519)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10519)), 655360, "selfhost/vm.vel", 10519), vl_nd[vl_ix_38184]) & 1LL) == 1LL)) {
+        int64_t vl_ix_38692;
+        if ((((vela_bounds_check((vl_ix_38692 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10753)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10753)), 655360, "selfhost/vm.vel", 10753), vl_nd[vl_ix_38692]) & 1LL) == 1LL)) {
             if (vl_par_step_is_one(vl_nd, vl_s)) {
-                int64_t vl_ix_38201;
-                if (vl_par_chain_ok(vl_nd, (vela_bounds_check((vl_ix_38201 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10535)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10535)), 655360, "selfhost/vm.vel", 10535), vl_nd[vl_ix_38201]))) {
+                int64_t vl_ix_38709;
+                if (vl_par_chain_ok(vl_nd, (vela_bounds_check((vl_ix_38709 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10769)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10769)), 655360, "selfhost/vm.vel", 10769), vl_nd[vl_ix_38709]))) {
                     (void)(vl_emit_for_omp(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_s, vl_indent));
                     return;
                 }
@@ -10976,36 +11126,36 @@ static void vl_emit_index_temp(int64_t vl_node) {
 static void vl_emit_index_decls(int64_t* vl_nd, int64_t vl_s, int64_t vl_indent) {
     int64_t vl_k = vl_nd_kind(vl_nd, vl_s);
     if ((vl_k == 6LL)) {
-        int64_t vl_ix_38335;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38335 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10634)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10634)), 655360, "selfhost/vm.vel", 10634), vl_nd[vl_ix_38335]), vl_indent));
-        int64_t vl_ix_38347;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38347 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10635)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10635)), 655360, "selfhost/vm.vel", 10635), vl_nd[vl_ix_38347]), vl_indent));
+        int64_t vl_ix_38843;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38843 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10868)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10868)), 655360, "selfhost/vm.vel", 10868), vl_nd[vl_ix_38843]), vl_indent));
+        int64_t vl_ix_38855;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38855 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10869)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10869)), 655360, "selfhost/vm.vel", 10869), vl_nd[vl_ix_38855]), vl_indent));
         return;
     }
     if ((vl_k == 7LL)) {
-        int64_t vl_ix_38364;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38364 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10639)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10639)), 655360, "selfhost/vm.vel", 10639), vl_nd[vl_ix_38364]), vl_indent));
-        int64_t vl_ix_38376;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38376 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10640)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10640)), 655360, "selfhost/vm.vel", 10640), vl_nd[vl_ix_38376]), vl_indent));
+        int64_t vl_ix_38872;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38872 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10873)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10873)), 655360, "selfhost/vm.vel", 10873), vl_nd[vl_ix_38872]), vl_indent));
+        int64_t vl_ix_38884;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38884 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10874)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10874)), 655360, "selfhost/vm.vel", 10874), vl_nd[vl_ix_38884]), vl_indent));
         return;
     }
     if ((vl_k == 8LL)) {
-        int64_t vl_ix_38393;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38393 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10644)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10644)), 655360, "selfhost/vm.vel", 10644), vl_nd[vl_ix_38393]), vl_indent));
+        int64_t vl_ix_38901;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38901 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10878)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10878)), 655360, "selfhost/vm.vel", 10878), vl_nd[vl_ix_38901]), vl_indent));
         return;
     }
     if ((vl_k == 9LL)) {
-        int64_t vl_ix_38410;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38410 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10648)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10648)), 655360, "selfhost/vm.vel", 10648), vl_nd[vl_ix_38410]), vl_indent));
+        int64_t vl_ix_38918;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38918 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10882)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10882)), 655360, "selfhost/vm.vel", 10882), vl_nd[vl_ix_38918]), vl_indent));
         return;
     }
     if ((vl_k == 10LL)) {
         int64_t vl_e = vl_s;
         while ((vl_e > 0LL)) {
-            int64_t vl_ix_38433;
-            (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38433 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10657)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10657)), 655360, "selfhost/vm.vel", 10657), vl_nd[vl_ix_38433]), vl_indent));
-            int64_t vl_ix_38444;
-            vl_e = (vela_bounds_check((vl_ix_38444 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10658)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10658)), 655360, "selfhost/vm.vel", 10658), vl_nd[vl_ix_38444]);
+            int64_t vl_ix_38941;
+            (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38941 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10891)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10891)), 655360, "selfhost/vm.vel", 10891), vl_nd[vl_ix_38941]), vl_indent));
+            int64_t vl_ix_38952;
+            vl_e = (vela_bounds_check((vl_ix_38952 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10892)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10892)), 655360, "selfhost/vm.vel", 10892), vl_nd[vl_ix_38952]);
             if ((vl_e > 0LL)) {
                 if ((vl_nd_kind(vl_nd, vl_e) != 10LL)) {
                     vl_e = 0LL;
@@ -11015,17 +11165,17 @@ static void vl_emit_index_decls(int64_t* vl_nd, int64_t vl_s, int64_t vl_indent)
         return;
     }
     if ((vl_k == 11LL)) {
-        int64_t vl_ix_38474;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38474 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10670)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10670)), 655360, "selfhost/vm.vel", 10670), vl_nd[vl_ix_38474]), vl_indent));
+        int64_t vl_ix_38982;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38982 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10904)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10904)), 655360, "selfhost/vm.vel", 10904), vl_nd[vl_ix_38982]), vl_indent));
         return;
     }
     if ((vl_k == 12LL)) {
-        int64_t vl_ix_38491;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38491 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10676)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10676)), 655360, "selfhost/vm.vel", 10676), vl_nd[vl_ix_38491]), vl_indent));
-        int64_t vl_ix_38503;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38503 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10677)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10677)), 655360, "selfhost/vm.vel", 10677), vl_nd[vl_ix_38503]), vl_indent));
-        int64_t vl_ix_38515;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38515 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10678)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10678)), 655360, "selfhost/vm.vel", 10678), vl_nd[vl_ix_38515]), vl_indent));
+        int64_t vl_ix_38999;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38999 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10910)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10910)), 655360, "selfhost/vm.vel", 10910), vl_nd[vl_ix_38999]), vl_indent));
+        int64_t vl_ix_39011;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39011 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10911)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10911)), 655360, "selfhost/vm.vel", 10911), vl_nd[vl_ix_39011]), vl_indent));
+        int64_t vl_ix_39023;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39023 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10912)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10912)), 655360, "selfhost/vm.vel", 10912), vl_nd[vl_ix_39023]), vl_indent));
         return;
     }
 }
@@ -11048,60 +11198,60 @@ static void vl_emit_index_decls_expr(int64_t* vl_nd, int64_t vl_e, int64_t vl_in
         (void)((vela_emit_str(vela_str_lit("int64_t ", 8))));
         (void)(vl_emit_index_temp(vl_e));
         (void)((vela_emit_str(vela_str_lit(";\n", 2))));
-        int64_t vl_ix_38586;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38586 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10703)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10703)), 655360, "selfhost/vm.vel", 10703), vl_nd[vl_ix_38586]), vl_indent));
-        int64_t vl_ix_38598;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38598 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10704)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10704)), 655360, "selfhost/vm.vel", 10704), vl_nd[vl_ix_38598]), vl_indent));
+        int64_t vl_ix_39094;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39094 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10937)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10937)), 655360, "selfhost/vm.vel", 10937), vl_nd[vl_ix_39094]), vl_indent));
+        int64_t vl_ix_39106;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39106 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10938)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10938)), 655360, "selfhost/vm.vel", 10938), vl_nd[vl_ix_39106]), vl_indent));
         return;
     }
     if ((vl_k == 26LL)) {
-        int64_t vl_ix_38615;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38615 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10712)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10712)), 655360, "selfhost/vm.vel", 10712), vl_nd[vl_ix_38615]), vl_indent));
-        int64_t vl_ix_38627;
-        (void)(vl_emit_index_decls_list(vl_nd, (vela_bounds_check((vl_ix_38627 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10713)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10713)), 655360, "selfhost/vm.vel", 10713), vl_nd[vl_ix_38627]), vl_indent));
+        int64_t vl_ix_39123;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39123 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10946)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10946)), 655360, "selfhost/vm.vel", 10946), vl_nd[vl_ix_39123]), vl_indent));
+        int64_t vl_ix_39135;
+        (void)(vl_emit_index_decls_list(vl_nd, (vela_bounds_check((vl_ix_39135 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10947)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10947)), 655360, "selfhost/vm.vel", 10947), vl_nd[vl_ix_39135]), vl_indent));
         return;
     }
     if ((vl_k == 27LL)) {
-        int64_t vl_ix_38644;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38644 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10717)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10717)), 655360, "selfhost/vm.vel", 10717), vl_nd[vl_ix_38644]), vl_indent));
-        int64_t vl_ix_38656;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38656 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10718)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10718)), 655360, "selfhost/vm.vel", 10718), vl_nd[vl_ix_38656]), vl_indent));
+        int64_t vl_ix_39152;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39152 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10951)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10951)), 655360, "selfhost/vm.vel", 10951), vl_nd[vl_ix_39152]), vl_indent));
+        int64_t vl_ix_39164;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39164 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10952)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10952)), 655360, "selfhost/vm.vel", 10952), vl_nd[vl_ix_39164]), vl_indent));
         return;
     }
     if ((vl_k == 28LL)) {
-        int64_t vl_ix_38673;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38673 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10722)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10722)), 655360, "selfhost/vm.vel", 10722), vl_nd[vl_ix_38673]), vl_indent));
+        int64_t vl_ix_39181;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39181 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10956)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10956)), 655360, "selfhost/vm.vel", 10956), vl_nd[vl_ix_39181]), vl_indent));
         return;
     }
     if ((vl_k == 29LL)) {
-        int64_t vl_ix_38690;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38690 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10726)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10726)), 655360, "selfhost/vm.vel", 10726), vl_nd[vl_ix_38690]), vl_indent));
-        int64_t vl_ix_38702;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38702 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10727)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10727)), 655360, "selfhost/vm.vel", 10727), vl_nd[vl_ix_38702]), vl_indent));
+        int64_t vl_ix_39198;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39198 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10960)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10960)), 655360, "selfhost/vm.vel", 10960), vl_nd[vl_ix_39198]), vl_indent));
+        int64_t vl_ix_39210;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39210 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10961)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10961)), 655360, "selfhost/vm.vel", 10961), vl_nd[vl_ix_39210]), vl_indent));
         return;
     }
     if ((vl_k == 30LL)) {
-        int64_t vl_ix_38719;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38719 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10731)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10731)), 655360, "selfhost/vm.vel", 10731), vl_nd[vl_ix_38719]), vl_indent));
-        int64_t vl_ix_38731;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38731 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10732)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10732)), 655360, "selfhost/vm.vel", 10732), vl_nd[vl_ix_38731]), vl_indent));
+        int64_t vl_ix_39227;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39227 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10965)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10965)), 655360, "selfhost/vm.vel", 10965), vl_nd[vl_ix_39227]), vl_indent));
+        int64_t vl_ix_39239;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39239 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10966)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10966)), 655360, "selfhost/vm.vel", 10966), vl_nd[vl_ix_39239]), vl_indent));
         return;
     }
     if ((vl_k == 32LL)) {
-        int64_t vl_ix_38748;
-        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_38748 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10737)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10737)), 655360, "selfhost/vm.vel", 10737), vl_nd[vl_ix_38748]), vl_indent));
+        int64_t vl_ix_39256;
+        (void)(vl_emit_index_decls_expr(vl_nd, (vela_bounds_check((vl_ix_39256 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10971)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10971)), 655360, "selfhost/vm.vel", 10971), vl_nd[vl_ix_39256]), vl_indent));
         return;
     }
     if ((vl_k == 33LL)) {
-        int64_t vl_ix_38765;
-        (void)(vl_emit_index_decls_list(vl_nd, (vela_bounds_check((vl_ix_38765 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10741)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10741)), 655360, "selfhost/vm.vel", 10741), vl_nd[vl_ix_38765]), vl_indent));
+        int64_t vl_ix_39273;
+        (void)(vl_emit_index_decls_list(vl_nd, (vela_bounds_check((vl_ix_39273 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10975)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10975)), 655360, "selfhost/vm.vel", 10975), vl_nd[vl_ix_39273]), vl_indent));
         return;
     }
 }
 
 static void vl_emit_index_place(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_tgt) {
-    int64_t vl_ix_38794;
-    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_38794 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10753)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10753)), 655360, "selfhost/vm.vel", 10753), vl_nd[vl_ix_38794])));
+    int64_t vl_ix_39302;
+    (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_39302 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10987)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10987)), 655360, "selfhost/vm.vel", 10987), vl_nd[vl_ix_39302])));
     (void)((vela_emit_str(vela_str_lit("[", 1))));
     (void)(vl_emit_index_temp(vl_tgt));
     (void)((vela_emit_str(vela_str_lit("]", 1))));
@@ -11110,24 +11260,24 @@ static void vl_emit_index_place(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, 
 static int64_t vl_emit_expr(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM* vl_vm, int64_t vl_e) {
     int64_t vl_k = vl_nd_kind(vl_nd, vl_e);
     if ((vl_k == 20LL)) {
-        int64_t vl_ix_38834;
-        (void)(vl_emit_int_lit((vela_bounds_check((vl_ix_38834 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10766)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10766)), 655360, "selfhost/vm.vel", 10766), vl_nd[vl_ix_38834])));
+        int64_t vl_ix_39342;
+        (void)(vl_emit_int_lit((vela_bounds_check((vl_ix_39342 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11000)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11000)), 655360, "selfhost/vm.vel", 11000), vl_nd[vl_ix_39342])));
         return vl_K_INT();
     }
     if ((vl_k == 21LL)) {
-        int64_t vl_ix_38853;
-        int64_t vl_ix_38860;
-        int64_t vl_ix_38867;
-        (void)((vela_emit_str((vela_substr(vl_src, (vela_bounds_check((vl_ix_38853 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10773)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10773)), 655360, "selfhost/vm.vel", 10773), vl_nd[vl_ix_38853]), vela_add_range(((vela_bounds_check((vl_ix_38860 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10773)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10773)), 655360, "selfhost/vm.vel", 10773), vl_nd[vl_ix_38860])), ((vela_bounds_check((vl_ix_38867 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10773)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10773)), 655360, "selfhost/vm.vel", 10773), vl_nd[vl_ix_38867])), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10773))))));
+        int64_t vl_ix_39361;
+        int64_t vl_ix_39368;
+        int64_t vl_ix_39375;
+        (void)((vela_emit_str((vela_substr(vl_src, (vela_bounds_check((vl_ix_39361 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11007)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11007)), 655360, "selfhost/vm.vel", 11007), vl_nd[vl_ix_39361]), vela_add_range(((vela_bounds_check((vl_ix_39368 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11007)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11007)), 655360, "selfhost/vm.vel", 11007), vl_nd[vl_ix_39368])), ((vela_bounds_check((vl_ix_39375 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11007)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11007)), 655360, "selfhost/vm.vel", 11007), vl_nd[vl_ix_39375])), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11007))))));
         return vl_K_FLT();
     }
     if ((vl_k == 22LL)) {
-        int64_t vl_ix_38887;
-        int64_t vl_ix_38894;
-        int64_t vl_ix_38901;
-        vela_str vl_s = (vela_substr(vl_src, (vela_bounds_check((vl_ix_38887 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10782)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10782)), 655360, "selfhost/vm.vel", 10782), vl_nd[vl_ix_38887]), vela_add_range(((vela_bounds_check((vl_ix_38894 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10782)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10782)), 655360, "selfhost/vm.vel", 10782), vl_nd[vl_ix_38894])), ((vela_bounds_check((vl_ix_38901 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10782)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10782)), 655360, "selfhost/vm.vel", 10782), vl_nd[vl_ix_38901])), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10782)));
-        int64_t vl_ix_38912;
-        if ((((vela_bounds_check((vl_ix_38912 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10783)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10783)), 655360, "selfhost/vm.vel", 10783), vl_nd[vl_ix_38912]) & 1LL) == 1LL)) {
+        int64_t vl_ix_39395;
+        int64_t vl_ix_39402;
+        int64_t vl_ix_39409;
+        vela_str vl_s = (vela_substr(vl_src, (vela_bounds_check((vl_ix_39395 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11016)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11016)), 655360, "selfhost/vm.vel", 11016), vl_nd[vl_ix_39395]), vela_add_range(((vela_bounds_check((vl_ix_39402 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11016)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11016)), 655360, "selfhost/vm.vel", 11016), vl_nd[vl_ix_39402])), ((vela_bounds_check((vl_ix_39409 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11016)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11016)), 655360, "selfhost/vm.vel", 11016), vl_nd[vl_ix_39409])), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11016)));
+        int64_t vl_ix_39420;
+        if ((((vela_bounds_check((vl_ix_39420 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11017)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11017)), 655360, "selfhost/vm.vel", 11017), vl_nd[vl_ix_39420]) & 1LL) == 1LL)) {
             vl_s = (vela_unescape(vl_s));
         }
         (void)((vela_emit_str(vela_str_lit("vela_str_lit(", 13))));
@@ -11138,8 +11288,8 @@ static int64_t vl_emit_expr(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela
         return vl_K_STR();
     }
     if ((vl_k == 23LL)) {
-        int64_t vl_ix_38958;
-        if (((vela_bounds_check((vl_ix_38958 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10794)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10794)), 655360, "selfhost/vm.vel", 10794), vl_nd[vl_ix_38958]) == 1LL)) {
+        int64_t vl_ix_39466;
+        if (((vela_bounds_check((vl_ix_39466 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11028)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11028)), 655360, "selfhost/vm.vel", 11028), vl_nd[vl_ix_39466]) == 1LL)) {
             (void)((vela_emit_str(vela_str_lit("true", 4))));
         } else {
             (void)((vela_emit_str(vela_str_lit("false", 5))));
@@ -11172,20 +11322,20 @@ static int64_t vl_emit_expr(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela
         (void)((vela_emit_str(vela_str_lit("(vela_bounds_check((", 20))));
         (void)(vl_emit_index_temp(vl_e));
         (void)((vela_emit_str(vela_str_lit(" = ", 3))));
-        int64_t vl_ix_39101;
-        (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_39101 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10829)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10829)), 655360, "selfhost/vm.vel", 10829), vl_nd[vl_ix_39101])));
+        int64_t vl_ix_39609;
+        (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_39609 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11063)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11063)), 655360, "selfhost/vm.vel", 11063), vl_nd[vl_ix_39609])));
         (void)((vela_emit_str(vela_str_lit("), ", 3))));
-        int64_t vl_ix_39121;
-        (void)((vela_emit_int(vl_unpack_len(vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_39121 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10831)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10831)), 655360, "selfhost/vm.vel", 10831), vl_nd[vl_ix_39121]))))));
+        int64_t vl_ix_39629;
+        (void)((vela_emit_int(vl_unpack_len(vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_39629 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11065)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11065)), 655360, "selfhost/vm.vel", 11065), vl_nd[vl_ix_39629]))))));
         (void)(vl_emit_location(vl_path, vl_nd_line(vl_nd, vl_e)));
         (void)((vela_emit_str(vela_str_lit("), ", 3))));
-        int64_t vl_ix_39152;
-        (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_39152 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10834)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10834)), 655360, "selfhost/vm.vel", 10834), vl_nd[vl_ix_39152])));
+        int64_t vl_ix_39660;
+        (void)(vl_emit_expr(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, (vela_bounds_check((vl_ix_39660 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11068)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11068)), 655360, "selfhost/vm.vel", 11068), vl_nd[vl_ix_39660])));
         (void)((vela_emit_str(vela_str_lit("[", 1))));
         (void)(vl_emit_index_temp(vl_e));
         (void)((vela_emit_str(vela_str_lit("])", 2))));
-        int64_t vl_ix_39181;
-        return vl_elem_kind_of(vl_unpack_kind(vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_39181 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10839)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10839)), 655360, "selfhost/vm.vel", 10839), vl_nd[vl_ix_39181]))));
+        int64_t vl_ix_39689;
+        return vl_elem_kind_of(vl_unpack_kind(vl_expr_packed(vl_nd, vl_ty, vl_mem, (*vl_vm), (vela_bounds_check((vl_ix_39689 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11073)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11073)), 655360, "selfhost/vm.vel", 11073), vl_nd[vl_ix_39689]))));
     }
     if ((vl_k == 32LL)) {
         return vl_emit_field(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_e);
@@ -11229,31 +11379,31 @@ static int64_t vl_expr_packed(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, s
         return vl_K_NONE();
     }
     if ((vl_k == 31LL)) {
-        int64_t vl_ix_39338;
-        return vl_elem_kind_of(vl_unpack_kind(vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_39338 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10892)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10892)), 655360, "selfhost/vm.vel", 10892), vl_nd[vl_ix_39338]))));
+        int64_t vl_ix_39846;
+        return vl_elem_kind_of(vl_unpack_kind(vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_39846 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11126)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11126)), 655360, "selfhost/vm.vel", 11126), vl_nd[vl_ix_39846]))));
     }
     if ((vl_k == 32LL)) {
-        int64_t vl_ix_39352;
-        int64_t vl_base = (vela_bounds_check((vl_ix_39352 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10895)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10895)), 655360, "selfhost/vm.vel", 10895), vl_nd[vl_ix_39352]);
+        int64_t vl_ix_39860;
+        int64_t vl_base = (vela_bounds_check((vl_ix_39860 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11129)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11129)), 655360, "selfhost/vm.vel", 11129), vl_nd[vl_ix_39860]);
         int64_t vl_packed = vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, vl_base);
         int64_t vl_sid = vl_unpack_len(vl_packed);
-        int64_t vl_ix_39378;
-        int64_t vl_idx = vl_find_field(vl_mem, vl_sid, (vela_bounds_check((vl_ix_39378 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10898)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10898)), 655360, "selfhost/vm.vel", 10898), vl_nd[vl_ix_39378]));
+        int64_t vl_ix_39886;
+        int64_t vl_idx = vl_find_field(vl_mem, vl_sid, (vela_bounds_check((vl_ix_39886 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11132)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11132)), 655360, "selfhost/vm.vel", 11132), vl_nd[vl_ix_39886]));
         if ((vl_idx < 0LL)) {
             return vl_K_NONE();
         }
         int64_t vl_off = vl_stb_get(vl_mem, vl_sid, vl_STB_FOFF());
-        return vl_sfl_get(vl_mem, vela_add_range((vela_add_range((vl_off), (vela_mul_range((vl_idx), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10903)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10903)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10903));
+        return vl_sfl_get(vl_mem, vela_add_range((vela_add_range((vl_off), (vela_mul_range((vl_idx), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11137)), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11137)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11137));
     }
     if ((vl_k == 26LL)) {
-        int64_t vl_ix_39418;
-        int64_t vl_callee = (vela_bounds_check((vl_ix_39418 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10906)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10906)), 655360, "selfhost/vm.vel", 10906), vl_nd[vl_ix_39418]);
+        int64_t vl_ix_39926;
+        int64_t vl_callee = (vela_bounds_check((vl_ix_39926 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11140)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11140)), 655360, "selfhost/vm.vel", 11140), vl_nd[vl_ix_39926]);
         if ((vl_nd_kind(vl_nd, vl_callee) == 32LL)) {
-            int64_t vl_ix_39433;
-            int64_t vl_recv = (vela_bounds_check((vl_ix_39433 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10910)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10910)), 655360, "selfhost/vm.vel", 10910), vl_nd[vl_ix_39433]);
+            int64_t vl_ix_39941;
+            int64_t vl_recv = (vela_bounds_check((vl_ix_39941 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11144)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11144)), 655360, "selfhost/vm.vel", 11144), vl_nd[vl_ix_39941]);
             int64_t vl_sid = vl_unpack_len(vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, vl_recv));
-            int64_t vl_ix_39456;
-            int64_t vl_mi = vl_find_method(vl_mem, vl_sid, (vela_bounds_check((vl_ix_39456 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10912)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10912)), 655360, "selfhost/vm.vel", 10912), vl_nd[vl_ix_39456]));
+            int64_t vl_ix_39964;
+            int64_t vl_mi = vl_find_method(vl_mem, vl_sid, (vela_bounds_check((vl_ix_39964 = vela_add_range((vela_mul_range((vl_callee), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11146)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11146)), 655360, "selfhost/vm.vel", 11146), vl_nd[vl_ix_39964]));
             if ((vl_mi < 0LL)) {
                 return vl_K_NONE();
             }
@@ -11276,17 +11426,17 @@ static int64_t vl_expr_packed(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, s
         return vl_K_NONE();
     }
     if ((vl_k == 27LL)) {
-        int64_t vl_ix_39567;
-        return vl_expr_kind(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_39567 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10937)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10937)), 655360, "selfhost/vm.vel", 10937), vl_nd[vl_ix_39567]));
+        int64_t vl_ix_40075;
+        return vl_expr_kind(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_40075 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11171)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11171)), 655360, "selfhost/vm.vel", 11171), vl_nd[vl_ix_40075]));
     }
     if ((vl_k == 28LL)) {
-        int64_t vl_ix_39579;
-        int64_t vl_op = (vela_bounds_check((vl_ix_39579 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10940)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10940)), 655360, "selfhost/vm.vel", 10940), vl_nd[vl_ix_39579]);
+        int64_t vl_ix_40087;
+        int64_t vl_op = (vela_bounds_check((vl_ix_40087 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11174)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11174)), 655360, "selfhost/vm.vel", 11174), vl_nd[vl_ix_40087]);
         if ((vl_op == 15LL)) {
             return vl_K_BOOL();
         }
-        int64_t vl_ix_39601;
-        return vl_expr_kind(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_39601 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10944)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10944)), 655360, "selfhost/vm.vel", 10944), vl_nd[vl_ix_39601]));
+        int64_t vl_ix_40109;
+        return vl_expr_kind(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_40109 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11178)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11178)), 655360, "selfhost/vm.vel", 11178), vl_nd[vl_ix_40109]));
     }
     if ((vl_k == 29LL)) {
         return vl_K_BOOL();
@@ -11298,13 +11448,13 @@ static int64_t vl_expr_packed(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, s
 }
 
 static int64_t vl_param_packed(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, struct vl_VM vl_vm, int64_t vl_p) {
-    int64_t vl_ix_39633;
-    int64_t vl_t = (vela_bounds_check((vl_ix_39633 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10961)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10961)), 655360, "selfhost/vm.vel", 10961), vl_nd[vl_ix_39633]);
+    int64_t vl_ix_40141;
+    int64_t vl_t = (vela_bounds_check((vl_ix_40141 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11195)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11195)), 655360, "selfhost/vm.vel", 11195), vl_nd[vl_ix_40141]);
     int64_t vl_k = vl_type_kind(vl_ty, vl_t, vl_mem, vl_vm);
     if ((vl_k == vl_K_ST())) {
         int64_t vl_sid = vl_struct_of_type(vl_ty, vl_t, vl_mem, vl_vm);
-        int64_t vl_ix_39662;
-        if ((((vela_bounds_check((vl_ix_39662 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10965)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 10965)), 655360, "selfhost/vm.vel", 10965), vl_nd[vl_ix_39662]) & 1LL) == 1LL)) {
+        int64_t vl_ix_40170;
+        if ((((vela_bounds_check((vl_ix_40170 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11199)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11199)), 655360, "selfhost/vm.vel", 11199), vl_nd[vl_ix_40170]) & 1LL) == 1LL)) {
             return vl_pack_ptr(vl_pack_kind(vl_K_ST(), vl_sid));
         }
         return vl_pack_kind(vl_K_ST(), vl_sid);
@@ -11355,11 +11505,11 @@ static void vl_emit_params(int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, stru
         (void)(vl_emit_binding_ctype(vl_nd, vl_ty, vl_mem, vl_vm, vl_path, vl_pk, vl_nd_line(vl_nd, vl_p)));
         if (vl_with_names) {
             (void)((vela_emit_str(vela_str_lit(" ", 1))));
-            int64_t vl_ix_39879;
-            (void)(vl_emit_cname((vela_bounds_check((vl_ix_39879 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11032)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11032)), 655360, "selfhost/vm.vel", 11032), vl_nd[vl_ix_39879])));
+            int64_t vl_ix_40387;
+            (void)(vl_emit_cname((vela_bounds_check((vl_ix_40387 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11266)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11266)), 655360, "selfhost/vm.vel", 11266), vl_nd[vl_ix_40387])));
         }
         vl_p = vl_nd_nx(vl_nd, vl_p);
-        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11035);
+        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11269);
     }
     if ((vl_n == 0LL)) {
         (void)((vela_emit_str(vela_str_lit("void", 4))));
@@ -11392,7 +11542,7 @@ static void vl_emit_program(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela
     int64_t vl_f = 0LL;
     while ((vl_f < vl_vm->f_nfn)) {
         (void)(vl_emit_proto(vl_nd, vl_ty, vl_mem, (*vl_vm), vl_path, vl_f));
-        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11077);
+        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11311);
     }
     (void)((vela_emit_str(vela_str_lit("\n", 1))));
     int64_t vl_g = 0LL;
@@ -11400,7 +11550,7 @@ static void vl_emit_program(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela
         if ((vl_ft_get(vl_mem, vl_g, vl_FT_BODY()) >= 0LL)) {
             (void)(vl_emit_function(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_g));
         }
-        vl_g = vela_add_range(vl_g, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11088);
+        vl_g = vela_add_range(vl_g, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11322);
     }
     (void)((vela_emit_str(vela_str_lit("int main(int argc, char **argv) {\n", 34))));
     (void)((vela_emit_str(vela_str_lit("    vela_set_args(argc, argv);\n", 31))));
@@ -11435,10 +11585,10 @@ static bool vl_ll_buf(vela_str vl_s) {
     }
     int64_t vl_i = 0LL;
     while ((vl_i < (((int64_t)vl_s.len)))) {
-        if ((vshim_buf_byte((vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 11383))) != 0LL)) {
+        if ((vshim_buf_byte((vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 11617))) != 0LL)) {
             return false;
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11386);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11620);
     }
     return true;
 }
@@ -11448,11 +11598,11 @@ static vela_str vl_ll_cstr(vela_str vl_s) {
 }
 
 static void vl_ll_err_byte(struct vl_LG vl_lg, int64_t vl_b) {
-    (void)((vela_warn_str((vela_substr(vl_lg.f_tbl, vl_b, vela_add_range((vl_b), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11403))))));
+    (void)((vela_warn_str((vela_substr(vl_lg.f_tbl, vl_b, vela_add_range((vl_b), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11637))))));
 }
 
 static void vl_ll_out_byte(struct vl_LG vl_lg, int64_t vl_b) {
-    (void)((vela_emit_str((vela_substr(vl_lg.f_tbl, vl_b, vela_add_range((vl_b), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11407))))));
+    (void)((vela_emit_str((vela_substr(vl_lg.f_tbl, vl_b, vela_add_range((vl_b), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11641))))));
 }
 
 static void vl_ll_fail(struct vl_LG vl_lg, vela_str vl_what) {
@@ -11468,7 +11618,7 @@ static void vl_ll_fail(struct vl_LG vl_lg, vela_str vl_what) {
                 break;
             }
             (void)(vl_ll_err_byte(vl_lg, vl_b));
-            vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11426);
+            vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11660);
         }
     } else {
         (void)((vela_warn_str(vela_str_lit("(the shim recorded no message)", 30))));
@@ -11547,25 +11697,25 @@ static void vl_ll_note(struct vl_LG* vl_lg, int64_t* vl_slots, int64_t* vl_slotk
     if (((vl_slot < 0LL) || (vl_slot >= vl_LL_SLOTS()))) {
         (void)(vl_trap(vl_path, vl_line, vela_str_lit("this function has more locals than the LLVM back end's slot table holds", 71)));
     }
-    int64_t vl_ix_40694;
-    vela_bounds_check((vl_ix_40694 = vl_slot), 4096, "selfhost/vm.vel", 11502);
-    vl_slots[vl_ix_40694] = vl_h;
-    int64_t vl_ix_40699;
-    vela_bounds_check((vl_ix_40699 = vl_slot), 4096, "selfhost/vm.vel", 11503);
-    vl_slotkind[vl_ix_40699] = vl_k;
+    int64_t vl_ix_41202;
+    vela_bounds_check((vl_ix_41202 = vl_slot), 4096, "selfhost/vm.vel", 11736);
+    vl_slots[vl_ix_41202] = vl_h;
+    int64_t vl_ix_41207;
+    vela_bounds_check((vl_ix_41207 = vl_slot), 4096, "selfhost/vm.vel", 11737);
+    vl_slotkind[vl_ix_41207] = vl_k;
 }
 
 static int64_t vl_ll_slot_for(struct vl_LG vl_lg, int64_t* vl_slots, int64_t* vl_slotkind, int64_t vl_slot, int64_t vl_k, vela_str vl_path, int64_t vl_line) {
     if (((vl_slot < 0LL) || (vl_slot >= vl_LL_SLOTS()))) {
         (void)(vl_trap(vl_path, vl_line, vela_str_lit("this local has no frame slot the LLVM back end can name", 55)));
     }
-    int64_t vl_ix_40727;
-    int64_t vl_h = (vela_bounds_check((vl_ix_40727 = vl_slot), 4096, "selfhost/vm.vel", 11512), vl_slots[vl_ix_40727]);
+    int64_t vl_ix_41235;
+    int64_t vl_h = (vela_bounds_check((vl_ix_41235 = vl_slot), 4096, "selfhost/vm.vel", 11746), vl_slots[vl_ix_41235]);
     if ((vl_h == 0LL)) {
         (void)(vl_trap(vl_path, vl_line, vela_str_lit("this local was never reserved a slot in the entry block", 55)));
     }
-    int64_t vl_ix_40742;
-    if (((vela_bounds_check((vl_ix_40742 = vl_slot), 4096, "selfhost/vm.vel", 11516), vl_slotkind[vl_ix_40742]) != vl_k)) {
+    int64_t vl_ix_41250;
+    if (((vela_bounds_check((vl_ix_41250 = vl_slot), 4096, "selfhost/vm.vel", 11750), vl_slotkind[vl_ix_41250]) != vl_k)) {
         (void)(vl_trap(vl_path, vl_line, vela_str_lit("this local's frame slot holds a different kind than the reference expects", 73)));
     }
     return vl_h;
@@ -11619,12 +11769,12 @@ static int64_t vl_ll_call_n(struct vl_LG vl_lg, int64_t vl_fn, int64_t* vl_args,
     }
     int64_t vl_i = 0LL;
     while ((vl_i < vl_n)) {
-        int64_t vl_ix_40921;
-        if ((vshim_arglist_add(vl_l, (vela_bounds_check((vl_ix_40921 = vl_i), 8, "selfhost/vm.vel", 11579), vl_args[vl_ix_40921])) != 0LL)) {
+        int64_t vl_ix_41429;
+        if ((vshim_arglist_add(vl_l, (vela_bounds_check((vl_ix_41429 = vl_i), 8, "selfhost/vm.vel", 11813), vl_args[vl_ix_41429])) != 0LL)) {
             (void)(vshim_arglist_abandon(vl_l));
             (void)(vl_ll_fail(vl_lg, vela_str_lit("adding an argument", 18)));
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11583);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11817);
     }
     return vl_ll_ck(vl_lg, vela_str_lit("a call", 6), vshim_call(vl_l, vl_fn));
 }
@@ -11636,57 +11786,57 @@ static int64_t vl_ll_call0(struct vl_LG vl_lg, int64_t vl_fn) {
 
 static int64_t vl_ll_call1(struct vl_LG vl_lg, int64_t vl_fn, int64_t vl_x) {
     int64_t* vl_a = (int64_t*)vela_arena_alloc((size_t)8 * sizeof(int64_t));
-    int64_t vl_ix_40968;
-    vela_bounds_check((vl_ix_40968 = 0LL), 8, "selfhost/vm.vel", 11595);
-    vl_a[vl_ix_40968] = vl_x;
+    int64_t vl_ix_41476;
+    vela_bounds_check((vl_ix_41476 = 0LL), 8, "selfhost/vm.vel", 11829);
+    vl_a[vl_ix_41476] = vl_x;
     return vl_ll_call_n(vl_lg, vl_fn, vl_a, 1LL);
 }
 
 static int64_t vl_ll_call2(struct vl_LG vl_lg, int64_t vl_fn, int64_t vl_x, int64_t vl_y) {
     int64_t* vl_a = (int64_t*)vela_arena_alloc((size_t)8 * sizeof(int64_t));
-    int64_t vl_ix_40987;
-    vela_bounds_check((vl_ix_40987 = 0LL), 8, "selfhost/vm.vel", 11601);
-    vl_a[vl_ix_40987] = vl_x;
-    int64_t vl_ix_40992;
-    vela_bounds_check((vl_ix_40992 = 1LL), 8, "selfhost/vm.vel", 11602);
-    vl_a[vl_ix_40992] = vl_y;
+    int64_t vl_ix_41495;
+    vela_bounds_check((vl_ix_41495 = 0LL), 8, "selfhost/vm.vel", 11835);
+    vl_a[vl_ix_41495] = vl_x;
+    int64_t vl_ix_41500;
+    vela_bounds_check((vl_ix_41500 = 1LL), 8, "selfhost/vm.vel", 11836);
+    vl_a[vl_ix_41500] = vl_y;
     return vl_ll_call_n(vl_lg, vl_fn, vl_a, 2LL);
 }
 
 static int64_t vl_ll_call3(struct vl_LG vl_lg, int64_t vl_fn, int64_t vl_x, int64_t vl_y, int64_t vl_z) {
     int64_t* vl_a = (int64_t*)vela_arena_alloc((size_t)8 * sizeof(int64_t));
-    int64_t vl_ix_41012;
-    vela_bounds_check((vl_ix_41012 = 0LL), 8, "selfhost/vm.vel", 11608);
-    vl_a[vl_ix_41012] = vl_x;
-    int64_t vl_ix_41017;
-    vela_bounds_check((vl_ix_41017 = 1LL), 8, "selfhost/vm.vel", 11609);
-    vl_a[vl_ix_41017] = vl_y;
-    int64_t vl_ix_41022;
-    vela_bounds_check((vl_ix_41022 = 2LL), 8, "selfhost/vm.vel", 11610);
-    vl_a[vl_ix_41022] = vl_z;
+    int64_t vl_ix_41520;
+    vela_bounds_check((vl_ix_41520 = 0LL), 8, "selfhost/vm.vel", 11842);
+    vl_a[vl_ix_41520] = vl_x;
+    int64_t vl_ix_41525;
+    vela_bounds_check((vl_ix_41525 = 1LL), 8, "selfhost/vm.vel", 11843);
+    vl_a[vl_ix_41525] = vl_y;
+    int64_t vl_ix_41530;
+    vela_bounds_check((vl_ix_41530 = 2LL), 8, "selfhost/vm.vel", 11844);
+    vl_a[vl_ix_41530] = vl_z;
     return vl_ll_call_n(vl_lg, vl_fn, vl_a, 3LL);
 }
 
 static int64_t vl_ll_call6(struct vl_LG vl_lg, int64_t vl_fn, int64_t vl_x0, int64_t vl_x1, int64_t vl_x2, int64_t vl_x3, int64_t vl_x4, int64_t vl_x5) {
     int64_t* vl_a = (int64_t*)vela_arena_alloc((size_t)8 * sizeof(int64_t));
-    int64_t vl_ix_41045;
-    vela_bounds_check((vl_ix_41045 = 0LL), 8, "selfhost/vm.vel", 11619);
-    vl_a[vl_ix_41045] = vl_x0;
-    int64_t vl_ix_41050;
-    vela_bounds_check((vl_ix_41050 = 1LL), 8, "selfhost/vm.vel", 11620);
-    vl_a[vl_ix_41050] = vl_x1;
-    int64_t vl_ix_41055;
-    vela_bounds_check((vl_ix_41055 = 2LL), 8, "selfhost/vm.vel", 11621);
-    vl_a[vl_ix_41055] = vl_x2;
-    int64_t vl_ix_41060;
-    vela_bounds_check((vl_ix_41060 = 3LL), 8, "selfhost/vm.vel", 11622);
-    vl_a[vl_ix_41060] = vl_x3;
-    int64_t vl_ix_41065;
-    vela_bounds_check((vl_ix_41065 = 4LL), 8, "selfhost/vm.vel", 11623);
-    vl_a[vl_ix_41065] = vl_x4;
-    int64_t vl_ix_41070;
-    vela_bounds_check((vl_ix_41070 = 5LL), 8, "selfhost/vm.vel", 11624);
-    vl_a[vl_ix_41070] = vl_x5;
+    int64_t vl_ix_41553;
+    vela_bounds_check((vl_ix_41553 = 0LL), 8, "selfhost/vm.vel", 11853);
+    vl_a[vl_ix_41553] = vl_x0;
+    int64_t vl_ix_41558;
+    vela_bounds_check((vl_ix_41558 = 1LL), 8, "selfhost/vm.vel", 11854);
+    vl_a[vl_ix_41558] = vl_x1;
+    int64_t vl_ix_41563;
+    vela_bounds_check((vl_ix_41563 = 2LL), 8, "selfhost/vm.vel", 11855);
+    vl_a[vl_ix_41563] = vl_x2;
+    int64_t vl_ix_41568;
+    vela_bounds_check((vl_ix_41568 = 3LL), 8, "selfhost/vm.vel", 11856);
+    vl_a[vl_ix_41568] = vl_x3;
+    int64_t vl_ix_41573;
+    vela_bounds_check((vl_ix_41573 = 4LL), 8, "selfhost/vm.vel", 11857);
+    vl_a[vl_ix_41573] = vl_x4;
+    int64_t vl_ix_41578;
+    vela_bounds_check((vl_ix_41578 = 5LL), 8, "selfhost/vm.vel", 11858);
+    vl_a[vl_ix_41578] = vl_x5;
     return vl_ll_call_n(vl_lg, vl_fn, vl_a, 6LL);
 }
 
@@ -11697,11 +11847,11 @@ static int64_t vl_ll_sig_of(struct vl_LG vl_lg, int64_t vl_ret, int64_t* vl_ps, 
     }
     int64_t vl_i = 0LL;
     while ((vl_i < vl_n)) {
-        int64_t vl_ix_41112;
-        if ((vshim_sig_param(vl_sig, (vela_bounds_check((vl_ix_41112 = vl_i), 8, "selfhost/vm.vel", 11637), vl_ps[vl_ix_41112])) != 0LL)) {
+        int64_t vl_ix_41620;
+        if ((vshim_sig_param(vl_sig, (vela_bounds_check((vl_ix_41620 = vl_i), 8, "selfhost/vm.vel", 11871), vl_ps[vl_ix_41620])) != 0LL)) {
             (void)(vl_ll_fail(vl_lg, vl_what));
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11640);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11874);
     }
     int64_t vl_t = vshim_sig_finish(vl_sig);
     if ((vl_t == 0LL)) {
@@ -11738,94 +11888,94 @@ static void vl_ll_open_module(struct vl_LG* vl_lg) {
 
 static void vl_ll_declare_rt(struct vl_LG* vl_lg, vela_str vl_path) {
     int64_t* vl_ps = (int64_t*)vela_arena_alloc((size_t)8 * sizeof(int64_t));
-    int64_t vl_ix_41304;
-    vela_bounds_check((vl_ix_41304 = 0LL), 8, "selfhost/vm.vel", 11684);
-    vl_ps[vl_ix_41304] = vl_lg->f_t_i32;
-    int64_t vl_ix_41310;
-    vela_bounds_check((vl_ix_41310 = 1LL), 8, "selfhost/vm.vel", 11685);
-    vl_ps[vl_ix_41310] = vl_lg->f_t_ptr;
+    int64_t vl_ix_41812;
+    vela_bounds_check((vl_ix_41812 = 0LL), 8, "selfhost/vm.vel", 11918);
+    vl_ps[vl_ix_41812] = vl_lg->f_t_i32;
+    int64_t vl_ix_41818;
+    vela_bounds_check((vl_ix_41818 = 1LL), 8, "selfhost/vm.vel", 11919);
+    vl_ps[vl_ix_41818] = vl_lg->f_t_ptr;
     vl_lg->f_f_setargs = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_set_args", 18), vl_lg->f_t_void, vl_ps, 2LL, vela_str_lit("declaring vela_llvm_set_args", 28));
     vl_lg->f_f_init = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_runtime_init", 22), vl_lg->f_t_void, vl_ps, 0LL, vela_str_lit("declaring vela_llvm_runtime_init", 32));
-    int64_t vl_ix_41340;
-    vela_bounds_check((vl_ix_41340 = 0LL), 8, "selfhost/vm.vel", 11690);
-    vl_ps[vl_ix_41340] = vl_lg->f_t_ptr;
+    int64_t vl_ix_41848;
+    vela_bounds_check((vl_ix_41848 = 0LL), 8, "selfhost/vm.vel", 11924);
+    vl_ps[vl_ix_41848] = vl_lg->f_t_ptr;
     vl_lg->f_f_pstr = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_print_str", 19), vl_lg->f_t_void, vl_ps, 1LL, vela_str_lit("declaring vela_llvm_print_str", 29));
-    int64_t vl_ix_41358;
-    vela_bounds_check((vl_ix_41358 = 0LL), 8, "selfhost/vm.vel", 11693);
-    vl_ps[vl_ix_41358] = vl_lg->f_t_i64;
+    int64_t vl_ix_41866;
+    vela_bounds_check((vl_ix_41866 = 0LL), 8, "selfhost/vm.vel", 11927);
+    vl_ps[vl_ix_41866] = vl_lg->f_t_i64;
     vl_lg->f_f_pi64 = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_print_i64", 19), vl_lg->f_t_void, vl_ps, 1LL, vela_str_lit("declaring vela_llvm_print_i64", 29));
-    int64_t vl_ix_41376;
-    vela_bounds_check((vl_ix_41376 = 0LL), 8, "selfhost/vm.vel", 11696);
-    vl_ps[vl_ix_41376] = vl_lg->f_t_f64;
+    int64_t vl_ix_41884;
+    vela_bounds_check((vl_ix_41884 = 0LL), 8, "selfhost/vm.vel", 11930);
+    vl_ps[vl_ix_41884] = vl_lg->f_t_f64;
     vl_lg->f_f_pf64 = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_print_f64", 19), vl_lg->f_t_void, vl_ps, 1LL, vela_str_lit("declaring vela_llvm_print_f64", 29));
-    int64_t vl_ix_41394;
-    vela_bounds_check((vl_ix_41394 = 0LL), 8, "selfhost/vm.vel", 11699);
-    vl_ps[vl_ix_41394] = vl_lg->f_t_i1;
+    int64_t vl_ix_41902;
+    vela_bounds_check((vl_ix_41902 = 0LL), 8, "selfhost/vm.vel", 11933);
+    vl_ps[vl_ix_41902] = vl_lg->f_t_i1;
     vl_lg->f_f_pbool = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_print_bool", 20), vl_lg->f_t_void, vl_ps, 1LL, vela_str_lit("declaring vela_llvm_print_bool", 30));
     vl_lg->f_f_sep = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_print_sep", 19), vl_lg->f_t_void, vl_ps, 0LL, vela_str_lit("declaring vela_llvm_print_sep", 29));
     vl_lg->f_f_nl = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_print_nl", 18), vl_lg->f_t_void, vl_ps, 0LL, vela_str_lit("declaring vela_llvm_print_nl", 28));
-    int64_t vl_ix_41436;
-    vela_bounds_check((vl_ix_41436 = 0LL), 8, "selfhost/vm.vel", 11708);
-    vl_ps[vl_ix_41436] = vl_lg->f_t_ptr;
-    int64_t vl_ix_41442;
-    vela_bounds_check((vl_ix_41442 = 1LL), 8, "selfhost/vm.vel", 11709);
-    vl_ps[vl_ix_41442] = vl_lg->f_t_ptr;
-    int64_t vl_ix_41448;
-    vela_bounds_check((vl_ix_41448 = 2LL), 8, "selfhost/vm.vel", 11710);
-    vl_ps[vl_ix_41448] = vl_lg->f_t_i64;
+    int64_t vl_ix_41944;
+    vela_bounds_check((vl_ix_41944 = 0LL), 8, "selfhost/vm.vel", 11942);
+    vl_ps[vl_ix_41944] = vl_lg->f_t_ptr;
+    int64_t vl_ix_41950;
+    vela_bounds_check((vl_ix_41950 = 1LL), 8, "selfhost/vm.vel", 11943);
+    vl_ps[vl_ix_41950] = vl_lg->f_t_ptr;
+    int64_t vl_ix_41956;
+    vela_bounds_check((vl_ix_41956 = 2LL), 8, "selfhost/vm.vel", 11944);
+    vl_ps[vl_ix_41956] = vl_lg->f_t_i64;
     vl_lg->f_f_strlit = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_str_lit", 17), vl_lg->f_t_void, vl_ps, 3LL, vela_str_lit("declaring vela_llvm_str_lit", 27));
     (void)(vl_ll_ckst((*vl_lg), vela_str_lit("the sret on vela_llvm_str_lit", 29), vshim_fn_sret_param(vl_lg->f_f_strlit, 0LL, vl_lg->f_t_str)));
-    int64_t vl_ix_41478;
-    vela_bounds_check((vl_ix_41478 = 0LL), 8, "selfhost/vm.vel", 11715);
-    vl_ps[vl_ix_41478] = vl_lg->f_t_i64;
-    int64_t vl_ix_41484;
-    vela_bounds_check((vl_ix_41484 = 1LL), 8, "selfhost/vm.vel", 11716);
-    vl_ps[vl_ix_41484] = vl_lg->f_t_i64;
-    int64_t vl_ix_41490;
-    vela_bounds_check((vl_ix_41490 = 2LL), 8, "selfhost/vm.vel", 11717);
-    vl_ps[vl_ix_41490] = vl_lg->f_t_ptr;
-    int64_t vl_ix_41496;
-    vela_bounds_check((vl_ix_41496 = 3LL), 8, "selfhost/vm.vel", 11718);
-    vl_ps[vl_ix_41496] = vl_lg->f_t_i32;
+    int64_t vl_ix_41986;
+    vela_bounds_check((vl_ix_41986 = 0LL), 8, "selfhost/vm.vel", 11949);
+    vl_ps[vl_ix_41986] = vl_lg->f_t_i64;
+    int64_t vl_ix_41992;
+    vela_bounds_check((vl_ix_41992 = 1LL), 8, "selfhost/vm.vel", 11950);
+    vl_ps[vl_ix_41992] = vl_lg->f_t_i64;
+    int64_t vl_ix_41998;
+    vela_bounds_check((vl_ix_41998 = 2LL), 8, "selfhost/vm.vel", 11951);
+    vl_ps[vl_ix_41998] = vl_lg->f_t_ptr;
+    int64_t vl_ix_42004;
+    vela_bounds_check((vl_ix_42004 = 3LL), 8, "selfhost/vm.vel", 11952);
+    vl_ps[vl_ix_42004] = vl_lg->f_t_i32;
     vl_lg->f_f_bounds = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_bounds_check", 22), vl_lg->f_t_void, vl_ps, 4LL, vela_str_lit("declaring vela_llvm_bounds_check", 32));
-    int64_t vl_ix_41514;
-    vela_bounds_check((vl_ix_41514 = 0LL), 8, "selfhost/vm.vel", 11721);
-    vl_ps[vl_ix_41514] = vl_lg->f_t_i64;
-    int64_t vl_ix_41520;
-    vela_bounds_check((vl_ix_41520 = 1LL), 8, "selfhost/vm.vel", 11722);
-    vl_ps[vl_ix_41520] = vl_lg->f_t_i64;
-    int64_t vl_ix_41526;
-    vela_bounds_check((vl_ix_41526 = 2LL), 8, "selfhost/vm.vel", 11723);
-    vl_ps[vl_ix_41526] = vl_lg->f_t_i64;
-    int64_t vl_ix_41532;
-    vela_bounds_check((vl_ix_41532 = 3LL), 8, "selfhost/vm.vel", 11724);
-    vl_ps[vl_ix_41532] = vl_lg->f_t_i64;
-    int64_t vl_ix_41538;
-    vela_bounds_check((vl_ix_41538 = 4LL), 8, "selfhost/vm.vel", 11725);
-    vl_ps[vl_ix_41538] = vl_lg->f_t_ptr;
-    int64_t vl_ix_41544;
-    vela_bounds_check((vl_ix_41544 = 5LL), 8, "selfhost/vm.vel", 11726);
-    vl_ps[vl_ix_41544] = vl_lg->f_t_i32;
+    int64_t vl_ix_42022;
+    vela_bounds_check((vl_ix_42022 = 0LL), 8, "selfhost/vm.vel", 11955);
+    vl_ps[vl_ix_42022] = vl_lg->f_t_i64;
+    int64_t vl_ix_42028;
+    vela_bounds_check((vl_ix_42028 = 1LL), 8, "selfhost/vm.vel", 11956);
+    vl_ps[vl_ix_42028] = vl_lg->f_t_i64;
+    int64_t vl_ix_42034;
+    vela_bounds_check((vl_ix_42034 = 2LL), 8, "selfhost/vm.vel", 11957);
+    vl_ps[vl_ix_42034] = vl_lg->f_t_i64;
+    int64_t vl_ix_42040;
+    vela_bounds_check((vl_ix_42040 = 3LL), 8, "selfhost/vm.vel", 11958);
+    vl_ps[vl_ix_42040] = vl_lg->f_t_i64;
+    int64_t vl_ix_42046;
+    vela_bounds_check((vl_ix_42046 = 4LL), 8, "selfhost/vm.vel", 11959);
+    vl_ps[vl_ix_42046] = vl_lg->f_t_ptr;
+    int64_t vl_ix_42052;
+    vela_bounds_check((vl_ix_42052 = 5LL), 8, "selfhost/vm.vel", 11960);
+    vl_ps[vl_ix_42052] = vl_lg->f_t_i32;
     vl_lg->f_f_add = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_add_range", 19), vl_lg->f_t_i64, vl_ps, 6LL, vela_str_lit("declaring vela_llvm_add_range", 29));
     vl_lg->f_f_sub = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_sub_range", 19), vl_lg->f_t_i64, vl_ps, 6LL, vela_str_lit("declaring vela_llvm_sub_range", 29));
     vl_lg->f_f_mul = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_mul_range", 19), vl_lg->f_t_i64, vl_ps, 6LL, vela_str_lit("declaring vela_llvm_mul_range", 29));
-    int64_t vl_ix_41586;
-    vela_bounds_check((vl_ix_41586 = 0LL), 8, "selfhost/vm.vel", 11733);
-    vl_ps[vl_ix_41586] = vl_lg->f_t_i64;
-    int64_t vl_ix_41592;
-    vela_bounds_check((vl_ix_41592 = 1LL), 8, "selfhost/vm.vel", 11734);
-    vl_ps[vl_ix_41592] = vl_lg->f_t_i64;
-    int64_t vl_ix_41598;
-    vela_bounds_check((vl_ix_41598 = 2LL), 8, "selfhost/vm.vel", 11735);
-    vl_ps[vl_ix_41598] = vl_lg->f_t_ptr;
-    int64_t vl_ix_41604;
-    vela_bounds_check((vl_ix_41604 = 3LL), 8, "selfhost/vm.vel", 11736);
-    vl_ps[vl_ix_41604] = vl_lg->f_t_i32;
+    int64_t vl_ix_42094;
+    vela_bounds_check((vl_ix_42094 = 0LL), 8, "selfhost/vm.vel", 11967);
+    vl_ps[vl_ix_42094] = vl_lg->f_t_i64;
+    int64_t vl_ix_42100;
+    vela_bounds_check((vl_ix_42100 = 1LL), 8, "selfhost/vm.vel", 11968);
+    vl_ps[vl_ix_42100] = vl_lg->f_t_i64;
+    int64_t vl_ix_42106;
+    vela_bounds_check((vl_ix_42106 = 2LL), 8, "selfhost/vm.vel", 11969);
+    vl_ps[vl_ix_42106] = vl_lg->f_t_ptr;
+    int64_t vl_ix_42112;
+    vela_bounds_check((vl_ix_42112 = 3LL), 8, "selfhost/vm.vel", 11970);
+    vl_ps[vl_ix_42112] = vl_lg->f_t_i32;
     vl_lg->f_f_floordiv = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_floor_div", 19), vl_lg->f_t_i64, vl_ps, 4LL, vela_str_lit("declaring vela_llvm_floor_div", 29));
     vl_lg->f_f_floormod = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_floor_mod", 19), vl_lg->f_t_i64, vl_ps, 4LL, vela_str_lit("declaring vela_llvm_floor_mod", 29));
-    int64_t vl_ix_41634;
-    vela_bounds_check((vl_ix_41634 = 0LL), 8, "selfhost/vm.vel", 11745);
-    vl_ps[vl_ix_41634] = vl_lg->f_t_i64;
+    int64_t vl_ix_42142;
+    vela_bounds_check((vl_ix_42142 = 0LL), 8, "selfhost/vm.vel", 11979);
+    vl_ps[vl_ix_42142] = vl_lg->f_t_i64;
     vl_lg->f_f_alloc = vl_ll_declare((*vl_lg), vela_str_lit("vela_llvm_arena_alloc", 21), vl_lg->f_t_ptr, vl_ps, 1LL, vela_str_lit("declaring vela_llvm_arena_alloc", 31));
     vl_lg->f_pfile = vl_ll_path_global(vl_lg, vl_path);
 }
@@ -11840,14 +11990,14 @@ static int64_t vl_ll_path_global(struct vl_LG* vl_lg, vela_str vl_path) {
 static vela_str vl_ll_fn_name(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, int64_t vl_f) {
     int64_t vl_d = vl_ft_get(vl_mem, vl_f, vl_FT_DEF());
     if ((vl_ft_get(vl_mem, vl_f, vl_FT_BODY()) < 0LL)) {
-        int64_t vl_ix_41711;
-        return (vela_interned((vela_bounds_check((vl_ix_41711 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11772)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11772)), 655360, "selfhost/vm.vel", 11772), vl_nd[vl_ix_41711]), "selfhost/vm.vel", 11772));
+        int64_t vl_ix_42219;
+        return (vela_interned((vela_bounds_check((vl_ix_42219 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12006)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12006)), 655360, "selfhost/vm.vel", 12006), vl_nd[vl_ix_42219]), "selfhost/vm.vel", 12006));
     }
     if ((vl_ft_get(vl_mem, vl_f, vl_FT_OWNER()) >= 0LL)) {
         (void)(vl_trap(vl_path, vl_nd_line(vl_nd, vl_d), vela_str_lit("a method is not compiled by the LLVM back end yet: it needs a struct, and the shim has no pointer-to-field until a milestone asks for one", 137)));
     }
-    int64_t vl_ix_41742;
-    return (vela_concat(vela_str_lit("vl_", 3), (vela_interned((vela_bounds_check((vl_ix_41742 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11778)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11778)), 655360, "selfhost/vm.vel", 11778), vl_nd[vl_ix_41742]), "selfhost/vm.vel", 11778))));
+    int64_t vl_ix_42250;
+    return (vela_concat(vela_str_lit("vl_", 3), (vela_interned((vela_bounds_check((vl_ix_42250 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12012)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12012)), 655360, "selfhost/vm.vel", 12012), vl_nd[vl_ix_42250]), "selfhost/vm.vel", 12012))));
 }
 
 static int64_t vl_ll_fn_ret_type(struct vl_LG vl_lg, int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, struct vl_VM vl_vm, vela_str vl_path, int64_t vl_f) {
@@ -11922,19 +12072,19 @@ static void vl_ll_reserve_expr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_
     }
     int64_t vl_k = vl_nd_kind(vl_nd, vl_e);
     if ((vl_k == 22LL)) {
-        int64_t vl_ix_42084;
-        if (((vela_bounds_check((vl_ix_42084 = vl_e), 65536, "selfhost/vm.vel", 11877), vl_lit[vl_ix_42084]) == 0LL)) {
-            int64_t vl_ix_42089;
-            vela_bounds_check((vl_ix_42089 = vl_e), 65536, "selfhost/vm.vel", 11878);
-            vl_lit[vl_ix_42089] = vl_ll_ck((*vl_lg), vela_str_lit("a slot for a string literal", 27), vshim_build_alloca(vl_lg->f_m, vl_lg->f_t_str, 8LL));
+        int64_t vl_ix_42592;
+        if (((vela_bounds_check((vl_ix_42592 = vl_e), 65536, "selfhost/vm.vel", 12111), vl_lit[vl_ix_42592]) == 0LL)) {
+            int64_t vl_ix_42597;
+            vela_bounds_check((vl_ix_42597 = vl_e), 65536, "selfhost/vm.vel", 12112);
+            vl_lit[vl_ix_42597] = vl_ll_ck((*vl_lg), vela_str_lit("a slot for a string literal", 27), vshim_build_alloca(vl_lg->f_m, vl_lg->f_t_str, 8LL));
         }
         return;
     }
     if ((vl_k == 26LL)) {
-        int64_t vl_ix_42125;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42125 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11885)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11885)), 655360, "selfhost/vm.vel", 11885), vl_nd[vl_ix_42125])));
-        int64_t vl_ix_42134;
-        int64_t vl_a = (vela_bounds_check((vl_ix_42134 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11886)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11886)), 655360, "selfhost/vm.vel", 11886), vl_nd[vl_ix_42134]);
+        int64_t vl_ix_42633;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42633 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12119)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12119)), 655360, "selfhost/vm.vel", 12119), vl_nd[vl_ix_42633])));
+        int64_t vl_ix_42642;
+        int64_t vl_a = (vela_bounds_check((vl_ix_42642 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12120)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12120)), 655360, "selfhost/vm.vel", 12120), vl_nd[vl_ix_42642]);
         while ((vl_a > 0LL)) {
             (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, vl_a));
             vl_a = vl_nd_nx(vl_nd, vl_a);
@@ -11942,46 +12092,46 @@ static void vl_ll_reserve_expr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_
         return;
     }
     if ((vl_k == 27LL)) {
-        int64_t vl_ix_42183;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42183 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11894)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11894)), 655360, "selfhost/vm.vel", 11894), vl_nd[vl_ix_42183])));
-        int64_t vl_ix_42203;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42203 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11895)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11895)), 655360, "selfhost/vm.vel", 11895), vl_nd[vl_ix_42203])));
+        int64_t vl_ix_42691;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42691 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12128)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12128)), 655360, "selfhost/vm.vel", 12128), vl_nd[vl_ix_42691])));
+        int64_t vl_ix_42711;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42711 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12129)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12129)), 655360, "selfhost/vm.vel", 12129), vl_nd[vl_ix_42711])));
         return;
     }
     if ((vl_k == 28LL)) {
-        int64_t vl_ix_42228;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42228 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11899)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11899)), 655360, "selfhost/vm.vel", 11899), vl_nd[vl_ix_42228])));
+        int64_t vl_ix_42736;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42736 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12133)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12133)), 655360, "selfhost/vm.vel", 12133), vl_nd[vl_ix_42736])));
         return;
     }
     if ((vl_k == 29LL)) {
-        int64_t vl_ix_42253;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42253 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11903)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11903)), 655360, "selfhost/vm.vel", 11903), vl_nd[vl_ix_42253])));
-        int64_t vl_ix_42273;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42273 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11904)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11904)), 655360, "selfhost/vm.vel", 11904), vl_nd[vl_ix_42273])));
+        int64_t vl_ix_42761;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42761 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12137)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12137)), 655360, "selfhost/vm.vel", 12137), vl_nd[vl_ix_42761])));
+        int64_t vl_ix_42781;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42781 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12138)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12138)), 655360, "selfhost/vm.vel", 12138), vl_nd[vl_ix_42781])));
         return;
     }
     if ((vl_k == 30LL)) {
-        int64_t vl_ix_42298;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42298 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11908)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11908)), 655360, "selfhost/vm.vel", 11908), vl_nd[vl_ix_42298])));
-        int64_t vl_ix_42318;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42318 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11909)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11909)), 655360, "selfhost/vm.vel", 11909), vl_nd[vl_ix_42318])));
+        int64_t vl_ix_42806;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42806 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12142)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12142)), 655360, "selfhost/vm.vel", 12142), vl_nd[vl_ix_42806])));
+        int64_t vl_ix_42826;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42826 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12143)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12143)), 655360, "selfhost/vm.vel", 12143), vl_nd[vl_ix_42826])));
         return;
     }
     if ((vl_k == 31LL)) {
-        int64_t vl_ix_42343;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42343 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11913)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11913)), 655360, "selfhost/vm.vel", 11913), vl_nd[vl_ix_42343])));
-        int64_t vl_ix_42363;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42363 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11914)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11914)), 655360, "selfhost/vm.vel", 11914), vl_nd[vl_ix_42363])));
+        int64_t vl_ix_42851;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42851 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12147)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12147)), 655360, "selfhost/vm.vel", 12147), vl_nd[vl_ix_42851])));
+        int64_t vl_ix_42871;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42871 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12148)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12148)), 655360, "selfhost/vm.vel", 12148), vl_nd[vl_ix_42871])));
         return;
     }
     if ((vl_k == 32LL)) {
-        int64_t vl_ix_42388;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42388 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11919)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11919)), 655360, "selfhost/vm.vel", 11919), vl_nd[vl_ix_42388])));
+        int64_t vl_ix_42896;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42896 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12153)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12153)), 655360, "selfhost/vm.vel", 12153), vl_nd[vl_ix_42896])));
         return;
     }
     if ((vl_k == 33LL)) {
-        int64_t vl_ix_42402;
-        int64_t vl_a2 = (vela_bounds_check((vl_ix_42402 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11923)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11923)), 655360, "selfhost/vm.vel", 11923), vl_nd[vl_ix_42402]);
+        int64_t vl_ix_42910;
+        int64_t vl_a2 = (vela_bounds_check((vl_ix_42910 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12157)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12157)), 655360, "selfhost/vm.vel", 12157), vl_nd[vl_ix_42910]);
         while ((vl_a2 > 0LL)) {
             (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, vl_a2));
             vl_a2 = vl_nd_nx(vl_nd, vl_a2);
@@ -12015,40 +12165,40 @@ static void vl_ll_reserve_body(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_
 static void vl_ll_reserve_stmt(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t vl_s) {
     int64_t vl_k = vl_nd_kind(vl_nd, vl_s);
     if ((vl_k == 6LL)) {
-        int64_t vl_ix_42578;
-        if ((((vela_bounds_check((vl_ix_42578 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11975)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11975)), 655360, "selfhost/vm.vel", 11975), vl_nd[vl_ix_42578]) & 2LL) == 2LL)) {
+        int64_t vl_ix_43086;
+        if ((((vela_bounds_check((vl_ix_43086 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12209)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12209)), 655360, "selfhost/vm.vel", 12209), vl_nd[vl_ix_43086]) & 2LL) == 2LL)) {
             (void)(vl_ll_reserve_decl(vl_lg, vl_nd, vl_mem, vl_slots, vl_slotkind, vl_path, vl_s));
         }
-        int64_t vl_ix_42611;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42611 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11979)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11979)), 655360, "selfhost/vm.vel", 11979), vl_nd[vl_ix_42611])));
+        int64_t vl_ix_43119;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_43119 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12213)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12213)), 655360, "selfhost/vm.vel", 12213), vl_nd[vl_ix_43119])));
         return;
     }
     if ((vl_k == 7LL)) {
-        int64_t vl_ix_42636;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42636 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11984)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11984)), 655360, "selfhost/vm.vel", 11984), vl_nd[vl_ix_42636])));
+        int64_t vl_ix_43144;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_43144 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12218)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12218)), 655360, "selfhost/vm.vel", 12218), vl_nd[vl_ix_43144])));
         return;
     }
     if ((vl_k == 8LL)) {
-        int64_t vl_ix_42661;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42661 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11989)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11989)), 655360, "selfhost/vm.vel", 11989), vl_nd[vl_ix_42661])));
+        int64_t vl_ix_43169;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_43169 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12223)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12223)), 655360, "selfhost/vm.vel", 12223), vl_nd[vl_ix_43169])));
         return;
     }
     if ((vl_k == 9LL)) {
-        int64_t vl_ix_42686;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42686 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11994)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 11994)), 655360, "selfhost/vm.vel", 11994), vl_nd[vl_ix_42686])));
+        int64_t vl_ix_43194;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_43194 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12228)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12228)), 655360, "selfhost/vm.vel", 12228), vl_nd[vl_ix_43194])));
         return;
     }
     if ((vl_k == 10LL)) {
         int64_t vl_e = vl_s;
         while ((vl_e > 0LL)) {
-            int64_t vl_ix_42717;
-            (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42717 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12001)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12001)), 655360, "selfhost/vm.vel", 12001), vl_nd[vl_ix_42717])));
+            int64_t vl_ix_43225;
+            (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_43225 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12235)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12235)), 655360, "selfhost/vm.vel", 12235), vl_nd[vl_ix_43225])));
             if ((vl_nd_kind(vl_nd, vl_e) == 10LL)) {
-                int64_t vl_ix_42744;
-                (void)(vl_ll_reserve_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, (vela_bounds_check((vl_ix_42744 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12004)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12004)), 655360, "selfhost/vm.vel", 12004), vl_nd[vl_ix_42744])));
+                int64_t vl_ix_43252;
+                (void)(vl_ll_reserve_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, (vela_bounds_check((vl_ix_43252 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12238)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12238)), 655360, "selfhost/vm.vel", 12238), vl_nd[vl_ix_43252])));
             }
-            int64_t vl_ix_42755;
-            vl_e = (vela_bounds_check((vl_ix_42755 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12006)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12006)), 655360, "selfhost/vm.vel", 12006), vl_nd[vl_ix_42755]);
+            int64_t vl_ix_43263;
+            vl_e = (vela_bounds_check((vl_ix_43263 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12240)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12240)), 655360, "selfhost/vm.vel", 12240), vl_nd[vl_ix_43263]);
             if ((vl_e > 0LL)) {
                 if ((vl_nd_kind(vl_nd, vl_e) != 10LL)) {
                     (void)(vl_ll_reserve_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_e));
@@ -12059,26 +12209,26 @@ static void vl_ll_reserve_stmt(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_
         return;
     }
     if ((vl_k == 11LL)) {
-        int64_t vl_ix_42809;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42809 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12019)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12019)), 655360, "selfhost/vm.vel", 12019), vl_nd[vl_ix_42809])));
-        int64_t vl_ix_42830;
-        (void)(vl_ll_reserve_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, (vela_bounds_check((vl_ix_42830 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12021)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12021)), 655360, "selfhost/vm.vel", 12021), vl_nd[vl_ix_42830])));
+        int64_t vl_ix_43317;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_43317 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12253)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12253)), 655360, "selfhost/vm.vel", 12253), vl_nd[vl_ix_43317])));
+        int64_t vl_ix_43338;
+        (void)(vl_ll_reserve_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, (vela_bounds_check((vl_ix_43338 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12255)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12255)), 655360, "selfhost/vm.vel", 12255), vl_nd[vl_ix_43338])));
         return;
     }
     if ((vl_k == 12LL)) {
-        int64_t vl_ix_42855;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42855 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12026)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12026)), 655360, "selfhost/vm.vel", 12026), vl_nd[vl_ix_42855])));
-        int64_t vl_ix_42875;
-        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42875 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12028)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12028)), 655360, "selfhost/vm.vel", 12028), vl_nd[vl_ix_42875])));
-        int64_t vl_ix_42884;
-        if (((vela_bounds_check((vl_ix_42884 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12029)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12029)), 655360, "selfhost/vm.vel", 12029), vl_nd[vl_ix_42884]) > 0LL)) {
-            int64_t vl_ix_42904;
-            (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_42904 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12031)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12031)), 655360, "selfhost/vm.vel", 12031), vl_nd[vl_ix_42904])));
+        int64_t vl_ix_43363;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_43363 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12260)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12260)), 655360, "selfhost/vm.vel", 12260), vl_nd[vl_ix_43363])));
+        int64_t vl_ix_43383;
+        (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_43383 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12262)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12262)), 655360, "selfhost/vm.vel", 12262), vl_nd[vl_ix_43383])));
+        int64_t vl_ix_43392;
+        if (((vela_bounds_check((vl_ix_43392 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12263)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12263)), 655360, "selfhost/vm.vel", 12263), vl_nd[vl_ix_43392]) > 0LL)) {
+            int64_t vl_ix_43412;
+            (void)(vl_ll_reserve_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_lit, (vela_bounds_check((vl_ix_43412 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12265)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12265)), 655360, "selfhost/vm.vel", 12265), vl_nd[vl_ix_43412])));
         }
         int64_t vl_slot = vl_nt_get(vl_mem, vl_s, vl_NT_SLOT());
         (void)(vl_ll_note(vl_lg, vl_slots, vl_slotkind, vl_slot, vl_K_INT(), vl_ll_alloca(vl_lg, vl_K_INT(), vl_path, vl_nd_line(vl_nd, vl_s)), vl_path, vl_nd_line(vl_nd, vl_s)));
-        int64_t vl_ix_42958;
-        (void)(vl_ll_reserve_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, (vela_bounds_check((vl_ix_42958 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12041)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12041)), 655360, "selfhost/vm.vel", 12041), vl_nd[vl_ix_42958])));
+        int64_t vl_ix_43466;
+        (void)(vl_ll_reserve_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, (vela_bounds_check((vl_ix_43466 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12275)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12275)), 655360, "selfhost/vm.vel", 12275), vl_nd[vl_ix_43466])));
         return;
     }
 }
@@ -12108,24 +12258,24 @@ static int64_t vl_ll_array_ptr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_
 
 static void vl_ll_bounds(struct vl_LG* vl_lg, int64_t vl_index, int64_t vl_len, vela_str vl_path, int64_t vl_line) {
     int64_t* vl_a = (int64_t*)vela_arena_alloc((size_t)8 * sizeof(int64_t));
-    int64_t vl_ix_43090;
-    vela_bounds_check((vl_ix_43090 = 0LL), 8, "selfhost/vm.vel", 12105);
-    vl_a[vl_ix_43090] = vl_index;
-    int64_t vl_ix_43095;
-    vela_bounds_check((vl_ix_43095 = 1LL), 8, "selfhost/vm.vel", 12106);
-    vl_a[vl_ix_43095] = vl_ll_ck((*vl_lg), vela_str_lit("an array's length", 17), vshim_const_i64(vl_lg->f_m, vl_len));
-    int64_t vl_ix_43108;
-    vela_bounds_check((vl_ix_43108 = 2LL), 8, "selfhost/vm.vel", 12107);
-    vl_a[vl_ix_43108] = vl_lg->f_pfile;
-    int64_t vl_ix_43114;
-    vela_bounds_check((vl_ix_43114 = 3LL), 8, "selfhost/vm.vel", 12108);
-    vl_a[vl_ix_43114] = vl_const_i32((*vl_lg), vl_line);
+    int64_t vl_ix_43598;
+    vela_bounds_check((vl_ix_43598 = 0LL), 8, "selfhost/vm.vel", 12339);
+    vl_a[vl_ix_43598] = vl_index;
+    int64_t vl_ix_43603;
+    vela_bounds_check((vl_ix_43603 = 1LL), 8, "selfhost/vm.vel", 12340);
+    vl_a[vl_ix_43603] = vl_ll_ck((*vl_lg), vela_str_lit("an array's length", 17), vshim_const_i64(vl_lg->f_m, vl_len));
+    int64_t vl_ix_43616;
+    vela_bounds_check((vl_ix_43616 = 2LL), 8, "selfhost/vm.vel", 12341);
+    vl_a[vl_ix_43616] = vl_lg->f_pfile;
+    int64_t vl_ix_43622;
+    vela_bounds_check((vl_ix_43622 = 3LL), 8, "selfhost/vm.vel", 12342);
+    vl_a[vl_ix_43622] = vl_const_i32((*vl_lg), vl_line);
     (void)(vl_ll_call_n((*vl_lg), vl_lg->f_f_bounds, vl_a, 4LL));
 }
 
 static int64_t vl_ll_index_addr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_e) {
-    int64_t vl_ix_43148;
-    int64_t vl_base = (vela_bounds_check((vl_ix_43148 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12119)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12119)), 655360, "selfhost/vm.vel", 12119), vl_nd[vl_ix_43148]);
+    int64_t vl_ix_43656;
+    int64_t vl_base = (vela_bounds_check((vl_ix_43656 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12353)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12353)), 655360, "selfhost/vm.vel", 12353), vl_nd[vl_ix_43656]);
     int64_t vl_line = vl_nd_line(vl_nd, vl_e);
     int64_t vl_bk = vl_unpack_kind(vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, vl_base));
     if ((!vl_is_array(vl_bk))) {
@@ -12133,8 +12283,8 @@ static int64_t vl_ll_index_addr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl
     }
     int64_t vl_len = vl_unpack_len(vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, vl_base));
     int64_t vl_p = vl_ll_array_ptr(vl_lg, vl_nd, vl_mem, vl_slots, vl_slotkind, vl_path, vl_base);
-    int64_t vl_ix_43220;
-    int64_t vl_iv = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_43220 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12129)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12129)), 655360, "selfhost/vm.vel", 12129), vl_nd[vl_ix_43220]));
+    int64_t vl_ix_43728;
+    int64_t vl_iv = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_43728 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12363)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12363)), 655360, "selfhost/vm.vel", 12363), vl_nd[vl_ix_43728]));
     (void)(vl_ll_bounds(vl_lg, vl_iv, vl_len, vl_path, vl_line));
     int64_t vl_ek = vl_elem_kind_of(vl_bk);
     int64_t vl_et = vl_ll_type_of((*vl_lg), vl_ek);
@@ -12152,10 +12302,10 @@ static void vl_ll_array_decl(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty
     }
     int64_t vl_ek = vl_elem_kind_of(vl_k);
     int64_t vl_esz = vl_ll_esize_of(vl_ek, vl_path, vl_line);
-    int64_t vl_p = vl_ll_call1((*vl_lg), vl_lg->f_f_alloc, vl_ll_ck((*vl_lg), vela_str_lit("an array's size", 15), vshim_const_i64(vl_lg->f_m, vela_mul_range((vl_n), (vl_esz), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12157))));
+    int64_t vl_p = vl_ll_call1((*vl_lg), vl_lg->f_f_alloc, vl_ll_ck((*vl_lg), vela_str_lit("an array's size", 15), vshim_const_i64(vl_lg->f_m, vela_mul_range((vl_n), (vl_esz), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12391))));
     (void)(vl_ll_ckst((*vl_lg), vela_str_lit("storing an array's address", 26), vshim_build_store(vl_lg->f_m, vl_p, vl_h)));
-    int64_t vl_ix_43349;
-    int64_t vl_v = (vela_bounds_check((vl_ix_43349 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12159)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12159)), 655360, "selfhost/vm.vel", 12159), vl_nd[vl_ix_43349]);
+    int64_t vl_ix_43857;
+    int64_t vl_v = (vela_bounds_check((vl_ix_43857 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12393)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12393)), 655360, "selfhost/vm.vel", 12393), vl_nd[vl_ix_43857]);
     if ((vl_v <= 0LL)) {
         return;
     }
@@ -12164,13 +12314,13 @@ static void vl_ll_array_decl(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty
     }
     int64_t vl_et = vl_ll_type_of((*vl_lg), vl_ek);
     int64_t vl_i = 0LL;
-    int64_t vl_ix_43385;
-    int64_t vl_a = (vela_bounds_check((vl_ix_43385 = vela_add_range((vela_mul_range((vl_v), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12168)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12168)), 655360, "selfhost/vm.vel", 12168), vl_nd[vl_ix_43385]);
+    int64_t vl_ix_43893;
+    int64_t vl_a = (vela_bounds_check((vl_ix_43893 = vela_add_range((vela_mul_range((vl_v), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12402)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12402)), 655360, "selfhost/vm.vel", 12402), vl_nd[vl_ix_43893]);
     while ((vl_a > 0LL)) {
         int64_t vl_val = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, vl_a);
         int64_t vl_ep = vl_ll_ck((*vl_lg), vela_str_lit("an element address", 18), vshim_build_gep(vl_lg->f_m, vl_et, vl_p, vl_ll_ck((*vl_lg), vela_str_lit("an element index", 16), vshim_const_i64(vl_lg->f_m, vl_i))));
         (void)(vl_ll_ckst((*vl_lg), vela_str_lit("storing an element", 18), vshim_build_store(vl_lg->f_m, vl_val, vl_ep)));
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12177);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12411);
         vl_a = vl_nd_nx(vl_nd, vl_a);
     }
 }
@@ -12199,12 +12349,12 @@ static int64_t vl_ll_name(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, i
 }
 
 static void vl_ll_lit_into(struct vl_LG* vl_lg, int64_t vl_dst, int64_t* vl_nd, vela_str vl_src, vela_str vl_path, int64_t vl_e) {
-    int64_t vl_ix_43595;
-    int64_t vl_ix_43602;
-    int64_t vl_ix_43609;
-    vela_str vl_s = (vela_substr(vl_src, (vela_bounds_check((vl_ix_43595 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12225)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12225)), 655360, "selfhost/vm.vel", 12225), vl_nd[vl_ix_43595]), vela_add_range(((vela_bounds_check((vl_ix_43602 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12225)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12225)), 655360, "selfhost/vm.vel", 12225), vl_nd[vl_ix_43602])), ((vela_bounds_check((vl_ix_43609 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12225)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12225)), 655360, "selfhost/vm.vel", 12225), vl_nd[vl_ix_43609])), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12225)));
-    int64_t vl_ix_43620;
-    if ((((vela_bounds_check((vl_ix_43620 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12226)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12226)), 655360, "selfhost/vm.vel", 12226), vl_nd[vl_ix_43620]) & 1LL) == 1LL)) {
+    int64_t vl_ix_44103;
+    int64_t vl_ix_44110;
+    int64_t vl_ix_44117;
+    vela_str vl_s = (vela_substr(vl_src, (vela_bounds_check((vl_ix_44103 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12459)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12459)), 655360, "selfhost/vm.vel", 12459), vl_nd[vl_ix_44103]), vela_add_range(((vela_bounds_check((vl_ix_44110 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12459)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12459)), 655360, "selfhost/vm.vel", 12459), vl_nd[vl_ix_44110])), ((vela_bounds_check((vl_ix_44117 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12459)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12459)), 655360, "selfhost/vm.vel", 12459), vl_nd[vl_ix_44117])), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12459)));
+    int64_t vl_ix_44128;
+    if ((((vela_bounds_check((vl_ix_44128 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12460)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12460)), 655360, "selfhost/vm.vel", 12460), vl_nd[vl_ix_44128]) & 1LL) == 1LL)) {
         vl_s = (vela_unescape(vl_s));
     }
     if ((!vl_ll_buf(vl_s))) {
@@ -12216,17 +12366,17 @@ static void vl_ll_lit_into(struct vl_LG* vl_lg, int64_t vl_dst, int64_t* vl_nd, 
 }
 
 static int64_t vl_ll_binop(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_e) {
-    int64_t vl_ix_43694;
-    int64_t vl_op = (vela_bounds_check((vl_ix_43694 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12243)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12243)), 655360, "selfhost/vm.vel", 12243), vl_nd[vl_ix_43694]);
+    int64_t vl_ix_44202;
+    int64_t vl_op = (vela_bounds_check((vl_ix_44202 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12477)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12477)), 655360, "selfhost/vm.vel", 12477), vl_nd[vl_ix_44202]);
     int64_t vl_line = vl_nd_line(vl_nd, vl_e);
-    int64_t vl_ix_43714;
-    int64_t vl_lk = vl_expr_kind(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_43714 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12245)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12245)), 655360, "selfhost/vm.vel", 12245), vl_nd[vl_ix_43714]));
-    int64_t vl_ix_43737;
-    int64_t vl_a = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_43737 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12247)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12247)), 655360, "selfhost/vm.vel", 12247), vl_nd[vl_ix_43737]));
-    int64_t vl_ix_43760;
-    int64_t vl_b = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_43760 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12249)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12249)), 655360, "selfhost/vm.vel", 12249), vl_nd[vl_ix_43760]));
+    int64_t vl_ix_44222;
+    int64_t vl_lk = vl_expr_kind(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_44222 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12479)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12479)), 655360, "selfhost/vm.vel", 12479), vl_nd[vl_ix_44222]));
+    int64_t vl_ix_44245;
+    int64_t vl_a = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44245 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12481)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12481)), 655360, "selfhost/vm.vel", 12481), vl_nd[vl_ix_44245]));
+    int64_t vl_ix_44268;
+    int64_t vl_b = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44268 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12483)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12483)), 655360, "selfhost/vm.vel", 12483), vl_nd[vl_ix_44268]));
     if ((vl_lk == vl_K_INT())) {
-        int64_t vl_lo = vl_ll_ck((*vl_lg), vela_str_lit("the lower bound", 15), vshim_const_i64(vl_lg->f_m, vela_sub_range((vela_sub_range((0LL), (9223372036854775807LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12251)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12251)));
+        int64_t vl_lo = vl_ll_ck((*vl_lg), vela_str_lit("the lower bound", 15), vshim_const_i64(vl_lg->f_m, vela_sub_range((vela_sub_range((0LL), (9223372036854775807LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12485)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12485)));
         int64_t vl_hi = vl_ll_ck((*vl_lg), vela_str_lit("the upper bound", 15), vshim_const_i64(vl_lg->f_m, 9223372036854775807LL));
         if ((vl_op == 1LL)) {
             return vl_ll_call6((*vl_lg), vl_lg->f_f_add, vl_a, vl_b, vl_lo, vl_hi, vl_lg->f_pfile, vl_const_i32((*vl_lg), vl_line));
@@ -12270,37 +12420,37 @@ static int64_t vl_const_i32(struct vl_LG vl_lg, int64_t vl_v) {
 
 static int64_t vl_ll_call4(struct vl_LG vl_lg, int64_t vl_fn, int64_t vl_x0, int64_t vl_x1, int64_t vl_x2, int64_t vl_x3) {
     int64_t* vl_a = (int64_t*)vela_arena_alloc((size_t)8 * sizeof(int64_t));
-    int64_t vl_ix_44000;
-    vela_bounds_check((vl_ix_44000 = 0LL), 8, "selfhost/vm.vel", 12296);
-    vl_a[vl_ix_44000] = vl_x0;
-    int64_t vl_ix_44005;
-    vela_bounds_check((vl_ix_44005 = 1LL), 8, "selfhost/vm.vel", 12297);
-    vl_a[vl_ix_44005] = vl_x1;
-    int64_t vl_ix_44010;
-    vela_bounds_check((vl_ix_44010 = 2LL), 8, "selfhost/vm.vel", 12298);
-    vl_a[vl_ix_44010] = vl_x2;
-    int64_t vl_ix_44015;
-    vela_bounds_check((vl_ix_44015 = 3LL), 8, "selfhost/vm.vel", 12299);
-    vl_a[vl_ix_44015] = vl_x3;
+    int64_t vl_ix_44508;
+    vela_bounds_check((vl_ix_44508 = 0LL), 8, "selfhost/vm.vel", 12530);
+    vl_a[vl_ix_44508] = vl_x0;
+    int64_t vl_ix_44513;
+    vela_bounds_check((vl_ix_44513 = 1LL), 8, "selfhost/vm.vel", 12531);
+    vl_a[vl_ix_44513] = vl_x1;
+    int64_t vl_ix_44518;
+    vela_bounds_check((vl_ix_44518 = 2LL), 8, "selfhost/vm.vel", 12532);
+    vl_a[vl_ix_44518] = vl_x2;
+    int64_t vl_ix_44523;
+    vela_bounds_check((vl_ix_44523 = 3LL), 8, "selfhost/vm.vel", 12533);
+    vl_a[vl_ix_44523] = vl_x3;
     return vl_ll_call_n(vl_lg, vl_fn, vl_a, 4LL);
 }
 
 static int64_t vl_ll_cmp(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_e) {
-    int64_t vl_ix_44045;
-    int64_t vl_op = (vela_bounds_check((vl_ix_44045 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12308)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12308)), 655360, "selfhost/vm.vel", 12308), vl_nd[vl_ix_44045]);
+    int64_t vl_ix_44553;
+    int64_t vl_op = (vela_bounds_check((vl_ix_44553 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12542)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12542)), 655360, "selfhost/vm.vel", 12542), vl_nd[vl_ix_44553]);
     int64_t vl_line = vl_nd_line(vl_nd, vl_e);
-    int64_t vl_ix_44065;
-    int64_t vl_lk = vl_expr_kind(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_44065 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12310)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12310)), 655360, "selfhost/vm.vel", 12310), vl_nd[vl_ix_44065]));
+    int64_t vl_ix_44573;
+    int64_t vl_lk = vl_expr_kind(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_44573 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12544)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12544)), 655360, "selfhost/vm.vel", 12544), vl_nd[vl_ix_44573]));
     if ((vl_lk == vl_K_STR())) {
         (void)(vl_trap(vl_path, vl_line, vela_str_lit("comparing two `str` values is not compiled by the LLVM back end yet: it is a runtime call (`vela_llvm_str_eq`) and belongs with the string milestone", 148)));
     }
     if ((vl_lk == vl_K_FLT())) {
         (void)(vl_trap(vl_path, vl_line, vela_str_lit("comparing two floats is not compiled by the LLVM back end yet: `vshim_build_icmp` is integer-only and the shim exposes no `fcmp` yet, so this would have to be a signed integer compare or nothing", 194)));
     }
-    int64_t vl_ix_44110;
-    int64_t vl_a = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44110 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12319)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12319)), 655360, "selfhost/vm.vel", 12319), vl_nd[vl_ix_44110]));
-    int64_t vl_ix_44133;
-    int64_t vl_b = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44133 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12320)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12320)), 655360, "selfhost/vm.vel", 12320), vl_nd[vl_ix_44133]));
+    int64_t vl_ix_44618;
+    int64_t vl_a = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44618 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12553)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12553)), 655360, "selfhost/vm.vel", 12553), vl_nd[vl_ix_44618]));
+    int64_t vl_ix_44641;
+    int64_t vl_b = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44641 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12554)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12554)), 655360, "selfhost/vm.vel", 12554), vl_nd[vl_ix_44641]));
     if ((vl_op == 22LL)) {
         return vl_ll_ck((*vl_lg), vela_str_lit("a comparison", 12), vshim_build_icmp(vl_lg->f_m, 0LL, vl_a, vl_b));
     }
@@ -12324,33 +12474,33 @@ static int64_t vl_ll_cmp(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, do
 }
 
 static int64_t vl_ll_unary(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_e) {
-    int64_t vl_ix_44261;
-    int64_t vl_op = (vela_bounds_check((vl_ix_44261 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12342)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12342)), 655360, "selfhost/vm.vel", 12342), vl_nd[vl_ix_44261]);
+    int64_t vl_ix_44769;
+    int64_t vl_op = (vela_bounds_check((vl_ix_44769 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12576)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12576)), 655360, "selfhost/vm.vel", 12576), vl_nd[vl_ix_44769]);
     int64_t vl_line = vl_nd_line(vl_nd, vl_e);
-    int64_t vl_ix_44281;
-    int64_t vl_k = vl_expr_kind(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_44281 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12344)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12344)), 655360, "selfhost/vm.vel", 12344), vl_nd[vl_ix_44281]));
+    int64_t vl_ix_44789;
+    int64_t vl_k = vl_expr_kind(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_44789 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12578)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12578)), 655360, "selfhost/vm.vel", 12578), vl_nd[vl_ix_44789]));
     if ((vl_op == 1LL)) {
-        int64_t vl_ix_44308;
-        return vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44308 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12347)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12347)), 655360, "selfhost/vm.vel", 12347), vl_nd[vl_ix_44308]));
+        int64_t vl_ix_44816;
+        return vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44816 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12581)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12581)), 655360, "selfhost/vm.vel", 12581), vl_nd[vl_ix_44816]));
     }
     if ((vl_op == 2LL)) {
-        int64_t vl_ix_44333;
-        int64_t vl_v = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44333 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12351)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12351)), 655360, "selfhost/vm.vel", 12351), vl_nd[vl_ix_44333]));
+        int64_t vl_ix_44841;
+        int64_t vl_v = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44841 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12585)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12585)), 655360, "selfhost/vm.vel", 12585), vl_nd[vl_ix_44841]));
         if ((vl_k == vl_K_FLT())) {
             int64_t vl_z = vl_ll_ck((*vl_lg), vela_str_lit("a float zero", 12), vshim_const_f64(vl_lg->f_m, (((double)0LL))));
             return vl_ll_ck((*vl_lg), vela_str_lit("a float negate", 14), vshim_build_fsub(vl_lg->f_m, vl_z, vl_v));
         }
         if ((vl_k == vl_K_INT())) {
             int64_t vl_z2 = vl_ll_ck((*vl_lg), vela_str_lit("a zero", 6), vshim_const_i64(vl_lg->f_m, 0LL));
-            int64_t vl_lo = vl_ll_ck((*vl_lg), vela_str_lit("the lower bound", 15), vshim_const_i64(vl_lg->f_m, vela_sub_range((vela_sub_range((0LL), (9223372036854775807LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12372)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12372)));
+            int64_t vl_lo = vl_ll_ck((*vl_lg), vela_str_lit("the lower bound", 15), vshim_const_i64(vl_lg->f_m, vela_sub_range((vela_sub_range((0LL), (9223372036854775807LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12606)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12606)));
             int64_t vl_hi = vl_ll_ck((*vl_lg), vela_str_lit("the upper bound", 15), vshim_const_i64(vl_lg->f_m, 9223372036854775807LL));
             return vl_ll_call6((*vl_lg), vl_lg->f_f_sub, vl_z2, vl_v, vl_lo, vl_hi, vl_lg->f_pfile, vl_const_i32((*vl_lg), vl_line));
         }
         (void)(vl_trap(vl_path, vl_line, vela_str_lit("negating this value kind is not compiled by the LLVM back end yet", 65)));
     }
     if ((vl_op == 15LL)) {
-        int64_t vl_ix_44453;
-        int64_t vl_v2 = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44453 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12380)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12380)), 655360, "selfhost/vm.vel", 12380), vl_nd[vl_ix_44453]));
+        int64_t vl_ix_44961;
+        int64_t vl_v2 = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_44961 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12614)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12614)), 655360, "selfhost/vm.vel", 12614), vl_nd[vl_ix_44961]));
         int64_t vl_f = vl_ll_ck((*vl_lg), vela_str_lit("a false", 7), vshim_const_bool(vl_lg->f_m, false));
         return vl_ll_ck((*vl_lg), vela_str_lit("a boolean not", 13), vshim_build_icmp(vl_lg->f_m, 0LL, vl_v2, vl_f));
     }
@@ -12359,8 +12509,8 @@ static int64_t vl_ll_unary(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, 
 }
 
 static int64_t vl_ll_call_expr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_e) {
-    int64_t vl_ix_44509;
-    int64_t vl_callee = (vela_bounds_check((vl_ix_44509 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12394)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12394)), 655360, "selfhost/vm.vel", 12394), vl_nd[vl_ix_44509]);
+    int64_t vl_ix_45017;
+    int64_t vl_callee = (vela_bounds_check((vl_ix_45017 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12628)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12628)), 655360, "selfhost/vm.vel", 12628), vl_nd[vl_ix_45017]);
     if ((vl_nd_kind(vl_nd, vl_callee) == 32LL)) {
         (void)(vl_trap(vl_path, vl_nd_line(vl_nd, vl_e), vela_str_lit("a method call is not compiled by the LLVM back end yet: it needs a struct", 73)));
     }
@@ -12368,8 +12518,8 @@ static int64_t vl_ll_call_expr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_
     if ((vl_sk == vl_SYM_BUILTIN())) {
         int64_t vl_b = vl_nt_get(vl_mem, vl_callee, vl_NT_VAL());
         if ((vl_b == vl_B_LEN())) {
-            int64_t vl_ix_44563;
-            int64_t vl_argpacked = vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_44563 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12405)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12405)), 655360, "selfhost/vm.vel", 12405), vl_nd[vl_ix_44563]));
+            int64_t vl_ix_45071;
+            int64_t vl_argpacked = vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_45071 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12639)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12639)), 655360, "selfhost/vm.vel", 12639), vl_nd[vl_ix_45071]));
             if (vl_is_array(vl_unpack_kind(vl_argpacked))) {
                 return vl_ll_ck((*vl_lg), vela_str_lit("a length", 8), vshim_const_i64(vl_lg->f_m, vl_unpack_len(vl_argpacked)));
             }
@@ -12381,42 +12531,42 @@ static int64_t vl_ll_call_expr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_
         (void)(vl_trap(vl_path, vl_nd_line(vl_nd, vl_e), vela_str_lit("only a call to a function can be compiled by the LLVM back end so far; this one is a struct constructor", 103)));
     }
     int64_t vl_f = vl_nt_get(vl_mem, vl_callee, vl_NT_VAL());
-    int64_t vl_ix_44629;
-    if (((vela_bounds_check((vl_ix_44629 = vl_f), 8192, "selfhost/vm.vel", 12421), vl_fns[vl_ix_44629]) == 0LL)) {
+    int64_t vl_ix_45137;
+    if (((vela_bounds_check((vl_ix_45137 = vl_f), 8192, "selfhost/vm.vel", 12655), vl_fns[vl_ix_45137]) == 0LL)) {
         (void)(vl_trap(vl_path, vl_nd_line(vl_nd, vl_e), vela_str_lit("this function was never declared to the back end", 48)));
     }
     int64_t* vl_ps = (int64_t*)vela_arena_alloc((size_t)8 * sizeof(int64_t));
     int64_t vl_n = 0LL;
-    int64_t vl_ix_44653;
-    int64_t vl_a = (vela_bounds_check((vl_ix_44653 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12426)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12426)), 655360, "selfhost/vm.vel", 12426), vl_nd[vl_ix_44653]);
+    int64_t vl_ix_45161;
+    int64_t vl_a = (vela_bounds_check((vl_ix_45161 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12660)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12660)), 655360, "selfhost/vm.vel", 12660), vl_nd[vl_ix_45161]);
     while ((vl_a > 0LL)) {
         if ((vl_n >= 8LL)) {
             (void)(vl_trap(vl_path, vl_nd_line(vl_nd, vl_e), vela_str_lit("the LLVM back end's argument list holds eight arguments", 55)));
         }
-        int64_t vl_ix_44674;
-        vela_bounds_check((vl_ix_44674 = vl_n), 8, "selfhost/vm.vel", 12431);
-        vl_ps[vl_ix_44674] = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, vl_a);
-        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12433);
+        int64_t vl_ix_45182;
+        vela_bounds_check((vl_ix_45182 = vl_n), 8, "selfhost/vm.vel", 12665);
+        vl_ps[vl_ix_45182] = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, vl_a);
+        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12667);
         vl_a = vl_nd_nx(vl_nd, vl_a);
     }
-    int64_t vl_ix_44706;
-    return vl_ll_call_n((*vl_lg), (vela_bounds_check((vl_ix_44706 = vl_f), 8192, "selfhost/vm.vel", 12436), vl_fns[vl_ix_44706]), vl_ps, vl_n);
+    int64_t vl_ix_45214;
+    return vl_ll_call_n((*vl_lg), (vela_bounds_check((vl_ix_45214 = vl_f), 8192, "selfhost/vm.vel", 12670), vl_fns[vl_ix_45214]), vl_ps, vl_n);
 }
 
 static int64_t vl_ll_expr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_e) {
     int64_t vl_k = vl_nd_kind(vl_nd, vl_e);
     if ((vl_k == 20LL)) {
-        int64_t vl_ix_44746;
-        return vl_ll_ck((*vl_lg), vela_str_lit("an integer constant", 19), vshim_const_i64(vl_lg->f_m, (vela_bounds_check((vl_ix_44746 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12447)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12447)), 655360, "selfhost/vm.vel", 12447), vl_nd[vl_ix_44746])));
+        int64_t vl_ix_45254;
+        return vl_ll_ck((*vl_lg), vela_str_lit("an integer constant", 19), vshim_const_i64(vl_lg->f_m, (vela_bounds_check((vl_ix_45254 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12681)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12681)), 655360, "selfhost/vm.vel", 12681), vl_nd[vl_ix_45254])));
     }
     if ((vl_k == 21LL)) {
-        int64_t vl_ix_44768;
-        int64_t vl_ix_44767;
-        return vl_ll_ck((*vl_lg), vela_str_lit("a float constant", 16), vshim_const_f64(vl_lg->f_m, (vela_bounds_check((vl_ix_44768 = (vela_bounds_check((vl_ix_44767 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12451)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12451)), 655360, "selfhost/vm.vel", 12451), vl_nd[vl_ix_44767])), 65536, "selfhost/vm.vel", 12451), vl_flt[vl_ix_44768])));
+        int64_t vl_ix_45276;
+        int64_t vl_ix_45275;
+        return vl_ll_ck((*vl_lg), vela_str_lit("a float constant", 16), vshim_const_f64(vl_lg->f_m, (vela_bounds_check((vl_ix_45276 = (vela_bounds_check((vl_ix_45275 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12685)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12685)), 655360, "selfhost/vm.vel", 12685), vl_nd[vl_ix_45275])), 65536, "selfhost/vm.vel", 12685), vl_flt[vl_ix_45276])));
     }
     if ((vl_k == 22LL)) {
-        int64_t vl_ix_44777;
-        int64_t vl_dst = (vela_bounds_check((vl_ix_44777 = vl_e), 65536, "selfhost/vm.vel", 12454), vl_lit[vl_ix_44777]);
+        int64_t vl_ix_45285;
+        int64_t vl_dst = (vela_bounds_check((vl_ix_45285 = vl_e), 65536, "selfhost/vm.vel", 12688), vl_lit[vl_ix_45285]);
         if ((vl_dst == 0LL)) {
             (void)(vl_trap(vl_path, vl_nd_line(vl_nd, vl_e), vela_str_lit("this string literal was never given a slot in the entry block", 61)));
         }
@@ -12424,8 +12574,8 @@ static int64_t vl_ll_expr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, d
         return vl_dst;
     }
     if ((vl_k == 23LL)) {
-        int64_t vl_ix_44821;
-        return vl_ll_ck((*vl_lg), vela_str_lit("a boolean constant", 18), vshim_const_bool(vl_lg->f_m, ((vela_bounds_check((vl_ix_44821 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12464)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12464)), 655360, "selfhost/vm.vel", 12464), vl_nd[vl_ix_44821]) == 1LL)));
+        int64_t vl_ix_45329;
+        return vl_ll_ck((*vl_lg), vela_str_lit("a boolean constant", 18), vshim_const_bool(vl_lg->f_m, ((vela_bounds_check((vl_ix_45329 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12698)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12698)), 655360, "selfhost/vm.vel", 12698), vl_nd[vl_ix_45329]) == 1LL)));
     }
     if ((vl_k == 25LL)) {
         return vl_ll_name(vl_lg, vl_nd, vl_ty, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_path, vl_e);
@@ -12447,8 +12597,8 @@ static int64_t vl_ll_expr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, d
     }
     if ((vl_k == 31LL)) {
         int64_t vl_ep = vl_ll_index_addr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, vl_e);
-        int64_t vl_ix_44968;
-        int64_t vl_bk = vl_unpack_kind(vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_44968 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12492)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12492)), 655360, "selfhost/vm.vel", 12492), vl_nd[vl_ix_44968])));
+        int64_t vl_ix_45476;
+        int64_t vl_bk = vl_unpack_kind(vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_45476 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12726)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12726)), 655360, "selfhost/vm.vel", 12726), vl_nd[vl_ix_45476])));
         int64_t vl_et = vl_ll_type_of((*vl_lg), vl_elem_kind_of(vl_bk));
         return vl_ll_ck((*vl_lg), vela_str_lit("loading an element", 18), vshim_build_load(vl_lg->f_m, vl_et, vl_ep));
     }
@@ -12466,8 +12616,8 @@ static int64_t vl_ll_expr(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, d
 }
 
 static void vl_ll_print(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_e) {
-    int64_t vl_ix_45063;
-    int64_t vl_a = (vela_bounds_check((vl_ix_45063 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12517)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12517)), 655360, "selfhost/vm.vel", 12517), vl_nd[vl_ix_45063]);
+    int64_t vl_ix_45571;
+    int64_t vl_a = (vela_bounds_check((vl_ix_45571 = vela_add_range((vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12751)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12751)), 655360, "selfhost/vm.vel", 12751), vl_nd[vl_ix_45571]);
     int64_t vl_n = 0LL;
     while ((vl_a > 0LL)) {
         if ((vl_n > 0LL)) {
@@ -12485,24 +12635,24 @@ static void vl_ll_print(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, dou
             (void)(vl_ll_call1((*vl_lg), vl_lg->f_f_pi64, vl_v));
         }
         vl_a = vl_nd_nx(vl_nd, vl_a);
-        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12536);
+        vl_n = vela_add_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12770);
     }
     (void)(vl_ll_call0((*vl_lg), vl_lg->f_f_nl));
 }
 
 static void vl_ll_assign(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_s) {
-    int64_t vl_ix_45187;
-    int64_t vl_tgt = (vela_bounds_check((vl_ix_45187 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12548)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12548)), 655360, "selfhost/vm.vel", 12548), vl_nd[vl_ix_45187]);
-    int64_t vl_ix_45196;
-    int64_t vl_v = (vela_bounds_check((vl_ix_45196 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12549)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12549)), 655360, "selfhost/vm.vel", 12549), vl_nd[vl_ix_45196]);
+    int64_t vl_ix_45695;
+    int64_t vl_tgt = (vela_bounds_check((vl_ix_45695 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12782)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12782)), 655360, "selfhost/vm.vel", 12782), vl_nd[vl_ix_45695]);
+    int64_t vl_ix_45704;
+    int64_t vl_v = (vela_bounds_check((vl_ix_45704 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12783)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12783)), 655360, "selfhost/vm.vel", 12783), vl_nd[vl_ix_45704]);
     int64_t vl_line = vl_nd_line(vl_nd, vl_s);
-    int64_t vl_ix_45211;
-    bool vl_decl = (((vela_bounds_check((vl_ix_45211 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12551)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12551)), 655360, "selfhost/vm.vel", 12551), vl_nd[vl_ix_45211]) & 2LL) == 2LL);
+    int64_t vl_ix_45719;
+    bool vl_decl = (((vela_bounds_check((vl_ix_45719 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12785)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12785)), 655360, "selfhost/vm.vel", 12785), vl_nd[vl_ix_45719]) & 2LL) == 2LL);
     if ((vl_nd_kind(vl_nd, vl_tgt) != 25LL)) {
         if ((vl_nd_kind(vl_nd, vl_tgt) == 31LL)) {
             int64_t vl_ep = vl_ll_index_addr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, vl_tgt);
-            int64_t vl_ix_45259;
-            int64_t vl_bk = vl_unpack_kind(vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_45259 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12558)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12558)), 655360, "selfhost/vm.vel", 12558), vl_nd[vl_ix_45259])));
+            int64_t vl_ix_45767;
+            int64_t vl_bk = vl_unpack_kind(vl_expr_packed(vl_nd, vl_ty, vl_mem, vl_vm, (vela_bounds_check((vl_ix_45767 = vela_add_range((vela_mul_range((vl_tgt), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12792)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12792)), 655360, "selfhost/vm.vel", 12792), vl_nd[vl_ix_45767])));
             int64_t vl_et = vl_ll_type_of((*vl_lg), vl_elem_kind_of(vl_bk));
             int64_t vl_val2 = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, vl_v);
             (void)(vl_ll_ckst((*vl_lg), vela_str_lit("storing an element", 18), vshim_build_store(vl_lg->f_m, vl_val2, vl_ep)));
@@ -12546,12 +12696,12 @@ static void vl_ll_assign(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, do
 }
 
 static void vl_ll_aug(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_s) {
-    int64_t vl_ix_45508;
-    int64_t vl_tgt = (vela_bounds_check((vl_ix_45508 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12610)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12610)), 655360, "selfhost/vm.vel", 12610), vl_nd[vl_ix_45508]);
-    int64_t vl_ix_45517;
-    int64_t vl_v = (vela_bounds_check((vl_ix_45517 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12611)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12611)), 655360, "selfhost/vm.vel", 12611), vl_nd[vl_ix_45517]);
-    int64_t vl_ix_45526;
-    int64_t vl_op = (vela_bounds_check((vl_ix_45526 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12612)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12612)), 655360, "selfhost/vm.vel", 12612), vl_nd[vl_ix_45526]);
+    int64_t vl_ix_46016;
+    int64_t vl_tgt = (vela_bounds_check((vl_ix_46016 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12844)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12844)), 655360, "selfhost/vm.vel", 12844), vl_nd[vl_ix_46016]);
+    int64_t vl_ix_46025;
+    int64_t vl_v = (vela_bounds_check((vl_ix_46025 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12845)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12845)), 655360, "selfhost/vm.vel", 12845), vl_nd[vl_ix_46025]);
+    int64_t vl_ix_46034;
+    int64_t vl_op = (vela_bounds_check((vl_ix_46034 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12846)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12846)), 655360, "selfhost/vm.vel", 12846), vl_nd[vl_ix_46034]);
     int64_t vl_line = vl_nd_line(vl_nd, vl_s);
     if ((vl_nd_kind(vl_nd, vl_tgt) != 25LL)) {
         (void)(vl_trap(vl_path, vl_line, vela_str_lit("only a local variable can be updated in place by the LLVM back end so far", 73)));
@@ -12566,7 +12716,7 @@ static void vl_ll_aug(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, doubl
     int64_t vl_val = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, vl_v);
     int64_t vl_r = 0LL;
     if ((vl_k == vl_K_INT())) {
-        int64_t vl_lo = vl_ll_ck((*vl_lg), vela_str_lit("the lower bound", 15), vshim_const_i64(vl_lg->f_m, vela_sub_range((vela_sub_range((0LL), (9223372036854775807LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12629)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12629)));
+        int64_t vl_lo = vl_ll_ck((*vl_lg), vela_str_lit("the lower bound", 15), vshim_const_i64(vl_lg->f_m, vela_sub_range((vela_sub_range((0LL), (9223372036854775807LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12863)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12863)));
         int64_t vl_hi = vl_ll_ck((*vl_lg), vela_str_lit("the upper bound", 15), vshim_const_i64(vl_lg->f_m, 9223372036854775807LL));
         if ((vl_op == 1LL)) {
             vl_r = vl_ll_call6((*vl_lg), vl_lg->f_f_add, vl_cur, vl_val, vl_lo, vl_hi, vl_lg->f_pfile, vl_const_i32((*vl_lg), vl_line));
@@ -12600,8 +12750,8 @@ static void vl_ll_aug(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, doubl
 }
 
 static void vl_ll_return_stmt(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_s) {
-    int64_t vl_ix_45872;
-    int64_t vl_v = (vela_bounds_check((vl_ix_45872 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12668)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12668)), 655360, "selfhost/vm.vel", 12668), vl_nd[vl_ix_45872]);
+    int64_t vl_ix_46380;
+    int64_t vl_v = (vela_bounds_check((vl_ix_46380 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12902)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12902)), 655360, "selfhost/vm.vel", 12902), vl_nd[vl_ix_46380]);
     int64_t vl_rk = vl_unpack_kind(vl_lg->f_retk);
     if ((vl_rk == vl_K_NONE())) {
         if ((vl_v > 0LL)) {
@@ -12632,18 +12782,18 @@ static void vl_ll_if(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double
     int64_t vl_elseb = vl_ll_new(vl_lg, vela_str_lit("else", 4));
     int64_t vl_join = vl_ll_new(vl_lg, vela_str_lit("join", 4));
     (void)(vl_ll_at(vl_lg, vl_here, vela_str_lit("positioning the builder back at the branch point", 48)));
-    int64_t vl_ix_46053;
-    int64_t vl_cond = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46053 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12708)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12708)), 655360, "selfhost/vm.vel", 12708), vl_nd[vl_ix_46053]));
+    int64_t vl_ix_46561;
+    int64_t vl_cond = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46561 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12942)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12942)), 655360, "selfhost/vm.vel", 12942), vl_nd[vl_ix_46561]));
     (void)(vl_ll_cbr(vl_lg, vl_cond, vl_thenb, vl_elseb));
     (void)(vl_ll_at(vl_lg, vl_thenb, vela_str_lit("positioning the builder in the `then` block", 43)));
-    int64_t vl_ix_46089;
-    (void)(vl_ll_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46089 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12712)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12712)), 655360, "selfhost/vm.vel", 12712), vl_nd[vl_ix_46089])));
+    int64_t vl_ix_46597;
+    (void)(vl_ll_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46597 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12946)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12946)), 655360, "selfhost/vm.vel", 12946), vl_nd[vl_ix_46597])));
     if ((vl_lg->f_term == 0LL)) {
         (void)(vl_ll_br(vl_lg, vl_join));
     }
     (void)(vl_ll_at(vl_lg, vl_elseb, vela_str_lit("positioning the builder in the `else` block", 43)));
-    int64_t vl_ix_46114;
-    int64_t vl_e = (vela_bounds_check((vl_ix_46114 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12717)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12717)), 655360, "selfhost/vm.vel", 12717), vl_nd[vl_ix_46114]);
+    int64_t vl_ix_46622;
+    int64_t vl_e = (vela_bounds_check((vl_ix_46622 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12951)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12951)), 655360, "selfhost/vm.vel", 12951), vl_nd[vl_ix_46622]);
     if ((vl_e > 0LL)) {
         if ((vl_nd_kind(vl_nd, vl_e) == 10LL)) {
             (void)(vl_ll_if(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, vl_e));
@@ -12665,16 +12815,16 @@ static void vl_ll_while(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, dou
     (void)(vl_ll_at(vl_lg, vl_here, vela_str_lit("positioning the builder back at the loop head", 45)));
     (void)(vl_ll_br(vl_lg, vl_condb));
     (void)(vl_ll_at(vl_lg, vl_condb, vela_str_lit("positioning the builder in the loop condition", 45)));
-    int64_t vl_ix_46248;
-    int64_t vl_cond = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46248 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12748)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12748)), 655360, "selfhost/vm.vel", 12748), vl_nd[vl_ix_46248]));
+    int64_t vl_ix_46756;
+    int64_t vl_cond = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46756 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12982)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12982)), 655360, "selfhost/vm.vel", 12982), vl_nd[vl_ix_46756]));
     (void)(vl_ll_cbr(vl_lg, vl_cond, vl_bodyb, vl_exitb));
     (void)(vl_ll_at(vl_lg, vl_bodyb, vela_str_lit("positioning the builder in the loop body", 40)));
     int64_t vl_oldbrk = vl_lg->f_brkb;
     int64_t vl_oldcont = vl_lg->f_contb;
     vl_lg->f_brkb = vl_exitb;
     vl_lg->f_contb = vl_condb;
-    int64_t vl_ix_46300;
-    (void)(vl_ll_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46300 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12756)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12756)), 655360, "selfhost/vm.vel", 12756), vl_nd[vl_ix_46300])));
+    int64_t vl_ix_46808;
+    (void)(vl_ll_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46808 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12990)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12990)), 655360, "selfhost/vm.vel", 12990), vl_nd[vl_ix_46808])));
     if ((vl_lg->f_term == 0LL)) {
         (void)(vl_ll_br(vl_lg, vl_condb));
     }
@@ -12685,34 +12835,34 @@ static void vl_ll_while(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, dou
 
 static void vl_ll_for(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_s) {
     int64_t vl_line = vl_nd_line(vl_nd, vl_s);
-    int64_t vl_ix_46353;
-    if ((((vela_bounds_check((vl_ix_46353 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12784)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12784)), 655360, "selfhost/vm.vel", 12784), vl_nd[vl_ix_46353]) & 1LL) == 1LL)) {
+    int64_t vl_ix_46861;
+    if ((((vela_bounds_check((vl_ix_46861 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13018)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13018)), 655360, "selfhost/vm.vel", 13018), vl_nd[vl_ix_46861]) & 1LL) == 1LL)) {
         (void)(vl_trap(vl_path, vl_line, vela_str_lit("`parallel for` is refused by the LLVM back end, deliberately: LLVM IR has no OpenMP and emitting the runtime ABI is out of scope, and a loop that says it is parallel while running serially is the one failure mode this project has promised never to ship (selfhost/LLVM_PLAN.md)", 276)));
     }
     int64_t vl_hs = vl_ll_slot_for((*vl_lg), vl_slots, vl_slotkind, vl_nt_get(vl_mem, vl_s, vl_NT_SLOT()), vl_K_INT(), vl_path, vl_line);
     int64_t vl_here = vl_lg->f_cur;
     int64_t* vl_a = (int64_t*)vela_arena_alloc((size_t)8 * sizeof(int64_t));
-    int64_t vl_ix_46390;
-    int64_t vl_ix_46410;
-    vela_bounds_check((vl_ix_46390 = 0LL), 8, "selfhost/vm.vel", 12792);
-    vl_a[vl_ix_46390] = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46410 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12793)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12793)), 655360, "selfhost/vm.vel", 12793), vl_nd[vl_ix_46410]));
-    int64_t vl_ix_46415;
-    int64_t vl_ix_46435;
-    vela_bounds_check((vl_ix_46415 = 1LL), 8, "selfhost/vm.vel", 12794);
-    vl_a[vl_ix_46415] = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46435 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12795)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12795)), 655360, "selfhost/vm.vel", 12795), vl_nd[vl_ix_46435]));
-    int64_t vl_ix_46444;
-    if (((vela_bounds_check((vl_ix_46444 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12796)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12796)), 655360, "selfhost/vm.vel", 12796), vl_nd[vl_ix_46444]) > 0LL)) {
-        int64_t vl_ix_46449;
-        int64_t vl_ix_46469;
-        vela_bounds_check((vl_ix_46449 = 2LL), 8, "selfhost/vm.vel", 12797);
-        vl_a[vl_ix_46449] = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46469 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12798)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12798)), 655360, "selfhost/vm.vel", 12798), vl_nd[vl_ix_46469]));
+    int64_t vl_ix_46898;
+    int64_t vl_ix_46918;
+    vela_bounds_check((vl_ix_46898 = 0LL), 8, "selfhost/vm.vel", 13026);
+    vl_a[vl_ix_46898] = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46918 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13027)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13027)), 655360, "selfhost/vm.vel", 13027), vl_nd[vl_ix_46918]));
+    int64_t vl_ix_46923;
+    int64_t vl_ix_46943;
+    vela_bounds_check((vl_ix_46923 = 1LL), 8, "selfhost/vm.vel", 13028);
+    vl_a[vl_ix_46923] = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46943 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13029)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13029)), 655360, "selfhost/vm.vel", 13029), vl_nd[vl_ix_46943]));
+    int64_t vl_ix_46952;
+    if (((vela_bounds_check((vl_ix_46952 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13030)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13030)), 655360, "selfhost/vm.vel", 13030), vl_nd[vl_ix_46952]) > 0LL)) {
+        int64_t vl_ix_46957;
+        int64_t vl_ix_46977;
+        vela_bounds_check((vl_ix_46957 = 2LL), 8, "selfhost/vm.vel", 13031);
+        vl_a[vl_ix_46957] = vl_ll_expr(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46977 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13032)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13032)), 655360, "selfhost/vm.vel", 13032), vl_nd[vl_ix_46977]));
     } else {
-        int64_t vl_ix_46474;
-        vela_bounds_check((vl_ix_46474 = 2LL), 8, "selfhost/vm.vel", 12800);
-        vl_a[vl_ix_46474] = vl_ll_ck((*vl_lg), vela_str_lit("a step of one", 13), vshim_const_i64(vl_lg->f_m, 1LL));
+        int64_t vl_ix_46982;
+        vela_bounds_check((vl_ix_46982 = 2LL), 8, "selfhost/vm.vel", 13034);
+        vl_a[vl_ix_46982] = vl_ll_ck((*vl_lg), vela_str_lit("a step of one", 13), vshim_const_i64(vl_lg->f_m, 1LL));
     }
-    int64_t vl_ix_46494;
-    (void)(vl_ll_ckst((*vl_lg), vela_str_lit("storing the induction variable", 30), vshim_build_store(vl_lg->f_m, (vela_bounds_check((vl_ix_46494 = 0LL), 8, "selfhost/vm.vel", 12803), vl_a[vl_ix_46494]), vl_hs)));
+    int64_t vl_ix_47002;
+    (void)(vl_ll_ckst((*vl_lg), vela_str_lit("storing the induction variable", 30), vshim_build_store(vl_lg->f_m, (vela_bounds_check((vl_ix_47002 = 0LL), 8, "selfhost/vm.vel", 13037), vl_a[vl_ix_47002]), vl_hs)));
     int64_t vl_condb = vl_ll_new(vl_lg, vela_str_lit("test", 4));
     int64_t vl_postb = vl_ll_new(vl_lg, vela_str_lit("test_up", 7));
     int64_t vl_negb = vl_ll_new(vl_lg, vela_str_lit("test_down", 9));
@@ -12722,33 +12872,33 @@ static void vl_ll_for(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, doubl
     (void)(vl_ll_at(vl_lg, vl_here, vela_str_lit("positioning the builder back at the loop head", 45)));
     (void)(vl_ll_br(vl_lg, vl_condb));
     (void)(vl_ll_at(vl_lg, vl_condb, vela_str_lit("positioning the builder at the loop test", 40)));
-    int64_t vl_ix_46561;
-    int64_t vl_pos = vl_ll_ck((*vl_lg), vela_str_lit("a step test", 11), vshim_build_icmp(vl_lg->f_m, 4LL, (vela_bounds_check((vl_ix_46561 = 2LL), 8, "selfhost/vm.vel", 12814), vl_a[vl_ix_46561]), vl_ll_ck((*vl_lg), vela_str_lit("a zero", 6), vshim_const_i64(vl_lg->f_m, 0LL))));
+    int64_t vl_ix_47069;
+    int64_t vl_pos = vl_ll_ck((*vl_lg), vela_str_lit("a step test", 11), vshim_build_icmp(vl_lg->f_m, 4LL, (vela_bounds_check((vl_ix_47069 = 2LL), 8, "selfhost/vm.vel", 13048), vl_a[vl_ix_47069]), vl_ll_ck((*vl_lg), vela_str_lit("a zero", 6), vshim_const_i64(vl_lg->f_m, 0LL))));
     (void)(vl_ll_cbr(vl_lg, vl_pos, vl_postb, vl_negb));
     (void)(vl_ll_at(vl_lg, vl_postb, vela_str_lit("positioning the builder at the rising test", 42)));
     int64_t vl_cur = vl_ll_ck((*vl_lg), vela_str_lit("loading the induction variable", 30), vshim_build_load(vl_lg->f_m, vl_lg->f_t_i64, vl_hs));
-    int64_t vl_ix_46613;
-    (void)(vl_ll_cbr(vl_lg, vl_ll_ck((*vl_lg), vela_str_lit("a rising comparison", 19), vshim_build_icmp(vl_lg->f_m, 2LL, vl_cur, (vela_bounds_check((vl_ix_46613 = 1LL), 8, "selfhost/vm.vel", 12821), vl_a[vl_ix_46613]))), vl_bodyb, vl_exitb));
+    int64_t vl_ix_47121;
+    (void)(vl_ll_cbr(vl_lg, vl_ll_ck((*vl_lg), vela_str_lit("a rising comparison", 19), vshim_build_icmp(vl_lg->f_m, 2LL, vl_cur, (vela_bounds_check((vl_ix_47121 = 1LL), 8, "selfhost/vm.vel", 13055), vl_a[vl_ix_47121]))), vl_bodyb, vl_exitb));
     (void)(vl_ll_at(vl_lg, vl_negb, vela_str_lit("positioning the builder at the falling test", 43)));
     int64_t vl_cur2 = vl_ll_ck((*vl_lg), vela_str_lit("loading the induction variable", 30), vshim_build_load(vl_lg->f_m, vl_lg->f_t_i64, vl_hs));
-    int64_t vl_ix_46651;
-    (void)(vl_ll_cbr(vl_lg, vl_ll_ck((*vl_lg), vela_str_lit("a falling comparison", 20), vshim_build_icmp(vl_lg->f_m, 4LL, vl_cur2, (vela_bounds_check((vl_ix_46651 = 1LL), 8, "selfhost/vm.vel", 12826), vl_a[vl_ix_46651]))), vl_bodyb, vl_exitb));
+    int64_t vl_ix_47159;
+    (void)(vl_ll_cbr(vl_lg, vl_ll_ck((*vl_lg), vela_str_lit("a falling comparison", 20), vshim_build_icmp(vl_lg->f_m, 4LL, vl_cur2, (vela_bounds_check((vl_ix_47159 = 1LL), 8, "selfhost/vm.vel", 13060), vl_a[vl_ix_47159]))), vl_bodyb, vl_exitb));
     (void)(vl_ll_at(vl_lg, vl_bodyb, vela_str_lit("positioning the builder in the loop body", 40)));
     int64_t vl_oldbrk = vl_lg->f_brkb;
     int64_t vl_oldcont = vl_lg->f_contb;
     vl_lg->f_brkb = vl_exitb;
     vl_lg->f_contb = vl_incb;
-    int64_t vl_ix_46699;
-    (void)(vl_ll_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_46699 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12833)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12833)), 655360, "selfhost/vm.vel", 12833), vl_nd[vl_ix_46699])));
+    int64_t vl_ix_47207;
+    (void)(vl_ll_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_fns, (vela_bounds_check((vl_ix_47207 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13067)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13067)), 655360, "selfhost/vm.vel", 13067), vl_nd[vl_ix_47207])));
     if ((vl_lg->f_term == 0LL)) {
         (void)(vl_ll_br(vl_lg, vl_incb));
     }
     (void)(vl_ll_at(vl_lg, vl_incb, vela_str_lit("positioning the builder at the increment", 40)));
     int64_t vl_cur3 = vl_ll_ck((*vl_lg), vela_str_lit("loading the induction variable", 30), vshim_build_load(vl_lg->f_m, vl_lg->f_t_i64, vl_hs));
-    int64_t vl_lo = vl_ll_ck((*vl_lg), vela_str_lit("the lower bound", 15), vshim_const_i64(vl_lg->f_m, vela_sub_range((vela_sub_range((0LL), (9223372036854775807LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12840)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12840)));
+    int64_t vl_lo = vl_ll_ck((*vl_lg), vela_str_lit("the lower bound", 15), vshim_const_i64(vl_lg->f_m, vela_sub_range((vela_sub_range((0LL), (9223372036854775807LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13074)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13074)));
     int64_t vl_hi = vl_ll_ck((*vl_lg), vela_str_lit("the upper bound", 15), vshim_const_i64(vl_lg->f_m, 9223372036854775807LL));
-    int64_t vl_ix_46764;
-    int64_t vl_nv = vl_ll_call6((*vl_lg), vl_lg->f_f_add, vl_cur3, (vela_bounds_check((vl_ix_46764 = 2LL), 8, "selfhost/vm.vel", 12842), vl_a[vl_ix_46764]), vl_lo, vl_hi, vl_lg->f_pfile, vl_const_i32((*vl_lg), vl_line));
+    int64_t vl_ix_47272;
+    int64_t vl_nv = vl_ll_call6((*vl_lg), vl_lg->f_f_add, vl_cur3, (vela_bounds_check((vl_ix_47272 = 2LL), 8, "selfhost/vm.vel", 13076), vl_a[vl_ix_47272]), vl_lo, vl_hi, vl_lg->f_pfile, vl_const_i32((*vl_lg), vl_line));
     (void)(vl_ll_ckst((*vl_lg), vela_str_lit("storing the induction variable", 30), vshim_build_store(vl_lg->f_m, vl_nv, vl_hs)));
     (void)(vl_ll_br(vl_lg, vl_condb));
     vl_lg->f_brkb = vl_oldbrk;
@@ -12768,11 +12918,11 @@ static void vl_ll_stmt(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, doub
         return;
     }
     if ((vl_k == 8LL)) {
-        int64_t vl_ix_46881;
-        int64_t vl_v = (vela_bounds_check((vl_ix_46881 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12869)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12869)), 655360, "selfhost/vm.vel", 12869), vl_nd[vl_ix_46881]);
+        int64_t vl_ix_47389;
+        int64_t vl_v = (vela_bounds_check((vl_ix_47389 = vela_add_range((vela_mul_range((vl_s), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13103)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13103)), 655360, "selfhost/vm.vel", 13103), vl_nd[vl_ix_47389]);
         if ((vl_nd_kind(vl_nd, vl_v) == 26LL)) {
-            int64_t vl_ix_46896;
-            int64_t vl_callee = (vela_bounds_check((vl_ix_46896 = vela_add_range((vela_mul_range((vl_v), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12871)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12871)), 655360, "selfhost/vm.vel", 12871), vl_nd[vl_ix_46896]);
+            int64_t vl_ix_47404;
+            int64_t vl_callee = (vela_bounds_check((vl_ix_47404 = vela_add_range((vela_mul_range((vl_v), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13105)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13105)), 655360, "selfhost/vm.vel", 13105), vl_nd[vl_ix_47404]);
             if ((vl_nd_kind(vl_nd, vl_callee) == 25LL)) {
                 if ((vl_nt_get(vl_mem, vl_callee, vl_NT_SYM()) == vl_SYM_BUILTIN())) {
                     if ((vl_nt_get(vl_mem, vl_callee, vl_NT_VAL()) == vl_B_PRINT())) {
@@ -12830,24 +12980,24 @@ static void vl_ll_body(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, doub
 }
 
 static void vl_ll_function(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_str vl_src, vela_str vl_path, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_slots, int64_t* vl_slotkind, int64_t* vl_lit, int64_t* vl_fns, int64_t vl_f) {
-    int64_t vl_ix_47171;
-    vl_lg->f_fnn = (vela_bounds_check((vl_ix_47171 = vl_f), 8192, "selfhost/vm.vel", 12943), vl_fns[vl_ix_47171]);
+    int64_t vl_ix_47679;
+    vl_lg->f_fnn = (vela_bounds_check((vl_ix_47679 = vl_f), 8192, "selfhost/vm.vel", 13177), vl_fns[vl_ix_47679]);
     vl_lg->f_brkb = 0LL;
     vl_lg->f_contb = 0LL;
     vl_lg->f_retk = vl_type_packed(vl_ty, vl_ft_get(vl_mem, vl_f, vl_FT_RETTY()), vl_mem, vl_vm);
     int64_t vl_rk = vl_unpack_kind(vl_lg->f_retk);
     int64_t vl_i = 0LL;
     while ((vl_i < vl_LL_SLOTS())) {
-        int64_t vl_ix_47210;
-        vela_bounds_check((vl_ix_47210 = vl_i), 4096, "selfhost/vm.vel", 12953);
-        vl_slots[vl_ix_47210] = 0LL;
-        int64_t vl_ix_47215;
-        vela_bounds_check((vl_ix_47215 = vl_i), 4096, "selfhost/vm.vel", 12954);
-        vl_slotkind[vl_ix_47215] = vl_K_BAD();
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12955);
+        int64_t vl_ix_47718;
+        vela_bounds_check((vl_ix_47718 = vl_i), 4096, "selfhost/vm.vel", 13187);
+        vl_slots[vl_ix_47718] = 0LL;
+        int64_t vl_ix_47723;
+        vela_bounds_check((vl_ix_47723 = vl_i), 4096, "selfhost/vm.vel", 13188);
+        vl_slotkind[vl_ix_47723] = vl_K_BAD();
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13189);
     }
-    int64_t vl_ix_47227;
-    vl_lg->f_fnn = (vela_bounds_check((vl_ix_47227 = vl_f), 8192, "selfhost/vm.vel", 12957), vl_fns[vl_ix_47227]);
+    int64_t vl_ix_47735;
+    vl_lg->f_fnn = (vela_bounds_check((vl_ix_47735 = vl_f), 8192, "selfhost/vm.vel", 13191), vl_fns[vl_ix_47735]);
     int64_t vl_entry = vl_ll_new(vl_lg, vela_str_lit("entry", 5));
     vl_lg->f_rslot = 0LL;
     if ((vl_rk == vl_K_STR())) {
@@ -12873,15 +13023,15 @@ static void vl_ll_function(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, 
         } else {
             vl_h = vl_ll_alloca(vl_lg, vl_kk, vl_path, vl_nd_line(vl_nd, vl_p));
         }
-        int64_t vl_ix_47372;
-        int64_t vl_pv = vshim_fn_param((vela_bounds_check((vl_ix_47372 = vl_f), 8192, "selfhost/vm.vel", 12990), vl_fns[vl_ix_47372]), vl_pi);
+        int64_t vl_ix_47880;
+        int64_t vl_pv = vshim_fn_param((vela_bounds_check((vl_ix_47880 = vl_f), 8192, "selfhost/vm.vel", 13224), vl_fns[vl_ix_47880]), vl_pi);
         if ((vl_pv == 0LL)) {
             (void)(vl_ll_fail((*vl_lg), vela_str_lit("a parameter of the function", 27)));
         }
         (void)(vl_ll_ckst((*vl_lg), vela_str_lit("storing a parameter", 19), vshim_build_store(vl_lg->f_m, vl_pv, vl_h)));
         (void)(vl_ll_note(vl_lg, vl_slots, vl_slotkind, vl_pi, vl_kk, vl_h, vl_path, vl_nd_line(vl_nd, vl_p)));
         vl_p = vl_nd_nx(vl_nd, vl_p);
-        vl_pi = vela_add_range(vl_pi, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 12997);
+        vl_pi = vela_add_range(vl_pi, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13231);
     }
     (void)(vl_ll_reserve_body(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, vl_vm, vl_slots, vl_slotkind, vl_lit, vl_ft_get(vl_mem, vl_f, vl_FT_BODY())));
     vl_lg->f_exitb = vl_ll_new(vl_lg, vela_str_lit("exit", 4));
@@ -12903,12 +13053,12 @@ static void vl_ll_function(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, 
 
 static void vl_ll_entry(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, int64_t* vl_mem, struct vl_VM vl_vm, int64_t* vl_fns, int64_t vl_midx) {
     int64_t* vl_ps = (int64_t*)vela_arena_alloc((size_t)8 * sizeof(int64_t));
-    int64_t vl_ix_47545;
-    vela_bounds_check((vl_ix_47545 = 0LL), 8, "selfhost/vm.vel", 13030);
-    vl_ps[vl_ix_47545] = vl_lg->f_t_i32;
-    int64_t vl_ix_47551;
-    vela_bounds_check((vl_ix_47551 = 1LL), 8, "selfhost/vm.vel", 13031);
-    vl_ps[vl_ix_47551] = vl_lg->f_t_ptr;
+    int64_t vl_ix_48053;
+    vela_bounds_check((vl_ix_48053 = 0LL), 8, "selfhost/vm.vel", 13264);
+    vl_ps[vl_ix_48053] = vl_lg->f_t_i32;
+    int64_t vl_ix_48059;
+    vela_bounds_check((vl_ix_48059 = 1LL), 8, "selfhost/vm.vel", 13265);
+    vl_ps[vl_ix_48059] = vl_lg->f_t_ptr;
     int64_t vl_t = vl_ll_sig_of((*vl_lg), vl_lg->f_t_i32, vl_ps, 2LL, vela_str_lit("the signature of main", 21));
     if ((!vl_ll_buf(vela_str_lit("main", 4)))) {
         (void)(vl_ll_fail((*vl_lg), vela_str_lit("naming main", 11)));
@@ -12919,8 +13069,8 @@ static void vl_ll_entry(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, int
     (void)(vl_ll_new(vl_lg, vela_str_lit("entry", 5)));
     (void)(vl_ll_call2((*vl_lg), vl_lg->f_f_setargs, vshim_fn_param(vl_fn, 0LL), vshim_fn_param(vl_fn, 1LL)));
     (void)(vl_ll_call0((*vl_lg), vl_lg->f_f_init));
-    int64_t vl_ix_47627;
-    (void)(vl_ll_call0((*vl_lg), (vela_bounds_check((vl_ix_47627 = vl_midx), 8192, "selfhost/vm.vel", 13042), vl_fns[vl_ix_47627])));
+    int64_t vl_ix_48135;
+    (void)(vl_ll_call0((*vl_lg), (vela_bounds_check((vl_ix_48135 = vl_midx), 8192, "selfhost/vm.vel", 13276), vl_fns[vl_ix_48135])));
     (void)(vl_ll_ret(vl_lg, vl_const_i32((*vl_lg), 0LL)));
 }
 
@@ -12929,17 +13079,17 @@ static void vl_ll_program(struct vl_LG* vl_lg, int64_t* vl_nd, int64_t* vl_ty, d
     (void)(vl_ll_declare_rt(vl_lg, vl_path));
     int64_t vl_f = 0LL;
     while ((vl_f < vl_vm->f_nfn)) {
-        int64_t vl_ix_47669;
-        vela_bounds_check((vl_ix_47669 = vl_f), 8192, "selfhost/vm.vel", 13060);
-        vl_fns[vl_ix_47669] = vl_ll_declare_fn((*vl_lg), vl_nd, vl_ty, vl_mem, (*vl_vm), vl_path, vl_f);
-        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13061);
+        int64_t vl_ix_48177;
+        vela_bounds_check((vl_ix_48177 = vl_f), 8192, "selfhost/vm.vel", 13294);
+        vl_fns[vl_ix_48177] = vl_ll_declare_fn((*vl_lg), vl_nd, vl_ty, vl_mem, (*vl_vm), vl_path, vl_f);
+        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13295);
     }
     int64_t vl_g = 0LL;
     while ((vl_g < vl_vm->f_nfn)) {
         if ((vl_ft_get(vl_mem, vl_g, vl_FT_BODY()) >= 0LL)) {
             (void)(vl_ll_function(vl_lg, vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_mem, (*vl_vm), vl_slots, vl_slotkind, vl_lit, vl_fns, vl_g));
         }
-        vl_g = vela_add_range(vl_g, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13069);
+        vl_g = vela_add_range(vl_g, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13303);
     }
     int64_t vl_midx = vl_find_main(vl_mem, vl_vm, vl_nd);
     if ((vl_midx < 0LL)) {
@@ -12973,7 +13123,7 @@ static void vl_ll_emit_ir(int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, vela_s
             break;
         }
         (void)(vl_ll_out_byte(vl_lg, vl_b));
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13110);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13344);
     }
 }
 
@@ -12989,7 +13139,7 @@ static void vl_d_indent(int64_t vl_depth) {
     int64_t vl_i = 0LL;
     while ((vl_i < vl_depth)) {
         (void)((vela_emit_str(vela_str_lit("  ", 2))));
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13148);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13382);
     }
 }
 
@@ -13055,8 +13205,8 @@ static vela_str vl_op_name(int64_t vl_op) {
 }
 
 static void vl_d_flag(int64_t* vl_nd, int64_t vl_n, int64_t vl_bit) {
-    int64_t vl_ix_48041;
-    if ((((vela_bounds_check((vl_ix_48041 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13219)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13219)), 655360, "selfhost/vm.vel", 13219), vl_nd[vl_ix_48041]) & vl_bit) != 0LL)) {
+    int64_t vl_ix_48549;
+    if ((((vela_bounds_check((vl_ix_48549 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13453)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13453)), 655360, "selfhost/vm.vel", 13453), vl_nd[vl_ix_48549]) & vl_bit) != 0LL)) {
         (void)((vela_emit_int(1LL)));
     } else {
         (void)((vela_emit_int(0LL)));
@@ -13068,12 +13218,12 @@ static void vl_d_type(int64_t* vl_ty, int64_t vl_t) {
         (void)((vela_emit_str(vela_str_lit("-", 1))));
         return;
     }
-    int64_t vl_ix_48073;
-    int64_t vl_elem = (vela_bounds_check((vl_ix_48073 = vela_add_range((vela_mul_range((vl_t), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13231)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13231)), 262144, "selfhost/vm.vel", 13231), vl_ty[vl_ix_48073]);
-    int64_t vl_ix_48082;
-    int64_t vl_size = (vela_bounds_check((vl_ix_48082 = vela_add_range((vela_mul_range((vl_t), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13232)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13232)), 262144, "selfhost/vm.vel", 13232), vl_ty[vl_ix_48082]);
-    int64_t vl_ix_48093;
-    (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_48093 = vela_add_range((vela_mul_range((vl_t), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13233)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13233)), 262144, "selfhost/vm.vel", 13233), vl_ty[vl_ix_48093]), "selfhost/vm.vel", 13233)))));
+    int64_t vl_ix_48581;
+    int64_t vl_elem = (vela_bounds_check((vl_ix_48581 = vela_add_range((vela_mul_range((vl_t), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13465)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13465)), 262144, "selfhost/vm.vel", 13465), vl_ty[vl_ix_48581]);
+    int64_t vl_ix_48590;
+    int64_t vl_size = (vela_bounds_check((vl_ix_48590 = vela_add_range((vela_mul_range((vl_t), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13466)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13466)), 262144, "selfhost/vm.vel", 13466), vl_ty[vl_ix_48590]);
+    int64_t vl_ix_48601;
+    (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_48601 = vela_add_range((vela_mul_range((vl_t), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13467)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13467)), 262144, "selfhost/vm.vel", 13467), vl_ty[vl_ix_48601]), "selfhost/vm.vel", 13467)))));
     if ((vl_elem < 0LL)) {
         return;
     }
@@ -13087,14 +13237,14 @@ static void vl_d_type(int64_t* vl_ty, int64_t vl_t) {
 }
 
 static void vl_d_str(vela_str vl_src, int64_t vl_off, int64_t vl_ln, int64_t vl_flag) {
-    vela_str vl_s = (vela_substr(vl_src, vl_off, vela_add_range((vl_off), (vl_ln), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13250)));
+    vela_str vl_s = (vela_substr(vl_src, vl_off, vela_add_range((vl_off), (vl_ln), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13484)));
     if ((vl_flag == 1LL)) {
         vl_s = (vela_unescape(vl_s));
     }
     int64_t vl_i = 0LL;
     int64_t vl_n = (((int64_t)vl_s.len));
     while ((vl_i < vl_n)) {
-        int64_t vl_c = (vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 13257));
+        int64_t vl_c = (vela_bytes_at(vl_s, vl_i, "selfhost/vm.vel", 13491));
         if ((vl_c == 34LL)) {
             (void)((vela_emit_str(vela_str_lit("\\\"", 2))));
         } else if ((vl_c == 92LL)) {
@@ -13106,19 +13256,19 @@ static void vl_d_str(vela_str vl_src, int64_t vl_off, int64_t vl_ln, int64_t vl_
         } else if ((vl_c == 13LL)) {
             (void)((vela_emit_str(vela_str_lit("\\r", 2))));
         } else if (((vl_c >= 32LL) && (vl_c < 127LL))) {
-            (void)((vela_emit_str((vela_substr(vl_s, vl_i, vela_add_range((vl_i), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13269))))));
+            (void)((vela_emit_str((vela_substr(vl_s, vl_i, vela_add_range((vl_i), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13503))))));
         } else {
             (void)((vela_emit_str(vela_str_lit("\\x", 2))));
-            (void)((vela_emit_str((vela_substr(vela_str_lit("0123456789abcdef", 16), vela_floor_div((vl_c), (16LL), "selfhost/vm.vel", 13272), vela_add_range((vela_floor_div((vl_c), (16LL), "selfhost/vm.vel", 13272)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13272))))));
-            (void)((vela_emit_str((vela_substr(vela_str_lit("0123456789abcdef", 16), vela_floor_mod((vl_c), (16LL), "selfhost/vm.vel", 13273), vela_add_range((vela_floor_mod((vl_c), (16LL), "selfhost/vm.vel", 13273)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13273))))));
+            (void)((vela_emit_str((vela_substr(vela_str_lit("0123456789abcdef", 16), vela_floor_div((vl_c), (16LL), "selfhost/vm.vel", 13506), vela_add_range((vela_floor_div((vl_c), (16LL), "selfhost/vm.vel", 13506)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13506))))));
+            (void)((vela_emit_str((vela_substr(vela_str_lit("0123456789abcdef", 16), vela_floor_mod((vl_c), (16LL), "selfhost/vm.vel", 13507), vela_add_range((vela_floor_mod((vl_c), (16LL), "selfhost/vm.vel", 13507)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13507))))));
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13275);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13509);
     }
 }
 
 static void vl_d_name(int64_t* vl_nd, int64_t vl_n) {
-    int64_t vl_ix_48272;
-    (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_48272 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13280)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13280)), 655360, "selfhost/vm.vel", 13280), vl_nd[vl_ix_48272]), "selfhost/vm.vel", 13280)))));
+    int64_t vl_ix_48780;
+    (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_48780 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13514)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13514)), 655360, "selfhost/vm.vel", 13514), vl_nd[vl_ix_48780]), "selfhost/vm.vel", 13514)))));
 }
 
 static void vl_d_body(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, int64_t vl_first, int64_t vl_depth) {
@@ -13127,9 +13277,9 @@ static void vl_d_body(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
     (void)((vela_emit_nl()));
     int64_t vl_c = vl_first;
     while ((vl_c >= 0LL)) {
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_c, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13295)));
-        int64_t vl_ix_48318;
-        vl_c = (vela_bounds_check((vl_ix_48318 = vela_add_range((vela_mul_range((vl_c), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13296)), (7LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13296)), 655360, "selfhost/vm.vel", 13296), vl_nd[vl_ix_48318]);
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_c, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13529)));
+        int64_t vl_ix_48826;
+        vl_c = (vela_bounds_check((vl_ix_48826 = vela_add_range((vela_mul_range((vl_c), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13530)), (7LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13530)), 655360, "selfhost/vm.vel", 13530), vl_nd[vl_ix_48826]);
     }
 }
 
@@ -13137,31 +13287,31 @@ static void vl_d_chain(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* 
     int64_t vl_c = vl_first;
     while ((vl_c >= 0LL)) {
         (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_c, vl_depth));
-        int64_t vl_ix_48350;
-        vl_c = (vela_bounds_check((vl_ix_48350 = vela_add_range((vela_mul_range((vl_c), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13305)), (7LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13305)), 655360, "selfhost/vm.vel", 13305), vl_nd[vl_ix_48350]);
+        int64_t vl_ix_48858;
+        vl_c = (vela_bounds_check((vl_ix_48858 = vela_add_range((vela_mul_range((vl_c), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13539)), (7LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13539)), 655360, "selfhost/vm.vel", 13539), vl_nd[vl_ix_48858]);
     }
 }
 
 static void vl_d_field(int64_t* vl_nd, int64_t* vl_ty, int64_t vl_n, int64_t vl_depth) {
     (void)(vl_d_indent(vl_depth));
     (void)((vela_emit_str(vela_str_lit("field name=", 11))));
-    int64_t vl_ix_48374;
-    (void)(vl_d_name(vl_nd, (vela_bounds_check((vl_ix_48374 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13315)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13315)), 655360, "selfhost/vm.vel", 13315), vl_nd[vl_ix_48374])));
+    int64_t vl_ix_48882;
+    (void)(vl_d_name(vl_nd, (vela_bounds_check((vl_ix_48882 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13549)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13549)), 655360, "selfhost/vm.vel", 13549), vl_nd[vl_ix_48882])));
     (void)((vela_emit_str(vela_str_lit(" type=", 6))));
-    int64_t vl_ix_48389;
-    (void)(vl_d_type(vl_ty, (vela_bounds_check((vl_ix_48389 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13317)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13317)), 655360, "selfhost/vm.vel", 13317), vl_nd[vl_ix_48389])));
+    int64_t vl_ix_48897;
+    (void)(vl_d_type(vl_ty, (vela_bounds_check((vl_ix_48897 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13551)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13551)), 655360, "selfhost/vm.vel", 13551), vl_nd[vl_ix_48897])));
     (void)((vela_emit_nl()));
 }
 
 static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* vl_flt, int64_t vl_n, int64_t vl_depth) {
-    int64_t vl_ix_48406;
-    int64_t vl_k = (vela_bounds_check((vl_ix_48406 = vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13326)), 655360, "selfhost/vm.vel", 13326), vl_nd[vl_ix_48406]);
+    int64_t vl_ix_48914;
+    int64_t vl_k = (vela_bounds_check((vl_ix_48914 = vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13560)), 655360, "selfhost/vm.vel", 13560), vl_nd[vl_ix_48914]);
     if ((vl_k == 1LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("module", 6))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_48434;
-        (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_48434 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13331)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13331)), 655360, "selfhost/vm.vel", 13331), vl_nd[vl_ix_48434]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13331)));
+        int64_t vl_ix_48942;
+        (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_48942 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13565)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13565)), 655360, "selfhost/vm.vel", 13565), vl_nd[vl_ix_48942]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13565)));
         return;
     }
     if ((vl_k == 2LL)) {
@@ -13171,26 +13321,26 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
         (void)((vela_emit_str(vela_str_lit(" pure=", 6))));
         (void)(vl_d_flag(vl_nd, vl_n, 4LL));
         (void)((vela_emit_str(vela_str_lit(" ret=", 5))));
-        int64_t vl_ix_48480;
-        (void)(vl_d_type(vl_ty, (vela_bounds_check((vl_ix_48480 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13341)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13341)), 655360, "selfhost/vm.vel", 13341), vl_nd[vl_ix_48480])));
+        int64_t vl_ix_48988;
+        (void)(vl_d_type(vl_ty, (vela_bounds_check((vl_ix_48988 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13575)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13575)), 655360, "selfhost/vm.vel", 13575), vl_nd[vl_ix_48988])));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_48492;
-        int64_t vl_p = (vela_bounds_check((vl_ix_48492 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13343)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13343)), 655360, "selfhost/vm.vel", 13343), vl_nd[vl_ix_48492]);
+        int64_t vl_ix_49000;
+        int64_t vl_p = (vela_bounds_check((vl_ix_49000 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13577)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13577)), 655360, "selfhost/vm.vel", 13577), vl_nd[vl_ix_49000]);
         while ((vl_p >= 0LL)) {
-            (void)(vl_d_indent(vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13345)));
+            (void)(vl_d_indent(vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13579)));
             (void)((vela_emit_str(vela_str_lit("param name=", 11))));
             (void)(vl_d_name(vl_nd, vl_p));
             (void)((vela_emit_str(vela_str_lit(" mut=", 5))));
             (void)(vl_d_flag(vl_nd, vl_p, 1LL));
             (void)((vela_emit_str(vela_str_lit(" type=", 6))));
-            int64_t vl_ix_48535;
-            (void)(vl_d_type(vl_ty, (vela_bounds_check((vl_ix_48535 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13351)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13351)), 655360, "selfhost/vm.vel", 13351), vl_nd[vl_ix_48535])));
+            int64_t vl_ix_49043;
+            (void)(vl_d_type(vl_ty, (vela_bounds_check((vl_ix_49043 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13585)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13585)), 655360, "selfhost/vm.vel", 13585), vl_nd[vl_ix_49043])));
             (void)((vela_emit_nl()));
-            int64_t vl_ix_48548;
-            vl_p = (vela_bounds_check((vl_ix_48548 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13353)), (7LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13353)), 655360, "selfhost/vm.vel", 13353), vl_nd[vl_ix_48548]);
+            int64_t vl_ix_49056;
+            vl_p = (vela_bounds_check((vl_ix_49056 = vela_add_range((vela_mul_range((vl_p), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13587)), (7LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13587)), 655360, "selfhost/vm.vel", 13587), vl_nd[vl_ix_49056]);
         }
-        int64_t vl_ix_48562;
-        (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_48562 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13355)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13355)), 655360, "selfhost/vm.vel", 13355), vl_nd[vl_ix_48562]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13355)));
+        int64_t vl_ix_49070;
+        (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49070 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13589)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13589)), 655360, "selfhost/vm.vel", 13589), vl_nd[vl_ix_49070]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13589)));
         return;
     }
     if ((vl_k == 3LL)) {
@@ -13200,8 +13350,8 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
         (void)((vela_emit_str(vela_str_lit(" mut=", 5))));
         (void)(vl_d_flag(vl_nd, vl_n, 1LL));
         (void)((vela_emit_str(vela_str_lit(" type=", 6))));
-        int64_t vl_ix_48608;
-        (void)(vl_d_type(vl_ty, (vela_bounds_check((vl_ix_48608 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13365)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13365)), 655360, "selfhost/vm.vel", 13365), vl_nd[vl_ix_48608])));
+        int64_t vl_ix_49116;
+        (void)(vl_d_type(vl_ty, (vela_bounds_check((vl_ix_49116 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13599)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13599)), 655360, "selfhost/vm.vel", 13599), vl_nd[vl_ix_49116])));
         (void)((vela_emit_nl()));
         return;
     }
@@ -13210,25 +13360,25 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
         (void)((vela_emit_str(vela_str_lit("struct name=", 12))));
         (void)(vl_d_name(vl_nd, vl_n));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_48641;
-        int64_t vl_c = (vela_bounds_check((vl_ix_48641 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13375)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13375)), 655360, "selfhost/vm.vel", 13375), vl_nd[vl_ix_48641]);
+        int64_t vl_ix_49149;
+        int64_t vl_c = (vela_bounds_check((vl_ix_49149 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13609)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13609)), 655360, "selfhost/vm.vel", 13609), vl_nd[vl_ix_49149]);
         while ((vl_c >= 0LL)) {
-            int64_t vl_ix_48651;
-            if (((vela_bounds_check((vl_ix_48651 = vela_mul_range((vl_c), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13377)), 655360, "selfhost/vm.vel", 13377), vl_nd[vl_ix_48651]) == 6LL)) {
-                (void)(vl_d_field(vl_nd, vl_ty, vl_c, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13378)));
+            int64_t vl_ix_49159;
+            if (((vela_bounds_check((vl_ix_49159 = vela_mul_range((vl_c), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13611)), 655360, "selfhost/vm.vel", 13611), vl_nd[vl_ix_49159]) == 6LL)) {
+                (void)(vl_d_field(vl_nd, vl_ty, vl_c, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13612)));
             }
-            int64_t vl_ix_48671;
-            vl_c = (vela_bounds_check((vl_ix_48671 = vela_add_range((vela_mul_range((vl_c), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13380)), (7LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13380)), 655360, "selfhost/vm.vel", 13380), vl_nd[vl_ix_48671]);
+            int64_t vl_ix_49179;
+            vl_c = (vela_bounds_check((vl_ix_49179 = vela_add_range((vela_mul_range((vl_c), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13614)), (7LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13614)), 655360, "selfhost/vm.vel", 13614), vl_nd[vl_ix_49179]);
         }
-        int64_t vl_ix_48680;
-        int64_t vl_m = (vela_bounds_check((vl_ix_48680 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13382)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13382)), 655360, "selfhost/vm.vel", 13382), vl_nd[vl_ix_48680]);
+        int64_t vl_ix_49188;
+        int64_t vl_m = (vela_bounds_check((vl_ix_49188 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13616)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13616)), 655360, "selfhost/vm.vel", 13616), vl_nd[vl_ix_49188]);
         while ((vl_m >= 0LL)) {
-            int64_t vl_ix_48690;
-            if (((vela_bounds_check((vl_ix_48690 = vela_mul_range((vl_m), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13384)), 655360, "selfhost/vm.vel", 13384), vl_nd[vl_ix_48690]) == 2LL)) {
-                (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_m, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13385)));
+            int64_t vl_ix_49198;
+            if (((vela_bounds_check((vl_ix_49198 = vela_mul_range((vl_m), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13618)), 655360, "selfhost/vm.vel", 13618), vl_nd[vl_ix_49198]) == 2LL)) {
+                (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_m, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13619)));
             }
-            int64_t vl_ix_48712;
-            vl_m = (vela_bounds_check((vl_ix_48712 = vela_add_range((vela_mul_range((vl_m), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13387)), (7LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13387)), 655360, "selfhost/vm.vel", 13387), vl_nd[vl_ix_48712]);
+            int64_t vl_ix_49220;
+            vl_m = (vela_bounds_check((vl_ix_49220 = vela_add_range((vela_mul_range((vl_m), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13621)), (7LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13621)), 655360, "selfhost/vm.vel", 13621), vl_nd[vl_ix_49220]);
         }
         return;
     }
@@ -13237,60 +13387,60 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
         return;
     }
     if ((vl_k == 6LL)) {
-        int64_t vl_ix_48738;
-        if ((((vela_bounds_check((vl_ix_48738 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13396)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13396)), 655360, "selfhost/vm.vel", 13396), vl_nd[vl_ix_48738]) & 2LL) != 0LL)) {
+        int64_t vl_ix_49246;
+        if ((((vela_bounds_check((vl_ix_49246 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13630)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13630)), 655360, "selfhost/vm.vel", 13630), vl_nd[vl_ix_49246]) & 2LL) != 0LL)) {
             (void)(vl_d_indent(vl_depth));
             (void)((vela_emit_str(vela_str_lit("decl name=", 10))));
-            int64_t vl_ix_48759;
-            (void)(vl_d_name(vl_nd, (vela_bounds_check((vl_ix_48759 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13399)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13399)), 655360, "selfhost/vm.vel", 13399), vl_nd[vl_ix_48759])));
+            int64_t vl_ix_49267;
+            (void)(vl_d_name(vl_nd, (vela_bounds_check((vl_ix_49267 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13633)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13633)), 655360, "selfhost/vm.vel", 13633), vl_nd[vl_ix_49267])));
             (void)((vela_emit_str(vela_str_lit(" mut=", 5))));
             (void)(vl_d_flag(vl_nd, vl_n, 1LL));
             (void)((vela_emit_str(vela_str_lit(" type=", 6))));
-            int64_t vl_ix_48784;
-            (void)(vl_d_type(vl_ty, (vela_bounds_check((vl_ix_48784 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13403)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13403)), 655360, "selfhost/vm.vel", 13403), vl_nd[vl_ix_48784])));
+            int64_t vl_ix_49292;
+            (void)(vl_d_type(vl_ty, (vela_bounds_check((vl_ix_49292 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13637)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13637)), 655360, "selfhost/vm.vel", 13637), vl_nd[vl_ix_49292])));
             (void)((vela_emit_nl()));
-            int64_t vl_ix_48796;
-            int64_t vl_v = (vela_bounds_check((vl_ix_48796 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13405)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13405)), 655360, "selfhost/vm.vel", 13405), vl_nd[vl_ix_48796]);
+            int64_t vl_ix_49304;
+            int64_t vl_v = (vela_bounds_check((vl_ix_49304 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13639)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13639)), 655360, "selfhost/vm.vel", 13639), vl_nd[vl_ix_49304]);
             if ((vl_v >= 0LL)) {
-                (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_v, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13407)));
+                (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_v, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13641)));
             }
             return;
         }
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("assign", 6))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_48838;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_48838 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13414)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13414)), 655360, "selfhost/vm.vel", 13414), vl_nd[vl_ix_48838]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13414)));
-        int64_t vl_ix_48850;
-        int64_t vl_v2 = (vela_bounds_check((vl_ix_48850 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13415)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13415)), 655360, "selfhost/vm.vel", 13415), vl_nd[vl_ix_48850]);
+        int64_t vl_ix_49346;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49346 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13648)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13648)), 655360, "selfhost/vm.vel", 13648), vl_nd[vl_ix_49346]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13648)));
+        int64_t vl_ix_49358;
+        int64_t vl_v2 = (vela_bounds_check((vl_ix_49358 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13649)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13649)), 655360, "selfhost/vm.vel", 13649), vl_nd[vl_ix_49358]);
         if ((vl_v2 >= 0LL)) {
-            (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_v2, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13417)));
+            (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_v2, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13651)));
         }
         return;
     }
     if ((vl_k == 7LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("augassign op=", 13))));
-        int64_t vl_ix_48889;
-        (void)((vela_emit_str(vl_op_name((vela_bounds_check((vl_ix_48889 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13424)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13424)), 655360, "selfhost/vm.vel", 13424), vl_nd[vl_ix_48889])))));
+        int64_t vl_ix_49397;
+        (void)((vela_emit_str(vl_op_name((vela_bounds_check((vl_ix_49397 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13658)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13658)), 655360, "selfhost/vm.vel", 13658), vl_nd[vl_ix_49397])))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_48907;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_48907 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13426)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13426)), 655360, "selfhost/vm.vel", 13426), vl_nd[vl_ix_48907]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13426)));
-        int64_t vl_ix_48924;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_48924 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13427)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13427)), 655360, "selfhost/vm.vel", 13427), vl_nd[vl_ix_48924]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13427)));
+        int64_t vl_ix_49415;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49415 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13660)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13660)), 655360, "selfhost/vm.vel", 13660), vl_nd[vl_ix_49415]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13660)));
+        int64_t vl_ix_49432;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49432 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13661)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13661)), 655360, "selfhost/vm.vel", 13661), vl_nd[vl_ix_49432]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13661)));
         return;
     }
     if ((vl_k == 8LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("expr", 4))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_48957;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_48957 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13434)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13434)), 655360, "selfhost/vm.vel", 13434), vl_nd[vl_ix_48957]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13434)));
+        int64_t vl_ix_49465;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49465 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13668)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13668)), 655360, "selfhost/vm.vel", 13668), vl_nd[vl_ix_49465]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13668)));
         return;
     }
     if ((vl_k == 9LL)) {
-        int64_t vl_ix_48974;
-        int64_t vl_v = (vela_bounds_check((vl_ix_48974 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13438)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13438)), 655360, "selfhost/vm.vel", 13438), vl_nd[vl_ix_48974]);
+        int64_t vl_ix_49482;
+        int64_t vl_v = (vela_bounds_check((vl_ix_49482 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13672)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13672)), 655360, "selfhost/vm.vel", 13672), vl_nd[vl_ix_49482]);
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("return has_value=", 17))));
         if ((vl_v >= 0LL)) {
@@ -13300,7 +13450,7 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
         }
         (void)((vela_emit_nl()));
         if ((vl_v >= 0LL)) {
-            (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_v, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13448)));
+            (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_v, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13682)));
         }
         return;
     }
@@ -13308,22 +13458,22 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("if", 2))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_49042;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49042 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13456)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13456)), 655360, "selfhost/vm.vel", 13456), vl_nd[vl_ix_49042]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13456)));
-        int64_t vl_ix_49059;
-        (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49059 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13457)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13457)), 655360, "selfhost/vm.vel", 13457), vl_nd[vl_ix_49059]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13457)));
-        int64_t vl_ix_49071;
-        if (((vela_bounds_check((vl_ix_49071 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13458)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13458)), 655360, "selfhost/vm.vel", 13458), vl_nd[vl_ix_49071]) > 0LL)) {
-            (void)(vl_d_indent(vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13459)));
+        int64_t vl_ix_49550;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49550 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13690)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13690)), 655360, "selfhost/vm.vel", 13690), vl_nd[vl_ix_49550]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13690)));
+        int64_t vl_ix_49567;
+        (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49567 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13691)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13691)), 655360, "selfhost/vm.vel", 13691), vl_nd[vl_ix_49567]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13691)));
+        int64_t vl_ix_49579;
+        if (((vela_bounds_check((vl_ix_49579 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13692)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13692)), 655360, "selfhost/vm.vel", 13692), vl_nd[vl_ix_49579]) > 0LL)) {
+            (void)(vl_d_indent(vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13693)));
             (void)((vela_emit_str(vela_str_lit("else", 4))));
             (void)((vela_emit_nl()));
-            int64_t vl_ix_49093;
-            int64_t vl_e = (vela_bounds_check((vl_ix_49093 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13462)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13462)), 655360, "selfhost/vm.vel", 13462), vl_nd[vl_ix_49093]);
-            int64_t vl_ix_49100;
-            if (((vela_bounds_check((vl_ix_49100 = vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13463)), 655360, "selfhost/vm.vel", 13463), vl_nd[vl_ix_49100]) == 10LL)) {
-                (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_e, vela_add_range((vl_depth), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13464)));
+            int64_t vl_ix_49601;
+            int64_t vl_e = (vela_bounds_check((vl_ix_49601 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13696)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13696)), 655360, "selfhost/vm.vel", 13696), vl_nd[vl_ix_49601]);
+            int64_t vl_ix_49608;
+            if (((vela_bounds_check((vl_ix_49608 = vela_mul_range((vl_e), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13697)), 655360, "selfhost/vm.vel", 13697), vl_nd[vl_ix_49608]) == 10LL)) {
+                (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_e, vela_add_range((vl_depth), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13698)));
             } else {
-                (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, vl_e, vela_add_range((vl_depth), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13466)));
+                (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, vl_e, vela_add_range((vl_depth), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13700)));
             }
         }
         return;
@@ -13332,10 +13482,10 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("while", 5))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_49154;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49154 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13475)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13475)), 655360, "selfhost/vm.vel", 13475), vl_nd[vl_ix_49154]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13475)));
-        int64_t vl_ix_49171;
-        (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49171 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13476)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13476)), 655360, "selfhost/vm.vel", 13476), vl_nd[vl_ix_49171]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13476)));
+        int64_t vl_ix_49662;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49662 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13709)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13709)), 655360, "selfhost/vm.vel", 13709), vl_nd[vl_ix_49662]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13709)));
+        int64_t vl_ix_49679;
+        (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49679 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13710)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13710)), 655360, "selfhost/vm.vel", 13710), vl_nd[vl_ix_49679]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13710)));
         return;
     }
     if ((vl_k == 12LL)) {
@@ -13345,24 +13495,24 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
         (void)((vela_emit_str(vela_str_lit(" parallel=", 10))));
         (void)(vl_d_flag(vl_nd, vl_n, 1LL));
         (void)((vela_emit_str(vela_str_lit(" has_step=", 10))));
-        int64_t vl_ix_49215;
-        if (((vela_bounds_check((vl_ix_49215 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13486)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13486)), 655360, "selfhost/vm.vel", 13486), vl_nd[vl_ix_49215]) >= 0LL)) {
+        int64_t vl_ix_49723;
+        if (((vela_bounds_check((vl_ix_49723 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13720)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13720)), 655360, "selfhost/vm.vel", 13720), vl_nd[vl_ix_49723]) >= 0LL)) {
             (void)((vela_emit_int(1LL)));
         } else {
             (void)((vela_emit_int(0LL)));
         }
         (void)((vela_emit_nl()));
-        int64_t vl_ix_49241;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49241 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13492)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13492)), 655360, "selfhost/vm.vel", 13492), vl_nd[vl_ix_49241]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13492)));
-        int64_t vl_ix_49258;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49258 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13493)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13493)), 655360, "selfhost/vm.vel", 13493), vl_nd[vl_ix_49258]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13493)));
-        int64_t vl_ix_49270;
-        int64_t vl_st = (vela_bounds_check((vl_ix_49270 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13494)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13494)), 655360, "selfhost/vm.vel", 13494), vl_nd[vl_ix_49270]);
+        int64_t vl_ix_49749;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49749 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13726)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13726)), 655360, "selfhost/vm.vel", 13726), vl_nd[vl_ix_49749]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13726)));
+        int64_t vl_ix_49766;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49766 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13727)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13727)), 655360, "selfhost/vm.vel", 13727), vl_nd[vl_ix_49766]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13727)));
+        int64_t vl_ix_49778;
+        int64_t vl_st = (vela_bounds_check((vl_ix_49778 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13728)), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13728)), 655360, "selfhost/vm.vel", 13728), vl_nd[vl_ix_49778]);
         if ((vl_st >= 0LL)) {
-            (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_st, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13496)));
+            (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_st, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13730)));
         }
-        int64_t vl_ix_49299;
-        (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49299 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13498)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13498)), 655360, "selfhost/vm.vel", 13498), vl_nd[vl_ix_49299]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13498)));
+        int64_t vl_ix_49807;
+        (void)(vl_d_body(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49807 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13732)), (8LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13732)), 655360, "selfhost/vm.vel", 13732), vl_nd[vl_ix_49807]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13732)));
         return;
     }
     if ((vl_k == 13LL)) {
@@ -13386,24 +13536,24 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
     if ((vl_k == 20LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("int ", 4))));
-        int64_t vl_ix_49373;
-        (void)((vela_emit_int((vela_bounds_check((vl_ix_49373 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13522)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13522)), 655360, "selfhost/vm.vel", 13522), vl_nd[vl_ix_49373]))));
+        int64_t vl_ix_49881;
+        (void)((vela_emit_int((vela_bounds_check((vl_ix_49881 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13756)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13756)), 655360, "selfhost/vm.vel", 13756), vl_nd[vl_ix_49881]))));
         (void)((vela_emit_nl()));
         return;
     }
     if ((vl_k == 21LL)) {
-        int64_t vl_ix_49390;
-        int64_t vl_off = (vela_bounds_check((vl_ix_49390 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13527)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13527)), 655360, "selfhost/vm.vel", 13527), vl_nd[vl_ix_49390]);
-        int64_t vl_ix_49399;
-        int64_t vl_ln = (vela_bounds_check((vl_ix_49399 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13528)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13528)), 655360, "selfhost/vm.vel", 13528), vl_nd[vl_ix_49399]);
+        int64_t vl_ix_49898;
+        int64_t vl_off = (vela_bounds_check((vl_ix_49898 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13761)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13761)), 655360, "selfhost/vm.vel", 13761), vl_nd[vl_ix_49898]);
+        int64_t vl_ix_49907;
+        int64_t vl_ln = (vela_bounds_check((vl_ix_49907 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13762)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13762)), 655360, "selfhost/vm.vel", 13762), vl_nd[vl_ix_49907]);
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("float ", 6))));
         if ((vl_ln > 0LL)) {
-            (void)((vela_emit_str((vela_substr(vl_src, vl_off, vela_add_range((vl_off), (vl_ln), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13534))))));
+            (void)((vela_emit_str((vela_substr(vl_src, vl_off, vela_add_range((vl_off), (vl_ln), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13768))))));
         } else {
-            int64_t vl_ix_49432;
-            int64_t vl_ix_49431;
-            (void)((vela_emit_float((vela_bounds_check((vl_ix_49432 = (vela_bounds_check((vl_ix_49431 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13536)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13536)), 655360, "selfhost/vm.vel", 13536), vl_nd[vl_ix_49431])), 65536, "selfhost/vm.vel", 13536), vl_flt[vl_ix_49432]))));
+            int64_t vl_ix_49940;
+            int64_t vl_ix_49939;
+            (void)((vela_emit_float((vela_bounds_check((vl_ix_49940 = (vela_bounds_check((vl_ix_49939 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13770)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13770)), 655360, "selfhost/vm.vel", 13770), vl_nd[vl_ix_49939])), 65536, "selfhost/vm.vel", 13770), vl_flt[vl_ix_49940]))));
         }
         (void)((vela_emit_nl()));
         return;
@@ -13411,10 +13561,10 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
     if ((vl_k == 22LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("str \"", 5))));
-        int64_t vl_ix_49460;
-        int64_t vl_ix_49467;
-        int64_t vl_ix_49474;
-        (void)(vl_d_str(vl_src, (vela_bounds_check((vl_ix_49460 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13544)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13544)), 655360, "selfhost/vm.vel", 13544), vl_nd[vl_ix_49460]), (vela_bounds_check((vl_ix_49467 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13544)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13544)), 655360, "selfhost/vm.vel", 13544), vl_nd[vl_ix_49467]), (vela_bounds_check((vl_ix_49474 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13544)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13544)), 655360, "selfhost/vm.vel", 13544), vl_nd[vl_ix_49474])));
+        int64_t vl_ix_49968;
+        int64_t vl_ix_49975;
+        int64_t vl_ix_49982;
+        (void)(vl_d_str(vl_src, (vela_bounds_check((vl_ix_49968 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13778)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13778)), 655360, "selfhost/vm.vel", 13778), vl_nd[vl_ix_49968]), (vela_bounds_check((vl_ix_49975 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13778)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13778)), 655360, "selfhost/vm.vel", 13778), vl_nd[vl_ix_49975]), (vela_bounds_check((vl_ix_49982 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13778)), (6LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13778)), 655360, "selfhost/vm.vel", 13778), vl_nd[vl_ix_49982])));
         (void)((vela_emit_str(vela_str_lit("\"", 1))));
         (void)((vela_emit_nl()));
         return;
@@ -13422,8 +13572,8 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
     if ((vl_k == 23LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("bool ", 5))));
-        int64_t vl_ix_49504;
-        (void)((vela_emit_int((vela_bounds_check((vl_ix_49504 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13552)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13552)), 655360, "selfhost/vm.vel", 13552), vl_nd[vl_ix_49504]))));
+        int64_t vl_ix_50012;
+        (void)((vela_emit_int((vela_bounds_check((vl_ix_50012 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13786)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13786)), 655360, "selfhost/vm.vel", 13786), vl_nd[vl_ix_50012]))));
         (void)((vela_emit_nl()));
         return;
     }
@@ -13444,95 +13594,95 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("call", 4))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_49574;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49574 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13573)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13573)), 655360, "selfhost/vm.vel", 13573), vl_nd[vl_ix_49574]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13573)));
-        int64_t vl_ix_49591;
-        (void)(vl_d_chain(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49591 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13574)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13574)), 655360, "selfhost/vm.vel", 13574), vl_nd[vl_ix_49591]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13574)));
+        int64_t vl_ix_50082;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50082 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13807)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13807)), 655360, "selfhost/vm.vel", 13807), vl_nd[vl_ix_50082]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13807)));
+        int64_t vl_ix_50099;
+        (void)(vl_d_chain(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50099 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13808)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13808)), 655360, "selfhost/vm.vel", 13808), vl_nd[vl_ix_50099]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13808)));
         return;
     }
     if ((vl_k == 27LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("binop op=", 9))));
-        int64_t vl_ix_49618;
-        (void)((vela_emit_str(vl_op_name((vela_bounds_check((vl_ix_49618 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13580)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13580)), 655360, "selfhost/vm.vel", 13580), vl_nd[vl_ix_49618])))));
+        int64_t vl_ix_50126;
+        (void)((vela_emit_str(vl_op_name((vela_bounds_check((vl_ix_50126 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13814)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13814)), 655360, "selfhost/vm.vel", 13814), vl_nd[vl_ix_50126])))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_49636;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49636 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13582)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13582)), 655360, "selfhost/vm.vel", 13582), vl_nd[vl_ix_49636]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13582)));
-        int64_t vl_ix_49653;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49653 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13583)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13583)), 655360, "selfhost/vm.vel", 13583), vl_nd[vl_ix_49653]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13583)));
+        int64_t vl_ix_50144;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50144 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13816)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13816)), 655360, "selfhost/vm.vel", 13816), vl_nd[vl_ix_50144]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13816)));
+        int64_t vl_ix_50161;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50161 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13817)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13817)), 655360, "selfhost/vm.vel", 13817), vl_nd[vl_ix_50161]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13817)));
         return;
     }
     if ((vl_k == 28LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("unary op=", 9))));
-        int64_t vl_ix_49680;
-        (void)((vela_emit_str(vl_op_name((vela_bounds_check((vl_ix_49680 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13589)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13589)), 655360, "selfhost/vm.vel", 13589), vl_nd[vl_ix_49680])))));
+        int64_t vl_ix_50188;
+        (void)((vela_emit_str(vl_op_name((vela_bounds_check((vl_ix_50188 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13823)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13823)), 655360, "selfhost/vm.vel", 13823), vl_nd[vl_ix_50188])))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_49698;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49698 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13591)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13591)), 655360, "selfhost/vm.vel", 13591), vl_nd[vl_ix_49698]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13591)));
+        int64_t vl_ix_50206;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50206 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13825)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13825)), 655360, "selfhost/vm.vel", 13825), vl_nd[vl_ix_50206]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13825)));
         return;
     }
     if ((vl_k == 29LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("boolop op=", 10))));
-        int64_t vl_ix_49723;
-        if (((vela_bounds_check((vl_ix_49723 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13597)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13597)), 655360, "selfhost/vm.vel", 13597), vl_nd[vl_ix_49723]) == 13LL)) {
+        int64_t vl_ix_50231;
+        if (((vela_bounds_check((vl_ix_50231 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13831)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13831)), 655360, "selfhost/vm.vel", 13831), vl_nd[vl_ix_50231]) == 13LL)) {
             (void)((vela_emit_str(vela_str_lit("and", 3))));
         } else {
             (void)((vela_emit_str(vela_str_lit("or", 2))));
         }
         (void)((vela_emit_nl()));
-        int64_t vl_ix_49749;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49749 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13603)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13603)), 655360, "selfhost/vm.vel", 13603), vl_nd[vl_ix_49749]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13603)));
-        int64_t vl_ix_49766;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49766 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13604)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13604)), 655360, "selfhost/vm.vel", 13604), vl_nd[vl_ix_49766]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13604)));
+        int64_t vl_ix_50257;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50257 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13837)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13837)), 655360, "selfhost/vm.vel", 13837), vl_nd[vl_ix_50257]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13837)));
+        int64_t vl_ix_50274;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50274 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13838)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13838)), 655360, "selfhost/vm.vel", 13838), vl_nd[vl_ix_50274]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13838)));
         return;
     }
     if ((vl_k == 30LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("cmp op=", 7))));
-        int64_t vl_ix_49793;
-        (void)((vela_emit_str(vl_op_name((vela_bounds_check((vl_ix_49793 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13610)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13610)), 655360, "selfhost/vm.vel", 13610), vl_nd[vl_ix_49793])))));
+        int64_t vl_ix_50301;
+        (void)((vela_emit_str(vl_op_name((vela_bounds_check((vl_ix_50301 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13844)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13844)), 655360, "selfhost/vm.vel", 13844), vl_nd[vl_ix_50301])))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_49811;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49811 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13612)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13612)), 655360, "selfhost/vm.vel", 13612), vl_nd[vl_ix_49811]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13612)));
-        int64_t vl_ix_49828;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49828 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13613)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13613)), 655360, "selfhost/vm.vel", 13613), vl_nd[vl_ix_49828]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13613)));
+        int64_t vl_ix_50319;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50319 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13846)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13846)), 655360, "selfhost/vm.vel", 13846), vl_nd[vl_ix_50319]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13846)));
+        int64_t vl_ix_50336;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50336 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13847)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13847)), 655360, "selfhost/vm.vel", 13847), vl_nd[vl_ix_50336]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13847)));
         return;
     }
     if ((vl_k == 31LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("index", 5))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_49861;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49861 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13620)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13620)), 655360, "selfhost/vm.vel", 13620), vl_nd[vl_ix_49861]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13620)));
-        int64_t vl_ix_49878;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49878 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13621)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13621)), 655360, "selfhost/vm.vel", 13621), vl_nd[vl_ix_49878]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13621)));
+        int64_t vl_ix_50369;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50369 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13854)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13854)), 655360, "selfhost/vm.vel", 13854), vl_nd[vl_ix_50369]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13854)));
+        int64_t vl_ix_50386;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50386 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13855)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13855)), 655360, "selfhost/vm.vel", 13855), vl_nd[vl_ix_50386]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13855)));
         return;
     }
     if ((vl_k == 32LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("attr name=", 10))));
-        int64_t vl_ix_49905;
-        (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_49905 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13627)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13627)), 655360, "selfhost/vm.vel", 13627), vl_nd[vl_ix_49905]), "selfhost/vm.vel", 13627)))));
+        int64_t vl_ix_50413;
+        (void)((vela_emit_str((vela_interned((vela_bounds_check((vl_ix_50413 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13861)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13861)), 655360, "selfhost/vm.vel", 13861), vl_nd[vl_ix_50413]), "selfhost/vm.vel", 13861)))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_49923;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49923 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13629)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13629)), 655360, "selfhost/vm.vel", 13629), vl_nd[vl_ix_49923]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13629)));
+        int64_t vl_ix_50431;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50431 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13863)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13863)), 655360, "selfhost/vm.vel", 13863), vl_nd[vl_ix_50431]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13863)));
         return;
     }
     if ((vl_k == 33LL)) {
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("list", 4))));
         (void)((vela_emit_nl()));
-        int64_t vl_ix_49956;
-        (void)(vl_d_chain(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_49956 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13636)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13636)), 655360, "selfhost/vm.vel", 13636), vl_nd[vl_ix_49956]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13636)));
+        int64_t vl_ix_50464;
+        (void)(vl_d_chain(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50464 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13870)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13870)), 655360, "selfhost/vm.vel", 13870), vl_nd[vl_ix_50464]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13870)));
         return;
     }
     if ((vl_k == 34LL)) {
-        int64_t vl_ix_49973;
-        int64_t vl_lo = (vela_bounds_check((vl_ix_49973 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13640)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13640)), 655360, "selfhost/vm.vel", 13640), vl_nd[vl_ix_49973]);
-        int64_t vl_ix_49982;
-        int64_t vl_hi = (vela_bounds_check((vl_ix_49982 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13641)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13641)), 655360, "selfhost/vm.vel", 13641), vl_nd[vl_ix_49982]);
+        int64_t vl_ix_50481;
+        int64_t vl_lo = (vela_bounds_check((vl_ix_50481 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13874)), (2LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13874)), 655360, "selfhost/vm.vel", 13874), vl_nd[vl_ix_50481]);
+        int64_t vl_ix_50490;
+        int64_t vl_hi = (vela_bounds_check((vl_ix_50490 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13875)), (3LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13875)), 655360, "selfhost/vm.vel", 13875), vl_nd[vl_ix_50490]);
         (void)(vl_d_indent(vl_depth));
         (void)((vela_emit_str(vela_str_lit("slice has_lower=", 16))));
         if ((vl_lo >= 0LL)) {
@@ -13547,13 +13697,13 @@ static void vl_d_node(vela_str vl_src, int64_t* vl_nd, int64_t* vl_ty, double* v
             (void)((vela_emit_int(0LL)));
         }
         (void)((vela_emit_nl()));
-        int64_t vl_ix_50035;
-        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50035 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13656)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13656)), 655360, "selfhost/vm.vel", 13656), vl_nd[vl_ix_50035]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13656)));
+        int64_t vl_ix_50543;
+        (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, (vela_bounds_check((vl_ix_50543 = vela_add_range((vela_mul_range((vl_n), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13890)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13890)), 655360, "selfhost/vm.vel", 13890), vl_nd[vl_ix_50543]), vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13890)));
         if ((vl_lo >= 0LL)) {
-            (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_lo, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13658)));
+            (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_lo, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13892)));
         }
         if ((vl_hi >= 0LL)) {
-            (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_hi, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13661)));
+            (void)(vl_d_node(vl_src, vl_nd, vl_ty, vl_flt, vl_hi, vela_add_range((vl_depth), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13895)));
         }
         return;
     }
@@ -13580,7 +13730,7 @@ static void vl_dump_tokens(int64_t* vl_tk, struct vl_Ctx vl_cx) {
         (void)((vela_emit_str(vela_str_lit(" ", 1))));
         (void)((vela_emit_int(vl_tk_len(vl_tk, vl_i))));
         (void)((vela_emit_nl()));
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13721);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13955);
     }
 }
 
@@ -13622,12 +13772,12 @@ static void vl_dump_nodes(int64_t* vl_nd, int64_t vl_n) {
         int64_t vl_k = 0LL;
         while ((vl_k < 10LL)) {
             (void)((vela_emit_str(vela_str_lit(" ", 1))));
-            int64_t vl_ix_50299;
-            (void)((vela_emit_int((vela_bounds_check((vl_ix_50299 = vela_add_range((vela_mul_range((vl_i), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13766)), (vl_k), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13766)), 655360, "selfhost/vm.vel", 13766), vl_nd[vl_ix_50299]))));
-            vl_k = vela_add_range(vl_k, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13767);
+            int64_t vl_ix_50807;
+            (void)((vela_emit_int((vela_bounds_check((vl_ix_50807 = vela_add_range((vela_mul_range((vl_i), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14000)), (vl_k), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14000)), 655360, "selfhost/vm.vel", 14000), vl_nd[vl_ix_50807]))));
+            vl_k = vela_add_range(vl_k, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14001);
         }
         (void)((vela_emit_nl()));
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13770);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14004);
     }
 }
 
@@ -13641,13 +13791,13 @@ static int64_t vl_find_in(vela_str vl_s, vela_str vl_needle) {
         return 0LL;
     }
     int64_t vl_i = 0LL;
-    while ((vela_add_range((vl_i), (vl_n), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13794) <= (((int64_t)vl_s.len)))) {
-        if ((vela_str_eq((vela_substr(vl_s, vl_i, vela_add_range((vl_i), (vl_n), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13795))), vl_needle))) {
+    while ((vela_add_range((vl_i), (vl_n), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14028) <= (((int64_t)vl_s.len)))) {
+        if ((vela_str_eq((vela_substr(vl_s, vl_i, vela_add_range((vl_i), (vl_n), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14029))), vl_needle))) {
             return vl_i;
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13798);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14032);
     }
-    return vela_sub_range((0LL), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13800);
+    return vela_sub_range((0LL), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14034);
 }
 
 static bool vl_needs_openmp(vela_str vl_cfile) {
@@ -13661,8 +13811,8 @@ static bool vl_needs_shim(vela_str vl_cfile) {
 static vela_str vl_strip_vel(vela_str vl_path) {
     int64_t vl_n = (((int64_t)vl_path.len));
     if ((vl_n > 4LL)) {
-        if ((vela_str_eq((vela_substr(vl_path, vela_sub_range((vl_n), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13829), vl_n)), vela_str_lit(".vel", 4)))) {
-            return (vela_substr(vl_path, 0LL, vela_sub_range((vl_n), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13830)));
+        if ((vela_str_eq((vela_substr(vl_path, vela_sub_range((vl_n), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14063), vl_n)), vela_str_lit(".vel", 4)))) {
+            return (vela_substr(vl_path, 0LL, vela_sub_range((vl_n), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14064)));
         }
     }
     return vl_path;
@@ -13678,16 +13828,16 @@ static bool vl_exists(vela_str vl_path) {
 static int64_t vl_last_sep(vela_str vl_s) {
     int64_t vl_n = (((int64_t)vl_s.len));
     while ((vl_n > 0LL)) {
-        int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13866), "selfhost/vm.vel", 13866));
+        int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14100), "selfhost/vm.vel", 14100));
         if ((vl_c == 47LL)) {
-            return vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13867);
+            return vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14101);
         }
         if ((vl_c == 92LL)) {
-            return vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13868);
+            return vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14102);
         }
-        vl_n = vela_sub_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13869);
+        vl_n = vela_sub_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14103);
     }
-    return vela_sub_range((0LL), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13871);
+    return vela_sub_range((0LL), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14105);
 }
 
 static vela_str vl_dir_of(vela_str vl_s) {
@@ -13703,12 +13853,12 @@ static vela_str vl_rstrip_sep(vela_str vl_s) {
     if ((vl_n == 0LL)) {
         return vl_s;
     }
-    int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13890), "selfhost/vm.vel", 13890));
+    int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14124), "selfhost/vm.vel", 14124));
     if ((vl_c == 47LL)) {
-        return (vela_substr(vl_s, 0LL, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13892)));
+        return (vela_substr(vl_s, 0LL, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14126)));
     }
     if ((vl_c == 92LL)) {
-        return (vela_substr(vl_s, 0LL, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13895)));
+        return (vela_substr(vl_s, 0LL, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14129)));
     }
     return vl_s;
 }
@@ -13720,14 +13870,14 @@ static vela_str vl_join(vela_str vl_a, vela_str vl_b) {
 static vela_str vl_sep_of(vela_str vl_s) {
     int64_t vl_n = (((int64_t)vl_s.len));
     while ((vl_n > 0LL)) {
-        int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13910), "selfhost/vm.vel", 13910));
+        int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14144), "selfhost/vm.vel", 14144));
         if ((vl_c == 47LL)) {
             return vela_str_lit("/", 1);
         }
         if ((vl_c == 92LL)) {
             return vela_str_lit("\\", 1);
         }
-        vl_n = vela_sub_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 13913);
+        vl_n = vela_sub_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14147);
     }
     return vela_str_lit("/", 1);
 }
@@ -13739,7 +13889,7 @@ static vela_str vl_parent_of(vela_str vl_dir) {
         return vela_str_lit(".", 1);
     }
     if ((vl_n == 1LL)) {
-        if (((vela_bytes_at(vl_d, 0LL, "selfhost/vm.vel", 13931)) == 47LL)) {
+        if (((vela_bytes_at(vl_d, 0LL, "selfhost/vm.vel", 14165)) == 47LL)) {
             return vela_str_lit("/", 1);
         }
         return vl_d;
@@ -13755,7 +13905,7 @@ static vela_str vl_parent_of(vela_str vl_dir) {
         return (vela_substr(vl_d, 0LL, 1LL));
     }
     if ((vl_at == 2LL)) {
-        if (((vela_bytes_at(vl_d, 1LL, "selfhost/vm.vel", 13947)) == 58LL)) {
+        if (((vela_bytes_at(vl_d, 1LL, "selfhost/vm.vel", 14181)) == 58LL)) {
             if ((vela_str_eq((vela_substr(vl_d, 1LL, 2LL)), vela_str_lit(":\\", 2)))) {
                 return (vela_substr(vl_d, 0LL, 3LL));
             }
@@ -13772,7 +13922,7 @@ static vela_str vl_join_with(vela_str vl_a, vela_str vl_b) {
 }
 
 static vela_str vl_exe_dir(void) {
-    vela_str vl_me = (vela_arg(0LL, "selfhost/vm.vel", 13971));
+    vela_str vl_me = (vela_arg(0LL, "selfhost/vm.vel", 14205));
     if (((((int64_t)vl_me.len)) == 0LL)) {
         return vela_str_lit(".", 1);
     }
@@ -13808,7 +13958,7 @@ static vela_str vl_find_runtime(vela_str vl_exe) {
             return vl_base;
         }
         vl_base = vl_join(vl_base, vela_str_lit("..", 2));
-        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14046);
+        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14280);
     }
     return vela_str_lit("runtime", 7);
 }
@@ -13825,15 +13975,15 @@ static int64_t vl_find_function(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl
     int64_t vl_f = 0LL;
     while ((vl_f < vl_vm.f_nfn)) {
         int64_t vl_d = vl_ft_get(vl_mem, vl_f, vl_FT_DEF());
-        int64_t vl_ix_50862;
-        if (((vela_bounds_check((vl_ix_50862 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14073)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14073)), 655360, "selfhost/vm.vel", 14073), vl_nd[vl_ix_50862]) == vl_h)) {
+        int64_t vl_ix_51370;
+        if (((vela_bounds_check((vl_ix_51370 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14307)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14307)), 655360, "selfhost/vm.vel", 14307), vl_nd[vl_ix_51370]) == vl_h)) {
             if ((vl_ft_get(vl_mem, vl_f, vl_FT_OWNER()) < 0LL)) {
                 return vl_f;
             }
         }
-        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14078);
+        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14312);
     }
-    return vela_neg_int(1LL, "selfhost/vm.vel", 14080);
+    return vela_neg_int(1LL, "selfhost/vm.vel", 14314);
 }
 
 static vela_str vl_find_vcvars(void) {
@@ -13967,20 +14117,20 @@ static vela_str vl_base_name(vela_str vl_path) {
     if ((vl_n < 0LL)) {
         return vl_path;
     }
-    return (vela_substr(vl_path, vela_add_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14338), (((int64_t)vl_path.len))));
+    return (vela_substr(vl_path, vela_add_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14572), (((int64_t)vl_path.len))));
 }
 
 static vela_str vl_flat_name(vela_str vl_path) {
     vela_str vl_out = vela_str_lit("", 0);
     int64_t vl_i = 0LL;
     while ((vl_i < (((int64_t)vl_path.len)))) {
-        int64_t vl_c = (vela_bytes_at(vl_path, vl_i, "selfhost/vm.vel", 14359));
+        int64_t vl_c = (vela_bytes_at(vl_path, vl_i, "selfhost/vm.vel", 14593));
         if ((((vl_c == 92LL) || (vl_c == 47LL)) || (vl_c == 58LL))) {
             vl_out = (vela_concat(vl_out, vela_str_lit("_", 1)));
         } else {
-            vl_out = (vela_concat(vl_out, (vela_substr(vl_path, vl_i, vela_add_range((vl_i), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14363)))));
+            vl_out = (vela_concat(vl_out, (vela_substr(vl_path, vl_i, vela_add_range((vl_i), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14597)))));
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14365);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14599);
     }
     return vl_out;
 }
@@ -14115,7 +14265,7 @@ static vela_str vl_find_lld(void) {
             return vl_c3;
         }
         vl_base = vl_join(vl_base, vela_str_lit("..", 2));
-        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14615);
+        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14849);
     }
     return vela_str_lit("", 0);
 }
@@ -14169,7 +14319,7 @@ static vela_str vl_find_llvm_rt(vela_str vl_rt) {
             }
         }
         vl_base = vl_join(vl_base, vela_str_lit("..", 2));
-        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14678);
+        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 14912);
     }
     return vela_str_lit("", 0);
 }
@@ -14248,8 +14398,8 @@ static void vl_main(void) {
         (void)(vl_usage());
         (void)((vela_panic_str(vela_str_lit("the front end needs a mode and a file", 37))));
     }
-    vela_str vl_mode = (vela_arg(1LL, "selfhost/vm.vel", 14779));
-    vela_str vl_path = (vela_arg(2LL, "selfhost/vm.vel", 14780));
+    vela_str vl_mode = (vela_arg(1LL, "selfhost/vm.vel", 15013));
+    vela_str vl_path = (vela_arg(2LL, "selfhost/vm.vel", 15014));
     vela_str vl_src = (vela_read_text(vl_path));
     if (((((int64_t)vl_src.len)) == 0LL)) {
         (void)((vela_warn_str(vela_str_lit("vela: cannot read ", 18))));
@@ -14345,7 +14495,7 @@ static void vl_main(void) {
         (void)(vl_ck_module(vl_nd, vl_ty, vl_mem4, vl_path, (&vl_vm4)));
         vl_vm4.f_after_main = vl_find_function(vl_nd, vl_mem4, vl_vm4, vela_str_lit("dbg_exit", 8));
         vl_vm4.f_dbg_on = 1LL;
-        (void)(vl_run_main(vl_nd, vl_ty, vl_mem4, vl_fmem4, vl_flt, vl_ipool4, vl_fpool4, vl_bpool4, vl_src, vl_path, (vela_arg(3LL, "selfhost/vm.vel", 14907)), (&vl_vm4)));
+        (void)(vl_run_main(vl_nd, vl_ty, vl_mem4, vl_fmem4, vl_flt, vl_ipool4, vl_fpool4, vl_bpool4, vl_src, vl_path, (vela_arg(3LL, "selfhost/vm.vel", 15141)), (&vl_vm4)));
         return;
     }
     if ((vela_str_eq(vl_mode, vela_str_lit("check", 5)))) {
@@ -14378,7 +14528,7 @@ static void vl_main(void) {
     if ((vela_str_eq(vl_mode, vela_str_lit("build-llvm", 10)))) {
         vela_str vl_rtL = vela_str_lit("", 0);
         if (((vela_argc()) >= 4LL)) {
-            vl_rtL = (vela_arg(3LL, "selfhost/vm.vel", 14945));
+            vl_rtL = (vela_arg(3LL, "selfhost/vm.vel", 15179));
         }
         vl_cx.f_ti = 0LL;
         (void)(vl_parse_module(vl_src, vl_tk, vl_tkf, vl_nd, vl_ty, vl_flt, (&vl_cx)));
@@ -14389,19 +14539,19 @@ static void vl_main(void) {
         struct vl_VM vl_vmB = vl_vm_new();
         (void)(vl_resolve_module(vl_nd, vl_ty, vl_memB, vl_path, (&vl_vmB)));
         (void)(vl_ck_module(vl_nd, vl_ty, vl_memB, vl_path, (&vl_vmB)));
-        (void)(vl_do_build_llvm((vela_arg(0LL, "selfhost/vm.vel", 14956)), vl_path, vl_rtL, vl_nd, vl_ty, vl_flt, vl_src, vl_memB, (&vl_vmB)));
+        (void)(vl_do_build_llvm((vela_arg(0LL, "selfhost/vm.vel", 15190)), vl_path, vl_rtL, vl_nd, vl_ty, vl_flt, vl_src, vl_memB, (&vl_vmB)));
         return;
     }
     if ((vela_str_eq(vl_mode, vela_str_lit("build", 5)))) {
         vela_str vl_rt = vela_str_lit("", 0);
         if (((vela_argc()) >= 4LL)) {
-            vl_rt = (vela_arg(3LL, "selfhost/vm.vel", 14973));
+            vl_rt = (vela_arg(3LL, "selfhost/vm.vel", 15207));
         }
         vela_str vl_extra = vela_str_lit("", 0);
         if (((vela_argc()) >= 5LL)) {
-            vl_extra = (vela_arg(4LL, "selfhost/vm.vel", 14977));
+            vl_extra = (vela_arg(4LL, "selfhost/vm.vel", 15211));
         }
-        (void)(vl_do_build((vela_arg(0LL, "selfhost/vm.vel", 14979)), vl_path, vl_rt, vl_extra));
+        (void)(vl_do_build((vela_arg(0LL, "selfhost/vm.vel", 15213)), vl_path, vl_rt, vl_extra));
         return;
     }
     (void)(vl_usage());

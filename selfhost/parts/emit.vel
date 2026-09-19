@@ -1388,6 +1388,76 @@ def emit_for_omp(nd: Array[int, 655360], ty: Array[int, 262144],
     emit_str("}\n")
 }
 
+# Does a `continue` in this loop's body bind to *this* loop?
+#
+# A `for i in range(a, b)` loop is emitted as a `while` whose **last statement is
+# the increment**, and C's `continue` jumps to the loop's condition: the rest of
+# the body does not run, increment included, so the induction variable never
+# moves.  Measured 2026-09-20, `tests\probes\continue_in_for_range.vel`, a
+# three-iteration loop that continues in every iteration: `vm.exe run` exits 0 in
+# 58 ms printing `survived`; the same program through `vm.exe build` was still
+# running after 20 seconds and had to be killed; `vm.exe build-llvm` terminates
+# and prints `survived`, because that emitter jumps to the increment block, which
+# is what the interpreter does.  A `while` is not affected: its `continue` lands
+# on the condition, which is the whole meaning of `while`, and that shape must
+# stay exactly as it is.
+#
+# The walk mirrors `par_chain_ok` above and for the same reason: a `continue`
+# inside a *nested* loop belongs to that loop, so this follows only this level's
+# statement chain (the `nx` links) and the two branches of an `if` at this level.
+# It does not descend into `while`/`for`, and it does not have to look for
+# anything else: kinds 6-9, 13 and 15 hold no sub-statements, and 16-19 do not
+# exist (`selfhost/AST.md`).
+def for_body_continues(nd: Array[int, 655360], head: int) -> bool {
+    mut s: int = head
+    while s > 0 {
+        k: int = nd_kind(nd, s)
+        if k == 14 {
+            return True
+        }
+        if k == 10 {
+            if for_body_continues(nd, nd[s * 10 + 2]) {
+                return True
+            }
+            e: int = nd[s * 10 + 4]
+            if e > 0 {
+                if for_body_continues(nd, e) {
+                    return True
+                }
+            }
+        }
+        s = nd_nx(nd, s)
+    }
+    return False
+}
+
+# The condition and the increment are spelled once each, through these, so that
+# the two shapes `emit_for` can write cannot drift apart.  Text for text they are
+# exactly what the single `while` form used to write.
+def emit_for_cond(nd: Array[int, 655360], s: int) -> None {
+    emit_str("vl_step_")
+    emit_int(s)
+    emit_str(" > 0 ? ")
+    emit_cname(nd[s * 10 + 1])
+    emit_str(" < vl_stop_")
+    emit_int(s)
+    emit_str(" : ")
+    emit_cname(nd[s * 10 + 1])
+    emit_str(" > vl_stop_")
+    emit_int(s)
+}
+
+def emit_for_incr(nd: Array[int, 655360], path: str, s: int, line: int) -> None {
+    emit_cname(nd[s * 10 + 1])
+    emit_str(" = vela_add_range(")
+    emit_cname(nd[s * 10 + 1])
+    emit_str(", vl_step_")
+    emit_int(s)
+    emit_str(", INT64_MIN, INT64_MAX")
+    emit_location(path, line)
+    emit_str(")")
+}
+
 def emit_for(nd: Array[int, 655360], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mem: Array[int, 3741696], mut vm: VM, s: int, indent: int) -> None {
@@ -1417,27 +1487,43 @@ def emit_for(nd: Array[int, 655360], ty: Array[int, 262144],
     }
     emit_str(";\n")
     emit_indent(indent + 1)
-    emit_str("while (vl_step_")
-    emit_int(s)
-    emit_str(" > 0 ? ")
-    emit_cname(nd[s * 10 + 1])
-    emit_str(" < vl_stop_")
-    emit_int(s)
-    emit_str(" : ")
-    emit_cname(nd[s * 10 + 1])
-    emit_str(" > vl_stop_")
-    emit_int(s)
+    if for_body_continues(nd, nd[s * 10 + 8]) {
+        # The body contains a `continue`, so the increment has to be in the loop's
+        # own `for (...)` clause: C runs that expression before the next condition
+        # test however the iteration reached the end of the body, whether by
+        # falling off it or by a `continue`, which is the interpreter's and the
+        # LLVM back end's behaviour, and it is the only spelling of the loop in C
+        # that can put the increment on the `continue` path without knowing which
+        # loop a `continue` belongs to.  A `continue` would have to be rewritten to
+        # `{ increment; continue; }` to get the same effect from inside the body,
+        # and this emitter streams down from each loop without carrying the
+        # enclosing loop's increment as state, so the loop that owns the
+        # `continue` is the only place that knows what to write.  `break` out of
+        # the loop and falling off the end of the body reach the increment through
+        # the same clause.
+        #
+        # Only loops that have a `continue` take this form: the C for every other
+        # `for` loop is byte-for-byte what it was, because the bootstrap fixpoint
+        # is a byte comparison of this compiler's own emitted C.
+        emit_str("for (; ")
+        emit_for_cond(nd, s)
+        emit_str("; ")
+        emit_for_incr(nd, path, s, line)
+        emit_str(") {\n")
+        emit_body(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 8], indent + 2)
+        emit_indent(indent + 1)
+        emit_str("}\n")
+        emit_indent(indent)
+        emit_str("}\n")
+        return
+    }
+    emit_str("while (")
+    emit_for_cond(nd, s)
     emit_str(") {\n")
     emit_body(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 8], indent + 2)
     emit_indent(indent + 2)
-    emit_cname(nd[s * 10 + 1])
-    emit_str(" = vela_add_range(")
-    emit_cname(nd[s * 10 + 1])
-    emit_str(", vl_step_")
-    emit_int(s)
-    emit_str(", INT64_MIN, INT64_MAX")
-    emit_location(path, line)
-    emit_str(");\n")
+    emit_for_incr(nd, path, s, line)
+    emit_str(";\n")
     emit_indent(indent + 1)
     emit_str("}\n")
     emit_indent(indent)
