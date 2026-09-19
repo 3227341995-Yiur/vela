@@ -1,0 +1,25 @@
+# hole_member_method_as_value — reading a method *as a value* (`p.sum`) is accepted by
+# `check`, and the back end then refuses it (`this struct has no field of that name`).
+#
+# Deliberate, not an oversight: the checker is documented as letting this through, and
+# the case exists so that the deliberate gap is a row in a corpus rather than a
+# sentence in a comment.  If a later release decides the other way and refuses it in
+# `check`, this row reports CLOSED, which is the right outcome for a decision that
+# changed; if the criterion is "methods are not values", the row is the evidence.
+#
+# `sum` is a method of `Pt`, so `p.sum` is neither a field read that exists nor a call.
+# A language with first-class functions would make this legal; Vela 0.1 has none
+# (SPEC.md §4.1: nested functions do not exist), so the name is not a value here.
+
+struct Pt {
+    x: int
+
+    def sum(self: Pt) -> int {
+        return self.x
+    }
+}
+
+def main() -> None {
+    mut p: Pt = Pt(1)
+    print(p.sum)
+}

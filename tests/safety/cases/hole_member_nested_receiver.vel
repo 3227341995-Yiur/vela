@@ -1,0 +1,25 @@
+# hole_member_nested_receiver — a member lookup through a *nested field* is not
+# checked: `o.inner.zzz` is accepted by `check`, and the refusal arrives later, from
+# the back end rather than from the checker.
+#
+# This is the same rule as `hole_member_unknown_field` (`p.zzz` is refused), one
+# receiver shape further out.  `099f6fc` covers a plain name and `self`, not a field
+# chain — measured: `check exit 0, ok`, then
+# `vela: panic: this struct has no field of that name` from `build`.
+#
+# The promise is the struct form in SPEC.md §4: a struct's fields are the ones it
+# declares.  The case is a `violation` row, so when the rule grows to cover this
+# receiver the row reports CLOSED instead of quietly passing.
+
+struct Inner {
+    x: int
+}
+
+struct Outer {
+    inner: Inner
+}
+
+def main() -> None {
+    mut o: Outer = Outer(Inner(1))
+    print(o.inner.zzz)
+}

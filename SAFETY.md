@@ -16,7 +16,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\safety.ps1
 The harness copies the current compiler **once**, before any case runs, into
 `%TEMP%\vela-safety\frozen\vm.exe` — creating the directory itself and copying
 `LLVM-C.dll` beside it, which this compiler loads at startup — prints the copy's
-SHA256 and byte size, and runs all 65 cases against that copy. This repository's
+SHA256 and byte size, and runs all 69 cases against that copy. This repository's
 compiler is rebuilt while the corpus is being worked on (five times during the
 session these cases were written, once in the middle of a run), so a run judged by
 two different compilers would prove nothing about either; `-FrozenVm <path>` pins an
@@ -29,23 +29,24 @@ SHA256  AD4A997B132728449D91D789E5CFC26A8A82CAAD466B41F78AC3C5041FBE73D0
 size    795136 bytes       selfhost\build\vm.exe, 2026-09-20 02:52
 ```
 
-- tally: **55 passed, 0 failed**, **3 xfail rows still showing their violation**,
-  **7 holes CLOSED (the promise now holds)**. `RESULT: PASS` (exit 0). The closed
-  rows are named in §3.1, the three that are still open in §3.2.
-- one earlier build is pinned alongside for the before/after comparison, and it is
-  what makes those two columns readable:
+- tally: **55 passed, 0 failed**, **7 xfail rows still showing their violation**,
+  **7 holes CLOSED (the promise now holds)**. `RESULT: PASS` (exit 0). The closed rows
+  are named in §3.1 and §3.2; the seven still open under the current build are §3.3.
+- one earlier build is pinned alongside for the before/after comparison, and it is what
+  makes those two columns readable:
   `67ACF63B7DD3A5249E2FE3B1F015D5DB4D4C4032FEFB464F12F86F519F903D8A` / `770560
-  bytes` → **55 passed, 0 failed**, **10 xfail rows**, **0 CLOSED**. The same 55
-  non-hole rows pass under both, which is what makes the seven that moved a
-  difference about those seven rows and nothing else.
-- the cases: `tests/safety/cases/*.vel` (65 programs, ASCII only).
+  bytes` → **55 passed, 0 failed**, **14 xfail rows**, **0 CLOSED**. The same 55
+  non-hole rows pass under both, which is what makes the seven that moved a difference
+  about those seven rows and nothing else.
+- the cases: `tests/safety/cases/*.vel` (69 programs, ASCII only).
 - the expectations: `tests/safety/manifest.txt`, one row per case, written by hand
   from the spec before any of it was run.
-- **two rules are enforced that no case in this corpus watches yet**: the operator
-  table's unary/comparison half (`bfd70fc`) and member access (`099f6fc`). Both are
-  measured in §3.1 and §3.4, including what each still does not reach. They are
-  written down rather than left out, because a reader who saw only this corpus would
-  not know the member rule exists at all.
+- **the operator table's unary/comparison half (`bfd70fc`) is watched by cases and has
+  no gap left to record.** Member access (`099f6fc`) is newer than this corpus: its
+  four non-reaching receiver shapes are rows (§3.2), and the one shape that is refused
+  by the back end rather than by the rule is recorded as not-covered in §4 instead of
+  being dressed up as a checker hole. The point of writing both down is that a reader
+  of `tests/safety/` alone would otherwise not know how far the member rule reaches.
 
 A row marked `xfail` asserts that its promise is *broken*, so `tools/safety.ps1`
 distinguishes three outcomes for it: **`FAIL-as-expected`** (the promise is still
@@ -131,7 +132,7 @@ above. **Rows in the `holes CLOSED` column:** `hole_cmp_bool_bool`, `hole_cmp_bo
 `hole_cmp_int_float`, `hole_cmp_str_int`, `hole_unary_neg_bool`, `hole_unary_neg_str`,
 `hole_unary_not_int`.
 
-This is the pair of runs that shows the difference — same 65 cases, same 55 non-hole
+This is the pair of runs that shows the difference — same 69 cases, same 55 non-hole
 rows, two builds, and these seven rows are the only thing that moved:
 
 ```
@@ -144,7 +145,7 @@ hole_unary_neg_bool                            violation  FAIL-as-expected
 hole_unary_neg_str                             violation  FAIL-as-expected
 hole_unary_not_int                             violation  FAIL-as-expected
 tally           : 55 passed, 0 failed
-                  xfail rows still showing their violation: 10
+                  xfail rows still showing their violation: 14
                   holes CLOSED (the promise now holds): 0
 
 $ powershell -NoProfile -ExecutionPolicy Bypass -File tools\safety.ps1   # AD4A997B…73D0 / 795136
@@ -159,6 +160,11 @@ tally           : 55 passed, 0 failed
                   xfail rows still showing their violation: 3
                   holes CLOSED (the promise now holds): 7
 ```
+
+(Those two tally lines are the 65-case corpus as it stood when the operator table was
+fixed; four member-access rows were added afterwards, which is why the same two lines
+now read `14 xfail / 0 CLOSED` and `7 xfail / 7 CLOSED` at the top of this file. The
+seven operator rows are unchanged by that addition — see §3.3 for the current run.)
 
 What the checker now prints — and note that the messages are the ones this corpus's
 manifest wrote by hand as the *expected* refusals, which is the whole point of having
@@ -197,9 +203,10 @@ and `p.dotq(q)` name nothing. Before `099f6fc` the checker did not look at membe
 at all.
 
 **Closed by:** commit `099f6fc`, measured with the same compiler
-(`AD4A997B…73D0` / `795136 bytes`). **No case in this corpus watches it**, which is why
-the measurement is written out here: a reader who saw only `tests/safety/` would not
-know the rule exists.
+(`AD4A997B…73D0` / `795136 bytes`). Both halves are watched by rows now, and the
+refusals it produces over `check` are covered by hand-written probes rather than by
+manifest rows — they are the *positive* side of the rule and a case for them belongs
+in a follow-up corpus:
 
 ```
 $ vm.exe check m1_bad_field.vel        # print(p.zzz)
@@ -215,41 +222,46 @@ exit=2   vela: type error: Pt has no field 'zzz'
 The third line is the half a rule like this usually misses — `self.` inside the
 struct's own body — and it is covered.
 
-**What it does not reach.** Five surfaces, each measured with the same invocation on a
-four-line probe under `%TEMP%\vela-safety\member\`. They are deliberately *not* in
-`tests/safety/cases/`: they belong in a follow-up corpus with manifest rows of their
-own, and adding files without rows would leave the corpus half-wired. The "what stops
-it instead" column is not a claim that the shape is safe — each of these is caught by
-the emitter, the C compiler or the interpreter, and **none was observed to produce a
-wrong answer** — what they have in common is that **`vm.exe check` says `ok`**:
+**What it does not reach — now four rows in this corpus.** Each shape is a
+`violation` case whose `check` side asserts the refusal the rule owes, so today all
+four report `FAIL-as-expected` and the day the rule reaches them they report `CLOSED`
+without anyone editing a manifest. Their names, and what stops the program *instead*
+today (which is never the checker, and was in no case observed to produce a wrong
+answer):
 
-| receiver | probe | `check` | what stops the program instead |
+| receiver | case | `check` today | what stops the program instead |
 |---|---|---|---|
-| a **nested field** (`o.inner.zzz`) | `g1_nested_field` | `exit=0  ok` | `build` -> `vela: panic: this struct has no field of that name`; `run` -> exit 2, same |
-| an **array element** (`a[0].zzz`) | `g2_array_elem_receiver` | `exit=0  ok` | `build` -> `vela: panic: structs are not implemented in this slice of the back end`; `run` -> exit 2, same |
-| method **arity** (`p.dot(p, q, p)` on a two-parameter method) | `g4_method_arity` | `exit=0  ok` | `build` -> the host C compiler: `error C2197: 'int64_t vl_Pt__dot(vl_Pt,vl_Pt)': too many arguments for call`; `run` -> exit 2 |
-| a method called on a **non-struct** (`n.foo()` for `int n`) | `g5_int_method` | `exit=0  ok` | `build` -> `vela: panic: this struct has no method of that name`; `run` -> exit 2, same |
-| a method name **read as a value** (`p.sum`) | `g6_method_as_value` | `exit=0  ok` | `build` -> `vela: panic: this struct has no field of that name`; `run` -> exit 2, same |
+| a **nested field** (`o.inner.zzz`) | `hole_member_nested_receiver` | `exit=0  ok` | `build` -> `vela: panic: this struct has no field of that name`; `run` -> exit 2 |
+| method **arity** (`p.dot(p, q, p)` on a one-parameter method) | `hole_member_method_arity` | `exit=0  ok` | `build` -> the host C compiler: `error C2197: 'int64_t vl_Pt__dot(vl_Pt,vl_Pt)': too many arguments for call`; the interpreter words the same mistake `wrong number of arguments for this method`, exit 2 |
+| a method called on a **non-struct** (`n.foo()` for `int n`) | `hole_member_non_struct_receiver` | `exit=0  ok` | `build` -> `vela: panic: this struct has no method of that name`; the interpreter says `only a struct has methods`, exit 2 |
+| a method name **read as a value** (`p.sum`) | `hole_member_method_as_value` | `exit=0  ok` | `build` -> `vela: panic: this struct has no field of that name`; `run` -> exit 2 |
 
 Two corrections to the way this gap was reported to me, both in the direction of what
 the binary actually does:
 
 * the **call-result** receiver *is* caught — `make().zzz` gives `check exit 2, vela:
-  type error: cannot read a field from a temporary struct` — so it does not belong in
-  the list above;
+  type error: cannot read a field from a temporary struct` — so it is neither a row
+  nor a non-reach;
 * the **array-element** receiver is caught too, but by the back end's "structs are not
-  implemented in this slice" refusal rather than by a member rule, which is why it is
-  listed as a non-reach with that reason rather than as a silent acceptance.
+  implemented in this slice" refusal rather than by a member rule. That is a
+  different fact from "the checker should have refused and did not", so it is
+  deliberately **not** a row; it is in §4 instead.
 
 `p.sum` (reading a method name as a value) is deliberate rather than an oversight: the
-checker is documented as letting it through, and `g6_method_as_value` shows the back
-end refusing it afterwards.
+checker is documented as letting it through, so its row exists to keep the decision
+visible — if the decision changes, the row reports `CLOSED`, and if it does not, the
+row is the evidence that the gap is a choice. Its `note` in
+`tests/safety/manifest.txt` says so in the row itself, not only here.
 
-### 3.3 Still open (3), and one more shape the harness does not call a hole
+### 3.3 Still open (7)
 
-These three are **not** closed by `bfd70fc` or `099f6fc`, and the harness reports all
-three as `FAIL-as-expected` under the current build — re-measured for this revision,
-not assumed: `bounds_zero_len_array_constant`, `hole_mut_scalar_parameter`,
+Seven rows report `FAIL-as-expected` under the current build — re-measured for this
+revision, not assumed. Three are the promises below; four are member-access shapes
+(`hole_member_nested_receiver`, `hole_member_method_arity`,
+`hole_member_non_struct_receiver`, `hole_member_method_as_value`, §3.2), and the
+three named here are:
+
+`bounds_zero_len_array_constant`, `hole_mut_scalar_parameter`,
 `hole_extern_conflicting_prototypes`.
 
 **Hole 1 — `mut` on a scalar parameter does not write through, and both front ends
@@ -400,14 +412,18 @@ adds the three rows (`hole_mut_scalar_parameter`, `probe_mut_struct_parameter`,
 `probe_mut_array_parameter`), so if hole 1 is ever closed the case stops reporting a
 violation and this file gets corrected, rather than the other way round. The same is now
 true of the operator table: the seven `hole_*` rows are the watch on `bfd70fc` (§3.1),
-and §3.2's member measurements are what a follow-up corpus should turn into rows.
+and §3.2's four member rows are the watch on `099f6fc`'s non-reaching shapes — added
+after that fix, and reporting `FAIL-as-expected` until the rule reaches them.
 
 ## 4. What this corpus does not cover
 
-- **Member access has no case.** §3.2 measures the rule and its five non-reaches by
-  hand; `tests/safety/` has no row for it. The probes live in
-  `%TEMP%\vela-safety\member\` and are deliberately not in the repository, because a
-  `.vel` file without a manifest row would leave the corpus half-wired.
+- **One member-access shape is refused by the back end, not by a rule.** A receiver
+  that is an array element (`a[0].zzz`) is accepted by `check` (`exit=0, ok`) and then
+  stopped by the back end's slice limitation: `build` -> `vela: panic: structs are not
+  implemented in this slice of the back end`, `run` -> exit 2. It is deliberately not
+  a `violation` row: recording it as "the checker should have refused" would merge the
+  member rule with a back-end limitation, and the two facts have different owners. Its
+  probe lives in `%TEMP%\vela-safety\member\`, outside the repository.
 - **No `parallel for` race was reproduced as a wrong answer.** §3.3's hole 5 shape is
   admitted by the checker and produced the right answer in 20/20 runs; the strongest
   honest statement is the one above, and a machine with a different OpenMP schedule or

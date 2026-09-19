@@ -182,6 +182,21 @@ hole_cmp_str_int | hole_cmp_str_int.vel | violation | 2 | operator '<' cannot be
 hole_unary_neg_bool | hole_unary_neg_bool.vel | violation | 2 | operator '-' cannot be applied to bool | 2 | unary - needs a number | 0 | | True | | | yes | SPEC 3.1 / DESIGN 7.5 | `-b` on a bool accepted; the interpreter refuses it, the compiled program prints 1 as True |
 hole_unary_neg_str | hole_unary_neg_str.vel | violation | 2 | operator '-' cannot be applied to str | 2 | unary - needs a number | 2 | | | | | yes | SPEC 3.1 / DESIGN 7.5 | `-s` on a str accepted; the C compiler refuses the emitted C |
 hole_unary_not_int | hole_unary_not_int.vel | violation | 2 | operator 'not' cannot be applied to int | 2 | not needs a bool | 0 | | False | | | yes | SPEC 3.1 / DESIGN 7.5 | `not x` on an int accepted; the interpreter refuses it, the compiled program answers False |
+# ---- member access: the four receiver shapes `099f6fc` does not reach ----
+# `099f6fc` checks member names when the receiver is a plain name or `self` (measured:
+# `p.zzz` -> `Pt has no field 'zzz'`, `p.dotq(q)` -> `Pt has no method 'dotq'`,
+# `self.zzz` -> `Pt has no field 'zzz'`).  These four rows are the shapes it does not
+# reach.  Their `check` side is the ASSERTION — a refusal — so today they report
+# FAIL-as-expected and the day the rule grows they report CLOSED.  The run/native
+# columns record what currently stops them instead, which is never the checker.
+# A fifth shape is deliberately *not* a row: a receiver that is an array element
+# (`a[0].zzz`) is refused by the back end's "structs are not implemented in this
+# slice" limitation, not by the member rule, and recording that as "the checker should
+# have refused" would merge two different facts.  It is in SAFETY.md §4 instead.
+hole_member_nested_receiver | hole_member_nested_receiver.vel | violation | 2 | Outer has no field 'zzz' | 2 | this struct has no field of that name | 2 | this struct has no field of that name | | | | yes | SPEC 4 (struct form) | `o.inner.zzz` accepted (check exit 0); the back end refuses it, not the checker |
+hole_member_method_arity | hole_member_method_arity.vel | violation | 2 | 'dot' takes 1 argument, got 3 | 2 | wrong number of arguments for this method | 2 | too many arguments for call | | | | yes | SPEC 4 (methods are struct members) | `p.dot(p, q, p)` accepted (check exit 0); the host C compiler refuses it (C2197), and the interpreter words it differently |
+hole_member_non_struct_receiver | hole_member_non_struct_receiver.vel | violation | 2 | int has no method 'foo' | 2 | only a struct has methods | 2 | this struct has no method of that name | | | | yes | SPEC 3 / 4 | `n.foo()` for `int n` accepted (check exit 0); the back end refuses it, not the checker |
+hole_member_method_as_value | hole_member_method_as_value.vel | violation | 2 | Pt has no field 'sum' | 2 | this struct has no field of that name | 2 | this struct has no field of that name | | | | yes | SPEC 4.1 (no nested functions) | `p.sum`, a method name read as a value, is accepted (check exit 0).  DELIBERATE: the checker is documented as letting this through, so the row exists to keep the decision visible — not as a claim of an oversight.  The back end refuses it. |
 # DESIGN.md §7.5: "`mut` on a scalar parameter does not write through — a gap between
 # the implementation and SPEC.md:148".  The promise (SPEC.md:148) is that the callee
 # may write through, so both expected outputs are 11 and the measured 10 is the

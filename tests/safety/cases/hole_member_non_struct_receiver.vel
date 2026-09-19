@@ -1,0 +1,18 @@
+# hole_member_non_struct_receiver — a method called on something that is not a struct
+# is not checked: `n.foo()` for `mut n: int` is accepted by `check`, and the refusal
+# arrives from the back end (`vela: panic: this struct has no method of that name`).
+#
+# `099f6fc` refuses `Pt has no method 'dotq'` when the receiver *is* a struct and the
+# method is not; this row is the other half — there is no struct at all to look a
+# method up in, and the checker does not say so.
+#
+# The interpreter's answer is its own sentence (`only a struct has methods`, exit 2),
+# so this is also a case where the two front ends word the same mistake differently.
+#
+# SPEC.md §3 (types) and §4 (methods are struct members).  `violation` row: it reports
+# CLOSED once the checker refuses it itself.
+
+def main() -> None {
+    mut n: int = 1
+    print(n.foo())
+}

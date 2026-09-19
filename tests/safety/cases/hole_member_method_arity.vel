@@ -1,0 +1,28 @@
+# hole_member_method_arity — calling a method with the wrong number of arguments is
+# not checked: `p.dot(p, q, p)` on a two-parameter method is accepted by `check`, and
+# the failure lands in the host C compiler as
+# `error C2197: 'int64_t vl_Pt__dot(vl_Pt,vl_Pt)': too many arguments for call`.
+#
+# The interpreter does refuse this one (`wrong number of arguments for this method`,
+# exit 2), so the two front ends disagree about a program the checker blessed — the
+# same shape as the comparison holes that `bfd70fc` closed, one rule over.
+#
+# `p.dot()` — too *few* — is accepted by `check` as well; this file spells the
+# too-many form because that is the one the C compiler names in its own words.
+#
+# SPEC.md §4: a call site and its declaration have to agree.  `violation` row: it
+# reports CLOSED once the checker says so itself.
+
+struct Pt {
+    x: int
+
+    def dot(self: Pt, o: Pt) -> int {
+        return self.x + o.x
+    }
+}
+
+def main() -> None {
+    mut p: Pt = Pt(1)
+    mut q: Pt = Pt(2)
+    print(p.dot(p, q, p))
+}
