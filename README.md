@@ -1,3 +1,5 @@
+**English** | [简体中文](README.zh-CN.md)
+
 # Vela
 
 A systems language with **Python-shaped syntax, C-shaped performance, and a

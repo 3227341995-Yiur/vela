@@ -1,3 +1,5 @@
+**English** | [简体中文](DESIGN.zh-CN.md)
+
 # Vela — design notes
 
 Why the language is shaped the way it is, and how the parts fit. This is the

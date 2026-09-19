@@ -1,3 +1,5 @@
+**English** | [简体中文](STATUS.zh-CN.md)
+
 # STATUS — what is verified, what is written, and what is in the way
 
 A snapshot of a working session, not a substitute for running the command it
