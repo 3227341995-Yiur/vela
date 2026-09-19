@@ -14,8 +14,11 @@ measurements and the rest of the file is read as a dated ledger.  Measured
 | the driver's new modes | `selfhost\parts\vm_main.vel` — `emit-llvm` at :1148, `build-llvm` at :1164 |
 | the shim | `runtime\vela_llvm_shim.{c,h}` 62 378 / 28 203 bytes, **64** functions, **55** declared in Vela |
 | the emitter | `selfhost\parts\emit_llvm.vel`, 73 064 bytes / 1631 lines |
-| LLVM on this machine | 23.1.1 under `C:\Users\lu\Downloads\llvm\clang+llvm-23.1.1-x86_64-pc-windows-msvc\` — **on disk, not on `PATH`** |
-| `vela_llvm_runtime.obj` | **does not exist yet**, so `build-llvm` cannot run end to end: `vm_main.vel:978` panics and says exactly that |
+| LLVM on this machine | 23.1.1 under `C:\Users\lu\Downloads\llvm\clang+llvm-23.1.1-x86_64-pc-windows-msvc\` — **on disk, not on `PATH`**, and `find_lld()` walks up three directories from `exe_dir()`, which stops one short of it (`<repo>\llvm` is checked, `<repo>\..\llvm` is not), so `VELA_LLD` has to be set by hand until that is fixed |
+| `vela_llvm_runtime.obj` | **exists now** — 38 819 bytes beside the compiler in `selfhost\build\` and `selfhost\` |
+| `vm.exe` | 770 560 bytes (it was 634 368 before it linked `libLLVM`), and the driver advertises `emit-llvm` and `build-llvm` in its usage text |
+| **what the LLVM backend compiles today** (verified by the leader, 2026-09-20) | two array-free programs — a `print` of a string and an integer expression, and a `while` loop with checked arithmetic — built three ways (**interpreter, C backend, `build-llvm`**) print **byte-identical** output (`4E7186877AA30E1E`, `D87D921C2479A85B`), all exits 0; with `PATH` stripped to `C:\Windows\System32;C:\Windows`, where `where cl`, `where clang` and `where clang-cl` all find nothing, `build-llvm` still exits 0 and the executable still prints the same bytes, and the user's directory holds only `<stem>.vel` and `<stem>.exe`. **The link line names one external program: `lld-link`.** That is the north star's ①②③, on this subset |
+| **what it still refuses** | an **array** is refused with the reason, not approximated: `vela_arena_alloc` is `static` in `runtime/vela_runtime.h`, so the emitted IR has no symbol to call. `examples\hello.vel` declares one, so the shipped example does not compile on this backend yet |
 
 The paragraphs below keep the tense they were written in, on purpose — they are
 the record of what was decided before the code, and where one of them reads as
