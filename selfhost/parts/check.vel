@@ -472,7 +472,43 @@ def ck_op_text(op: int) -> str {
     if op == 35 {
         return "<<"
     }
-    return ">>"
+    if op == 36 {
+        return ">>"
+    }
+    # Comparisons, then the two unary spellings, which is what makes the six
+    # comparison codes and `~` able to reach a message at all: this table used to
+    # end at the shifts and answer ">>" for everything else, and only binary
+    # arithmetic ever asked it.  `not` needs its own line for a reason that has
+    # nothing to do with messages: `not` is keyword 15 in the parser
+    # (`parser.vel:907`) and 15 in the *operator* table is `]`, which is
+    # punctuation the parser consumes and never puts in a node.  So the only node
+    # that carries code 15 as an operator is a `not`, and the only node that
+    # carries 32 is a `~` (`parser.vel:979`, `AST.md` §2.2).
+    if op == 6 {
+        return "<"
+    }
+    if op == 7 {
+        return ">"
+    }
+    if op == 22 {
+        return "=="
+    }
+    if op == 23 {
+        return "!="
+    }
+    if op == 24 {
+        return "<="
+    }
+    if op == 25 {
+        return ">="
+    }
+    if op == 15 {
+        return "not"
+    }
+    if op == 32 {
+        return "~"
+    }
+    return "?"
 }
 
 # "operator '+' mixes float and int", and the twelve other shapes of it.  The
@@ -738,6 +774,114 @@ def ck_binop(nd: Array[int, 655360], mut mem: Array[int, 3741696],
     }
 }
 
+# ------------------------------------------------- comparisons and unary operators
+#
+# The last two rows of the operator table that were never consulted.  `ck_arith`
+# is reached only from `ck_binop`, and `ck_binop` only from a kind-27 node, so
+# comparisons (kind 30) and unary operators (kind 28) were typed by nobody: the
+# checker accepted `True < 1`, `True < False`, `-True`, `not 1` and `x < y` for an
+# int and a float, and then the two front ends gave *different answers* for the
+# same source -- the interpreter panics ("a bool can only be compared with == and
+# !=", "unary - needs a number") while the compiled program prints `False`/`True`,
+# because `bool` is an `int64_t` in the emitted C and the comparison is an integer
+# comparison.  Measured 2026-09-20, `tools\safety.ps1`: those five rows are the
+# `hole_cmp_*` and `hole_unary_*` cases in `tests/safety/cases/`, and `SAFETY.md`
+# §3 ranks them first because a silent wrong answer is the worst thing this
+# project knows how to name.
+#
+# Two rules, and the wording is the wording the manifest in `tests/safety/` was
+# written with before any of it was run (`operator '<' mixes bool and int`,
+# `operator '<' cannot be applied to str and int`, `operator '-' cannot be applied
+# to bool`, `operator 'not' cannot be applied to int`) -- the operator table's own
+# two sentences, with the operands in source order, which is the order the two
+# arithmetic goldens in `tests/golden/` record (`float_to_int_variable.err`:
+# `a + f` is `mixes int and float`).
+#
+# Both rules are silent whenever an operand's kind is unknown (K_BAD: a call's
+# result, a field, a struct, an array), and silent for a kind pair the operator
+# table has nothing to say about -- refusing a program the *interpreter* accepts
+# is a bug, while missing one it refuses is a gap, and that is the same choice the
+# rest of this pass makes.
+
+def ck_unop_msg(op: int, t: int) -> str {
+    return concat(concat(ck_op_pre(op), " cannot be applied to "),
+                  ck_spell_ck(t))
+}
+
+# Kind 28.  `not` (keyword 15) takes a bool, `~` (32) takes an integer, and `-`/`+`
+# take a number, which is what `ck_etype` already assumed when it typed these
+# nodes -- it was the *check* that was missing, not the type.
+def ck_unary(nd: Array[int, 655360], mem: Array[int, 3741696], path: str,
+             vm: VM, e: int) -> None {
+    op: int = nd[e * 10 + 1]
+    t: int = ck_etype(nd, mem, vm, nd[e * 10 + 2])
+    if not ck_is_scalar_kind(t) {
+        return
+    }
+    if op == 15 {
+        if t != K_BOOL() {
+            ck_type(path, nd_line(nd, e), ck_unop_msg(op, t))
+        }
+        return
+    }
+    if op == 32 {
+        if not ck_is_int_kind(t) {
+            ck_type(path, nd_line(nd, e), ck_unop_msg(op, t))
+        }
+        return
+    }
+    if ck_is_num_kind(t) {
+        return
+    }
+    ck_type(path, nd_line(nd, e), ck_unop_msg(op, t))
+}
+
+# Kind 30.  `==`/`!=` (22/23) need two values of one type and are defined wherever
+# the language has an equality at all -- two bools and two strings included.  The
+# four orderings (6 `<`, 7 `>`, 24 `<=`, 25 `>=`) additionally need that type to
+# be a number.  A `str` is compared with nothing but another `str`, and then only
+# for equality: that is what the interpreter enforces ("a string can only be
+# compared with == and !=") and the emitter relies on (a `str` comparison is a
+# call to `vela_str_eq`).
+#
+# `ck_adapt_pair` is consulted first for a mismatch, so the one implicit
+# conversion Vela has still works here: `b == 3` for a `u8 b` is a comparison
+# against a literal that fits, not a mixture of kinds.
+def ck_compare(nd: Array[int, 655360], mem: Array[int, 3741696], path: str,
+               vm: VM, e: int) -> None {
+    op: int = nd[e * 10 + 1]
+    line: int = nd_line(nd, e)
+    lt: int = ck_etype(nd, mem, vm, nd[e * 10 + 2])
+    rt: int = ck_etype(nd, mem, vm, nd[e * 10 + 3])
+    if not ck_is_scalar_kind(lt) or not ck_is_scalar_kind(rt) {
+        return
+    }
+    eq: bool = op == 22 or op == 23
+    if lt == K_STR() or rt == K_STR() {
+        if lt == K_STR() and rt == K_STR() and eq {
+            return
+        }
+        ck_type(path, line,
+                ck_op_msg(ck_op_pre(op), " cannot be applied to ", lt, rt))
+        return
+    }
+    if lt != rt {
+        if ck_adapt_pair(nd, e, lt, rt) {
+            return
+        }
+        ck_type(path, line, ck_op_msg(ck_op_pre(op), " mixes ", lt, rt))
+        return
+    }
+    if ck_is_num_kind(lt) {
+        return
+    }
+    if lt == K_BOOL() and eq {
+        return
+    }
+    ck_type(path, line,
+            ck_op_msg(ck_op_pre(op), " cannot be applied to ", lt, rt))
+}
+
 def ck_shift_count(nd: Array[int, 655360], path: str, line: int,
                    rhs: int) -> None {
     v: int = ck_const_int(nd, rhs)
@@ -997,6 +1141,9 @@ def ck_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696],
     }
     if k == 28 {
         ck_expr(nd, mem, path, vm, nd[e * 10 + 2])
+        # the operand first, then the operator itself: a bad operand is the more
+        # specific complaint, and the same order ck_binop runs in
+        ck_unary(nd, mem, path, vm, e)
         return
     }
     if k == 29 {
@@ -1007,6 +1154,7 @@ def ck_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696],
     if k == 30 {
         ck_expr(nd, mem, path, vm, nd[e * 10 + 2])
         ck_expr(nd, mem, path, vm, nd[e * 10 + 3])
+        ck_compare(nd, mem, path, vm, e)
         return
     }
     if k == 32 {
@@ -2514,6 +2662,15 @@ def ck_stmt(nd: Array[int, 655360], mut mem: Array[int, 3741696],
     }
     if k == 7 {
         ck_store(nd, mem, path, vm, s)
+        # `x += v` holds an expression in `v`, and until this line the walk stopped
+        # at the target: the new comparison and unary rules were in the table and
+        # still unreachable through this one statement kind.  Measured with the
+        # rules in place and this line absent -- `mut x: int = 0` then
+        # `x += -True` -- `vm.exe check` exit 0 `ok`, `vm.exe run` exit 2
+        # `vela: panic: unary - needs a number`, and the compiled program exit 0
+        # printing `-1`.  Same source, two answers: the hole the rules were added
+        # to close, reached from the one statement the walk did not visit.
+        ck_expr(nd, mem, path, vm, nd[s * 10 + 2])
         return
     }
     if k == 8 {
