@@ -6,6 +6,80 @@ A snapshot of a working session, not a substitute for running the command it
 names.  Every "verified" line below was measured on this machine; every "written"
 line is source that has not been through the tool it needs, and says so.
 
+## 0. Where this session left the tree (2026-09-20, 02:1x)
+
+Written because this session ran to its round limit with the work unfinished, and
+the next person needs the boundary rather than the story.  Everything here was
+measured; where it is a snapshot of a moving tree, it says so.
+
+**The north star, step by step.**  `vm.exe build-llvm x.vel` builds a program with
+**one external program, `lld-link`** — verified with `PATH` stripped to
+`C:\Windows\System32;C:\Windows`, where `where cl`, `where clang` and
+`where clang-cl` all find nothing, exit 0, the executable runs and prints the same
+bytes as the interpreter and the C backend.  The user's directory holds
+`x.vel` and `x.exe` and nothing else.  So ①②③ of the acceptance line hold **on the
+subset this backend compiles**, and not beyond it:
+
+| steps ⑤⑥ | state |
+|---|---|
+| ⑤ the three-way differential over the whole corpus | **not done as a tool**; the leader ran it by hand twice.  **Run 1: 4 match, 19 refused.  Run 2: 7 match, 16 refused.  `DIVERGE 0` in both** — the backend has never yet printed something different from the other two. The 16 refusals are an enumerable list: `parallel for` 6 (**refused by design**: LLVM IR has no OpenMP), builtins other than `print`/`len`-of-array 3, struct parameter or local 2, `len`/compare of `str` 2, in-place update 1, `and`/`or` 1 |
+| ⑥ `build-llvm` replaces `build` | **not done, and must not be claimed.** `build` still sends C to `cl.exe`. A backend that compiles 7 of 23 cases is not a backend that compiles the language |
+| ④ `vm.exe` carries its own code generator | **landed**: `vm.exe` grew from 634 368 to 782 848 bytes and now links `libLLVM`. Its cost is measured: `LLVM-C.dll` is a **load-time** dependency, and a `vm.exe` copied anywhere without it **does not start** — exit `0xC0000135`, before `main`, with nothing that names LLVM. `tools\smoke.ps1` asserts the DLL and the runtime object sit beside the compiler |
+
+**The gate is red, and the cause is known to the line.**  Last full run, against a
+frozen copy of the compiler so that it could not race the build: **187 passed, 3
+failed of 190** (190/0 was its state before this session's LLVM work).
+
+- `vm_main lex output changed` / `vm_main parse output changed` — the sources
+  changed (`emit_llvm.vel` joined the parts, so the linked compiler grew).  This is
+  `tools\refreeze.ps1`'s normal work: **re-record the digest locks**, not a defect.
+- `selfhost_fixpoint` — **a real integration failure, and the cheap kind.** The
+  compiler's own source now calls the shim (`ll_new`, `ll_do_build_llvm`,
+  `ll_emit_ir`, `ll_fail`), and the suite's fixpoint case builds it with a plain
+  `vm.exe build selfhost/vm.vel`, which does not link the shim: **49 unresolved
+  `vshim_*` symbols**.  Measured elsewhere, in `%TEMP%`, so as not to touch the
+  repository: passing the shim object and `LLVM-C.lib` **as one extra-link string**
+  makes the same build succeed — exit 0, `built … (with OpenMP)`, and the compiler
+  it produces runs programs.  (Passing them as *two* arguments silently drops
+  `LLVM-C.lib` and reports 79 unresolved `LLVM*` symbols instead — the trap is
+  worth knowing.)  The fix belongs in the fixpoint case (or in how the runner is
+  invoked), and the compiler agent has it.
+
+**The plugin is not usable for development yet, and the gaps are named.**
+`VelaGotoDeclaration.kt` resolves four symbol kinds — function, struct, method,
+parameter.  **A struct field, a local binding and a `for i in range` loop variable
+have no target at all**, which is what "goto is very limited" meant.  The parameter
+hint has a defect too: a call can render `s: s: s:`, and both render sites are
+`VelaInlayHints.kt:151` and `VelaParameterInfo.kt:112` via `symbolParameters`
+(`VelaCompletion.kt:220`).  The standing rule for both: **a hint is right or it is
+absent, never wrong** — and the agent owes a completeness table (references →
+declared parameter/declaration, verified against `vm.exe parse`) before and after.
+
+**The safety question now has a document and a hole list.**  `SAFETY.md` carries
+the promise table with three verdicts (`ENFORCED TODAY` / `NOT ENFORCED` /
+`REFUSED BY DESIGN`), a "what is not a hole" section, the holes **ranked by whether
+they produce a silent wrong answer, a loud failure or only a missed diagnostic**,
+and what the corpus does not cover.  Spot-checked by the leader, outside the
+author's report: 5 of 5 sampled `hole_*` cases are *accepted* by `vm.exe check`
+(the hole is real) and 4 of 4 sampled promise cases are refused (the promise
+holds).  **The holes are recorded and ranked; none is fixed.**
+
+**Two engineering facts added this session, both from a real measurement.**
+`tools\check-hygiene.ps1` asks git whether anything over 5 MB could be committed
+(it caught `LLVM-C.dll`, 74,159,616 B, one `git add -A` from a public repository)
+and names the 222,478,848 B of ignored copies now sitting in the checkout.
+`tools\docs-zh-check.ps1` names the translation that went stale — five pairs are
+bilingual with a language switcher on the first line of each file, in the shape
+GitHub reads.
+
+**What the next session should do, in order.**  ① make the fixpoint case pass the
+compiler's own link inputs, then `tools\refreeze.ps1` + the suite, and get the tree
+back to **190/0** — nothing else is worth doing while it is red.  ② The plugin:
+goto to fields, locals and loop variables, and the parameter hint, each with a
+headless differential that has been shown failing first.  ③ The emitter: the 16
+refusals, in the order that unblocks cases (builtins, structs, `str`, in-place
+update, `and`/`or`), with `DIVERGE` staying 0.  ④ Only then ⑤⑥.
+
 ## 1. What was in the way, and is not any more
 
 For most of the previous round the session could not run **any** command: every
