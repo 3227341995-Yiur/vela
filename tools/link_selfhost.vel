@@ -1,7 +1,7 @@
-# tools/link_selfhost.vel — splice the self-hosted parts into one Vela file.
+# tools/link_selfhost.vel 鈥?splice the self-hosted parts into one Vela file.
 #
 # Vela 0.1 has no module system (`import` is reserved and unimplemented), so a
-# multi-file Vela program is a build-time concatenation — the same trick C plays
+# multi-file Vela program is a build-time concatenation 鈥?the same trick C plays
 # with `#include`, and it disappears the day Vela grows modules.  This used to be
 # tools/link_selfhost.py; it is written in Vela now, because a toolchain that
 # needs Python to assemble its own compiler is a toolchain that has not finished
@@ -36,7 +36,7 @@ def driver_marker() -> str { return "\n# driver\n" }
 
 # The parts, in dependency order: state first (every part below uses its node
 # and token layout), then the pipeline, then the driver that calls it.
-def part_count() -> int { return 8 }
+def part_count() -> int { return 9 }
 
 def part_name(i: int) -> str {
     if i == 0 { return "vm_state.vel" }
@@ -45,8 +45,14 @@ def part_name(i: int) -> str {
     if i == 3 { return "check.vel" }
     if i == 4 { return "eval.vel" }
     if i == 5 { return "emit.vel" }
-    if i == 6 { return "dump.vel" }
-    if i == 7 { return "vm_main.vel" }
+    # Before `dump` and `vm_main`, because a function has to be declared before it is
+    # called and the driver's new modes will call the shim.  It declares the interface
+    # to the compiler's own code generator (`runtime/vela_llvm_shim.h`, generated into
+    # this file by tools/gen-shim-decls.ps1): the functions are `extern c`, so this
+    # part adds prototypes and nothing to link -- until `build.ps1` links the shim in.
+    if i == 6 { return "llvm_shim.vel" }
+    if i == 7 { return "dump.vel" }
+    if i == 8 { return "vm_main.vel" }
     return ""
 }
 
@@ -105,7 +111,7 @@ def n_nl(s: str) -> int {
     return n
 }
 
-# `===== selfhost/parts/check.vel =========================...` — the rule shortens
+# `===== selfhost/parts/check.vel =========================...` 鈥?the rule shortens
 # as the name grows so every header line is the same width, which is what makes
 # `grep -n '^# ====' selfhost/vm.vel` a table of contents.
 def rule(n: int) -> str {

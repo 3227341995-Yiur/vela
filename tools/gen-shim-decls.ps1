@@ -6,7 +6,7 @@
     `runtime\vela_llvm_shim.c` is the compiler's own code generator: a pure-C API over
     `llvm-c`, which the Vela compiler reaches through `extern c` declarations.  Those
     declarations are the interface, and an interface written twice by hand is an
-    interface that drifts 閳?one side grows a function, the other does not, and the
+    interface that drifts 闁?one side grows a function, the other does not, and the
     failure appears later as a symbol the linker cannot find in a file nobody edited.
 
     So the Vela side is **generated** from the header, and this script also checks it:
@@ -45,8 +45,8 @@ $header = Join-Path $repo 'runtime\vela_llvm_shim.h'
 # `emit_object`).  The file moves into parts\ and gets its part_name() entry in the
 # same change that allows a `str` parameter -- and until then it is an interface on
 # paper, not a part of the compiler.  Measured: with those six filtered out the other
-# 42 type-check (`vm.exe check` → `ok`, exit 0), so the mapping table itself is right.
-$out = Join-Path $repo 'selfhost\llvm\llvm_shim.vel'
+# 42 type-check (`vm.exe check` 鈫?`ok`, exit 0), so the mapping table itself is right.
+$out = Join-Path $repo 'selfhost\parts\llvm_shim.vel'
 
 if (-not (Test-Path -LiteralPath $header)) { throw "no shim header at $header" }
 $text = Get-Content -LiteralPath $header -Raw
@@ -56,7 +56,7 @@ $text = Get-Content -LiteralPath $header -Raw
 #
 # `vela_str` is a return type here, and that matters: the first version of this
 # pattern listed only `int32_t|int64_t|double|void|bool`, so the three functions that
-# return a `str` — `vshim_last_error`, `vshim_host_triple`, `vshim_module_ir` — were
+# return a `str` 鈥?`vshim_last_error`, `vshim_host_triple`, `vshim_module_ir` 鈥?were
 # **silently dropped**.  The generator reported "48 declarations" and passed its own
 # `-Check`, and the number was wrong by three.  Silent dropping is the defect class
 # this whole project keeps paying for, so the pattern now covers every type the
@@ -132,17 +132,23 @@ foreach ($d in $decls) {
     $ret = Convert-Return $d.Groups[1].Value
     $fn  = $d.Groups[2].Value
     $paramsText = $d.Groups[3].Value.Trim()
-    # A `str` return stays refused by the language, for the reason check.vel:2580
-    # gives, so these three are written down and *not* declared.  The emitter learns
-    # why a shim call failed from the status it does get, and the reason itself from
-    # stderr, which the shim writes and the build log already carries.  Recording the
-    # omission here beats dropping it: a count that is quietly three short is how the
-    # generator hid this in the first place.
-    if ($d.Groups[1].Value.Trim() -eq 'vela_str') {
-        if ($paramsText -eq '' -or $paramsText -eq 'void') {
-            $lines.Add("# omitted: $fn() -> str  (an 'extern c' return may not be a str; the shim writes the reason to stderr)")
+    # A declaration that takes or returns a `str` is not expressible in Vela -- the
+    # rule is "the types are scalars" (`check.vel:2580`), and it is deliberate: a
+    # `str` is a length plus a pointer into Vela's own string region, and letting one
+    # cross would make `extern c def strlen(s: str) -> int` compile and then hand a
+    # 16-byte struct to something expecting a pointer.  The shim answers that by
+    # carrying its strings through a byte buffer, so every such function has a `_buf`
+    # sibling that IS scalar.  This generator therefore emits the sibling and records
+    # the original as omitted -- with the reason, and with the sibling named, because
+    # a reader who finds a function missing must be able to see what to call instead.
+    $takesStr = ($d.Groups[1].Value.Trim() -eq 'vela_str') -or ($paramsText -match '\bvela_str\b')
+    if ($takesStr) {
+        $sibling = "${fn}_buf"
+        $hasSibling = $decls | Where-Object { $_.Groups[2].Value -eq $sibling }
+        if ($hasSibling) {
+            $lines.Add("# omitted: $fn  (takes or returns a str; the scalar form is ${sibling}, below)")
         } else {
-            $lines.Add("# omitted: $fn(...) -> str  (an 'extern c' return may not be a str; the shim writes the reason to stderr)")
+            $lines.Add("# omitted: $fn  (takes or returns a str, and has no _buf sibling)")
         }
         continue
     }

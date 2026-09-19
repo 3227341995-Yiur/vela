@@ -44,6 +44,24 @@
  *    `[len x i8]` with no added terminator, which is what the runtime's
  *    `vela_llvm_str_lit(ptr, i64 len)` expects and what `selfhost/llvm/m1_probe.ll`
  *    writes by hand today.
+ * 6. **The Vela-facing subset is scalar-only, and strings travel through a byte
+ *    buffer.**  `str` is deliberately *not* a type the language will accept at an
+ *    `extern c` boundary, and the reason is worth writing down where the next person
+ *    will read it: a `str` is a length plus a pointer into Vela's own string region,
+ *    not a `char *`.  If a `str` parameter were allowed then
+ *
+ *        extern c def strlen(s: str) -> int
+ *
+ *    would compile, and the call would pass a 16-byte `vela_str` struct where the
+ *    real `strlen` wants a pointer -- silently wrong, with C converting a pointer to
+ *    an integer without a word.  Allowing it to save some plumbing would reopen
+ *    exactly that hole.  So: every name, every literal's bytes, every output path and
+ *    every message coming back goes through the shim-owned byte buffer below, one
+ *    `u8` per call.  The `str`-taking and `str`-returning functions are kept and are
+ *    *correct* -- a C caller uses them (and the driver in
+ *    `tools/llvm-shim-probe.ps1` proves both spellings produce identical bytes) --
+ *    but the subset the compiler may declare is the scalar one, and `*_buf` is its
+ *    spelling of every function that needed a string.
  *
  * ## The pieces of LLVM this layer depends on, and the ABI facts behind them
  *
@@ -386,5 +404,107 @@ int32_t vshim_verify(int64_t module);
  * `VSHIM_ERR_VERIFY`, `VSHIM_ERR_EMIT` or `VSHIM_ERR_TOO_LONG` (path over
  * `VSHIM_PATH_CAP`). */
 int32_t vshim_emit_object(int64_t module, vela_str path);
+
+/* ============================================================= the byte buffer
+ *
+ * Design note 6 at the top of this file says why this exists: the language will not
+ * accept a `str` at an `extern c` boundary, because a `str` is a length plus a
+ * pointer into Vela's string region and not a `char *`, and a wrong-looking-right
+ * parameter there is a silently wrong program.  So strings cross as **bytes**, one
+ * per call, through a buffer this layer owns.
+ *
+ * The protocol is always the same:
+ *
+ *     1. `vshim_buf_reset()`
+ *     2. one `vshim_buf_byte()` per byte -- a symbol name, a literal's bytes, an
+ *        output path, whatever the `*_buf` function is about to read
+ *     3. the `*_buf` function, which reads the buffer as its string
+ *
+ * and, in the other direction, a `*_buf` function that *returns* text (a message,
+ * the host triple, a module's IR) puts it in the same buffer, where
+ * `vshim_buf_read_byte()` reads it back one byte at a time.
+ *
+ * Cost, so this is not a leap of faith: the compiler hands the shim a few hundred
+ * kilobytes of symbol names and literal bytes while compiling a program like
+ * itself, which at one `u8` per call is 10^5-10^6 calls.  `tools/llvm-shim-probe.ps1`
+ * measures the per-byte cost on this machine and prints it, and the self-test in its
+ * driver fails if the cost is ever absurd (which is what an accidental `O(n^2)` in
+ * the append path would look like).
+ *
+ * Which functions clear the error slot: every fallible call does, as before -- but
+ * the *readers* do not, so a message can still be fetched after they run.
+ * `vshim_buf_reset`, `vshim_buf_len`, `vshim_buf_read_byte`, `vshim_last_error_buf`
+ * and `vshim_host_triple_buf` never clear it; that is what makes the failure path
+ * of a `*_buf` call recoverable at all.
+ */
+
+/* The buffer's cap.  A working set that is larger than this is refused with
+ * `VSHIM_ERR_TOO_LONG` rather than being allowed to grow without bound. */
+#define VSHIM_BUF_MAX ((size_t)64 * 1024 * 1024)
+
+/* Empty the buffer.  Binary-safe and cheap: the allocation is kept, so a compiler
+ * looping over thousands of names does not allocate per name.  Never clears the
+ * error slot. */
+int32_t vshim_buf_reset(void);
+
+/* Append one byte.  `b` must be 0..255; anything else is `VSHIM_ERR_ARG` with a
+ * message.  Returns `VSHIM_ERR_TOO_LONG` at `VSHIM_BUF_MAX`, and
+ * `VSHIM_ERR_NO_MEMORY` if the buffer cannot grow. */
+int32_t vshim_buf_byte(int32_t b);
+
+/* How many bytes are in the buffer.  Never clears the error slot, so it can be
+ * called while a failure is still being reported. */
+int32_t vshim_buf_len(void);
+
+/* Byte `index`, or `-1` if `index` is negative or past the end.  Never clears the
+ * error slot: this is how the sentence from `vshim_last_error_buf` is read back. */
+int32_t vshim_buf_read_byte(int64_t index);
+
+/* The `*_buf` spelling of every function that took a string.  Each reads the buffer
+ * as its name / bytes / path, and each is exactly the code path its `str` sibling
+ * takes -- the two spellings cannot drift, because the `_buf` one calls the other
+ * with a `str` built over the buffer. */
+
+/* `vshim_module_open(buffer as the module name)`. */
+int64_t vshim_module_open_buf(void);
+
+/* `vshim_fn_declare(buffer as the function name, signature_type)`. */
+int64_t vshim_fn_declare_buf(int64_t module, int64_t signature_type);
+
+/* `vshim_fn_define(buffer as the function name, signature_type)`. */
+int64_t vshim_fn_define_buf(int64_t module, int64_t signature_type);
+
+/* The string literal whose *bytes* are the buffer, named after `index`.
+ *
+ * One buffer cannot carry both a literal's bytes and its name, so the name is
+ * derived from `index` (`.s<index>`) and `index` is therefore the literal's
+ * identity: the emitter's string table already has exactly such an index for every
+ * literal.  Repeating an index with the same bytes reuses the one global; repeating
+ * it with *different* bytes adds a second global under a renamed symbol rather than
+ * silently handing back the first one's bytes, which would be a wrong answer.  The
+ * returned handle is the identity; the name is a debugging aid. */
+int64_t vshim_string_global_buf(int64_t module, int64_t index);
+
+/* `vshim_block_append(buffer as the block name, ...)`. */
+int64_t vshim_block_append_buf(int64_t module, int64_t function);
+
+/* `vshim_emit_object(module, buffer as the path)`. */
+int32_t vshim_emit_object_buf(int64_t module);
+
+/* The host triple into the buffer (replacing its contents) instead of as a `str`. */
+int32_t vshim_host_triple_buf(void);
+
+/* The module's IR into the buffer (replacing its contents) instead of as a `str`.
+ *
+ * The `str` spelling is a fixed 64 KiB window that truncates, because a `str` return
+ * cannot allocate; this one carries the whole module and reports `VSHIM_ERR_TOO_LONG`
+ * instead of truncating, because the buffer can grow.  On failure the buffer is left
+ * empty, so a caller can never read stale bytes as this call's result. */
+int32_t vshim_module_ir_buf(int64_t module);
+
+/* The message for the most recent failure into the buffer (replacing its contents),
+ * where `vshim_buf_read_byte` reads it back.  Does **not** clear the error slot --
+ * that is the point of it: it is how the sentence survives to be read. */
+int32_t vshim_last_error_buf(void);
 
 #endif /* VELA_LLVM_SHIM_H */

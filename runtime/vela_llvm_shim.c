@@ -60,6 +60,73 @@ static void fail(const char *fmt, ...)
     g_error[VSHIM_MESSAGE_CAP - 1] = '\0';
 }
 
+/* ------------------------------------------------------------- byte buffer
+ *
+ * The scalar spelling of every string in this API -- see design note 6 in the
+ * header for why the language needs one.  One buffer for the process, like the
+ * error slot: `vm.exe` compiles one program at a time, on one thread.
+ *
+ * `fail()` is the only way an error is recorded, so the rule about which calls
+ * clear the slot is easy to keep: a function that can fail calls `clear_error()`
+ * first, and the pure readers (`buf_len`, `buf_read_byte`, `last_error_buf`,
+ * `host_triple_buf`, `buf_reset`) do not -- which is what lets a message be read
+ * back after the call that produced it.
+ */
+
+typedef struct {
+    unsigned char *data;
+    size_t         len;
+    size_t         cap;
+} shim_buf;
+
+static shim_buf g_buffer;
+
+static vela_str buffer_as_str(void)
+{
+    vela_str s;
+    s.data = (const uint8_t *)g_buffer.data;
+    s.len  = (int64_t)g_buffer.len;
+    return s;
+}
+
+static int32_t buffer_grow(size_t want)
+{
+    size_t cap;
+    unsigned char *grown;
+
+    if (want <= g_buffer.cap) return VSHIM_OK;
+    if (want > VSHIM_BUF_MAX) {
+        fail("the byte buffer cannot hold %llu bytes; this layer's cap is %llu",
+             (unsigned long long)want, (unsigned long long)VSHIM_BUF_MAX);
+        return VSHIM_ERR_TOO_LONG;
+    }
+    cap = g_buffer.cap ? g_buffer.cap : 4096;
+    while (cap < want) cap *= 2;
+    if (cap > VSHIM_BUF_MAX) cap = VSHIM_BUF_MAX;
+    grown = (unsigned char *)realloc(g_buffer.data, cap);
+    if (!grown) {
+        fail("out of memory growing the byte buffer to %llu bytes", (unsigned long long)cap);
+        return VSHIM_ERR_NO_MEMORY;
+    }
+    g_buffer.data = grown;
+    g_buffer.cap  = cap;
+    return VSHIM_OK;
+}
+
+/* Replace the contents.  On failure the buffer is left *empty*, never stale: a
+ * caller must not be able to read an earlier call's bytes as this call's result. */
+static int32_t buffer_set(const char *bytes, size_t len)
+{
+    int32_t rc = buffer_grow(len);
+    if (rc != VSHIM_OK) {
+        g_buffer.len = 0;
+        return rc;
+    }
+    if (len) memcpy(g_buffer.data, bytes, len);
+    g_buffer.len = len;
+    return VSHIM_OK;
+}
+
 /* ------------------------------------------------------------- handle table
  *
  * A handle is `(module id << 32) | slot`, with slot 0 reserved for the module
@@ -1016,6 +1083,24 @@ int64_t vshim_const_bool(int64_t module, bool value)
     return slot_add(m, c, SHIM_KIND_VALUE);
 }
 
+/* Would this global's initializer be exactly these bytes?  Used only to merge a
+ * literal with an identical one already in the module; anything it cannot read
+ * exactly answers "no", which is the safe direction. */
+static int literal_matches(LLVMValueRef glob, const char *bytes, size_t len)
+{
+    LLVMValueRef init = LLVMGetInitializer(glob);
+    const char *data;
+    size_t got = 0;
+
+    if (!init) return 0;
+    if (!LLVMIsConstantString(init)) return 0;
+    data = LLVMGetAsString(init, &got);
+    if (!data) return 0;
+    if (got != len) return 0;
+    if (len == 0) return 1;
+    return memcmp(data, bytes, len) == 0;
+}
+
 int64_t vshim_string_global(int64_t module, vela_str name, vela_str bytes)
 {
     char buf[VSHIM_NAME_CAP];
@@ -1048,6 +1133,21 @@ int64_t vshim_string_global(int64_t module, vela_str name, vela_str bytes)
     if (!data) {
         fail("LLVMConstStringInContext2() returned NULL for the literal \"%s\"", buf);
         return 0;
+    }
+    /* A literal that is already in this module with the same bytes is reused rather
+     * than emitted a second time: an emitter walking an AST sees the same literal
+     * once per occurrence, and the C backend interns its strings for the same reason.
+     * The comparison is exact -- same length, same bytes -- so this can only merge
+     * indistinguishable globals.  Different bytes under one name are *not* merged:
+     * LLVM renames the second global and the caller gets a handle to its own bytes,
+     * because silently handing back the first one's bytes would be a wrong answer. */
+    {
+        LLVMValueRef existing = LLVMGetNamedGlobal(m->mod, buf);
+        if (existing && literal_matches(existing, bytes.len ? (const char *)bytes.data : "", (size_t)bytes.len)) {
+            h = slot_add(m, existing, SHIM_KIND_VALUE);
+            if (!h) return 0;
+            return h;
+        }
     }
     glob = LLVMAddGlobal(m->mod, LLVMTypeOf(data), buf);
     if (!glob) {
@@ -1676,5 +1776,152 @@ int32_t vshim_emit_object(int64_t module, vela_str path)
         return VSHIM_ERR_EMIT;
     }
     if (err) LLVMDisposeMessage(err);
+    return VSHIM_OK;
+}
+
+/* ============================================================= the byte buffer
+ *
+ * Every function here is either a buffer primitive or a one-line delegation to the
+ * `str` spelling with a `str` built over the buffer.  That is deliberate: the two
+ * spellings then *cannot* drift, and the probe proves they produce identical
+ * objects by building the same program through both.
+ *
+ * The four primitives are the hot path -- a symbol name costs one call per byte --
+ * so they do no work beyond a bounds check, a store and the length update.
+ */
+
+int32_t vshim_buf_reset(void)
+{
+    /* No `clear_error()`: this cannot fail, and a caller that has just failed wants
+     * to read the message back, not to lose it. */
+    g_buffer.len = 0;
+    return VSHIM_OK;
+}
+
+int32_t vshim_buf_byte(int32_t b)
+{
+    clear_error();
+    if (b < 0 || b > 255) {
+        fail("a buffer byte must be 0..255, and this one is %d", (int)b);
+        return VSHIM_ERR_ARG;
+    }
+    if (g_buffer.len >= VSHIM_BUF_MAX) {
+        fail("the byte buffer is full at its cap of %llu bytes", (unsigned long long)VSHIM_BUF_MAX);
+        return VSHIM_ERR_TOO_LONG;
+    }
+    if (buffer_grow(g_buffer.len + 1) != VSHIM_OK) return VSHIM_ERR_NO_MEMORY;
+    g_buffer.data[g_buffer.len++] = (unsigned char)b;
+    return VSHIM_OK;
+}
+
+int32_t vshim_buf_len(void)
+{
+    /* No `clear_error()`: a reader. */
+    return (int32_t)g_buffer.len;
+}
+
+int32_t vshim_buf_read_byte(int64_t index)
+{
+    /* No `clear_error()`: this is how the message from `vshim_last_error_buf` is
+     * read back, so it must not destroy it. */
+    if (index < 0 || (uint64_t)index >= (uint64_t)g_buffer.len) return -1;
+    return (int32_t)g_buffer.data[(size_t)index];
+}
+
+int64_t vshim_module_open_buf(void)
+{
+    return vshim_module_open(buffer_as_str());
+}
+
+int64_t vshim_fn_declare_buf(int64_t module, int64_t signature_type)
+{
+    return vshim_fn_declare(module, buffer_as_str(), signature_type);
+}
+
+int64_t vshim_fn_define_buf(int64_t module, int64_t signature_type)
+{
+    return vshim_fn_define(module, buffer_as_str(), signature_type);
+}
+
+int64_t vshim_string_global_buf(int64_t module, int64_t index)
+{
+    char name[64];
+    int n;
+
+    clear_error();
+    if (index < 0) {
+        fail("a string literal's index cannot be negative (%lld)", (long long)index);
+        return 0;
+    }
+    /* The name is derived from the index because one buffer cannot carry both a
+     * literal's bytes and its name; the index is the literal's identity. */
+    n = snprintf(name, sizeof name, ".s%lld", (long long)index);
+    if (n <= 0 || (size_t)n >= sizeof name) {
+        fail("could not name the literal at index %lld", (long long)index);
+        return 0;
+    }
+    return vshim_string_global(module, vela_str_lit(name, (int64_t)n), buffer_as_str());
+}
+
+int64_t vshim_block_append_buf(int64_t module, int64_t function)
+{
+    return vshim_block_append(module, function, buffer_as_str());
+}
+
+int32_t vshim_emit_object_buf(int64_t module)
+{
+    return vshim_emit_object(module, buffer_as_str());
+}
+
+int32_t vshim_host_triple_buf(void)
+{
+    /* No `clear_error()`: this is a pure read of state the shim already holds, and a
+     * caller may be using it to describe a failure that just happened. */
+    if (buffer_set(g_triple, strlen(g_triple)) != VSHIM_OK) return VSHIM_ERR_TOO_LONG;
+    return VSHIM_OK;
+}
+
+int32_t vshim_last_error_buf(void)
+{
+    /* No `clear_error()` -- that is the entire point of this function. */
+    size_t len = strlen(g_error);
+    if (buffer_set(g_error, len) != VSHIM_OK) return VSHIM_ERR_TOO_LONG;
+    return VSHIM_OK;
+}
+
+int32_t vshim_module_ir_buf(int64_t module)
+{
+    shim_module *m;
+    char *text;
+    size_t len;
+    int32_t rc;
+
+    clear_error();
+    m = module_of(module);
+    if (!m) {
+        g_buffer.len = 0;
+        return VSHIM_ERR_ARG;
+    }
+    text = LLVMPrintModuleToString(m->mod);
+    if (!text) {
+        fail("LLVMPrintModuleToString() returned NULL");
+        g_buffer.len = 0;
+        return VSHIM_ERR_LLVM;
+    }
+    len = strlen(text);
+    /* Unlike the `str` spelling -- a fixed 64 KiB window that truncates, because a
+     * `str` return cannot allocate -- this one carries the whole module and refuses
+     * rather than truncating.  `buffer_set` empties the buffer on failure, so a
+     * caller can never read stale bytes as this call's result. */
+    if (len > VSHIM_BUF_MAX) {
+        fail("this module's IR is %llu bytes, over the byte buffer's cap of %llu",
+             (unsigned long long)len, (unsigned long long)VSHIM_BUF_MAX);
+        g_buffer.len = 0;
+        LLVMDisposeMessage(text);
+        return VSHIM_ERR_TOO_LONG;
+    }
+    rc = buffer_set(text, len);
+    LLVMDisposeMessage(text);
+    if (rc != VSHIM_OK) return rc;
     return VSHIM_OK;
 }

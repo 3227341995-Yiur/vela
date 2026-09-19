@@ -711,6 +711,28 @@ def do_build(self: str, path: str, rt: str) -> None {
         warn_str(" (no vela_runtime.h here - the C compiler will say so)")
     }
     warn_nl()
+    # The artifact decides, the exit code explains.
+    #
+    # Measured, before this was written: with `PATH` stripped to Windows itself, `cl`
+    # wrote a correct `hello.exe` (150016 bytes, runs, exit 0) and the compound command
+    # still returned non-zero — and this driver panicked
+    #
+    #     vela: build: the C compiler refused …\hello.vel.c
+    #     vela: panic: build: no C compiler on this host could build the emitted C
+    #
+    # while leaving that working executable on disk.  The same sequence typed into a
+    # `.bat` returns ERRORLEVEL=0 at every step, so the compiler was not at fault.  The
+    # old order decided on the exit code first and checked the artifact afterwards,
+    # which meant the check could never contradict the code.
+    #
+    # There is no `stat` in the language, so "the file exists" only proves freshness if
+    # nothing was there before: the target is deleted first, and after that its
+    # existence is this build's own work.
+    if on_windows() {
+        run_command(concat(concat("del /q ", quoted(exe)), " >nul 2>&1"))
+    } else {
+        run_command(concat(concat("rm -f ", quoted(exe)), " >nul 2>&1"))
+    }
     mut rc: int = 1
     mut cl_tried: bool = False
     if on_windows() {
@@ -727,9 +749,10 @@ def do_build(self: str, path: str, rt: str) -> None {
             #
             # This is deliberately *not* a second opinion when cl.exe was present
             # and refused the C.  A Windows host with MSVC installed has no `cc`,
-            # so all this fallback could do there is replace cl's diagnostic 鈥?            # now on stderr, above 鈥?with `'cc' is not recognized as an internal
-            # or external command`, which names the wrong problem and hides the
-            # right one.  A user with MinGW and no MSVC still reaches it.
+            # so all this fallback could do there is replace cl's diagnostic — now on
+            # stderr, above — with `'cc' is not recognized as an internal or external
+            # command`, which names the wrong problem and hides the right one.  A user
+            # with MinGW and no MSVC still reaches it.
             rc = other_build(self, other_cc(), cfile, exe, dir, omp, cfile)
         }
     }
@@ -739,10 +762,21 @@ def do_build(self: str, path: str, rt: str) -> None {
         warn_str("vela: build: the C compiler refused ")
         warn_str(cfile)
         warn_nl()
-        panic("build: no C compiler on this host could build the emitted C")
     }
     if not exists(exe) {
+        if rc != 0 {
+            panic("build: no C compiler on this host could build the emitted C")
+        }
         panic("build: the C compiler reported success but wrote no executable")
+    }
+    if rc != 0 {
+        # A non-zero code with a fresh executable on disk is not a failure: the thing
+        # the user asked for is there.  Say both facts rather than choosing one.
+        warn_str("vela: build: the C compiler exited ")
+        warn_int(rc)
+        warn_str(" but produced ")
+        warn_str(exe)
+        warn_nl()
     }
     emit_str("built ")
     emit_str(exe)

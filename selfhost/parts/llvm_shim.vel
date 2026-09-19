@@ -14,7 +14,7 @@
 # int64_t -> int, int32_t -> i32, uint8_t -> u8, double -> float,
 # bool -> bool, vela_str -> str, void -> None.
 #
-# 51 declarations, in the header's order.
+# 64 declarations, in the header's order.
 # ============================================================================
 
 # Handles (modules, types, functions, blocks, values) are `int` here because
@@ -23,11 +23,11 @@
 
 extern c def vshim_open() -> i32
 extern c def vshim_shutdown() -> i32
-extern c def vshim_module_open(name: str) -> int
+# omitted: vshim_module_open  (takes or returns a str; the scalar form is vshim_module_open_buf, below)
 extern c def vshim_module_close(module: int) -> i32
-# omitted: vshim_last_error() -> str  (an 'extern c' return may not be a str; the shim writes the reason to stderr)
-# omitted: vshim_host_triple() -> str  (an 'extern c' return may not be a str; the shim writes the reason to stderr)
-# omitted: vshim_module_ir(...) -> str  (an 'extern c' return may not be a str; the shim writes the reason to stderr)
+# omitted: vshim_last_error  (takes or returns a str; the scalar form is vshim_last_error_buf, below)
+# omitted: vshim_host_triple  (takes or returns a str; the scalar form is vshim_host_triple_buf, below)
+# omitted: vshim_module_ir  (takes or returns a str; the scalar form is vshim_module_ir_buf, below)
 extern c def vshim_type_void(module: int) -> int
 extern c def vshim_type_i1(module: int) -> int
 extern c def vshim_type_i8(module: int) -> int
@@ -40,16 +40,16 @@ extern c def vshim_sig_begin(module: int, return_type: int) -> int
 extern c def vshim_sig_param(signature: int, parameter_type: int) -> i32
 extern c def vshim_sig_finish(signature: int) -> int
 extern c def vshim_sig_abandon(signature: int) -> i32
-extern c def vshim_fn_declare(module: int, name: str, signature_type: int) -> int
-extern c def vshim_fn_define(module: int, name: str, signature_type: int) -> int
+# omitted: vshim_fn_declare  (takes or returns a str; the scalar form is vshim_fn_declare_buf, below)
+# omitted: vshim_fn_define  (takes or returns a str; the scalar form is vshim_fn_define_buf, below)
 extern c def vshim_fn_param(function: int, index: int) -> int
 extern c def vshim_fn_sret_param(function: int, index: int, sret_type: int) -> i32
 extern c def vshim_const_i64(module: int, value: int) -> int
 extern c def vshim_const_i32(module: int, value: int) -> int
 extern c def vshim_const_f64(module: int, value: float) -> int
 extern c def vshim_const_bool(module: int, value: bool) -> int
-extern c def vshim_string_global(module: int, name: str, bytes: str) -> int
-extern c def vshim_block_append(module: int, function: int, name: str) -> int
+# omitted: vshim_string_global  (takes or returns a str; the scalar form is vshim_string_global_buf, below)
+# omitted: vshim_block_append  (takes or returns a str; the scalar form is vshim_block_append_buf, below)
 extern c def vshim_pos_at_end(module: int, block: int) -> i32
 extern c def vshim_build_br(module: int, block: int) -> i32
 extern c def vshim_build_cond_br(module: int, condition: int, if_true: int, if_false: int) -> i32
@@ -71,5 +71,18 @@ extern c def vshim_arglist_add(arguments: int, value: int) -> i32
 extern c def vshim_arglist_abandon(arguments: int) -> i32
 extern c def vshim_call(arguments: int, function: int) -> int
 extern c def vshim_verify(module: int) -> i32
-extern c def vshim_emit_object(module: int, path: str) -> i32
+# omitted: vshim_emit_object  (takes or returns a str; the scalar form is vshim_emit_object_buf, below)
+extern c def vshim_buf_reset() -> i32
+extern c def vshim_buf_byte(b: i32) -> i32
+extern c def vshim_buf_len() -> i32
+extern c def vshim_buf_read_byte(index: int) -> i32
+extern c def vshim_module_open_buf() -> int
+extern c def vshim_fn_declare_buf(module: int, signature_type: int) -> int
+extern c def vshim_fn_define_buf(module: int, signature_type: int) -> int
+extern c def vshim_string_global_buf(module: int, index: int) -> int
+extern c def vshim_block_append_buf(module: int, function: int) -> int
+extern c def vshim_emit_object_buf(module: int) -> i32
+extern c def vshim_host_triple_buf() -> i32
+extern c def vshim_module_ir_buf(module: int) -> i32
+extern c def vshim_last_error_buf() -> i32
 
