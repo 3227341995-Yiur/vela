@@ -53,9 +53,30 @@ $text = Get-Content -LiteralPath $header -Raw
 
 # Every declaration of the form `<type> vshim_...(params);`.  The header is the
 # source of truth; nothing here invents a function.
-$pattern = '(?m)^(int32_t|int64_t|double|void|bool)\s+(vshim_[a-z0-9_]+)\s*\(([^;]*)\);'
+#
+# `vela_str` is a return type here, and that matters: the first version of this
+# pattern listed only `int32_t|int64_t|double|void|bool`, so the three functions that
+# return a `str` — `vshim_last_error`, `vshim_host_triple`, `vshim_module_ir` — were
+# **silently dropped**.  The generator reported "48 declarations" and passed its own
+# `-Check`, and the number was wrong by three.  Silent dropping is the defect class
+# this whole project keeps paying for, so the pattern now covers every type the
+# header uses AND the count is reconciled against the header below: a declaration
+# that goes missing is a thrown error, not a smaller number.
+$pattern = '(?m)^(int32_t|int64_t|double|void|bool|vela_str)\s+(vshim_[a-z0-9_]+)\s*\(([^;]*)\);'
 $decls = [regex]::Matches($text, $pattern)
 if ($decls.Count -eq 0) { throw "no vshim_* declarations found in $header" }
+
+# Reconcile: every `vshim_name(` that looks like a declaration must have been
+# matched, whatever its return type.  Anything left over is named.
+$inHeader = @([regex]::Matches($text, '(?m)^[a-z0-9_]+\s+(vshim_[a-z0-9_]+)\s*\(') |
+    ForEach-Object { $_.Groups[1].Value })
+$extracted = @($decls | ForEach-Object { $_.Groups[2].Value })
+$dropped = @($inHeader | Where-Object { $extracted -notcontains $_ })
+if ($dropped.Count -gt 0) {
+    $names = ($dropped | Sort-Object -Unique) -join ', '
+    $msg = "the header declares $($inHeader.Count) function(s) and this pattern matched $($extracted.Count); it dropped: $names.  Add the missing type to the pattern rather than generating an interface that is smaller than the header."
+    throw $msg
+}
 
 function Convert-Type([string] $c, [string] $name) {
     switch ($c.Trim()) {
@@ -111,6 +132,20 @@ foreach ($d in $decls) {
     $ret = Convert-Return $d.Groups[1].Value
     $fn  = $d.Groups[2].Value
     $paramsText = $d.Groups[3].Value.Trim()
+    # A `str` return stays refused by the language, for the reason check.vel:2580
+    # gives, so these three are written down and *not* declared.  The emitter learns
+    # why a shim call failed from the status it does get, and the reason itself from
+    # stderr, which the shim writes and the build log already carries.  Recording the
+    # omission here beats dropping it: a count that is quietly three short is how the
+    # generator hid this in the first place.
+    if ($d.Groups[1].Value.Trim() -eq 'vela_str') {
+        if ($paramsText -eq '' -or $paramsText -eq 'void') {
+            $lines.Add("# omitted: $fn() -> str  (an 'extern c' return may not be a str; the shim writes the reason to stderr)")
+        } else {
+            $lines.Add("# omitted: $fn(...) -> str  (an 'extern c' return may not be a str; the shim writes the reason to stderr)")
+        }
+        continue
+    }
     if ($paramsText -eq '' -or $paramsText -eq 'void') {
         $lines.Add("extern c def $fn() -> $ret")
         continue

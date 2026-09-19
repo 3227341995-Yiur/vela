@@ -223,7 +223,14 @@ Write-Host '    * the plugin has never been loaded into a running IDE (needs a b
 Write-Host '    * the three-path differential for the LLVM backend (tests\run_llvm.vel) does not exist yet'
 Write-Host ''
 
-$failed = @($results | Where-Object { $r.Ok -eq $false })
+# `$_`, not a named variable: this line first read `$r.Ok -eq $false`, where `$r` is
+# the *outer* foreach's variable from the summary loop above and is therefore always
+# `$null` inside the Where-Object script block.  `$null -eq $false` is false, so no
+# step was ever counted as failed and the gate printed "RESULT: ok - 4 step(s) ran,
+# all green" while the suite had just reported two failing cases.  Measured on the
+# first real run, 2026-09-19.  A gate that cannot fail is the same defect this file
+# exists to catch, so the bug is worth the words.
+$failed = @($results | Where-Object { $_.Ok -eq $false })
 if ($failed.Count -gt 0) {
     Write-Host ("RESULT: FAIL - {0} step(s): {1}" -f $failed.Count, (($failed | ForEach-Object { $_.Step }) -join ', ')) -ForegroundColor Red
     exit 1

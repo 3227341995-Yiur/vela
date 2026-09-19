@@ -14,7 +14,7 @@
 # int64_t -> int, int32_t -> i32, uint8_t -> u8, double -> float,
 # bool -> bool, vela_str -> str, void -> None.
 #
-# 48 declarations, in the header's order.
+# 51 declarations, in the header's order.
 # ============================================================================
 
 # Handles (modules, types, functions, blocks, values) are `int` here because
@@ -25,6 +25,9 @@ extern c def vshim_open() -> i32
 extern c def vshim_shutdown() -> i32
 extern c def vshim_module_open(name: str) -> int
 extern c def vshim_module_close(module: int) -> i32
+# omitted: vshim_last_error() -> str  (an 'extern c' return may not be a str; the shim writes the reason to stderr)
+# omitted: vshim_host_triple() -> str  (an 'extern c' return may not be a str; the shim writes the reason to stderr)
+# omitted: vshim_module_ir(...) -> str  (an 'extern c' return may not be a str; the shim writes the reason to stderr)
 extern c def vshim_type_void(module: int) -> int
 extern c def vshim_type_i1(module: int) -> int
 extern c def vshim_type_i8(module: int) -> int

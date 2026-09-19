@@ -204,8 +204,38 @@ Every one of these was invisible to reading:
   it fetched LLVM's 489740247-byte archive when curl could not.
 - **`javap` does not exist**; the verifier's `ClassSig`/`MethodFlags` reflection
   tools are the substitute.
-- **Heavy concurrent I/O makes `cl.exe` builds flaky.**  A `refreeze` run reported
-  two cases as "could not be built" while a 2 GB LLVM archive was being unpacked on
-  the same disk; both built, and a clean re-run reported 190/0.  Correlation, not a
-  proven mechanism — but when a build fails oddly, check what else is on the disk
-  before believing the compiler.
+- **Two `vm.exe` builds running anywhere on the machine used to destroy each other,
+  and this — not disk contention — is what made the suite flaky for two rounds.**
+  The driver's per-build diagnostics were named after *the compiler binary*, so every
+  build wrote the same `…\selfhost\build\vm.exe_cc.bat` and ran it: process A executed
+  the batch file process B had just written, so A compiled B's C file and the two
+  fought over B's object.  Caught in the act, with the wrong C named in the message:
+
+  ```
+  cl … "…\dsh-AYfS5n\vela-build\tools_link_selfhost.vel.c"   <- what A asked for
+  C__Users_lu_…_dsh-ZYih20_vela-llvm-shim_m1_probe.vel.c     <- what cl actually compiled
+  …m1_probe.vel.c : fatal error C1083: cannot open compiler generated file:
+      "…m1_probe.vel.obj"  Permission denied
+  vela: panic: build: no C compiler on this host could build the emitted C
+  ```
+
+  Two builds of different sources, started together, reproduced it every time
+  (`a.err` and `b.err` both naming `_b.vel.obj`); a single build never did.  The
+  driver now names those files after the build's own scratch C
+  (`<scratch>/<flat>.vel.c_cc.bat`), which also puts them where the rest of the
+  intermediates go instead of beside the compiler.  Verified: the same two concurrent
+  builds both print `built …  (with OpenMP)` and exit 0, and `selfhost\build\` no
+  longer collects `*_cc.bat` clutter.  The fixpoint is re-established at
+  `57D6650FC7824D50`, 754954 bytes, seed / gen-1 / gen-2 byte-identical.
+- The earlier explanation in this file — "heavy concurrent I/O makes `cl.exe` flaky",
+  inferred while a 2 GB LLVM archive was being unpacked — was **wrong**, and it is
+  left here as the correction rather than deleted.  The flakiness was deterministic
+  given two concurrent builds; the archive was a coincidence of timing, and a wrong
+  mechanism in the record is worse than no mechanism.
+- **`tools\verify-all.ps1` could not fail.**  Its first real run printed
+  `RESULT: ok - 4 step(s) ran, all green` while the suite step had just reported two
+  failing cases: the failure filter read `$r.Ok -eq $false`, where `$r` is the
+  summary loop's variable and always `$null` inside a `Where-Object` block, and
+  `$null -eq $false` is false.  Fixed to `$_.Ok` and verified against a synthetic
+  results list: the old expression finds 0 failures, the fixed one finds 1 and names
+  the step.  A gate that cannot fail is the defect the gate exists to catch.
