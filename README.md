@@ -323,7 +323,12 @@ an extra pair of quotes for cmd.exe's sake.  cmd.exe then splits that path at th
 first `/` and answers `'selfhost' is not recognized as an internal or external
 command`; the suite reports the *captured stderr* as the reason, which is the
 driver's own harmless first line, so every case looks like a compiler failure.
-Measured: unset, 30 cases failed "could not be built"; set, 5.
+Measured twice, on two different days, which is why two documents in this
+repository disagreed about it: **unset, 30 cases failed with "could not be
+built"** — in both runs, and it reproduces — while **set**, the tally was 5 in the
+first run and **0** in the second, because those five were other business and have
+since been fixed (today's suite is **190 passed, 0 failed**, `STATUS.md` §2).  The
+30 is the number this paragraph exists for.
 `tools\refreeze.ps1` sets it for exactly this reason and `tools\build.ps1` always
 has.
 

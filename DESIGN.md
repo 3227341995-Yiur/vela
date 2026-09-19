@@ -783,8 +783,10 @@ extern c "libm" {                          # the shape that was designed, not bu
   it will not guess at.
 * **`mut` on a foreign parameter is accepted and means nothing.** C parameters
   are a copy, and `mut` on a parameter only says what the (absent) body may do —
-  the same gap SPEC:148 has for a Vela scalar parameter, which the probes in this
-  directory record for the language's own functions.
+  the same gap `SPEC.md` §3 has for a Vela scalar parameter, which the probes in
+  this directory record for the language's own functions.  (This paragraph cited it
+  as `SPEC:148` while the specification was still numbered by line; §3 is that
+  line's section, and the two names have always meant the same gap.)
 
 ## 10. The debug protocol (`vm.exe debug`)
 

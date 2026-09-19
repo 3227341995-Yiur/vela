@@ -84,7 +84,12 @@ wedge.
   checks finally working: serial matmul 512² **1.058 s** against the C++ twin's
   **0.213 s** (5×), parallel matmul 0.128 s against 0.019 s (6.6×), sieve 0.0196 s
   against 0.0129 s, mandelbrot a tie.  The cause is measured, not guessed, and the
-  measurement has a corrected version worth reading twice:
+  measurement has a corrected version worth reading twice.  **Read the numbers
+  above as the pre-fix state**, which is why they are kept: what they became is
+  serial matmul 0.543 s against 0.224 s (2.4×), parallel matmul 0.068 s against
+  0.022 s, sieve 0.0197 s against 0.0134 s — `bench/RESULTS.md`, and §2.  The
+  table below is here because it is the argument for the second lever, not because
+  it is current.
 
   | variant of the same emitted C (all printing 1090512707) | seconds |
   |---|---|
