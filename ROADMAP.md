@@ -1,3 +1,5 @@
+**English** | [简体中文](ROADMAP.zh-CN.md)
+
 # Vela — the north star, and the road to it
 
 The goal, as the language's owner states it:

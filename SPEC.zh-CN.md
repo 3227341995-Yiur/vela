@@ -1,7 +1,9 @@
+[English](SPEC.md) | **简体中文**
+
 <!--
 源文件 : SPEC.md
-源文件字节 : 27457
-源文件 SHA256 : 533c74bcdac78ebf6f033a264eca11fa8a1d3ed6690e8b4d362c5da5bd075b29
+源文件字节 : 27502
+源文件 SHA256 : 62182948fcf70c6160842e2f1943f486ffc62c79a7ab6a83a381bd38189afb09
 翻译日期 : 2026-09-20
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。

@@ -26,8 +26,9 @@
     checker that silently skips what it cannot parse is not a checker:
 
       * the English source does not exist;
-      * the header is missing (no `<!--` block at the top) or unparseable (the
-        block is never closed, or it carries no file name / no 64-hex SHA-256);
+      * the header is missing (no `<!--` block in the file's first 12 lines — the
+        bilingual switch line may precede it) or unparseable (the block is never
+        closed, or it carries no file name / no 64-hex SHA-256);
       * the header names a file whose stem is not this file's stem (`X.zh-CN.md`
         must record `X.md`).
 
@@ -104,12 +105,23 @@ function Read-Header([string] $path) {
     $text = Get-Text $path
     if ($text.Length -gt 0 -and [int] $text[0] -eq 0xFEFF) { $text = $text.Substring(1) }
     $lines = $text -split "`r?`n"
-    if ($lines.Count -lt 2 -or $lines[0].Trim() -ne '<!--') {
-        return @{ Error = 'header missing: the file does not begin with an <!-- block' }
+
+    # The header block does not have to be the first thing in the file: the
+    # bilingual convention puts the language switch line first, then a blank line,
+    # then this block.  So look for `<!--` in the first few lines rather than
+    # insisting on line 1 -- but do not go hunting through the whole document, or a
+    # file whose header is missing would be "checked" against some later comment.
+    $start = -1
+    $scan = [Math]::Min($lines.Count, 12)
+    for ($i = 0; $i -lt $scan; $i++) {
+        if ($lines[$i].Trim() -eq '<!--') { $start = $i; break }
+    }
+    if ($start -lt 0) {
+        return @{ Error = 'header missing: no <!-- block in the first 12 lines' }
     }
     $end = -1
-    $limit = [Math]::Min($lines.Count, 40)
-    for ($i = 1; $i -lt $limit; $i++) {
+    $limit = [Math]::Min($lines.Count, $start + 40)
+    for ($i = $start + 1; $i -lt $limit; $i++) {
         if ($lines[$i].Trim() -eq '-->') { $end = $i; break }
     }
     if ($end -lt 0) {
@@ -117,7 +129,7 @@ function Read-Header([string] $path) {
     }
 
     $src = $null; $hash = $null; $size = $null
-    for ($i = 1; $i -lt $end; $i++) {
+    for ($i = $start + 1; $i -lt $end; $i++) {
         $line = $lines[$i]
         if ($null -eq $hash) {
             $m = [regex]::Match($line, 'SHA256\s*:\s*([0-9a-fA-F]{64})')

@@ -1,7 +1,9 @@
+[English](STATUS.md) | **简体中文**
+
 <!--
 源文件 : STATUS.md
-源文件字节 : 19713
-源文件 SHA256 : c63aa8c8f4f90c371da3ca91a37c000b58fa081ebb1f743549ad1a6d44502315
+源文件字节 : 19760
+源文件 SHA256 : b987ac295d938a0125d1c7dcfa2b2428646e69388afe01ad0326436d3c6d2f79
 翻译日期 : 2026-09-20
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。

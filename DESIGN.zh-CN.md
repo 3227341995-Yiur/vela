@@ -1,7 +1,9 @@
+[English](DESIGN.md) | **简体中文**
+
 <!--
 源文件 : DESIGN.md
-源文件字节 : 60029
-源文件 SHA256 : e280fd6735e724441338798ff2824262b5185b1b83bc9b669fef3faccb6d9fba
+源文件字节 : 60076
+源文件 SHA256 : 7271c6cb33a0c37de518d986b3e4b60193f5326499c18b9700de6fdc2fd881e2
 翻译日期 : 2026-09-20
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。

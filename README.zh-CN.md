@@ -1,7 +1,9 @@
+[English](README.md) | **简体中文**
+
 <!--
 源文件 : README.md
-源文件字节 : 34309
-源文件 SHA256 : f2daea56e541a14a461aa0feb03ac49b43fbdc03b7e26384f161c2f0e16ea84f
+源文件字节 : 34356
+源文件 SHA256 : f3c90ab74dd830a1cbe7928ebf26e1a768fff96083ddfbe0393cadb64b132610
 翻译日期 : 2026-09-20
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
