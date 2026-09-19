@@ -2,7 +2,16 @@
 
 A systems language with **Python-shaped syntax, C-shaped performance, and a
 safety story that has no escape hatch**: no `unsafe`, no raw pointers, no manual
-`free`, no FFI, ever.
+`free`.
+
+`no FFI, ever` used to be the end of that sentence, and it is not true any more:
+stage 5 shipped `extern c` for **C** functions in the small shape `DESIGN.md` §9
+describes — a declaration with no header and no library name, scalar parameters
+and results only, the checker refusing where it cannot describe the boundary
+honestly (a `str`, an array or a struct at the declaration; an argument of the
+wrong kind at the call site).  The promise that survives is narrower and is in the
+stage table below: nothing in a Vela program can put a *pointer* in the language,
+so a foreign function cannot be used to write around a check.
 
 ```vela
 struct Vec2 {
@@ -74,10 +83,12 @@ compiled code falsely panicked because the overflow test was not equivalent to
 high, so it worked only when run from the repository root — which is why the IDE
 plugin's Run button produced nothing.
 
-Two tools answer most "is it alive" questions in one command each. **Both are
-written and have not yet been run**, because the harness that runs commands on
-this machine was wedged by a detached `cl.exe` helper for the last six rounds;
-neither is claimed as verified:
+Three tools answer most "is it alive" questions in one command each.  **All three
+have been run, and all three are green as of 2026-09-20** — this paragraph used to
+say the opposite, and its reason (the harness was wedged by a detached `cl.exe`
+helper) is history: the wedge was fixed at the source in `selfhost/parts/vm_main.vel`
+(`reap_helpers()` after every `cl`), `STATUS.md` §1 records the mechanism, and the
+rounds since have run dozens of builds and 190-case suite runs without it:
 
 ```bat
 powershell -ExecutionPolicy Bypass -File tools\smoke.ps1      :: build+run, build from elsewhere, compiled == interpreted
@@ -145,22 +156,27 @@ Full table, spread and method: `bench/RESULTS.md`.
 One machine: AMD Ryzen 7 9800X3D, 8 cores / 16 logical processors, ~4.7 GHz, on an
 otherwise idle machine. Different CPU, different numbers.
 
-| benchmark | C++ | Vela |
-|---|---|---|
-| matmul 512², serial | 0.2270 s (`restrict`: 0.2446) | **0.2055 s** |
-| matmul 512², parallel | **0.0372 s** (restrict + OpenMP) | 0.0435 s |
-| mandelbrot 1600×1200, parallel | 0.0133 s (OpenMP) | 0.0134 s |
-| sieve n = 2×10⁷, fully checked ints | 0.0146 s (unchecked C++) | 0.0145 s |
+**The numbers live in one place: `bench/RESULTS.md`, and this section deliberately
+carries no second table.**  It used to.  The table that stood here said Vela's
+serial matmul *beat* the C++ build by ~10% (0.2055 s against 0.2270 s) while the
+claims table near the top of this file quoted the same benchmark as 2.4× *slower*
+(0.5433 s against 0.2241 s) — two mutually exclusive answers in one document,
+which was found by someone reading the file line by line to translate it.  The
+faster pair is the run from **before** the emitter defect of 2026-09-19 was found
+(every array index was computed twice); `bench/RESULTS.md` replaced that table
+rather than editing it, and its retraction says so in as many words: *"The old
+table said Vela's serial matmul beat both C++ serial builds. It does not."*
 
-All three groups verified their answers (`matmul` checksum 1090512707,
-mandelbrot 50187647, sieve π(2×10⁷) = 1270607, and the same value for every
-variant in a group).
-
-Where Vela *loses*, it says so: parallel matmul is ~17% behind the C++ build that
-also uses OpenMP, because Vela keeps a checked multiply and a checked add in the
-inner loop that the C++ twin does not. The sieve row is a tie rather than a win,
-and the mandelbrot row is a tie. Vela's win is the serial matmul, by ~10% over the
-C++ serial build.
+What `bench/RESULTS.md` says now, against the same C++ twins on the machine
+described there: serial matmul **2.4× slower** (0.5433 s against 0.2241 s),
+parallel matmul 3.1× slower (0.0680 s against 0.0221 s), sieve 1.5× slower *while
+keeping its checks* against an explicitly unchecked C++ row (0.0197 s against
+0.0134 s), and mandelbrot a tie to the microsecond (0.011950 s both).  The whole
+remaining matmul gap is the checked index arithmetic — `vela_mul_range` /
+`vela_add_range` on the subscript are ~68% of the post-fix time, while the bounds
+check is ~0.04 s — so the number that decides "faster than C++" is the one
+`selfhost/ELISION_PLAN.md` will produce, and **that claim is not established
+today**.
 
 The `--fast-int` sieve variant no longer exists: the self-hosted compiler always
 emits checked arithmetic, so there is no unchecked Vela build to quote. The row
@@ -339,7 +355,14 @@ C++), and Vela is explicit about the stages:
 | **5** | foreign functions: declared `extern c` bindings to **C** libraries | **working, in the small shape**: the declaration *is* the C prototype (no header, no library name, and the declared name is the symbol the back end calls), the types are scalars (`int`/`i32`/`u8`/`float`/`bool`, and `-> None` for a C `void`), and `pure` is the user's word for a C function with no side effects.  The checker refuses where it cannot describe the boundary honestly, at the declaration (`'extern c' parameter 's' has type str`; an array and a struct too — which is why there are no foreign methods) **and at the call site**: an argument crosses only as the kind the parameter declares, with the one exception of an int constant that fits, so `abs(1.5)` and `abs(int_value)` are `vela: type error` at the line of the call rather than a conversion the C compiler would make silently; arity is the resolver's verdict, and the interpreter has no foreign call at all (`refuse-interp` asserts it).  What is deliberately left out — `extern c "lib" { ... }` blocks, `cstr`, `(T*, N)` arrays, `extern struct`, variadics, callbacks, unsigned wider than `u8` — is `DESIGN.md` §9.5 |
 
 Two things about *how* this tree is built, because they are the answer to
-"what has to exist for Vela to exist":
+"what has to exist for Vela to exist".  The transcript below is a **real run, kept
+verbatim and now labelled**: it predates the LLVM work, which added a part
+(`emit_llvm.vel` is part 7 now, so the linked compiler is larger and its fixpoint
+hash is different), which is why it says 74115 tokens, a 741204-byte fixpoint and
+180 cases.  The current corpus is **190 cases**, and the current fixpoint hash is in
+`tools\build.ps1`'s own output, not here — four different hashes were labelled
+"current" across three documents in this repository, which is what happens when a
+number that moves whenever a part changes is written into prose.
 
 ```
 > powershell -File tools\build.ps1 -Suites
