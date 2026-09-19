@@ -882,6 +882,98 @@ def ck_compare(nd: Array[int, 655360], mem: Array[int, 3741696], path: str,
             ck_op_msg(ck_op_pre(op), " cannot be applied to ", lt, rt))
 }
 
+# ------------------------------------------------------------- member access
+#
+# `p.x` and `p.m()` were typed by nobody either, and this one is worse than the
+# operator gap in one respect: the *name* is never looked up, so a member that
+# exists nowhere is accepted and the failure lands somewhere else.  Measured
+# 2026-09-20 on `struct Pt { y: int  def dot(...) }`:
+#
+#     print(p.zzz)     vm.exe check -> exit 0, "ok"
+#     p.dotq(q)        vm.exe check -> exit 0, "ok"
+#
+# The other two front ends both have an answer for the same source: the
+# interpreter stops with `this struct has no field of that name`
+# (eval.vel:1352, :1421 for a method) and the C back end *traps* with the same
+# words while emitting (emit.vel:609, :679), so a rename is caught by `run` and by
+# `build` -- but not by `check`, which is the front end an editor, a plugin or a
+# rename tool talks to, and therefore the front end that decides whether a line
+# has any compiler evidence at all.  Both messages below are worded like the ones
+# they replace, and use the two stage 0 texts in `CHECKER_PLAN.md` -- rule 87
+# `{struct} has no field '{name}'` and rule 126 `{struct} has no method '{name}'`.
+#
+# The lookup is the interpreter's own (`find_field` / `find_method`, eval.vel:1318
+# and :1331; that part is linked *after* this one, which Vela resolves -- the same
+# forward reference `ck_expr` already makes to `ck_extern_call`), so the two ends
+# cannot drift about what a member is.
+#
+# What this rule deliberately does not reach, and why: only a plain name carries a
+# known struct type in this pass, so a receiver that is a call (`P(1).scale(2.0)`,
+# which is legal), an array element, or a field of a field (`p.inner.k`) leaves the
+# rule silent rather than guessing; and a *method* name read as a value (`p.sum`)
+# is left alone, because the hole being closed is a name that exists nowhere at
+# all.  A method's arity and `.m()` on a non-struct are also still unchecked: they
+# are `CHECKER_PLAN.md` rules 127 and 125, and they are louder failures (the
+# emitted C carries the wrong argument count, and the host compiler refuses it).
+
+def ck_recv_struct(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+                   recv: int) -> int {
+    if nd_kind(nd, recv) != 25 {
+        return -1
+    }
+    i: int = ck_bound(mem, vm, nd[recv * 10 + 1])
+    if i < 0 {
+        return -1
+    }
+    ck: int = sc_ckind(mem, i)
+    if unpack_kind(ck) != K_ST() {
+        return -1
+    }
+    return unpack_len(ck)
+}
+
+def ck_member_msg(mem: Array[int, 3741696], sid: int, what: str,
+                  name: int) -> str {
+    mut m: str = interned(stb_get(mem, sid, STB_NAME()))
+    m = concat(m, what)
+    m = concat(m, interned(name))
+    return concat(m, "'")
+}
+
+# `p.f`, and `p.f` where `f` is a method: the second is not refused here, because a
+# method name used as a value is a different (and equally real) gap, and refusing
+# it would be a rule nobody asked for.
+def ck_member_read(nd: Array[int, 655360], mem: Array[int, 3741696],
+                   path: str, vm: VM, e: int) -> None {
+    sid: int = ck_recv_struct(nd, mem, vm, nd[e * 10 + 1])
+    if sid < 0 {
+        return
+    }
+    nm: int = nd[e * 10 + 2]
+    if find_field(mem, sid, nm) >= 0 {
+        return
+    }
+    if find_method(mem, sid, nm) >= 0 {
+        return
+    }
+    ck_type(path, nd_line(nd, e),
+            ck_member_msg(mem, sid, " has no field '", nm))
+}
+
+def ck_member_call(nd: Array[int, 655360], mem: Array[int, 3741696],
+                   path: str, vm: VM, callee: int) -> None {
+    sid: int = ck_recv_struct(nd, mem, vm, nd[callee * 10 + 1])
+    if sid < 0 {
+        return
+    }
+    nm: int = nd[callee * 10 + 2]
+    if find_method(mem, sid, nm) >= 0 {
+        return
+    }
+    ck_type(path, nd_line(nd, callee),
+            ck_member_msg(mem, sid, " has no method '", nm))
+}
+
 def ck_shift_count(nd: Array[int, 655360], path: str, line: int,
                    rhs: int) -> None {
     v: int = ck_const_int(nd, rhs)
@@ -1106,6 +1198,8 @@ def ck_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696],
             # a method call is not a field *read*: walking the attribute here
             # would refuse `P(1).scale(2.0)`, which is a call on a temporary
             ck_expr(nd, mem, path, vm, nd[callee * 10 + 1])
+            # the member has to exist before anything can be said about the call
+            ck_member_call(nd, mem, path, vm, callee)
         }
         if vm.cpure == 1 {
             if ck_callee_impure(nd, mem, e) {
@@ -1168,6 +1262,7 @@ def ck_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696],
                     "cannot read a field from a temporary struct")
         }
         ck_expr(nd, mem, path, vm, base)
+        ck_member_read(nd, mem, path, vm, e)
         return
     }
     if k == 34 {
