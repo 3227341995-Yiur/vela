@@ -4,8 +4,8 @@
 
 <!--
 源文件 : README.md
-源文件字节 : 19131
-源文件 SHA256 : d332bd4ad01fdc5d8203b330810f46decf4dd9a0d82408bd10080c3aef28f76e
+源文件字节 : 20170
+源文件 SHA256 : 1cbf1fe71de71716d974e274c54d488fab6c860fda6753222822fc591a8ca05b
 翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -87,10 +87,10 @@ cd idea-plugin
 **当前判定，0.1.4——是重新测量的，不是照搬下来的。** 下面每一个数字都是从 2026-09-22 00:26 那次构建里读回来的，并且带着它所属的版本被点名，因为这个块曾经连续三个发布都写着 `0.1.1` 和 `60 OK`，而 `dist\` 里放着的是 `0.1.3`——这正是那种读者有资格为之生气的过期行：
 
 ```
-build-offline.ps1            exit 0, RESULT: PASS, 154 OK, 0 FAIL   (build\logs\verify.log)
-                             checked at 2026-09-22T00:26:15
-artifact                     dist\vela\lib\vela-idea-plugin.jar   344 626 bytes
-                             dist\vela-idea-plugin-0.1.4.zip      324 198 bytes
+build-offline.ps1            exit 0, RESULT: PASS   (build\logs\verify.log)
+artifact                     dist\vela\lib\vela-idea-plugin.jar   344 619 bytes
+                             dist\vela-idea-plugin-0.1.4.zip      324 186 bytes
+                             sha256 a02f79759ea8a7b917f530a772b2a2b179dedcaed19dc6b059e31c563abc3033
 sources                      36 Kotlin file(s) -> 148 class file(s), highest major 65 (Java 21)
 compiler warnings            none ("no warnings, no errors")
 dead classes                 0 (98 concrete top-level classes: 29 named by plugin.xml, 69 reached)
@@ -122,20 +122,25 @@ surface inventory            build\logs\surface.txt (36 fact(s))
 compile against PyCharm 2025.3 (253),  139 jars  -> rc=0, no errors
 compile against IntelliJ IDEA 2026.2 (262), 429 jars -> rc=0, no errors, no warnings
 
-build-offline.ps1 -PlatformHome "D:\JetBrains\PyCharm 2025.3"
-    RESULT: PASS, 68 checks, exit 0   (build\logs\verify-253.log)
-    verified against 253's own descriptors: 1166 descriptors out of 880 jars,
-    863 extension points, 4255 action/group ids
-    jar 151 436 bytes, zip 142 075 bytes
+build-offline.ps1 -PlatformHome "D:\JetBrains\PyCharm 2025.3"      (0.1.4, re-measured)
+    RESULT: PASS, exit 0              (build\logs\verify-253.log)
+    139 jars on the compile classpath; verified against 253's own descriptors:
+    1656 descriptors out of 1249 jars, 246 plugin/module ids, 1259 extension points,
+    4879 action/group ids, 1079 required contract types
+    jar 344 574 bytes, zip 324 147 bytes
+    sha256 of that zip: b43c480b71e59843b85002e183cc1aa04f38b4eeb03d8926ef9d5bccda206fc2
 
-build-offline.ps1                      (IntelliJ 2026.2, the artifact in dist\)
-    RESULT: PASS, 68 checks, exit 0   (build\logs\verify.log)
-    jar 151 445 bytes, zip 142 081 bytes
+build-offline.ps1                      (IntelliJ 2026.2 -- the artifact in dist\)
+    RESULT: PASS, exit 0              (build\logs\verify.log)
+    429 jars on the compile classpath; 2705 descriptors out of 2356 jars,
+    297 plugin/module ids, 1773 extension points, 5277 action/group ids
+    jar 344 619 bytes, zip 324 186 bytes
+    sha256 of that zip: a02f79759ea8a7b917f530a772b2a2b179dedcaed19dc6b059e31c563abc3033
 ```
 
-而另一个方向：对着 253 构建出来的那个 jar 在 262 平台上通过同样的 68 项检查（`build\logs\verify-253jar-on-262.log`），所以来自任一条工具链的产物都能链接到两者。
+**这个块在 0.1.4 之前一直只是一个承诺，而守住所发现的，是一个真实的缺陷。** 上面那两条命令现在真的对着最终形状重跑过了，而第一次重跑**失败了**：PyCharm 2025.3 用 `VelaRunConfig.kt:569:31: error: unresolved reference 'isSystem'`——`ProcessOutputType.isSystem(Key)` 存在于 262 而不存在于 253，所以那些源码无法对着 `plugin.xml` 声称支持的那个平台编译，而 `since-build="253"` 是**假的**——拒绝了那批源码。那一行现在用一次同一性比较（`outputType === ProcessOutputType.SYSTEM`）问同一个问题，它存在于两个平台上，并且不会像 `ProcessOutputType.fromKey` 那样抛异常。两边的构建都在上面通过了，来自这同一棵树。两个 jar 相差 45 字节（编译器元数据），这就是为什么两个大小都被引用，而不是用一个代表两者。
 
-这**不能**证明什么：在两个 IDE 里的运行时行为。对着两个平台编译和链接说明插件命名的每一个类和成员在两者里都存在；它对那些 API 在 IDE 跑起来之后干什么什么都不说。那个缺口就是下面“离线检查不覆盖什么”里点名的那个。（上面那些 253 的数字是在 `runConfigurationProducer` 那项工作落地之前、那棵树当时的形状上测的；那两条命令会对最终形状重跑一遍，而这个块会用结果更新。）
+这**不能**证明什么：在两个 IDE 里的运行时行为。对着两个平台编译和链接说明插件命名的每一个类和成员在两者里都存在；它对那些 API 在 IDE 跑起来之后干什么什么都不说。那个缺口就是下面“离线检查不覆盖什么”里点名的那个。（上面两个块都是对着 0.1.4 的最终形状重新测量过的；它们下面那段注记，就是 `isSystem` 缺陷被发现的地方。）
 
 
 用 **设置 → 插件 → ⚙ → 从磁盘安装插件…** 安装，选 `dist\vela-idea-plugin-0.1.4.zip`（或者把 IDE 指向解包后的 `dist\vela\`）。`plugin.xml` 命名的每一个类都从构建出来的 jar 里加载出来，并对着它将运行于其中的平台做链接——否则那个失败只表现为“插件没有加载”，对原因没有任何解释。

@@ -4,8 +4,8 @@
 
 <!--
 源文件 : CHANGELOG.md
-源文件字节 : 21903
-源文件 SHA256 : 048ca918d014d177122861ec22f61fd60e522d1fc48b73fefdaf8bbf19a86737
+源文件字节 : 25835
+源文件 SHA256 : 53f57c80d06b344cd1dd15243927f4d7658a2b7922ce8e3997306d5db6c2c686
 翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -81,12 +81,16 @@
 - 四个版本位置读回来都是 `0.1.4`（plugin.xml 的 `<version>`、`build.gradle.kts` 的
   `version`、dist zip 自己的名字、本文件的标题）。
 - `build-offline.ps1` 退出 0、`RESULT: PASS`，以及它写出的产物：
-  `dist\vela\lib\vela-idea-plugin.jar` **344,626 字节**（sha256
-  `0a36128e032a1b4fbd67e82d9d2f3fffe827d5e8905db762ed0072e152f0896e`）和
-  `dist\vela-idea-plugin-0.1.4.zip` **324,198 字节**（sha256
-  `55bf14a3b68e5ccc3486bf9a6ec669fd2ce1dc48c859881704616128cb1409f7`，一个条目：
-  `vela/lib/vela-idea-plugin.jar`）。36 个 Kotlin 源文件、145 个 class 文件，
+  `dist\vela\lib\vela-idea-plugin.jar` **344,619 字节**（sha256
+  `db00087120f914ce7a76c49c540c69c969a2c08cc05b3186944fdf7058684415`）和
+  `dist\vela-idea-plugin-0.1.4.zip` **324,186 字节**（sha256
+  `a02f79759ea8a7b917f530a772b2a2b179dedcaed19dc6b059e31c563abc3033`，一个条目：
+  `vela/lib/vela-idea-plugin.jar`）。36 个 Kotlin 源文件、148 个 class 文件，
   最高的字节码主版本 65（Java 21）。
+  这些数字在这一轮里动过两次，两次移动都被记录下来而不是被藏起来：
+  344,626/324,198（sha256 `55bf14a3...`）是下面那个 `isSystem` 修复之前的构建，而
+  344,574/324,147（sha256 `b43c480b...`）是同一批源码的 PyCharm 2025.3 构建。读者在
+  `dist\` 里找到的应当与第一对相符。
 - **关于可安装性，不能验证的是什么**：没有启动任何 IDE，所以“安装这个 zip，它就加载”
   在这里没有被测量。*被*测量的是除那之外的一切：jar 里的描述符与源码描述符逐字节
   相同、`plugin.xml` 命名的每一个类都在 jar 里、每一个扩展点 id 都解析到已安装平台里的
@@ -126,14 +130,53 @@
    出现的同一段文本。**被点名，没有被修复**，而这就是参数提示那一行在
    `FEATURE_PARITY.md` 里是 `partial` 的原因。
 
-2. **`AstDiff` 在一个命名了不存在文件的语料条目上是 FAIL。**
-   `tests/cases.txt:174` 命名 `tests/build/lexer_error.vel`；那个文件不在磁盘上。
-   把那一行 MISSING 放在一边之后，语料是 108 个文件在 119,923 行节点上与
-   `vm.exe parse` 逐字节相同，0 个差异。`tests/**` 是另一个 track 的，所以它连同它的
-   清单行一起被报告，并拥有自己的退出码（3 = 语料缺陷），而不是被折进“插件是错的”
-   （退出 1）。
+2. **`AstDiff` 现在是 PASS，而且它是在一个长出六个文件的语料上通过的。**
+   最终：`126 files in the corpus / 114 match (121 856 node lines) / 0 different /
+   0 suspect / 0 missing / 12 compiler refused (all 12 of which this parser also
+   refused) / 0 crashed / VERDICT: PASS`，退出 0。一小时前同一个测试框架是 `FAIL`
+   而 `0 different`——唯一的不匹配是 `tests/cases.txt:174` 命名了
+   `tests/build/lexer_error.vel`，而那个文件不存在。本轮里另一个 track 创建了那个
+   文件，这修好了清单，并立刻暴露了下面的缺陷 3。这个测试框架现在把这样的条目连同它的
+   清单行和自己的退出码一起报告（3 = 语料缺陷，1 = 插件是错的），所以这两者再也不可能
+   被弄混。
 
-3. **`SymbolDiff` 有 40 个文件不同，`FoldDiff` 有 61 个文件不同**，两者都是对着这个插件
+3. **`psi-tree-diff.ps1` 在 126 个文件里失败 1 个，而找到它的那个文件是一个指向空处的
+   语料条目。** 原始输出：
+
+   ```
+   tests/build/lexer_error.vel: leaf VELA_STRING at 31..38 is not a token this parser claimed: `"hello)`
+   files replayed through the platform's builder : 126 of 126;  ok 125  failed 1
+   VERDICT : FAIL
+   COVERAGE: ran 125 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0)
+   ```
+
+   `tests/cases.txt:174` 命名 `tests/build/lexer_error.vel`，而那个文件不存在；本轮里
+   另一个 track 创建了它，它立刻找到了这个。在一个扫描器拒绝接受的文件上（一个没有终结的
+   字符串），解析器只保留失败之前的那些 token，`VelaLexer` 为整个 `"hello)` 产出一个
+   `VELA_STRING`，而重放的 `alignEndAfter` 把那个 token 拉进树里——在那个地方，测试框架
+   断言每一个非平凡的叶子都是解析器所声称的一个 token。编译器和解析器*一致*认为这个文件
+   不是合法的 Vela，所以这个插件关于这门语言是对的，而它关于哪个 token 覆盖一个没有终结的
+   字符串与自己不一致。在那个被决定之前，第 5 行是 `partial`。一个指向空处的语料条目，
+   一直在藏着一个测试着东西的语料条目。
+
+4. **`since-build="253"` 是假的，而它是靠守住所许下的承诺才被发现的。**
+   `build-offline.ps1 -PlatformHome "D:\JetBrains\PyCharm 2025.3"` 失败于
+   `VelaRunConfig.kt:569:31: error: unresolved reference 'isSystem'`——
+   `ProcessOutputType.isSystem(Key)` 存在于 IntelliJ IDEA 2026.2 而不存在于 PyCharm
+   2025.3，所以那些源码无法对着 `plugin.xml` 所声明的平台编译。修法是一次同一性比较
+   （`outputType === ProcessOutputType.SYSTEM`），它存在于两个平台上，而且不会像
+   `ProcessOutputType.fromKey` 那样抛异常。两边的构建现在都从这同一棵树上通过：
+   253 -> jar 344 574 / zip 324 147
+   （sha256 `b43c480b71e59843b85002e183cc1aa04f38b4eeb03d8926ef9d5bccda206fc2`），
+   262 -> jar 344 619 / zip 324 186
+   （sha256 `a02f79759ea8a7b917f530a772b2a2b179dedcaed19dc6b059e31c563abc3033`，即
+   已发布的产物）。**这是这张清单里唯一一个被关掉的缺陷。**
+
+5. **`HintNames`：一处分歧。** `tests/build/check_cases/unannotated_parameter.vel line 2 `f`  tree=[]  model=[n]`。那个文件是一个编译器拒绝的用例（`def f(n)` 带一个未标注的参数），所以树没有记录任何参数，而符号模型从细节文本里读出 `n`。在非法的 Vela 上，树是那个站得住的读法，但两个来源有分歧，而计数说的是 1 而不是 0。
+
+6. **`harness.ps1 -Tool All` 跑不完，而这就是为什么这些数字里有两个从来没有被产出过。** `HintShapes` 扫过每一个文件的每一个 16 字节前缀，那是 O(size^2 / step)：`selfhost/vm.vel` 大约 400 KB，所以一个文件花掉大约 25 000 次对一个平均 200 KB 文档的解析。两次独立的 `-Tool All` 运行都在 `=== HintShapes` 上坐了超过 50 分钟，这意味着 `HintDupes`、`SymbolDiff`、`FoldDiff` 和 `FeatureProbe` **在一次 `All` 通过里根本没有跑过** - 而它们的缺席一直被当成它们的同意。那次扫描现在被限制到每个文件最多 256 个前缀（`runs: 5797`、`too-large-for-prefix-sweep 4`，两者都打印），而一次 `All` 通过不到四分钟就完成。
+
+7. **`SymbolDiff` 有 40 个文件不同，`FoldDiff` 有 62 个文件不同**，两者都是对着这个插件
    自己*已退休的*实现，而不是对着某个权威（没有权威：编译器不打印折叠区域，也不打印
    符号清单）。那些差异就是这次替换——树模型列出了 token 扫描漏掉的 `extern` 声明；
    树把整个函数体从 `{` 折到 `}`，而那正是 PyCharm 对一个方法体所做的。两者都在
