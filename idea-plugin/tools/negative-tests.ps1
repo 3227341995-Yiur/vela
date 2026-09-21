@@ -102,19 +102,52 @@ $targetProducer = First-Match $xml '<runConfigurationProducer\s+implementation="
 Write-Host "plugin.xml targets: group-id=$targetGroupId  action-id=$targetActionId  class=$targetClass  producer=$targetProducer"
 Write-Host ''
 
+# EACH MUTANT GETS ITS OWN PLUGIN ROOT, AND THIS IS THE FIX THAT MADE THE SET RUNNABLE
+# AGAIN.  The old version built one jar per case and pointed the verifier at the *real*
+# plugin tree, so `descriptorFreshness` fired on every case -- including the baseline --
+# for a reason that had nothing to do with the injected defect: the mutated descriptor
+# is deliberately comment-stripped, and the real source descriptor is not, so the jar
+# and the source could never be byte-identical.  A mutation run whose every case fails
+# for the same wrong reason is worse than no mutation run, because it prints CAUGHT.
+#
+# So the mutant root carries the mutant's *own* `src\main\resources\META-INF\plugin.xml`,
+# its own `build.gradle.kts` (same version, so version discipline still passes),
+# its own `CHANGELOG.md` and its own `dist\` -- exactly the layout `mutation-test.ps1`
+# uses.  `descriptorFreshness` then compares the jar against the descriptor that mutant
+# was built from, which is the question it is supposed to ask.
+function New-MutantRoot([string] $name, [string] $descriptor) {
+    $root = Join-Path $scratch $name
+    $res  = Join-Path $root 'src\main\resources'
+    New-Item -ItemType Directory -Force -Path (Join-Path $res 'META-INF') | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $res 'icons') | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $res 'liveTemplates') | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $root 'dist\vela\lib') | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $res 'META-INF\plugin.xml'), $descriptor,
+        (New-Object System.Text.UTF8Encoding($false)))
+    Copy-Item -LiteralPath (Join-Path $resSrc 'META-INF\pluginIcon.svg') `
+              -Destination (Join-Path $res 'META-INF\pluginIcon.svg') -Force
+    Copy-Item -LiteralPath (Join-Path $resSrc 'icons\vela.svg') `
+              -Destination (Join-Path $res 'icons\vela.svg') -Force
+    Copy-Item -LiteralPath (Join-Path $resSrc 'liveTemplates\Vela.xml') `
+              -Destination (Join-Path $res 'liveTemplates\Vela.xml') -Force
+    Copy-Item -LiteralPath (Join-Path $plugin 'build.gradle.kts') -Destination $root -Force
+    Copy-Item -LiteralPath (Join-Path $plugin 'CHANGELOG.md') -Destination $root -Force
+    # The dist zips matter: the version-discipline check looks for a file named for the
+    # version in the descriptor, and a mutant root with an empty dist\ would fail that
+    # check as well and muddy which check caught the injected defect.
+    Get-ChildItem -LiteralPath (Join-Path $plugin 'dist') -Filter '*.zip' -File -ErrorAction SilentlyContinue |
+        ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $root 'dist') -Force }
+    $jar = Join-Path $root 'dist\vela\lib\vela-idea-plugin.jar'
+    & $java -cp $tools JarTool create $jar --root $classes --root $res | Out-Null
+    return @{ Root = $root; Jar = $jar }
+}
+
 function New-MutatedJar([string] $name, [string] $patched) {
-    $dir = Join-Path $scratch $name
-    New-Item -ItemType Directory -Force -Path (Join-Path $dir 'META-INF') | Out-Null
-    New-Item -ItemType Directory -Force -Path (Join-Path $dir 'icons') | Out-Null
-    [System.IO.File]::WriteAllText((Join-Path $dir 'META-INF\plugin.xml'), $patched, (New-Object System.Text.UTF8Encoding($false)))
-    Copy-Item -LiteralPath (Join-Path $resSrc 'META-INF\pluginIcon.svg') -Destination (Join-Path $dir 'META-INF\pluginIcon.svg') -Force
-    Copy-Item -LiteralPath (Join-Path $resSrc 'icons\vela.svg') -Destination (Join-Path $dir 'icons\vela.svg') -Force
-    $jar = Join-Path $scratch "$name.jar"
-    & $java -cp $tools JarTool create $jar --root $classes --root $dir | Out-Null
-    return $jar
+    return (New-MutantRoot $name $patched).Jar
 }
 
 function Invoke-Verifier([string] $jar, [string] $log) {
+    $mutantRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $jar))
     & $java -cp $tools VerifyPlugin $jar $cp $repo *>&1 | Tee-Object -FilePath $log | Out-Null
     return $LASTEXITCODE
 }

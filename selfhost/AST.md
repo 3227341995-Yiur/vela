@@ -60,7 +60,6 @@ than a thousand lines (the declaration moved into the driver's `main`, so the nu
 is not even in the same function any more). The reliable way to find a thing named
 here is to search for the **name**, not the number; where a symbol is named in a
 table, treat the number as the era it came from and let the name do the work.
-above is the resolvable half of a spread sample, not the whole document.)
 
 ---
 

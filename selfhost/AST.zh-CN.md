@@ -4,8 +4,8 @@
 
 <!--
 源文件 : AST.md
-源文件字节 : 33923
-源文件 SHA256 : 81c3b7c2ad3fdadfa0e67535d0a50ae764427b38b7a1cb1c35536455d60dfacd
+源文件字节 : 33849
+源文件 SHA256 : cc2eb7aefe4682177b3a4da1a2eb40bcbfdf712b176ffcd591ebd285518aa086
 翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -50,11 +50,22 @@
 
 | 池 | 声明 | 类型 | 容量 | 已用元素 |
 |---|---|---|---|---|
-| nodes | `vm_main.vel:59` | `Array[int, 655360]` | 655360 ints = 65536 nodes × stride 10 | ≤ 65536 (`parser.vel:91`) |
-| tokens | `vm_main.vel:57` | `Array[int, 393216]` | 393216 ints = 65536 tokens × stride 6 | ≤ 65536 (`vela.vel:295`) |
+| nodes | `vm_main.vel:59` | `Array[int, 655360]` | 655360 ints = 65536 nodes × stride 10 | ≤ 65536（`parser.vel:120`） |
+| tokens | `vm_main.vel:57` | `Array[int, 786432]` | **786432 ints = 131072 tokens × stride 6** | ≤ 131072（`vela.vel:326`） |
 | token 浮点数 | `vm_main.vel:58` | `Array[float, 65536]` | 65536 | 每个 FLOAT token 一个 |
-| types | `vm_main.vel:60` | `Array[int, 262144]` | 262144 ints = 65536 types × stride 4 | ≤ 65536 (`parser.vel:241`) |
-| floats | `vm_main.vel:61` | `Array[float, 65536]` | 65536 | ≤ 65536 (`parser.vel:229`) |
+| types | `vm_main.vel:60` | `Array[int, 262144]` | 262144 ints = 65536 types × stride 4 | ≤ 65536（`parser.vel:270`） |
+| floats | `vm_main.vel:61` | `Array[float, 65536]` | 65536 | ≤ 65536（`parser.vel:258`） |
+
+**token 池装的是 131072 个 token，不是 65536 个，而且它并不是先拦住你的那道墙。** 描述它的有三个数字，而它们不是同一个数字：`vm_main.vel:57` 里的 `Array[int, 786432]` 是一个*声明*，步长是 **6**（§4），而实际生效的上限是 `cx.ntok >= 131072`——`push_tok` 里的 `report(cx, "too many tokens")`（`vela.vel:326`），那是**唯一**会触发的检查。本表*已用元素*那一列里、以及本文档更早版本里的 65536，是这个池子在被加倍之前的尺寸：`vela.vel:59`–`:62` 记录了这一改动（"It was 65536 until the compiler's own source passed" 与 "the number is now twice what `selfhost/vm.vel` needs"）。要从本文档给一个 token 缓冲区定尺寸的读者，必须按 **131072 × 6 ints** 来定；按 65536 定会截断一个编译器能接受的文件。
+
+**容量从哪来，按那唯一一种能决定事情的顺序排列。** 一个池子可用的元素个数由四个彼此独立的表达式里**最小的那个**固定下来；当它们不一致时，真正的限制是**实际生效的守卫**而不是声明的数组——而当两个守卫彼此不一致时，**解析器对节点/类型/浮点数的守卫，在同一个程序上比词法分析器的 token 守卫更紧**，因为每个守卫数的是不同的东西：
+
+1. 声明的数组长度（`vm_main.vel:57`–`:61`）；
+2. 步长（节点是 `parser.vel:12`–`:15` 的 10，token 是 `vela.vel:49` 的 6，类型是 `parser.vel:56` 的 4）；
+3. 写进分配函数里的守卫——`new_node` 的 `n >= 65536`（`parser.vel:120`）、`push_tok` 的 `cx.ntok >= 131072`（`vela.vel:326`）、`ty_add` 的 `i >= 65536`（`parser.vel:270`）、`flt_add` 的 `i >= 65536`（`parser.vel:258`），以及 `name_id` 的名字表容量 `VELA_INTERN_CAP 8192`（`runtime/vela_runtime.h:431`）；
+4. 一个程序实际先撞上的那一个——对编译器自己的源码来说，就是那次构建过程中先撞上的那个。
+
+所以优先顺序是**守卫高于声明，更紧的守卫高于更松的那个**——而这一句正是本文档更早的版本缺少的，那个 65536 就是这样在池子被加倍之后活了下来。
 
 **步长是 10**（`parser.vel:11`、`parser.vel:95`）：节点 `n` 占据 `nd[n*10 .. n*10+9]`。`new_node`（`parser.vel:89`）按顺序分配——`n = cx.ni`，然后 `cx.ni += 1`（`parser.vel:106`）——并返回 `n`。节点 0 永远是模块节点（`parser.vel:1238`；`dump_module` 从那里开始，`dump.vel:542`），它在任何语句之前被分配。因此节点下标按*完成*顺序增长：一个嵌套块会在包住它的 `if`/`def`/`while`/`for` 节点被创建之前完成（`parser.vel:526`、`:585`、`:604`、`:679`），而表达式操作数得到的下标比它们的运算符节点更小（`parser.vel:946`、`:964`）。下标顺序不是遍历顺序。
 
