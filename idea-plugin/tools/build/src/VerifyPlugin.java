@@ -1158,38 +1158,58 @@ public final class VerifyPlugin {
             Files.copy(helloSrc, hello, StandardCopyOption.REPLACE_EXISTING);
 
             // --- smoke: build it, run it, and require the program's own words
+            //
+            // A FAILED BUILD MUST NOT HIDE A STATIC CHECK.  This used to `return` here,
+            // which aborted the rest of the section -- including `emitterHeaderContract`
+            // below, which compares two texts and needs no C compiler at all.  Measured:
+            // `negative-tests.ps1` case I4 renames `vela_bounds_check` in
+            // runtime/vela_runtime.h, the build does fail (correctly), and the contract
+            // check that exists for exactly that drift never ran; the case was reported
+            // MISSED with the verifier having exited 1 for a different reason.  So the
+            // build result is remembered and the checks that genuinely need a built
+            // executable are skipped, while the static ones still run.
             String[] build = runVm(repoRoot, vm, scratch, "hello-build", "build", hello.toString());
-            if (!"0".equals(build[0])) {
+            boolean smokeOk = "0".equals(build[0]);
+            if (!smokeOk) {
                 fail("vm.exe build examples/hello.vel exits " + build[0] + ": " + firstLine(build[2])
                         + "  [check smoke: read from the compiler's stderr; while this fails, no program in "
                         + "the repository can be run from the IDE either]");
-                return;
             }
             Path exe = scratch.resolve("hello.exe");
-            if (!Files.isRegularFile(exe)) {
+            if (smokeOk && !Files.isRegularFile(exe)) {
                 fail("vm.exe build examples/hello.vel exited 0 but wrote no " + exe.getFileName()
                         + " beside the source");
-                return;
+                smokeOk = false;
             }
-            String[] run = runVm(repoRoot, exe, scratch, "hello-run");
-            boolean said = run[1].contains("hello from Vela") && run[1].contains("sum 0..99 = 4950");
-            if (!"0".equals(run[0]) || !said) {
-                fail("the compiled examples/hello.vel exits " + run[0] + " and printed " + quote(run[1])
-                        + "; expected exit 0 and the lines \"hello from Vela\" and \"sum 0..99 = 4950\" "
-                        + "[check smoke]");
+            String[] run = new String[]{"-1", ""};
+            boolean said = false;
+            if (smokeOk) {
+                run = runVm(repoRoot, exe, scratch, "hello-run");
+                said = run[1].contains("hello from Vela") && run[1].contains("sum 0..99 = 4950");
+                if (!"0".equals(run[0]) || !said) {
+                    fail("the compiled examples/hello.vel exits " + run[0] + " and printed " + quote(run[1])
+                            + "; expected exit 0 and the lines \"hello from Vela\" and \"sum 0..99 = 4950\" "
+                            + "[check smoke]");
+                } else {
+                    System.out.println("    OK  " + pad("build+run examples/hello.vel", 46)
+                            + " exit 0, ran, printed both fixed lines");
+                }
             } else {
-                System.out.println("    OK  " + pad("build+run examples/hello.vel", 46)
-                        + " exit 0, ran, printed both fixed lines");
+                System.out.println("    --  " + pad("build+run examples/hello.vel", 46)
+                        + "SKIPPED: the build failed, so there is no executable to run"
+                        + " (the static emitter/header contract below still runs)");
             }
 
             // --- parity: compiled output == interpreted output, byte for byte
-            String[] interp = runVm(repoRoot, vm, scratch, "hello-interpreted", "run", hello.toString());
-            if (!run[1].equals(interp[1])) {
-                fail("compiled and interpreted examples/hello.vel disagree [check parity]: compiled "
-                        + quote(run[1]) + " interpreted " + quote(interp[1]));
-            } else {
-                System.out.println("    OK  " + pad("hello.vel compiled == interpreted", 46)
-                        + " same " + interp[1].length() + " byte(s) of stdout");
+            if (smokeOk) {
+                String[] interp = runVm(repoRoot, vm, scratch, "hello-interpreted", "run", hello.toString());
+                if (!run[1].equals(interp[1])) {
+                    fail("compiled and interpreted examples/hello.vel disagree [check parity]: compiled "
+                            + quote(run[1]) + " interpreted " + quote(interp[1]));
+                } else {
+                    System.out.println("    OK  " + pad("hello.vel compiled == interpreted", 46)
+                            + " same " + interp[1].length() + " byte(s) of stdout");
+                }
             }
 
             Path parity = scratch.resolve("parity.vel");
@@ -1211,6 +1231,10 @@ public final class VerifyPlugin {
             }
 
             // --- contract: every vela_* the emitted C calls must be defined
+            //
+            // Static, and therefore last and unconditional: it reads the emitted C and
+            // the runtime header as text, so it is the one check in this section that is
+            // still answerable when the toolchain is broken -- which is when it matters.
             emitterHeaderContract(repoRoot, vm, scratch, hello, "hello");
             emitterHeaderContract(repoRoot, vm, scratch, parity, "parity");
         } catch (Exception e) {

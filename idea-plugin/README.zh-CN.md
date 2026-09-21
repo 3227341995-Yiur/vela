@@ -4,8 +4,8 @@
 
 <!--
 源文件 : README.md
-源文件字节 : 18050
-源文件 SHA256 : eb3da2e0d02805a0e62b2c13b36f54acbb93ad98a9486efa0412f84af32ecf92
+源文件字节 : 19131
+源文件 SHA256 : d332bd4ad01fdc5d8203b330810f46decf4dd9a0d82408bd10080c3aef28f76e
 翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -64,8 +64,8 @@ cd idea-plugin
 | 层次 | 它证明什么 |
 |---|---|
 | 1 结构 | `META-INF/plugin.xml`、两个图标，以及 jar 里为 `plugin.xml` 中*任何*携带类的属性所命名的每一个 FQN 都有一个 `.class`（`implementationClass`、`instance`、`factoryClass`、`class`、`implementation`、`serviceImplementation`） |
-| 2 字节码 | 82 个 class 文件，最高的 class-file 主版本 65（Java 21） |
-| 3 平台 | 已安装 IDE 自己的描述符被读取并建索引——1987 个 jar 里的 2215 个 XML 描述符，给出 279 个插件/模块 id、1386 个扩展点 id 和 4662 个动作/组 id |
+| 2 字节码 | 148 个 class 文件，最高的 class-file 主版本 65（Java 21）——在 2026-09-22 00:26 的 0.1.4 构建上实测 |
+| 3 平台 | 已安装 IDE 自己的描述符被读取并建索引——2356 个 jar 里的 2705 个 XML 描述符，给出 297 个插件/模块 id、1773 个扩展点 id 和 5277 个动作/组 id（0.1.4 构建） |
 | 4 扩展 | 每一个 `<extensions>` 条目都命名一个已安装平台声明的扩展点，或者另一个已安装插件在其下注册了扩展的扩展点 |
 | 5 depends | 每一个 `<depends>` 模块都是已安装平台提供的 |
 | 6 文件类型 | `<fileType extensions="vel;vela">`、`VelaFileType.getDefaultExtension() = vel`、`EXTENSIONS = [vel, vela]`、`isVelaFileName("x.vel")` / `("x.vela")`；以及每一个 `language="..."` 属性都等于这个文件类型所绑定到的语言的 id |
@@ -84,7 +84,20 @@ cd idea-plugin
 
 两条路线，被指名而不是被混为一谈：结构、字节码和链接由加载构建出来的 jar 来证明；扩展点、模块 id 和动作组 id 由已安装 IDE 自己的描述符来证明——那是一次*描述符扫描*，不是一个活的 `ActionManager`，因为平台的 `ActionManager` 和扩展注册表需要一个启动起来的应用，无法无头地被问。因此只在代码里注册的一个组 id 会被报为未知。
 
-**当前判定**（`build\logs\verify.log`）：**60 OK, 0 FAIL, RESULT: PASS**，脚本退出 0，对着 `dist\vela\lib\vela-idea-plugin.jar`（180 613 字节）和 `dist\vela-idea-plugin-0.1.1.zip`（169 056 字节），19 个 Kotlin 源文件，以及 `no warnings, no errors`。
+**当前判定，0.1.4——是重新测量的，不是照搬下来的。** 下面每一个数字都是从 2026-09-22 00:26 那次构建里读回来的，并且带着它所属的版本被点名，因为这个块曾经连续三个发布都写着 `0.1.1` 和 `60 OK`，而 `dist\` 里放着的是 `0.1.3`——这正是那种读者有资格为之生气的过期行：
+
+```
+build-offline.ps1            exit 0, RESULT: PASS, 154 OK, 0 FAIL   (build\logs\verify.log)
+                             checked at 2026-09-22T00:26:15
+artifact                     dist\vela\lib\vela-idea-plugin.jar   344 626 bytes
+                             dist\vela-idea-plugin-0.1.4.zip      324 198 bytes
+sources                      36 Kotlin file(s) -> 148 class file(s), highest major 65 (Java 21)
+compiler warnings            none ("no warnings, no errors")
+dead classes                 0 (98 concrete top-level classes: 29 named by plugin.xml, 69 reached)
+surface inventory            build\logs\surface.txt (36 fact(s))
+```
+
+`0.1.1` 的记录，用于历史而不是用于当前声称：60 OK、jar 180 613 字节、`dist\vela-idea-plugin-0.1.1.zip` 169 056 字节、19 个 Kotlin 源文件。那个 `0.1.1` 的 zip 仍然在 `dist\` 里，这就是为什么版本必须在这个块里被点名，而不是从目录里推断。
 
 验证器读的那份清单——每一个扩展点 id 连同它命名的类、那个动作、`add-to-group` 的目标、文件类型的后缀和它的默认扩展名——被写到 `build\logs\surface.txt`，每行一条排好序的事实。一份摘要可以引用它而不是誊抄它，而对 `plugin.xml` 的下一次改动会与上一次验证过的运行做 diff。
 
@@ -125,7 +138,7 @@ build-offline.ps1                      (IntelliJ 2026.2, the artifact in dist\)
 这**不能**证明什么：在两个 IDE 里的运行时行为。对着两个平台编译和链接说明插件命名的每一个类和成员在两者里都存在；它对那些 API 在 IDE 跑起来之后干什么什么都不说。那个缺口就是下面“离线检查不覆盖什么”里点名的那个。（上面那些 253 的数字是在 `runConfigurationProducer` 那项工作落地之前、那棵树当时的形状上测的；那两条命令会对最终形状重跑一遍，而这个块会用结果更新。）
 
 
-用 **设置 → 插件 → ⚙ → 从磁盘安装插件…** 安装，选 `dist\vela-idea-plugin-0.1.1.zip`（或者把 IDE 指向解包后的 `dist\vela\`）。`plugin.xml` 命名的每一个类都从构建出来的 jar 里加载出来，并对着它将运行于其中的平台做链接——否则那个失败只表现为“插件没有加载”，对原因没有任何解释。
+用 **设置 → 插件 → ⚙ → 从磁盘安装插件…** 安装，选 `dist\vela-idea-plugin-0.1.4.zip`（或者把 IDE 指向解包后的 `dist\vela\`）。`plugin.xml` 命名的每一个类都从构建出来的 jar 里加载出来，并对着它将运行于其中的平台做链接——否则那个失败只表现为“插件没有加载”，对原因没有任何解释。
 
 ### 其他地方：Gradle
 

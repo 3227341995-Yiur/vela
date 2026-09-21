@@ -4,8 +4,8 @@
 
 <!--
 源文件 : CHANGELOG.md
-源文件字节 : 17195
-源文件 SHA256 : e63e3ade20bd458b4d41ba8dc590bab9130442d80688b93a3685a65d0ef867ba
+源文件字节 : 17700
+源文件 SHA256 : 3d16f921eec59c5f4db7aabfb97dc4c77369b62fe7c0f0c77740a503f3f1a91b
 翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -219,7 +219,12 @@ object 一直非空），而它在那整项工作期间都是死的。`idea-plug
 ## 0.1.1 —— 构建过并验证过
 
 - 文件类型只有 `extensions="vela"`。这个仓库里每一个 Vela 文件都以 `.vel` 结尾，所以
-  插件在一个真实的文件上什么都没做。现在是 `vela;vela`。
+  插件在一个真实的文件上什么都没做。现在描述符读作 `extensions="vel;vela"`，而
+  `VelaFileType.EXTENSIONS` 是 `[vel, vela]`，`getDefaultExtension()` 返回 `vel`
+  ——由 `VerifyPlugin` 第 6 节实测，它从 jar 的描述符里读出那个属性，并从加载出来的
+  类里读出那两个常量。（这条记录到 0.1.4 之前一直写着 `vela;vela`：这里第一个后缀是
+  错的，而 `plugin.xml`、`README.md` 和那个类本身说的都是 `vel`。是按测量更正的，
+  不是按哪种拼法先出现更正的。）
 - `<add-to-group group-id="Vela.BuildAndRun">` 把一个*动作*当成组来命名：平台记录了
   `SEVERE ... should be instance of DefaultActionGroup`，而两个动作都没进过任何菜单。
   改成一个动作，放进平台自己的 `NewGroup`。
