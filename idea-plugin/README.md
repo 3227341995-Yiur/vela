@@ -112,10 +112,10 @@ while `dist\` held `0.1.3`, which is the kind of stale line a reader is entitled
 to be angry about:
 
 ```
-build-offline.ps1            exit 0, RESULT: PASS, 154 OK, 0 FAIL   (build\logs\verify.log)
-                             checked at 2026-09-22T00:26:15
-artifact                     dist\vela\lib\vela-idea-plugin.jar   344 626 bytes
-                             dist\vela-idea-plugin-0.1.4.zip      324 198 bytes
+build-offline.ps1            exit 0, RESULT: PASS   (build\logs\verify.log)
+artifact                     dist\vela\lib\vela-idea-plugin.jar   344 619 bytes
+                             dist\vela-idea-plugin-0.1.4.zip      324 186 bytes
+                             sha256 a02f79759ea8a7b917f530a772b2a2b179dedcaed19dc6b059e31c563abc3033
 sources                      36 Kotlin file(s) -> 148 class file(s), highest major 65 (Java 21)
 compiler warnings            none ("no warnings, no errors")
 dead classes                 0 (98 concrete top-level classes: 29 named by plugin.xml, 69 reached)
@@ -169,28 +169,40 @@ platform jars):
 compile against PyCharm 2025.3 (253),  139 jars  -> rc=0, no errors
 compile against IntelliJ IDEA 2026.2 (262), 429 jars -> rc=0, no errors, no warnings
 
-build-offline.ps1 -PlatformHome "D:\JetBrains\PyCharm 2025.3"
-    RESULT: PASS, 68 checks, exit 0   (build\logs\verify-253.log)
-    verified against 253's own descriptors: 1166 descriptors out of 880 jars,
-    863 extension points, 4255 action/group ids
-    jar 151 436 bytes, zip 142 075 bytes
+build-offline.ps1 -PlatformHome "D:\JetBrains\PyCharm 2025.3"      (0.1.4, re-measured)
+    RESULT: PASS, exit 0              (build\logs\verify-253.log)
+    139 jars on the compile classpath; verified against 253's own descriptors:
+    1656 descriptors out of 1249 jars, 246 plugin/module ids, 1259 extension points,
+    4879 action/group ids, 1079 required contract types
+    jar 344 574 bytes, zip 324 147 bytes
+    sha256 of that zip: b43c480b71e59843b85002e183cc1aa04f38b4eeb03d8926ef9d5bccda206fc2
 
-build-offline.ps1                      (IntelliJ 2026.2, the artifact in dist\)
-    RESULT: PASS, 68 checks, exit 0   (build\logs\verify.log)
-    jar 151 445 bytes, zip 142 081 bytes
+build-offline.ps1                      (IntelliJ 2026.2 -- the artifact in dist\)
+    RESULT: PASS, exit 0              (build\logs\verify.log)
+    429 jars on the compile classpath; 2705 descriptors out of 2356 jars,
+    297 plugin/module ids, 1773 extension points, 5277 action/group ids
+    jar 344 619 bytes, zip 324 186 bytes
+    sha256 of that zip: a02f79759ea8a7b917f530a772b2a2b179dedcaed19dc6b059e31c563abc3033
 ```
 
-And the other direction: the jar built against 253 passes the same 68 checks
-against the 262 platform (`build\logs\verify-253jar-on-262.log`), so an artifact
-from either toolchain links against both.
+**This block was a promise until 0.1.4, and keeping it found a real defect.** The two
+commands above are now actually re-run against the final shape, and the first re-run
+**failed**: PyCharm 2025.3 rejected the sources with
+`VelaRunConfig.kt:569:31: error: unresolved reference 'isSystem'` --
+`ProcessOutputType.isSystem(Key)` exists in 262 and not in 253, so the sources did not
+compile against the platform `plugin.xml` claims to support and `since-build="253"` was
+**false**. The line now asks the same question with an identity comparison
+(`outputType === ProcessOutputType.SYSTEM`), which exists on both platforms and cannot
+throw the way `ProcessOutputType.fromKey` does. Both builds pass above, from this same
+tree. The two jars differ by 45 bytes (compiler metadata), which is why both sizes are
+quoted rather than one standing for both.
 
 What this does **not** prove: runtime behaviour in either IDE.  Compiling and
 linking against both platforms says that every class and member the plugin names
 is present in both; it says nothing about what those APIs do once the IDE is
 running.  That gap is the one named in "What the offline checks do not cover", below.
-(The 253 numbers above were measured on the tree as it stood before the
-`runConfigurationProducer` work landed; the same two commands are re-run against
-the final shape, and this block is updated with the result.)
+(Both blocks above were re-measured against the final shape as of 0.1.4; the note
+under them is where the `isSystem` defect was found.)
 
 
 Install with **Settings → Plugins → ⚙ → Install Plugin from Disk…**, pick

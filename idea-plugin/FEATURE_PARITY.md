@@ -89,7 +89,7 @@ harness run, in `build\evidence\`).
 | 2 | lexer | the lexer lives inside `PythonParserDefinition`; not an extension | implemented | `VelaLanguage.kt` (`VelaLexer`) | `[harness]` `FeatureProbe` §1: **180,497 tokens over 194 files**, 12 distinct element types, every one produced from real source |
 | 3 | syntax highlighting | `<lang.syntaxHighlighterFactory language="Python" implementationClass="com.jetbrains.python.highlighting.PySyntaxHighlighterFactory" />` (4 `syntaxHighlighterFactory` in `ce-plugin.xml`) | implemented | `VelaHighlighting.kt` | `[harness]` `FeatureProbe` §1: **12 of 12** token types the lexer emits get a non-empty `TextAttributesKey[]`; 0 types would be drawn uncoloured. `[registration]` `<lang.syntaxHighlighterFactory>` |
 | 4 | semantic highlighting | 14 `<annotator>` entries in `ce-plugin.xml` (e.g. `PyKeywordHighlightingAnnotator`, `PySyntaxAnnotator`) plus the type system (`Pythonid.typeProvider`, `pyClassMembersProvider`, `pyModuleMembersProvider` — extension points the plugin *declares* for others) | implemented | `VelaSemanticHighlighting.kt` | `[harness]` `FeatureProbe` §4: **15,467 name uses** classified across 7 kinds (FIELD 787, FUNCTION_CALL 4826, FUNCTION_DECLARATION 1030, PARAMETER 2733, STRUCT_DECLARATION 28, STRUCT_USE 231, TYPE 5832), 0 unclassified, and the per-offset lookup `classify(text, offset)` agrees with `classifyAll` on **all 15,467**. `[registration]` `<annotator>` |
-| 5 | real PSI parser | `<lang.parserDefinition language="Python" implementationClass="com.jetbrains.python.PythonParserDefinition" />`; plus `<lang.ast.factory language="Python" …PythonASTFactory />` and `<stubElementTypeHolder class="com.jetbrains.python.PyStubElementTypes" externalIdPrefix="py." />` | implemented | `VelaParserDefinition.kt`, `VelaSyntax.kt`, `VelaNodeTypes.kt` | `[harness]` `ast-diff.ps1`: **108 files identical to `vm.exe parse`, 119,923 node lines**, exact string equality line for line, with a self-test that rejects a wrong tree (`6 cross pairs, 6 detected as different, 0 missed`). `[harness]` `psi-tree-diff.ps1`: **125 of 126 files** replayed through the platform's own `PsiBuilderImpl`, leaves tile the text exactly, every non-trivia leaf is a token the parser claimed |
+| 5 | real PSI parser | `<lang.parserDefinition language="Python" implementationClass="com.jetbrains.python.PythonParserDefinition" />`; plus `<lang.ast.factory language="Python" …PythonASTFactory />` and `<stubElementTypeHolder class="com.jetbrains.python.PyStubElementTypes" externalIdPrefix="py." />` | partial | `VelaParserDefinition.kt`, `VelaSyntax.kt`, `VelaNodeTypes.kt` | `[harness]` `ast-diff.ps1`: **114 files identical to `vm.exe parse`, 121,856 node lines**, exact string equality line for line, `VERDICT: PASS` with 0 different / 0 suspect / 0 missing / 0 crashed and 12 files the compiler refuses (all 12 of which this parser also refuses); plus a self-test that rejects a wrong tree (`6 cross pairs, 6 detected as different, 0 missed`). `[harness]` `psi-tree-diff.ps1`: **125 of 126 files** replayed through the platform's own `PsiBuilderImpl`, leaves tile the text exactly — with one FAIL on `tests/build/lexer_error.vel`, whose unterminated string makes the replay pull in a `VELA_STRING` leaf the parser never claimed. See open defect 1; the row is `partial` because of it |
 | 6 | syntax error highlighting | `<annotator language="Python" implementationClass="com.jetbrains.python.validation.PySyntaxAnnotator" />` | implemented | `VelaParserDefinition.kt` (`PsiBuilder.error` during the replay), `VelaAnnotator.kt` | `[harness]` `psi-tree-diff.ps1` asserts that a parser problem produces an error element in the platform tree (`VELA_ERROR` / `ERROR_ELEMENT`); files where the parser reported a problem: 20. `[harness]` VerifyPlugin §9: problems parsed out of the compiler's own output with kind, message and line |
 | 7 | code completion (incl. after `.`) | 28 `<completion.contributor language="Python" …>` in `ce-plugin.xml`; member completion after `.` comes from `PyClassMembersProvider` / `pyModuleMembersProvider` | partial | `VelaCompletion.kt` | `[registration]` `<completion.contributor language="Vela">`. **No behavioural measurement exists**: nothing in `idea-plugin\` drives the completion contributor headlessly. This row is registered and compiled, and that is all that is claimed |
 | 8 | hover documentation | `<lang.documentationProvider language="Python" id="pythonDocumentationProvider" implementationClass="com.jetbrains.python.documentation.PythonDocumentationProvider" />` (4 entries), plus `pythonDocumentationQuickInfoProvider` | partial | `VelaDocumentation.kt` | `[registration]` `<lang.documentationProvider language="Vela">`. Not measured headlessly |
@@ -129,15 +129,15 @@ should do, and each says plainly how far it actually goes.
 
 | state | rows | which |
 |---|---|---|
-| `implemented` | **19** | 1, 2, 3, 4, 5, 6, 10, 13, 15, 16, 17, 18, 20, 21, 22, 24, 25, 26, 27 |
-| `partial` | **7** | 7 completion, 8 hover, **9 parameter info**, 11 find usages, 12 rename, 14 inspections/quick fixes, 19 typed/enter handler |
+| `implemented` | **18** | 1, 2, 3, 4, 6, 10, 13, 15, 16, 17, 18, 20, 21, 22, 24, 25, 26, 27 |
+| `partial` | **8** | **5 PSI parser**, 7 completion, 8 hover, **9 parameter info**, 11 find usages, 12 rename, 14 inspections/quick fixes, 19 typed/enter handler |
 | `missing` | **0** | — |
 | `refused-deliberately` | **1** | 23 debugger |
-| total | **27** | `19 + 7 + 1 + 0 = 27` |
+| total | **27** | `18 + 8 + 1 + 0 = 27` |
 
-Row 9 moved from `implemented` to `partial` during this round, because its own evidence
-said 30 hint positions are wrong and 125 cannot be judged. A row is not `implemented`
-while its own verifier is red.
+Two rows moved from `implemented` to `partial` during this round, each because its own
+evidence went red: row 5 (`psi-tree-diff` 125 of 126, one FAIL) and row 9 (`HintDiff` 30
+positions wrong, 125 unjudged). A row is not `implemented` while its own verifier is red.
 
 ### Rows backed by a harness vs by a registration only
 
@@ -169,13 +169,17 @@ the **retired** implementation it replaced:
 
 Neither the compiler nor any other authority defines a fold region list or a symbol
 list, so a difference here is **not** a correctness failure and must not be reported
-as one. Both numbers are non-zero and this is the first run in which either tool
-reached the end of the corpus:
+as one. Both numbers are non-zero. (Until this round neither tool had ever reached the
+end of the corpus: `harness.ps1 -Tool All` sat on `HintShapes` for over 50 minutes
+because its prefix sweep was O(size²) over a 400 KB file, so these two tools never ran
+in an `All` pass at all and their absence from the evidence read as their agreement.
+`HintShapes` now sweeps at most 256 prefixes per file — 5,797 runs — and an `All` pass
+completes in under four minutes.)
 
 | tool | files compared | identical | differ | what the differences are |
 |---|---|---|---|---|
-| `SymbolDiff` | 125 | 85 | **40** | the tree model lists `extern` function declarations (e.g. `sqrt(x: float) -> float` at `tests/build/extern/extern_c_probe.vel:15`) that the retired token scan does not see at all. That is the tree model gaining a declaration you can navigate to |
-| `FoldDiff` | 125 | 64 | **61** | the tree folds a whole body from its opening `{` to its `}` (`[29,103)`, 5 lines, `tests/build/recursion_fib.vel`); the brace matcher folded only inner blocks (`[44,66)`, 2 lines). The tree's shape is the one PyCharm uses for a method body |
+| `SymbolDiff` | 126 | 86 | **40** | the tree model lists `extern` function declarations (e.g. `sqrt(x: float) -> float` at `tests/build/extern/extern_c_probe.vel:15`) that the retired token scan does not see at all. That is the tree model gaining a declaration you can navigate to |
+| `FoldDiff` | 126 | 64 | **62** | the tree folds a whole body from its opening `{` to its `}` (`[29,103)`, 5 lines, `tests/build/recursion_fib.vel`); the brace matcher folded only inner blocks (`[44,66)`, 2 lines). The tree's shape is the one PyCharm uses for a method body |
 
 Both differences are enumerated in full, file and region, in
 `build\evidence\harness-0.1.4.txt`. The honest statement is: **the shipping side is
@@ -185,12 +189,100 @@ examples above rather than by measurement** — there is no external authority t
 measure it against. What the tools *do* guarantee is that the difference set is
 printed and counted, so it cannot change silently.
 
+## The coverage triple for every harness, in one place
+
+Every verifier in this plugin ends with `COVERAGE: ran N / skipped M (categorised) / wrong K`, and
+every skip category is declared up front so a declared-and-zero category is printed rather than
+omitted. From the final `harness.ps1 -Tool All` pass plus the two drivers, on the 0.1.4 build:
+
+| tool | exit | coverage triple | verdict |
+|---|---|---|---|
+| `ast-diff.ps1` | 0 | `ran 114 / skipped 12 (compiler-refused 12, too-large 0, missing-corpus-file 0, compiler-crashed 0) / wrong 0` | PASS -- 121,856 node lines identical |
+| `psi-tree-diff.ps1` | 1 | `ran 125 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0) / wrong 1` | FAIL -- open defect 1 |
+| `GotoOracle` | 0 | `ran 24683 / skipped 21566 (crashed-file 0, compiler-refused 21557, invisible-member 9, ambiguous 0) / wrong 0` | clean, and no longer clean-by-omission |
+| `HintDiff` | 1 | `ran 29006 / skipped 127 (compiler-cannot-parse 2, arg-boundary-disagreement 125) / wrong 30` | FAIL -- open defect 2 |
+| `HintNames` | 1 | `ran 1745 / skipped 2 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 2, too-large 0) / wrong 1` | one disagreement, below |
+| `HintShapes` | 0 | `ran 5797 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 0` | clean -- 0 labels that are not plain identifiers |
+| `HintDupes` | 0 | `ran 1745 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 0` | clean -- no repeated or empty parameter name |
+| `SymbolDiff` | 1 | `ran 86 / skipped 0 (threw 0, missing-corpus-file 0, too-large 0) / wrong 40` | regression detector, above |
+| `FoldDiff` | 1 | `ran 64 / skipped 0 (threw 0, missing-corpus-file 0, too-large 0) / wrong 62` | regression detector, above |
+| `FeatureProbe` | 0 | `ran 976 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) / wrong 0` | clean -- six features that had only a registration |
+
+`HintNames`'' one row, in full: ``tests/build/check_cases/unannotated_parameter.vel line 2 `f` tree=[] model=[n]``.
+That file is a compiler-refused case -- `def f(n)` with an unannotated parameter -- so the tree
+records no parameter and the symbol model reads `n` out of the detail text. On illegal Vela the
+tree''s reading is the defensible one, but the two sources disagree and the count says so rather
+than rounding to zero.
 ## Open defects, with the raw verdict line for each
 
 These are the rows that are **not** green, written down here rather than averaged
 away. Each one names the tool, the corpus, the raw line, and what is actually wrong.
 
-### 1. `HintDiff`: 30 argument positions get no parameter-name hint (row 9 → `partial`)
+### 0. The `since-build="253"` claim was false — FOUND AND FIXED this round
+
+The README carried a promise ("the same two commands are re-run against the final
+shape, and this block is updated with the result") that had never been kept. Keeping
+it produced a failure, not a confirmation:
+
+```
+build-offline.ps1 -PlatformHome "D:\JetBrains\PyCharm 2025.3"
+    kotlinc reported errors - each line below is `<file>:<line>: error: <message>`:
+    VelaRunConfig.kt:569:31: error: unresolved reference 'isSystem'.
+    ERROR: kotlinc failed
+```
+
+`ProcessOutputType.isSystem(Key)` exists in IntelliJ IDEA 2026.2 and **not** in
+PyCharm 2025.3 (253), so the sources did not compile against the platform
+`plugin.xml` declares, and `since-build="253"` was false. The line now asks the same
+question with an identity comparison (`outputType === ProcessOutputType.SYSTEM`),
+which exists on both platforms and cannot throw the way
+`ProcessOutputType.fromKey` does. Both builds now pass from this same tree:
+
+| toolchain | classpath | result | jar | zip | zip sha256 |
+|---|---|---|---|---|---|
+| PyCharm 2025.3 (253) | 139 jars | `RESULT: PASS` | 344,574 | 324,147 | `b43c480b71e59843b85002e183cc1aa04f38b4eeb03d8926ef9d5bccda206fc2` |
+| IntelliJ IDEA 2026.2 (262) | 429 jars | `RESULT: PASS` | 344,619 | 324,186 | `a02f79759ea8a7b917f530a772b2a2b179dedcaed19dc6b059e31c563abc3033` |
+
+The 262 zip is the shipped artifact (`dist\vela-idea-plugin-0.1.4.zip`); the 253 one is
+kept for the record at `build\evidence\artifact-0.1.4-253\`. This is the one defect in
+this list that is **closed**, and it was closed by keeping a promise rather than by
+weakening one.
+
+### 1. `psi-tree-diff.ps1`: 125 of 126 files — an unterminated string breaks the replay's own invariant (row 5 → `partial`)
+
+```
+RAW  :   tests/build/lexer_error.vel: leaf VELA_STRING at 31..38 is not a token this
+         parser claimed: `"hello)`
+         files replayed through the platform's builder : 126 of 126 in the corpus
+         ok 125   failed 1
+         VERDICT : FAIL
+         COVERAGE: ran 125 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0)
+```
+
+`tests/build/lexer_error.vel` is the file that `tests/cases.txt:174` had been naming
+while it did not exist — another track created it during this round, and it immediately
+found this. Its content is a deliberately unterminated string, and on it the scanner
+refuses to tokenise; the parser therefore keeps only the tokens before the failure,
+while `VelaLexer` produces one `VELA_STRING` token for the whole of `"hello)`. The
+replay's alignment (`alignEndAfter`, which snaps a node's end up to the lexer's token
+boundary so that a string element gets the text it denotes) then pulls that token into
+the tree, where `psi-tree-diff` asserts that every non-trivia leaf is a token the
+parser claimed — and it is not.
+
+**Which side is wrong is not yet decided.** The compiler and the plugin's parser agree
+with each other on this file (`ast-diff.ps1` counts it as `compiler refused`, and the
+parser also refused it — the two agree that the file is not legal Vela), so the plugin
+is not wrong about the *language*. It is inconsistent with *itself* about which lexer
+token covers an unterminated string. The consequence in an editor is small — the text
+is coloured as a string, and there is a leaf with no parser opinion about it — but the
+invariant the harness holds is broken, so the row is `partial` until it is either fixed
+or the expectation is restated with a reason.
+
+Note the shape of this one: the file was a `missing-corpus-file` defect an hour ago and
+is now a `FAIL` row. A corpus entry pointing at nothing was hiding a corpus entry that
+tests something.
+
+### 2. `HintDiff`: 30 argument positions get no parameter-name hint (row 9 → `partial`)
 
 ```
 TOOL     : HintDiff  (via harness.ps1 -Tool All)
@@ -232,7 +324,7 @@ own 400 KB of source that shows it — nothing in `examples/` or `tests/build/` 
 Deciding whether the fix belongs in the range scanner or in the declared-name reader
 is the next round's job; the reproduction is the six lines above.
 
-### 2. `HintDiff`: 125 argument positions the harness cannot judge
+### 3. `HintDiff`: 125 argument positions the harness cannot judge
 
 ```
 COVERAGE: ... skipped 127 (compiler-cannot-parse 2, arg-boundary-disagreement 125) ...
@@ -265,7 +357,7 @@ hint falls inside an outer argument's span (`print(len(a))`). Both were found by
 reading the raw rows, and both are written into the source as comments so the next
 change does not re-introduce them. The 30 that remain are not explained by either.
 
-### 3. The verifier's remaining hole, and the one it had
+### 4. The verifier's remaining hole, and the one it had
 
 `mutation-test.ps1` proves `VerifyPlugin` can fail: **13 mutants, 12 caught, 0 holes,
 1 control correct, 0 script/verdict problems**, baseline `RESULT: PASS`, published to
@@ -298,7 +390,7 @@ fixing two real verifier holes, both found by the negative test rather than by r
 Both are the same class of failure this project keeps paying for: a check that is green
 because its question was weaker than it looked.
 
-### 4. `GotoOracle`: the `extern` NullPointerException — fixed, and counted
+### 5. `GotoOracle`: the `extern` NullPointerException — fixed, and counted
 
 ```
 BEFORE: tests/probes/extern_calls_as_declared.vel: the oracle could not run:
@@ -317,12 +409,12 @@ with a clean verdict over nine files it had never judged — `tests/probes/exter
 two `tests/safety/cases/hole_*` files. `crashed-file 0` is the fix; a crash now makes
 the verdict say `NOT A PASS` and exits 3 instead.
 
-### 5. The corpus names a file that is not there — not this plugin's to fix
+### 6. The corpus named a file that was not there — now fixed by another track
 
 ```
-tests/build/lexer_error.vel: file not found, named by tests/cases.txt:174
-COVERAGE: ran 114 / skipped 12 (compiler-refused 11, too-large 0,
-          missing-corpus-file 1, compiler-crashed 0) / wrong 0
+COVERAGE: ran 114 / skipped 12 (compiler-refused 12, too-large 0,
+          missing-corpus-file 0, compiler-crashed 0) / wrong 0
+VERDICT : PASS   (126 files in the corpus, 121,856 node lines identical)
 ```
 
 108 files are byte-identical to `vm.exe parse` over 119,923 node lines, and the only

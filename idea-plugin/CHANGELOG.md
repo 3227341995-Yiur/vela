@@ -92,12 +92,16 @@ registered (or registered under the wrong attribute name). An entry that says
 - The four version locations read back at `0.1.4` (plugin.xml `<version>`,
   `build.gradle.kts` `version`, the dist zip's own name, the heading in this file).
 - `build-offline.ps1` exit 0, `RESULT: PASS`, and the artifact it wrote:
-  `dist\vela\lib\vela-idea-plugin.jar` **344,626 bytes** (sha256
-  `0a36128e032a1b4fbd67e82d9d2f3fffe827d5e8905db762ed0072e152f0896e`) and
-  `dist\vela-idea-plugin-0.1.4.zip` **324,198 bytes** (sha256
-  `55bf14a3b68e5ccc3486bf9a6ec669fd2ce1dc48c859881704616128cb1409f7`, one entry:
-  `vela/lib/vela-idea-plugin.jar`).  36 Kotlin sources, 145 class files, highest
+  `dist\vela\lib\vela-idea-plugin.jar` **344,619 bytes** (sha256
+  `db00087120f914ce7a76c49c540c69c969a2c08cc05b3186944fdf7058684415`) and
+  `dist\vela-idea-plugin-0.1.4.zip` **324,186 bytes** (sha256
+  `a02f79759ea8a7b917f530a772b2a2b179dedcaed19dc6b059e31c563abc3033`, one entry:
+  `vela/lib/vela-idea-plugin.jar`).  36 Kotlin sources, 148 class files, highest
   bytecode major 65 (Java 21).
+  These numbers moved twice during the round and both moves are recorded rather than
+  hidden: 344,626/324,198 (sha256 `55bf14a3...`) was the build before the `isSystem`
+  fix below, and 344,574/324,147 (sha256 `b43c480b...`) is the PyCharm 2025.3 build of
+  the same sources. Whatever a reader finds in `dist\` should match the first pair.
 - **What could NOT be verified about installability**: no IDE was launched, so
   "install this zip and it loads" is not measured here.  What *is* measured is
   everything short of that: the descriptor inside the jar is byte-identical to the
@@ -145,14 +149,55 @@ release note that only lists what went well is the thing this project keeps payi
    `selfhost/parts/*` and the same text again in `selfhost/vm.vel`. **Named, not
    fixed**, and it is why the parameter-hint row is `partial` in `FEATURE_PARITY.md`.
 
-2. **`AstDiff` is FAIL on one corpus entry that names a file which does not exist.**
-   `tests/cases.txt:174` names `tests/build/lexer_error.vel`; the file is not on disk.
-   With that one MISSING row aside the corpus is 108 files byte-identical to
-   `vm.exe parse` over 119,923 node lines, 0 differences. `tests/**` is another
-   track's, so it is reported with its manifest line and given its own exit code
-   (3 = corpus defect) instead of being folded into "the plugin is wrong" (exit 1).
+2. **`AstDiff` now PASSES, and it passes over a corpus that grew by six files.**
+   Final: `126 files in the corpus / 114 match (121 856 node lines) / 0 different /
+   0 suspect / 0 missing / 12 compiler refused (all 12 of which this parser also
+   refused) / 0 crashed / VERDICT: PASS`, exit 0. An hour earlier the same harness was
+   `FAIL` with `0 different` — the only non-match was `tests/cases.txt:174` naming
+   `tests/build/lexer_error.vel`, which did not exist. Another track created that file
+   during this round, which fixed the manifest and immediately exposed defect 3 below.
+   The harness now reports such an entry with its manifest line and its own exit code
+   (3 = corpus defect, 1 = the plugin is wrong), so the two can never be confused again.
 
-3. **`SymbolDiff` 40 files differ and `FoldDiff` 61 files differ**, both against this
+3. **`psi-tree-diff.ps1` fails 1 of 126 files, and the file that found it was a corpus
+   entry pointing at nothing.** Raw:
+
+   ```
+   tests/build/lexer_error.vel: leaf VELA_STRING at 31..38 is not a token this parser claimed: `"hello)`
+   files replayed through the platform's builder : 126 of 126;  ok 125  failed 1
+   VERDICT : FAIL
+   COVERAGE: ran 125 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0)
+   ```
+
+   `tests/cases.txt:174` named `tests/build/lexer_error.vel` while the file did not exist;
+   another track created it during this round and it immediately found this. On a file
+   whose scanner refuses (an unterminated string), the parser keeps only the tokens
+   before the failure, `VelaLexer` produces one `VELA_STRING` for the whole of `"hello)`,
+   and the replay's `alignEndAfter` pulls that token into the tree — where the harness
+   asserts every non-trivia leaf is a token the parser claimed. The compiler and the
+   parser *agree* that the file is not legal Vela, so the plugin is right about the
+   language and inconsistent with itself about which token covers an unterminated
+   string. Row 5 is `partial` until that is decided. A corpus entry pointing at nothing
+   was hiding a corpus entry that tests something.
+
+4. **`since-build="253"` was false, and it was found by keeping the README's promise.**
+   `build-offline.ps1 -PlatformHome "D:\JetBrains\PyCharm 2025.3"` failed with
+   `VelaRunConfig.kt:569:31: error: unresolved reference 'isSystem'` —
+   `ProcessOutputType.isSystem(Key)` exists in IntelliJ IDEA 2026.2 and not in PyCharm
+   2025.3, so the sources did not compile against the platform `plugin.xml` declares.
+   Fixed with an identity comparison (`outputType === ProcessOutputType.SYSTEM`), which
+   exists on both platforms and cannot throw the way `ProcessOutputType.fromKey` does.
+   Both builds now pass from this same tree: 253 -> jar 344 574 / zip 324 147
+   (sha256 `b43c480b71e59843b85002e183cc1aa04f38b4eeb03d8926ef9d5bccda206fc2`),
+   262 -> jar 344 619 / zip 324 186
+   (sha256 `a02f79759ea8a7b917f530a772b2a2b179dedcaed19dc6b059e31c563abc3033`, the
+   shipped artifact). **This is the one defect in this list that is closed.**
+
+5. **`HintNames`: one disagreement.** `tests/build/check_cases/unannotated_parameter.vel line 2 `f`  tree=[]  model=[n]`. That file is a compiler-refused case (`def f(n)` with an unannotated parameter), so the tree records no parameter and the symbol model reads `n` out of the detail text. On illegal Vela the tree is the defensible reading, but the two sources disagree and the count says 1 rather than 0.
+
+6. **`harness.ps1 -Tool All` could not finish, and that is why two of these numbers had never been produced.** `HintShapes` swept every 16-byte prefix of every file, which is O(size^2 / step): `selfhost/vm.vel` is about 400 KB, so one file cost ~25 000 parses of an average 200 KB document. Two separate `-Tool All` runs sat on `=== HintShapes` for over 50 minutes, which means `HintDupes`, `SymbolDiff`, `FoldDiff` and `FeatureProbe` **had never run in an `All` pass at all** - and their absence was being read as their agreement. The sweep is now bounded to at most 256 prefixes per file (`runs: 5797`, `too-large-for-prefix-sweep 4`, both printed) and an `All` pass completes in under four minutes.
+
+7. **`SymbolDiff` 40 files differ and `FoldDiff` 62 files differ**, both against this
    plugin's own *retired* implementations rather than against an authority (there is no
    authority: the compiler prints no fold regions and no symbol list). The differences
    are the replacement — the tree model lists `extern` declarations the token scan

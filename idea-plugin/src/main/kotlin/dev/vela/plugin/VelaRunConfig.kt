@@ -566,7 +566,19 @@ private class VelaProcessHandler(
             outputType == null -> ProcessOutputType.STDOUT
             ProcessOutputType.isStdout(outputType) -> ProcessOutputType.STDOUT
             ProcessOutputType.isStderr(outputType) -> ProcessOutputType.STDERR
-            ProcessOutputType.isSystem(outputType) -> ProcessOutputType.SYSTEM
+            // `ProcessOutputType.isSystem(outputType)` is what this said, and it was the
+            // one thing in this plugin that `since-build="253"` cannot have.  Measured:
+            // `build-offline.ps1 -PlatformHome "D:\JetBrains\PyCharm 2025.3"` failed with
+            // `VelaRunConfig.kt:569:31: error: unresolved reference 'isSystem'` -- the
+            // method does not exist in PyCharm 2025.3, so the sources did NOT compile
+            // against the platform `plugin.xml` claimed to support, and that claim was
+            // false until this line changed.
+            //
+            // An identity comparison asks the same question and is the *safer* of the two
+            // shapes the KDoc above complains about: it cannot throw for a foreign key the
+            // way `fromKey` does, and `ProcessOutputType.SYSTEM` itself exists on both
+            // platforms -- it is the unresolved *method*, not the constant, that 253 lacks.
+            outputType === ProcessOutputType.SYSTEM -> ProcessOutputType.SYSTEM
             // A key from some future or third-party stream, not one of these:
             // plain stdout is the honest default and loses nothing but colour.
             else -> ProcessOutputType.STDOUT
