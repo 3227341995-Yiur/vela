@@ -4,8 +4,8 @@
 
 <!--
 源文件 : SAFETY.md
-源文件字节 : 34674
-源文件 SHA256 : 489dfcf7bca72604d1c295453cc7c15d4c80a220086e291c01a5a8143cf0f29e
+源文件字节 : 35019
+源文件 SHA256 : d4a25bb30179daa645fbd02d759cf9dad9a2d85d24b9e0dc148b4372587ee922
 翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -430,8 +430,12 @@ violation：它接纳的代码被实测出与解释器*一致*。
 ### 3.4 `DESIGN.md` §7.5 指向的那两个探针
 
 `tests/probes/mut_scalar_parameter.vel` 和 `mut_struct_parameter.vel` 确实存在
-（`Get-ChildItem tests\probes -Name -Filter 'mut*'` 两个都返回，而 `check.vel` 第 1346 行
-点名了它们）。这个仓库没有的，是任何套件里一个会注意到行为改变了的用例：它们是探针
+（`Get-ChildItem tests\probes -Name -Filter 'mut*'` 两个都返回，而 `check.vel` 第
+**1723** 行点名了它们——2026-09-22 实测，那一行读作
+`# \`tests/probes/mut_scalar_parameter.vel\`, with \`mut_struct_parameter.vel\` beside`，
+在 1718–1727 的那段注释里，而那段注释解释了它们为什么存在。这条引用过去说的是
+1346 行；那一行现在是 `ck_expr(nd, mem, path, vm, nd[e * 10 + 2])`，所以漂移的是
+那个数字，不是那些探针）。这个仓库没有的，是任何套件里一个会注意到行为改变了的用例：它们是探针
 文件夹的输入，而不是语料里的行，而 `DESIGN.md` §7.5 把那个缺口用散文记在了
 "what stage 4 left"（"stage 4 留下了什么"）之下。这份语料加上了那三行
 （`hole_mut_scalar_parameter`、`probe_mut_struct_parameter`、

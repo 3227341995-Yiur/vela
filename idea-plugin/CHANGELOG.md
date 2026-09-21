@@ -1,5 +1,7 @@
 # Vela IDEA plugin — changelog
 
+**English** | [简体中文](CHANGELOG.zh-CN.md)
+
 **The rule, because the user asked for it explicitly: every plugin update bumps
 the version, and every bump gets an entry here.**
 

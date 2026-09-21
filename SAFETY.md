@@ -460,7 +460,12 @@ code it admits was measured to *agree* with the interpreter.
 
 `tests/probes/mut_scalar_parameter.vel` and `mut_struct_parameter.vel` do exist
 (`Get-ChildItem tests\probes -Name -Filter 'mut*'` returns both, and `check.vel` line
-1346 names them). What the repository did not have is a case in any harness that would
+**1723** names them — measured 2026-09-22, that line reads
+`# \`tests/probes/mut_scalar_parameter.vel\`, with \`mut_struct_parameter.vel\` beside`,
+inside the comment at 1718–1727 that explains why they exist. This citation used to
+say line 1346; that line is now `ck_expr(nd, mem, path, vm, nd[e * 10 + 2])`, so the
+number had drifted, not the probes). What the repository did not have is a case in
+any harness that would
 notice the behaviour changing: they are inputs for a probe folder, not rows in a corpus,
 and `DESIGN.md` §7.5 recorded the gap in prose under "what stage 4 left". This corpus
 adds the three rows (`hole_mut_scalar_parameter`, `probe_mut_struct_parameter`,

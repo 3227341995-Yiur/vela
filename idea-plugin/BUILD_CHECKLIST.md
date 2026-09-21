@@ -1,5 +1,7 @@
 # The compile gate — what it found, and what to look at next time
 
+**English** | [简体中文](BUILD_CHECKLIST.zh-CN.md)
+
 Written while the command runner on this machine was wedged, then **run**.  The
 gate is no longer a hope: §0 records what the first real compile found.  Everything
 below §0 remains as the list of places to look when the platform changes, because

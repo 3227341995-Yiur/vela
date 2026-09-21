@@ -1,5 +1,7 @@
 # The plugin's surface, and the traps in it
 
+**English** | [简体中文](PLUGIN_SURFACE.zh-CN.md)
+
 Every row below was read out of the installed platform rather than remembered:
 the `<extensionPoint …>` declaration in a specific jar's `META-INF/*.xml`, the
 attribute name the platform actually reads, and a real registration of the same

@@ -1,5 +1,7 @@
 # Vela for IntelliJ IDEA
 
+**English** | [简体中文](README.zh-CN.md)
+
 An IDEA plugin for `.vel` files (and `.vela`, the same name spelled out).  It is
 thin on purpose: **the compiler is the only thing that decides what a Vela
 program means**, and this plugin asks it.
