@@ -1,0 +1,2 @@
+vela: type error: conflicting declarations of 'host_add': the one on line 1 and the one on line 2 disagree
+  at tests/build/check_cases/extern_conflicting_prototypes.vel:2

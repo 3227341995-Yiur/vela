@@ -907,29 +907,59 @@ def ck_compare(nd: Array[int, 655360], mem: Array[int, 3741696], path: str,
 # forward reference `ck_expr` already makes to `ck_extern_call`), so the two ends
 # cannot drift about what a member is.
 #
-# What this rule deliberately does not reach, and why: only a plain name carries a
-# known struct type in this pass, so a receiver that is a call (`P(1).scale(2.0)`,
-# which is legal), an array element, or a field of a field (`p.inner.k`) leaves the
-# rule silent rather than guessing; and a *method* name read as a value (`p.sum`)
-# is left alone, because the hole being closed is a name that exists nowhere at
-# all.  A method's arity and `.m()` on a non-struct are also still unchecked: they
-# are `CHECKER_PLAN.md` rules 127 and 125, and they are louder failures (the
-# emitted C carries the wrong argument count, and the host compiler refuses it).
+# What this rule reaches, and what telling the two failures apart bought: the
+# receiver's kind is resolved through *both* shapes that name a place — a plain
+# name, and a field of a place (`o.inner`, and `o.inner.x` through it) — because a
+# member rule that stops at a plain name is silent about every receiver one field
+# deep, which is the shape real code writes.  `ck_recv_ck` answers 0 for "this
+# pass cannot tell" (a call, an array element, a literal: `P(1).scale(2.0)` is
+# legal and must stay legal) and a packed kind for everything else; that is the
+# distinction `ck_recv_struct`'s single `-1` destroyed, because the same -1 meant
+# both "cannot tell" and "not a struct", so a receiver the pass could *name* was
+# silently accepted.  `ck_recv_struct` is gone rather than kept: its return type
+# could not express the answer the rules built on it now need.
+#
+# A *method* name read as a value (`p.sum`) is still left alone: the hole being
+# closed is a name that exists nowhere at all, and `p.sum` is a different gap with
+# its own row (`hole_member_method_as_value`, `deliberate`).
+#
+# The four stage-0 texts this slice added, quoted from `CHECKER_PLAN.md` rather
+# than invented: rule 54 `{bt} has no fields`, rule 87 `{bt.name} has no field
+# '{attr}'`, rule 125 `{bt} has no method '{attr.attr}'`, rule 127
+# `{bt.name}.{attr.attr}() takes {len(expected_args)} argument(s), got
+# {len(e.args)}`.  Rule 127's behaviour reference is the interpreter's own
+# (`eval.vel:1425`, `FT_NPARAM() != nargs + 1`): the receiver is parameter 0, so a
+# method declared with N parameters takes N - 1 arguments at the call site.
 
-def ck_recv_struct(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
-                   recv: int) -> int {
-    if nd_kind(nd, recv) != 25 {
-        return -1
+def ck_recv_ck(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+               recv: int) -> int {
+    # The receiver's packed kind, or 0 for "cannot tell".  0 is a safe sentinel:
+    # `pack_kind` returns 0 only for `K_BAD`, which no binding ever carries.
+    k: int = nd_kind(nd, recv)
+    if k == 25 {
+        i: int = ck_bound(mem, vm, nd[recv * 10 + 1])
+        if i < 0 {
+            return 0
+        }
+        return sc_ckind(mem, i)
     }
-    i: int = ck_bound(mem, vm, nd[recv * 10 + 1])
-    if i < 0 {
-        return -1
+    if k == 32 {
+        # `o.inner`: the field's own declared type is the answer, so the lookup is
+        # one step out and recursion is the whole of it.  A field that does not
+        # exist is *not* this rule's business — the read that named it is reported
+        # as rule 87 on its own line, and reporting it twice would bury it.
+        base: int = ck_recv_ck(nd, mem, vm, nd[recv * 10 + 1])
+        if unpack_kind(base) != K_ST() {
+            return 0
+        }
+        sid: int = unpack_len(base)
+        f: int = find_field(mem, sid, nd[recv * 10 + 2])
+        if f < 0 {
+            return 0
+        }
+        return sfl_get(mem, stb_get(mem, sid, STB_FOFF()) + f * 2 + 1)
     }
-    ck: int = sc_ckind(mem, i)
-    if unpack_kind(ck) != K_ST() {
-        return -1
-    }
-    return unpack_len(ck)
+    return 0
 }
 
 def ck_member_msg(mem: Array[int, 3741696], sid: int, what: str,
@@ -940,16 +970,57 @@ def ck_member_msg(mem: Array[int, 3741696], sid: int, what: str,
     return concat(m, "'")
 }
 
+# `{bt} has no fields` / `{bt} has no method '{attr.attr}'`: the receiver is not a
+# struct at all, so there is no member table to look a name up in and the type
+# itself is what the message has to name.
+def ck_no_struct_msg(rc: int, what: str) -> str {
+    mut m: str = ck_spell_ck(rc)
+    return concat(m, what)
+}
+
+# The same shape with the member name quoted on the end.
+def ck_no_struct_name_msg(rc: int, what: str, name: int) -> str {
+    mut m: str = ck_spell_ck(rc)
+    m = concat(m, what)
+    m = concat(m, interned(name))
+    return concat(m, "'")
+}
+
+# `Pt.dot() takes 1 argument(s), got 3` — the struct, the method, what the
+# declaration takes past the receiver, and what the call site wrote.
+def ck_member_arity_msg(mem: Array[int, 3741696], sid: int, name: int,
+                        want: int, got: int) -> str {
+    mut m: str = interned(stb_get(mem, sid, STB_NAME()))
+    m = concat(m, ".")
+    m = concat(m, interned(name))
+    m = concat(m, "() takes ")
+    m = concat(m, ck_int_text(want))
+    m = concat(m, " argument(s), got ")
+    return concat(m, ck_int_text(got))
+}
+
 # `p.f`, and `p.f` where `f` is a method: the second is not refused here, because a
 # method name used as a value is a different (and equally real) gap, and refusing
 # it would be a rule nobody asked for.
 def ck_member_read(nd: Array[int, 655360], mem: Array[int, 3741696],
                    path: str, vm: VM, e: int) -> None {
-    sid: int = ck_recv_struct(nd, mem, vm, nd[e * 10 + 1])
-    if sid < 0 {
+    rc: int = ck_recv_ck(nd, mem, vm, nd[e * 10 + 1])
+    if rc == 0 {
         return
     }
     nm: int = nd[e * 10 + 2]
+    if unpack_kind(rc) != K_ST() {
+        # rule 54, "attribute target must be a struct".  The receiver is a name
+        # the pass *can* read the kind of, and that kind has no fields at all —
+        # the interpreter refuses this program too, in its own words ("only a
+        # struct has fields"), and the C back end refuses the member expression it
+        # emits.  Silence here was the checker blessing a program neither front
+        # end can run.
+        ck_type(path, nd_line(nd, e),
+                ck_no_struct_msg(rc, " has no fields"))
+        return
+    }
+    sid: int = unpack_len(rc)
     if find_field(mem, sid, nm) >= 0 {
         return
     }
@@ -960,18 +1031,42 @@ def ck_member_read(nd: Array[int, 655360], mem: Array[int, 3741696],
             ck_member_msg(mem, sid, " has no field '", nm))
 }
 
+# `e` is the *call* node and `callee` its `attr`: the arguments hang off the call,
+# and the receiver off the attribute, so a rule that counts one and looks up the
+# other needs both.
 def ck_member_call(nd: Array[int, 655360], mem: Array[int, 3741696],
-                   path: str, vm: VM, callee: int) -> None {
-    sid: int = ck_recv_struct(nd, mem, vm, nd[callee * 10 + 1])
-    if sid < 0 {
+                   path: str, vm: VM, e: int, callee: int) -> None {
+    rc: int = ck_recv_ck(nd, mem, vm, nd[callee * 10 + 1])
+    if rc == 0 {
         return
     }
     nm: int = nd[callee * 10 + 2]
-    if find_method(mem, sid, nm) >= 0 {
+    if unpack_kind(rc) != K_ST() {
+        # rule 125: `n.foo()` where `n` is an `int`.  Before this, the receiver's
+        # kind was thrown away with the "cannot tell" answer, so the call was
+        # accepted and the mistake surfaced from the host C compiler instead.
+        ck_type(path, nd_line(nd, callee),
+                ck_no_struct_name_msg(rc, " has no method '", nm))
         return
     }
-    ck_type(path, nd_line(nd, callee),
-            ck_member_msg(mem, sid, " has no method '", nm))
+    sid: int = unpack_len(rc)
+    mi: int = find_method(mem, sid, nm)
+    if mi < 0 {
+        ck_type(path, nd_line(nd, callee),
+                ck_member_msg(mem, sid, " has no method '", nm))
+        return
+    }
+    # rule 127, and the one the resolver cannot state: it resolves a method by
+    # name, so `p.dot(p, q, p)` for a two-parameter method reached the host C
+    # compiler as C2197 while the interpreter refused the same program.  The
+    # declaration is the reference, and the receiver is its parameter 0.
+    fn: int = met_get(mem, mi, MET_FN())
+    want: int = ft_get(mem, fn, FT_NPARAM()) - 1
+    got: int = count_chain(nd, nd[e * 10 + 2])
+    if want != got {
+        ck_type(path, nd_line(nd, callee),
+                ck_member_arity_msg(mem, sid, nm, want, got))
+    }
 }
 
 def ck_shift_count(nd: Array[int, 655360], path: str, line: int,
@@ -1153,7 +1248,14 @@ def ck_index(nd: Array[int, 655360], mut mem: Array[int, 3741696],
         return
     }
     ln: int = unpack_len(ck)
-    if ln <= 0 {
+    if ln < 0 {
+        # A guard for a value `unpack_len` cannot produce (it masks a
+        # non-negative bit range), kept so that the test below is the only thing
+        # that decides a verdict.  It used to read `ln <= 0`, and that one
+        # character waved every constant index into a zero-length array past the
+        # very check written to catch it: `Array[int, 0]` has no element for any
+        # constant index to reach, which is the whole of `SPEC.md` §6 item 7 —
+        # "a constant index that is provably out of range is a compile error".
         return
     }
     idx: int = nd[e * 10 + 2]
@@ -1199,7 +1301,7 @@ def ck_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696],
             # would refuse `P(1).scale(2.0)`, which is a call on a temporary
             ck_expr(nd, mem, path, vm, nd[callee * 10 + 1])
             # the member has to exist before anything can be said about the call
-            ck_member_call(nd, mem, path, vm, callee)
+            ck_member_call(nd, mem, path, vm, e, callee)
         }
         if vm.cpure == 1 {
             if ck_callee_impure(nd, mem, e) {
@@ -1340,9 +1442,41 @@ def ck_store(nd: Array[int, 655360], mut mem: Array[int, 3741696],
     }
     if k == 32 {
         ck_expr(nd, mem, path, vm, nd[tgt * 10 + 1])
+        ck_member_write(nd, mem, path, vm, tgt)
         return
     }
     ck_type(path, nd_line(nd, s), "invalid assignment target")
+}
+
+# `a.zzz = 99`.  The *read* path has run rule 87 since `099f6fc`; the write path
+# never ran it, so `check` blessed an assignment the interpreter refuses at run
+# time ("this struct has no field of that name") and the C back end refuses only
+# because cl.exe rejects the `vl_a.f_zzz` the emitter had already written out.
+# Three engines, three different answers, and the one the language is sold on —
+# `check` — was the permissive one.
+#
+# The lookup is the read path's lookup, so the message is the read path's message
+# (`Rule 87: {bt.name} has no field '{attr}'`), reported at the line of the
+# assignment.  Unlike a read, a *method* name does not count: a write needs a
+# field's storage, and a method has none, so `a.dot = 5` is the same mistake.
+def ck_member_write(nd: Array[int, 655360], mem: Array[int, 3741696],
+                    path: str, vm: VM, tgt: int) -> None {
+    rc: int = ck_recv_ck(nd, mem, vm, nd[tgt * 10 + 1])
+    if rc == 0 {
+        return
+    }
+    nm: int = nd[tgt * 10 + 2]
+    if unpack_kind(rc) != K_ST() {
+        ck_type(path, nd_line(nd, tgt),
+                ck_no_struct_msg(rc, " has no fields"))
+        return
+    }
+    sid: int = unpack_len(rc)
+    if find_field(mem, sid, nm) >= 0 {
+        return
+    }
+    ck_type(path, nd_line(nd, tgt),
+            ck_member_msg(mem, sid, " has no field '", nm))
 }
 
 # ============================================================ parallel proofs
@@ -3111,6 +3245,80 @@ def ck_struct_fields(mem: Array[int, 3741696], path: str, vm: VM,
     }
 }
 
+def ck_conflict_msg(name: int, first: int, second: int) -> str {
+    mut m: str = concat("conflicting declarations of '", interned(name))
+    m = concat(m, "': the one on line ")
+    m = concat(m, ck_int_text(first))
+    m = concat(m, " and the one on line ")
+    m = concat(m, ck_int_text(second))
+    return concat(m, " disagree")
+}
+
+# Two `extern c` declarations of one name are two prototypes for one C symbol, and
+# `add_function` files a fresh function-table entry for each of them without ever
+# comparing them (`resolve.vel:284-305`: the second declaration gets its own `fn`
+# and its own `sc_push`, and nothing looks at the first again).  The consequence is
+# measured: the emitted C carries both prototypes, the *last* one wins at the call
+# site, and which one that is depends on nothing but the order the declarations
+# happen to be written in.  A verdict that depends on declaration order is not a
+# verdict, so two declarations of one name have to agree.
+#
+# Only *declarations* are compared: a `def` with a body is a different question
+# (shadowing, overriding) and `resolve` already owns it, while the foreign boundary
+# is the one place where nothing else will ever look at the prototype again.
+def ck_proto_same(nd: Array[int, 655360], ty: Array[int, 262144],
+                  mem: Array[int, 3741696], vm: VM, a: int, b: int) -> bool {
+    ra: int = type_packed(ty, ft_get(mem, a, FT_RETTY()), mem, vm)
+    rb: int = type_packed(ty, ft_get(mem, b, FT_RETTY()), mem, vm)
+    if ra != rb {
+        return False
+    }
+    mut pa: int = ft_get(mem, a, FT_PARAM())
+    mut pb: int = ft_get(mem, b, FT_PARAM())
+    while pa > 0 {
+        if pb <= 0 {
+            return False
+        }
+        ta: int = type_packed(ty, nd[pa * 10 + 2], mem, vm)
+        tb: int = type_packed(ty, nd[pb * 10 + 2], mem, vm)
+        if ta != tb {
+            return False
+        }
+        pa = nd_nx(nd, pa)
+        pb = nd_nx(nd, pb)
+    }
+    if pb > 0 {
+        return False
+    }
+    return True
+}
+
+def ck_extern_conflicts(nd: Array[int, 655360], ty: Array[int, 262144],
+                        mem: Array[int, 3741696], path: str, vm: VM) -> None {
+    mut i: int = 0
+    while i < vm.nfn {
+        if ft_get(mem, i, FT_BODY()) < 0 {
+            di: int = ft_get(mem, i, FT_DEF())
+            mut j: int = 0
+            while j < i {
+                if ft_get(mem, j, FT_BODY()) < 0 {
+                    dj: int = ft_get(mem, j, FT_DEF())
+                    if nd[di * 10 + 1] == nd[dj * 10 + 1] {
+                        if not ck_proto_same(nd, ty, mem, vm, j, i) {
+                            ck_type(path, nd_line(nd, di),
+                                    ck_conflict_msg(nd[di * 10 + 1],
+                                                    nd_line(nd, dj),
+                                                    nd_line(nd, di)))
+                        }
+                    }
+                }
+                j += 1
+            }
+        }
+        i += 1
+    }
+}
+
 def ck_module(nd: Array[int, 655360], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], path: str, mut vm: VM) -> None {
     mut sid: int = 0
@@ -3126,6 +3334,9 @@ def ck_module(nd: Array[int, 655360], ty: Array[int, 262144],
         ck_record_decls(nd, ty, mem, vm, r)
         r += 1
     }
+    # and the declarations have to agree with each other: two prototypes for one C
+    # symbol make the call site's verdict depend on which one was written last
+    ck_extern_conflicts(nd, ty, mem, path, vm)
     mut i: int = 0
     while i < vm.nfn {
         ck_function(nd, ty, mem, path, vm, i)

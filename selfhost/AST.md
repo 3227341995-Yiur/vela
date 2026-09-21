@@ -1,5 +1,7 @@
 # Vela self-hosted AST — implementation reference
 
+**English** | [简体中文](AST.zh-CN.md)
+
 Sources: **lexer** `selfhost/vela.vel` — the front half, which
 `tools/link_selfhost.vel` splices into `selfhost/vm.vel`; **parser**
 `selfhost/parts/parser.vel`; **resolver** `selfhost/parts/resolve.vel`;
@@ -24,11 +26,45 @@ those gaps at run time, and §9 has been kept honest about which.
 
 | pool | declaration | type | capacity | elements used |
 |---|---|---|---|---|
-| nodes | `vm_main.vel:59` | `Array[int, 655360]` | 655360 ints = 65536 nodes × stride 10 | ≤ 65536 (`parser.vel:91`) |
-| tokens | `vm_main.vel:57` | `Array[int, 393216]` | 393216 ints = 65536 tokens × stride 6 | ≤ 65536 (`vela.vel:295`) |
+| nodes | `vm_main.vel:59` | `Array[int, 655360]` | 655360 ints = 65536 nodes × stride 10 | ≤ 65536 (`parser.vel:120`) |
+| tokens | `vm_main.vel:57` | `Array[int, 786432]` | **786432 ints = 131072 tokens × stride 6** | ≤ 131072 (`vela.vel:326`) |
 | token floats | `vm_main.vel:58` | `Array[float, 65536]` | 65536 | one per FLOAT token |
-| types | `vm_main.vel:60` | `Array[int, 262144]` | 262144 ints = 65536 types × stride 4 | ≤ 65536 (`parser.vel:241`) |
-| floats | `vm_main.vel:61` | `Array[float, 65536]` | 65536 | ≤ 65536 (`parser.vel:229`) |
+| types | `vm_main.vel:60` | `Array[int, 262144]` | 262144 ints = 65536 types × stride 4 | ≤ 65536 (`parser.vel:270`) |
+| floats | `vm_main.vel:61` | `Array[float, 65536]` | 65536 | ≤ 65536 (`parser.vel:258`) |
+
+**The token pool holds 131072 tokens, not 65536, and the pool is not what stops
+you first.** Three numbers describe it and they are not the same number: the
+`Array[int, 786432]` in `vm_main.vel:57` is a *declaration*, the stride is **6**
+(§4), and the enforced limit is `cx.ntok >= 131072` — `push_tok`'s
+`report(cx, "too many tokens")` (`vela.vel:326`), which is the only check that
+fires. The 65536 in this table's *elements used* column and in the earlier version
+of this document was the pool's size from before it was doubled:
+`vela.vel:59`–`:62` records the change ("It was 65536 until the compiler's own
+source passed" and "the number is now twice what `selfhost/vm.vel` needs"). A
+reader who sizes a token buffer from this document must size it at **131072 × 6
+ints**; sizing it at 65536 truncates a file the compiler accepts.
+
+**Where capacity comes from, in the one order that decides anything.** A pool's
+usable element count is fixed by the *smallest* of four separate expressions, and
+when they disagree the **enforced guard**, not the declared array, is the real
+limit — and when two guards disagree, the **parser's node/type/float guards are
+tighter than the lexer's token guard on the same program**, because each guard
+counts a different thing:
+
+1. the declared array length (`vm_main.vel:57`–`:61`);
+2. the stride (`parser.vel:12`–`:15` for nodes = 10, `vela.vel:49` for tokens = 6,
+   `parser.vel:56` for types = 4);
+3. the guard written into the allocating function — `new_node` `n >= 65536`
+   (`parser.vel:120`), `push_tok` `cx.ntok >= 131072` (`vela.vel:326`), `ty_add`
+   `i >= 65536` (`parser.vel:270`), `flt_add` `i >= 65536` (`parser.vel:258`),
+   `name_id`'s intern table `VELA_INTERN_CAP 8192`
+   (`runtime/vela_runtime.h:431`);
+4. the first one a program actually crosses, which for the compiler's own source is
+   whichever it hits during that build.
+
+So the precedence is **guard over declaration, and the tighter guard over the
+looser one** — and this is the sentence the earlier version of this document lacked,
+which is how the 65536 above survived a doubling of the pool.
 
 **Stride is 10** (`parser.vel:11`, `parser.vel:95`): node `n` occupies
 `nd[n*10 .. n*10+9]`. `new_node` (`parser.vel:89`) allocates sequentially —
@@ -50,7 +86,7 @@ in *completion* order: a nested block is finished before the enclosing
 | 1 | `a` | first payload word (kind-dependent) |
 | 2 | `b` | second payload word |
 | 3 | `c` | third payload word |
-| 4 | `d` | payload: the `if` else head (`parser.vel:589`) and the `for` step (`parser.vel:683`). Still `0` on every other kind |
+| 4 | `d` | payload: the `def` **parameter count** (`parser.vel:602`), the `if` else head (`parser.vel:661`, `-1` if none) and the `for` step (`parser.vel:755`). Written by those three writers only, so it is `0` on every other kind |
 | 5 | `line` | source line of the statement/expression's first token (`parser.vel:101`) |
 | 6 | `flags` | bit 1 `mut`, bit 2 `declaration`, bit 4 `pure`, bit 1 of a `for` = `parallel` |
 | 7 | `nx` | next link in the chain this node belongs to, or `-1` (`parser.vel:103`) |
@@ -191,18 +227,26 @@ Consequences:
 
 ## 4. Name handles
 
-Token layout (`vela.vel:40`–`vela.vel:43`): `tk[i*6+0]` kind, `+1` offset,
+Token layout (`vela.vel:49`–`vela.vel:51`): `tk[i*6+0]` kind, `+1` offset,
 `+2` length, `+3` value (int value / op code / keyword id), `+4` line, `+5` flag;
-accessors `tk_kind` `vela.vel:58`, `tk_off` `:62`, `tk_len` `:66`, `tk_ival`
-`:70`, `tk_line` `:74`, `tk_flag` `:78`. **The "six ints per token" prose at
-`vela.vel:12` is stale** — the stride is 6, as the accessors and `push_tok`
-(`vela.vel:299`–`:306`) show. Token kinds `vela.vel:48`: `1 NAME 2 INT 3 FLOAT
-4 STR 5 OP 6 NEWLINE 9 EOF`; keyword ids `vela.vel:54`–`:56`: `1 def 2 return
+accessors `tk_kind` `vela.vel:74`, `tk_off` `:78`, `tk_len` `:82`, `tk_ival`
+`:86`, `tk_line` `:90`, `tk_flag` `:94`. **The "six ints per token" sentence that
+used to be cited here — "the 'six ints per token' prose at `vela.vel:12` is
+stale" — was itself wrong in three ways and is corrected rather than patched.**
+There is no such prose at `vela.vel:12` (that line is blank; the header comment it
+was pointing at is now `vela.vel:49`–`:51`, which states the six-word layout
+*correctly*); the stride is genuinely 6, so calling six ints "stale" inverted the
+error; and the file's own note that a token record is six ints is consistent with
+the accessors and with `push_tok` (`vela.vel:324`–`:337`, which writes exactly
+`tk[i+0..+5]`). **The correct sentence is: a token record is six ints wide, the
+header says so at `vela.vel:49`–`:51`, and the code obeys it.** Token kinds are
+listed at `vela.vel:64`; keyword ids at `vela.vel:70`–`:72`: `1 def 2 return
 3 if 4 elif 5 else 6 while 7 for 8 in 9 range 10 break 11 continue 12 pass
 13 and 14 or 15 not 16 True 17 False 18 None 19 mut 20 pure 21 struct
 22 parallel`. A keyword token is a NAME token whose `tk_ival` is the keyword id
-(`vela.vel:422`), and a non-keyword identifier has `tk_ival == 0`
-(`parser.vel:138`).
+produced by `keyword_id` (`vela.vel:155`, pushed with its result at `vela.vel:490`),
+and a non-keyword identifier has `tk_ival == 0`
+(`parser.vel:167`).
 
 A name is stored on a node as an **interned handle** (an `int`), produced by
 `name_id` (`parser.vel:154`–`:157`) =
@@ -245,8 +289,9 @@ non-owning safe slice (`SPEC.md:287`, `:293`, `:294`).
   through this parser.
 * **str** (22): words 1/2 = source offset and length **excluding the quotes**
   (`parser.vel:1140`–`:1146`; `scan_string` starts after the opening quote,
-  `vela.vel:429`); word 6 = the lexer's escape flag (`parser.vel:1147`, set when
-  a backslash was seen, `vela.vel:437`–`:439`). **Strings are neither interned
+  `vela.vel:493`); word 6 = the lexer's escape flag (`parser.vel:1147`, set when
+  a backslash was seen, `vela.vel:506`, pushed as the token's flag at
+  `vela.vel:521`). **Strings are neither interned
   nor decoded.** The interpreter must call `unescape(s)` when the flag is `1`,
   exactly as `dump.vel:120`–`:122` does; with flag `0` the raw bytes are the
   value. `unescape` is pure (`SPEC.md:295`) and decodes
@@ -264,15 +309,15 @@ non-owning safe slice (`SPEC.md:287`, `:293`, `:294`).
 ## 6. Type records
 
 Pool `Array[int, 262144]` (`vm_main.vel:60`), cursor `cx.sp` (`vela.vel:32`),
-capacity 65536 (`parser.vel:241`), allocated by `ty_add` (`parser.vel:238`–
-`:251`), stride **4** (`parser.vel:55`, `:245`–`:248`):
+capacity 65536 (`parser.vel:270`), allocated by `ty_add` (`parser.vel:267`–
+`:280`), stride **4** (`parser.vel:56`, `:274`–`:277`):
 
 | k | meaning |
 |---|---|
-| 0 | kind — **always `1`**; hard-coded (`parser.vel:245`), no other value exists in the front end |
-| 1 | name handle of the base type name (`parser.vel:246`) |
-| 2 | element type index, `-1` if not an array (`parser.vel:247`) |
-| 3 | array length, `-1` if absent (`parser.vel:248`) |
+| 0 | kind — **always `1`**; hard-coded (`parser.vel:274`), no other value exists in the front end |
+| 1 | name handle of the base type name (`parser.vel:275`) |
+| 2 | element type index, `-1` if not an array (`parser.vel:276`) |
+| 3 | array length, `-1` if absent (`parser.vel:277`) |
 
 `Array[int, 8]` is not a distinct record kind: it is a record named `"Array"`
 whose element is an `int` record and whose length is 8 (`parser.vel:59`–`:61`).
@@ -424,10 +469,19 @@ Reuse and hazards:
 10. **Literal kinds are the only type information there is.** An int literal is
     kind 20 with a value; a float literal kind 21; nothing records that `1 + 2`
     is an int. Constant folding is yours.
-11. **Word 4 (`d`) is uninitialised dead space** in every node (`parser.vel:13`
-    names it; no writer exists; `new_node` zeroes it at `:100`). It is free for
-    an interpreter to use, at the cost of meaning something different from the
-    `0` it holds today.
+11. **Word 4 (`d`) is used by three kinds and uninitialised on the rest.**  This
+    item used to read "word 4 (`d`) is uninitialised dead space in every node (no
+    writer exists)", which contradicted §1.1 one section earlier and is simply
+    false: `parser.vel` writes it for a `def` (the **parameter count**), at
+    `nd[n * 10 + 4] = pcount` (`parser.vel:602`); for an `if` (the `else` head,
+    `-1` when there is none), at `parser.vel:661`; and for a `for` (the step
+    expression), at `parser.vel:755`.  What is true, and is the sentence that
+    should have been here, is that **word 4 is written only by those three
+    writers** — grep for `nd[... + 4] =` in `parser.vel` returns exactly four
+    hits, the fourth being `new_node`'s zeroing at `parser.vel:129` — so on every
+    other kind it holds `0` and is free, at the cost of meaning something different
+    from the `0` it holds today.  See also `parser.vel:12`–`:15` and `:34`/`:36`
+    for the kind→word map this item should have been read from.
 12. **Counts and `nx` can disagree on error paths** (§3, §8): never size a loop
     by a count, always follow `nx` to `-1`.
 13. **No position information beyond a statement line.** Word 5 is per

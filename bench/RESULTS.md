@@ -1,5 +1,7 @@
 # bench/RESULTS.md — what the harness measured, and how to reproduce it
 
+**English** | [简体中文](RESULTS.zh-CN.md)
+
     powershell -ExecutionPolicy Bypass -File tools\bench.ps1 -Reps 7
 
 That one command builds the harness with the compiler in the tree, builds every
@@ -24,6 +26,39 @@ in it and none anywhere in the repository: the harness is a Vela program
   `selfhost\build\vm.exe` 633344 bytes.  The `.c`, the `.ll` and the object files go
   to `%TEMP%\vela-build\`; the only file these builds leave in the directory holding
   their source is the executable.
+
+> **Provenance caveat, added 2026-09-22: the commit named above is not reachable,
+> and the revision this block actually describes is `622c686`.**
+>
+> `git merge-base --is-ancestor a0b2078 HEAD` exits 1, and `git rev-list --all`
+> does not contain it — no ref on this machine reaches it.  What lists it is the
+> **reflog**, not `--all`: measured 2026-09-22, `git log --all --oneline` matches
+> **nothing** for `a0b2078`, while `git log --reflog --oneline` prints `a0b2078
+> Correct a wrong performance conclusion, and run the phase-2 spike` (that commit
+> is dated 2026-09-19 03:48:09 +0800, and its parent is the reachable `9299967`).
+> The reflog is exactly how a reader comes to treat it as history: it is a
+> surviving record of a rewritten line of development, not a commit anything can
+> be built from.  (An earlier version of this caveat said `git log --all` lists
+> it, which is false; the mechanism is stated here by the command that reproduces
+> it, because a caveat that explains an error with a command that does not is the
+> same defect in a new place.)  So the heading above this block cannot be used the
+> way a pin is used: the four quantities it quotes are measurements of a revision
+> you cannot check out.
+>
+> They can, however, all be tied to a commit that *is* reachable — `622c686`
+> ("The emitter computes each array index once: 1.058 s -> 0.543 s on matmul"),
+> which is an ancestor of `HEAD`:
+>
+> | the block says | where the same value is recorded |
+> |---|---|
+> | fixpoint `15EAE445780BAA58…` | `622c686:STATUS.md:34` — "fixpoint `15EAE445780BAA58`, 754867 bytes, seed / gen-1 / gen-2 **byte-identical**" |
+> | `vm.c` 754867 bytes | `git cat-file -s 622c686:selfhost/build/vm.c` = **754867** |
+> | `vm.exe` 633344 bytes | `git cat-file -s 622c686:selfhost/build/vm.exe` = **633344** |
+> | (today, for contrast) | `vm.c` 903676 bytes, `vm.exe` 799232 bytes, fixpoint `0AE26E832296100AC6040B7206697A8A6AA01B99B6254435833BCB7C0E067C58`, all measured on the working tree 2026-09-22 |
+>
+> Read the block as **the dated record of the revision it describes**, with
+> `622c686` as the commit to check it against — not as a pin on `HEAD`, which is
+> what the `+` was doing.
 
 ## Read this before comparing with an older copy of this file
 
@@ -63,10 +98,28 @@ removing one thing at a time:
     variant                                  seconds
     as the emitter writes it                 1.058     (before the index fix)
     index computed once, checks kept         0.543     <- this compiler
-    index once, bounds check also removed    0.514     (the bounds check is ~0.04)
+    index once, bounds check also removed    0.514
     index unchecked, bounds check kept       0.177     <- the arithmetic checks are ~0.37
     nothing checked                          0.181
     the C++ twin                             0.227
+
+> **Arithmetic note, added 2026-09-22: two numbers in this ladder were not
+> internally consistent, and both are now named.**
+>
+> * The `0.514` row used to be annotated "(the bounds check is ~0.04)".  Strictly
+>   inside this ladder the bounds check is `0.543 − 0.514 = **0.029**`, and the
+>   `0.04` figure does not reproduce from any subtraction of the rows above — it is
+>   a reading carried in from the 2026-09-19 hand-edited variants (matmul section:
+>   `0.543` against `0.514`), and the "~0.04" annotation has been dropped rather
+>   than guessed at.  What `0.04` was measuring is not recoverable from this
+>   document, so it is not re-asserted here.
+> * "the C++ twin `0.227`" disagrees with this file's own twin rows, which read
+>   `0.224069` (serial) and `0.231455` (restrict) on the median, and it is the
+>   *serial* twin that the comparisons above use everywhere else.  The `0.227` is
+>   left as printed because it is part of the dated measurement, not a derived
+>   value; the figures a reader should compare against are the table's own.
+> * The `~68%` below is arithmetic over this ladder and does check out:
+>   `0.543 − 0.177 = 0.366`, and `0.366 / 0.543 = 0.674`.
 
 So the bounds checks are nearly free, and the **checked index arithmetic** —
 `vela_mul_range` and `vela_add_range` on the subscript — is about 68% of what is

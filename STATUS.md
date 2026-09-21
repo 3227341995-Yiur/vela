@@ -1,6 +1,6 @@
-**English** | [简体中文](STATUS.zh-CN.md)
-
 # STATUS — what is verified, what is written, and what is in the way
+
+**English** | [简体中文](STATUS.zh-CN.md)
 
 A snapshot of a working session, not a substitute for running the command it
 names.  Every "verified" line below was measured on this machine; every "written"
@@ -206,7 +206,9 @@ is for.
   So there are **two** levers, in order: the emitter wrote every index expression
   **twice** (worth 0.51 s — halving the program's time; **done**, 1.058 s → 0.543 s),
   and after that the checked index arithmetic (`vela_mul_range` + `vela_add_range`) is
-  ~0.37 s, which is ~68% of what remains.  The bounds check itself is ~0.04 s.  The
+  ~0.37 s, which is ~68% of what remains.  The bounds check itself is worth `0.543 −
+  0.514 = 0.029 s` — one row of that ladder, and the `~0.04 s` this paragraph used to
+  quote does not reproduce from it (see `bench/RESULTS.md`'s arithmetic note).  The
   second lever is exactly what `selfhost/ELISION_PLAN.md` is for, and this table is
   its justification — it is the work that decides the "faster than C++" claim.
 
@@ -246,10 +248,32 @@ Every one of these was invisible to reading:
   (Vela has no `stat`, so "the file exists" only proves freshness if nothing was there
   before), then let the artifact decide and the exit code explain.  Deliberately not
   fixed yet: two agents were mid-run and the build path is load-bearing.
-- **`vm.exe debug` is advertised and does nothing.**  The usage line lists
-  `lex|count|parse|nodes|emit-c|run|check|debug|build`, and `vm.exe debug
-  examples\hello.vel` exits 2 with **no output at all**.  The IDEA plugin's refusal to
-  offer a Debug button is therefore honest, and stays honest until the mode exists.
+- **`vm.exe debug` is a working protocol debugger, and "it does nothing" was an
+  artefact of how it was run — corrected 2026-09-21.**  The usage line lists
+  `lex|count|parse|nodes|emit-c|run|check|debug|build` and documents the real syntax,
+  `vela debug <file.vel> <cmddir> [arg...]`, with events on stdout and commands in
+  `<cmddir>/cmd.NNN` (`DESIGN.md` §10).  Measured 2026-09-21 against the compiler built
+  into the working tree that day — **which is a mid-round build and is deliberately not
+  pinned here**, because the LLVM track owns the build slot this round and rebuilt
+  `selfhost\build\vm.exe` several times while this was being written (the binary is
+  ignored, not committed, and `selfhost\parts\emit_llvm.vel` is modified relative to
+  HEAD `4ddfabc`; a byte count and hash from such a build identify a file nobody can go
+  back to, which is the defect §5 records against `bench/RESULTS.md` — the numbers below
+  are the measurement, and the pin belongs to the round's frozen compiler):
+  `vm.exe debug examples\hello.vel` exits 2 with **0 bytes on stdout** and the usage
+  block plus `vela: panic: debug needs a command directory: vela debug FILE <cmddir>`
+  on **stderr**; `vm.exe debug examples\hello.vel <cmddir>` exits 0, prints `ready` on
+  stderr, and waits for `cmd.NNN` files; given no `cmd.NNN` at all it logs `no command
+  file from the driver; running to the end` and the program runs to completion (144
+  bytes on stdout was measured that way) — so the stdout size depends on how much of the
+  program the driver lets run, not on the mode.  Independent measurements of the stderr
+  size differ between generations (893 bytes and 2352 bytes on two builds), which is
+  itself the reason this bullet names no binary.  The earlier
+  claim in this bullet — "does nothing", "no output at all", "exits 2" — came from
+  invoking the mode *without* its command directory and redirecting **stdout only**, so
+  both halves were measurement artefacts rather than properties of the compiler.  What
+  the IDEA plugin may still say is only that it does not offer a Debug button, which is
+  about the plugin, not about the compiler.
 
 - `runtime/vela_runtime.h` was missing `vela_bounds_check`, so **every compiled
   program** failed to link; and `vela_sub_overflows` was wrong, so every compiled

@@ -1,4 +1,4 @@
-﻿<!--
+<!--
   The whole plugin surface, in one file.  Every extension here answers a question
   the platform asks, and none of them answers a question about *Vela semantics* 鈥?  that is `vm.exe`'s job, and this plugin's job is to ask it.
 
@@ -49,7 +49,7 @@
       (253) to prove that every class and member they use is present in both 鈥?      so the plugin can honestly claim to load from 253 upward.  until-build is
       deliberately absent: no fake upper limit.
     -->
-    <version>0.1.3</version>
+    <version>0.1.4</version>
     <idea-version since-build="253"/>
 
     <depends>com.intellij.modules.platform</depends>

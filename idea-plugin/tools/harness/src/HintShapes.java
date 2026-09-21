@@ -1,0 +1,217 @@
+import dev.vela.plugin.VelaHints;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Hunting the `s: s: s:` hint defect: which *shape* of call makes the hint engine
+ * draw a name that no declaration has?
+ *
+ * Two modes, because the corpus turned out to be clean under the right criterion:
+ *
+ *   --shapes          run a hand-written list of call shapes and print what the
+ *                     hint engine drew for each (builtin, receiver, mut parameter,
+ *                     Array parameter, multi-line parameter list, half-typed call,
+ *                     nested call arguments, struct method, shadowing a builtin ...)
+ *   --truncate <n>    truncate every corpus file at every n bytes and run the hints
+ *                     on the prefix.  A half-typed file is the state a user is in
+ *                     while typing, and it is the state in which a *declaration*
+ *                     can parse differently from the finished file -- so it is
+ *                     where a hint name stops matching a parameter name.
+ *
+ * A label is reported when it is not a plain identifier, or when no declaration in
+ * the file (nor any builtin) declares a parameter with that name.
+ *
+ *   java -cp <plugin classes> HintShapes --shapes
+ *   java -cp <plugin classes> HintShapes --truncate 16 [repo-root]
+ */
+public final class HintShapes {
+
+    private static final long MAX_FILE_BYTES = 4L * 1024 * 1024;
+
+    public static void main(String[] args) throws Exception {
+        if (args.length > 0 && args[0].equals("--shapes")) {
+            shapes();
+            return;
+        }
+        int step = 16;
+        Path root = Paths.get("").toAbsolutePath();
+        for (int i = 0; i < args.length; i++) {
+            if (args[i].equals("--truncate")) step = Integer.parseInt(args[++i]);
+            else root = Paths.get(args[i]).toAbsolutePath();
+        }
+        search(root, step);
+    }
+
+    // ------------------------------------------------------------------ shapes
+
+    private static void shapes() {
+        String[][] cases = {
+            {"builtin substr", "def main() -> None {\n    mut s: str = \"x\"\n    print(substr(s, 0, 3))\n}\n"},
+            {"builtin concat", "def main() -> None {\n    mut a: str = \"x\"\n    mut b: str = \"y\"\n    print(concat(a, b))\n}\n"},
+            {"builtin write_text", "def main() -> None {\n    mut p: str = \"f\"\n    mut b: str = \"x\"\n    print(write_text(p, b))\n}\n"},
+            {"builtin min_int", "def main() -> None {\n    mut a: int = 1\n    mut b: int = 2\n    print(min_int(a, b))\n}\n"},
+            {"builtin len", "def main() -> None {\n    mut a: str = \"x\"\n    print(len(a))\n}\n"},
+            {"builtin bytes_at", "def main() -> None {\n    mut s: str = \"x\"\n    print(bytes_at(s, 0))\n}\n"},
+            {"three args, own function", "def g(a: int, b: int, c: int) -> int {\n    return a\n}\ndef main() -> None {\n    print(g(1, 2, 3))\n}\n"},
+            {"array parameter", "def g(v: Array[int, 4], n: int) -> int {\n    return n\n}\ndef main() -> None {\n    mut v: Array[int, 4] = [0, 1, 2, 3]\n    print(g(v, 2))\n}\n"},
+            {"mut parameter", "def g(mut v: Array[int, 4], n: int) -> int {\n    return n\n}\ndef main() -> None {\n    mut v: Array[int, 4] = [0, 1, 2, 3]\n    print(g(v, 2))\n}\n"},
+            {"multiline parameter list", "def g(a: int,\n      b: int,\n      c: int) -> int {\n    return a\n}\ndef main() -> None {\n    print(g(1, 2, 3))\n}\n"},
+            {"method with receiver", "struct P {\n    x: int\n    y: int\n    def dot(self, o: P) -> int {\n        return self.x\n    }\n}\ndef main() -> None {\n    mut p: P = P { x: 1, y: 2 }\n    mut q: P = P { x: 3, y: 4 }\n    print(p.dot(q))\n}\n"},
+            {"self method call", "struct P {\n    x: int\n    y: int\n    def f(self, o: P, n: int) -> int {\n        return n\n    }\n    def g(self, o: P, n: int) -> int {\n        return self.f(o, 3)\n    }\n}\n"},
+            {"nested call arguments", "def h(a: int, b: int) -> int {\n    return a\n}\ndef g(x: int, y: int, z: int) -> int {\n    return x\n}\ndef main() -> None {\n    print(g(h(1, 2), 3, h(4, 5)))\n}\n"},
+            {"call before the declaration", "def main() -> None {\n    print(g(1, 2, 3))\n}\ndef g(a: int, b: int, c: int) -> int {\n    return a\n}\n"},
+            {"user function shadows a builtin", "def concat(a: int, b: int, c: int) -> int {\n    return a\n}\ndef main() -> None {\n    print(concat(1, 2, 3))\n}\n"},
+            {"call to an unresolved name", "def main() -> None {\n    print(nope(1, 2, 3))\n}\n"},
+            {"half-typed, unclosed", "def g(a: int, b: int, c: int) -> int {\n    return a\n}\ndef main() -> None {\n    print(g(1, 2, \n}\n"},
+            {"half-typed, declaration in progress", "def g(a: int, b: int, c: int) -> int {\n    return a\n}\ndef h(\ndef main() -> None {\n    print(g(1, 2, 3))\n}\n"},
+            {"three same-letter args", "def g(s: int, t: int, u: int) -> int {\n    return s\n}\ndef main() -> None {\n    mut s: int = 1\n    print(g(s, s, s))\n}\n"},
+            {"print with three args", "def main() -> None {\n    mut s: int = 1\n    print(s, s, s)\n}\n"},
+            {"extern declaration", "extern c def abs(x: i32) -> i32\ndef main() -> None {\n    print(abs(1))\n}\n"},
+            {"extern declaration, then a call", "extern c def abs2(x: i32, y: i32) -> i32\ndef main() -> None {\n    mut a: int = 1\n    mut b: int = 2\n    print(abs2(a, b))\n}\n"},
+            {"struct field call", "struct P {\n    x: int\n    y: int\n}\ndef main() -> None {\n    mut p: P = P { x: 1, y: 2 }\n    print(p.x)\n}\n"},
+            {"params with NO type annotations", "def f(s, t, u) -> int {\n    return 0\n}\ndef main() -> None {\n    print(f(1, 2, 3))\n}\n"},
+            {"params with no annotations, three same-letter args", "def f(s, s2, s3) -> int {\n    return 0\n}\ndef main() -> None {\n    mut s: int = 1\n    print(f(s, s, s))\n}\n"},
+            {"THE REPORTED SHAPE: three unannotated params all named s", "def f(s, s, s) -> int {\n    return 0\n}\ndef main() -> None {\n    print(f(1, 2, 3))\n}\n"},
+            {"params with no annotations, one arg", "def f(s) -> int {\n    return 0\n}\ndef main() -> None {\n    print(f(1))\n}\n"},
+            {"parallel for with a call", "def g(a: int, b: int) -> int {\n    return a\n}\ndef main() -> None {\n    parallel for i in range(0, 4) {\n        print(g(i, 1))\n    }\n}\n"},
+        };
+        for (String[] c : cases) {
+            List<Pair> hints;
+            try {
+                hints = hints(c[1]);
+            } catch (Throwable t) {
+                System.out.println("---- " + c[0] + "\n     THREW " + t);
+                continue;
+            }
+            System.out.println("---- " + c[0]);
+            if (hints.isEmpty()) {
+                System.out.println("     (no hints drawn)");
+                continue;
+            }
+            for (Pair p : hints) {
+                System.out.println("     at " + p.offset + "  `" + p.label + "`   context: `"
+                        + context(c[1], p.offset) + "`");
+            }
+        }
+    }
+
+    private static String context(String text, int off) {
+        int from = Math.max(0, off - 12);
+        int to = Math.min(text.length(), off + 14);
+        return text.substring(from, to).replace("\n", "\\n");
+    }
+
+    // ------------------------------------------------------------------ search
+
+    private static void search(Path root, int step) throws IOException {
+        Set<String> seen = new LinkedHashSet<>();
+        for (String dir : new String[]{"selfhost/parts", "tests/build", "tests/probes",
+                                       "examples", "bench", "ide-demo", "tests"}) {
+            Path d = root.resolve(dir);
+            if (!Files.isDirectory(d)) continue;
+            List<Path> found = new ArrayList<>();
+            Files.walk(d)
+                    .filter(Files::isRegularFile)
+                    .filter(f -> f.toString().endsWith(".vel"))
+                    .forEach(found::add);
+            found.sort(null);
+            for (Path f : found) seen.add(root.relativize(f).toString().replace('\\', '/'));
+        }
+        System.out.println("truncating every " + step + " byte(s) over " + seen.size()
+                + " file(s): a label is reported when it is not a plain identifier or no"
+                + " declaration in the file declares a parameter with that name");
+        int anomalies = 0;
+        long runs = 0;
+        long absent = 0;
+        long tooLarge = 0;
+        long threw = 0;
+        for (String rel : seen) {
+            Path p = root.resolve(rel);
+            if (!Files.isRegularFile(p)) {
+                absent++;
+                continue;
+            }
+            if (Files.size(p) > MAX_FILE_BYTES) {
+                tooLarge++;
+                continue;
+            }
+            String full = new String(Files.readAllBytes(p), StandardCharsets.ISO_8859_1);
+            for (int cut = 1; cut < full.length(); cut += step) {
+                String text = full.substring(0, cut);
+                runs++;
+                List<Pair> hints;
+                try {
+                    hints = hints(text);
+                } catch (Throwable t) {
+                    anomalies++;
+                    threw++;
+                    System.out.println("  " + rel + " cut=" + cut + ": parameterHints THREW " + t);
+                    continue;
+                }
+                for (Pair h : hints) {
+                    String name = h.label.trim();
+                    if (name.endsWith(":")) name = name.substring(0, name.length() - 1).trim();
+                    if (isPlainName(name)) continue;
+                    anomalies++;
+                    if (anomalies <= 40) {
+                        System.out.println("  " + rel + " cut=" + cut + ": label `" + h.label
+                                + "` at " + h.offset + "  context: `" + context(text, h.offset) + "`");
+                    }
+                }
+            }
+        }
+        System.out.println("runs: " + runs + "   labels that are not plain identifiers: " + anomalies);
+        Coverage cov = new Coverage()
+                .defectCategory("parameterHints-threw")
+                .defectCategory("missing-corpus-file")
+                .category("too-large")
+                .ran(runs)
+                .defect("parameterHints-threw", threw)
+                .defect("missing-corpus-file", absent)
+                .skipped("too-large", tooLarge)
+                .wrong(anomalies);
+        cov.print();
+        // A diagnostic, but it still has to say what it did: `runs: 0` and
+        // `anomalies: 0` used to be the same line as a clean sweep.
+        System.exit(anomalies > 0 ? 1 : (cov.hasDefect() ? 3 : 0));
+    }
+
+    private static boolean isPlainName(String s) {
+        if (s.isEmpty()) return false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            boolean ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+                    || (i > 0 && c >= '0' && c <= '9');
+            if (!ok) return false;
+        }
+        return true;
+    }
+
+    private static final class Pair {
+        final int offset;
+        final String label;
+
+        Pair(int offset, String label) {
+            this.offset = offset;
+            this.label = label;
+        }
+    }
+
+    private static List<Pair> hints(String text) throws Exception {
+        List<Pair> out = new ArrayList<>();
+        for (Object o : VelaHints.INSTANCE.parameterHints(text, text.length())) {
+            Integer off = (Integer) o.getClass().getMethod("getFirst").invoke(o);
+            String label = (String) o.getClass().getMethod("getSecond").invoke(o);
+            out.add(new Pair(off, label));
+        }
+        return out;
+    }
+}

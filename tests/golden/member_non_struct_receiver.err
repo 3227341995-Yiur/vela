@@ -1,0 +1,2 @@
+vela: type error: int has no method 'foo'
+  at tests/build/check_cases/member_non_struct_receiver.vel:3

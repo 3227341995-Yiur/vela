@@ -1,6 +1,6 @@
-**English** | [简体中文](SPEC.zh-CN.md)
-
 # The Vela language, version 0.1
+
+**English** | [简体中文](SPEC.zh-CN.md)
 
 Vela is a compiled systems language. It reads like Python, but no rule in the
 grammar depends on whitespace, and no construct is optional: if you write

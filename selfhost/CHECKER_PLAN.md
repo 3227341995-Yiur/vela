@@ -1,5 +1,7 @@
 # Porting the semantic checker to Vela — implementation checklist
 
+**English** | [简体中文](CHECKER_PLAN.zh-CN.md)
+
 > **Status: ported.**  `selfhost/parts/check.vel` carries the verdicts in this
 > plan.  The evidence that certified the port was `tests/diff_check.py`, which put
 > every program *and every reject case* in the tree to both checkers while stage 0
@@ -39,6 +41,29 @@ Scope: this is a **specification**, not code. Message texts are quoted verbatim
 (f-string placeholders shown as `{...}`); every one has to be reproduced byte for
 byte — it used to be `tests/run_tests.py`'s substring matches that enforced that,
 and it is now `tests/golden/<name>.err`.
+
+> **Provenance caveat, added 2026-09-22: `tests/diff_check.py` never existed, and
+> the verdicts live in `tests/golden/*.err` today.**
+>
+> The status block above names `tests/diff_check.py` as "the evidence that certified
+> the port", and then says the harness was deleted in stage 4.  The second half is
+> true; the first half cannot be checked by any reader, because **the file does not
+> exist and never did**: there is no `tests/diff_check.py` in the tree
+> (`Get-ChildItem -Recurse -Filter diff_check.py` finds nothing), and
+> `git log --all --oneline -- tests/diff_check.py` returns **0 commits** — not "was
+> deleted", but never added.  (The same is not true of its siblings: `vela/checker.py`,
+> `tests/run_tests.py` and `diff_lexer.py` are all described here or in
+> `selfhost/vela.vel` as having been deleted in stage 4, and that is a claim about
+> history a reader can still probe.)  So the specific numbers in the block above —
+> **70/70 agree, 42 with the message byte for byte, 0 verdict differences** — are an
+> unattributable reading: they may be a paraphrase of a differently-named harness, a
+> rename, or a miscitation, and this document cannot say which.  Treat them as
+> **unsourced until someone re-derives them or names the file they came from.**
+>
+> **What actually holds the checker's verdicts today is `tests/golden/`, and the
+> refusal half of it is enumerable: 58 `*.err` files** (`tests/golden/*.err`,
+> counted 2026-09-22).  Those files — not any Python harness — are what a regression
+> is measured against now, and `tests/cases.txt` names the cases that own them.
 
 ---
 

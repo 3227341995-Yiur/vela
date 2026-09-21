@@ -65,7 +65,9 @@ $pluginRoot = $scriptDir
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $pluginRoot '..')).Path }
 $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 
-$harnessSrc = Join-Path $pluginRoot 'build\tools\harness\src'
+# The harness's sources are tracked (tools\harness\src); its classes are output and
+# go under the gitignored build\.
+$harnessSrc = Join-Path $pluginRoot 'tools\harness\src'
 $harnessOut = Join-Path $pluginRoot 'build\tools\harness\psi-classes'
 $pluginClasses = Join-Path $pluginRoot 'build\classes'
 $classpathFile = Join-Path $pluginRoot 'build\args\platform-classpath.txt'
@@ -113,18 +115,46 @@ if (-not (Test-Path -LiteralPath $pluginClasses)) { Die "missing $pluginClasses.
 
 Step 'Compile the harness against the plugin classes'
 New-Item -ItemType Directory -Force -Path $harnessOut | Out-Null
-$classpath = Get-Content -LiteralPath $classpathFile -Raw
-& $javac --release 21 -encoding UTF-8 -cp "$pluginClasses;$classpath" -d $harnessOut `
-    (Join-Path $harnessSrc 'PsiTreeDiff.java') 2>&1 |
+$classpath = (Get-Content -LiteralPath $classpathFile -Raw).Trim()
+# THE CLASSPATH DOES NOT FIT ON A COMMAND LINE: 32 305 bytes over 429 jars, every one
+# of them under `D:\JetBrains\IntelliJ IDEA 2026.2.1` and therefore containing a space,
+# against Windows' 32 767-character limit.  Passed directly, javac fails to *launch*
+# ("The filename or extension is too long"), writes no class file, and the run then
+# dies with `ClassNotFoundException` -- which reads as a harness bug, not a limit.
+# An @argfile takes it off the command line; backslashes are escapes inside an argfile,
+# so paths are written with forward slashes, which javac accepts on Windows.
+$cp = "$harnessOut;$pluginClasses;$classpath"
+function Quoted([string] $s) { '"' + ($s -replace '\\', '/') + '"' }
+$javacArgsFile = Join-Path $harnessOut 'javac.args'
+[System.IO.File]::WriteAllLines($javacArgsFile, [string[]] @(
+        '--release 21',
+        '-encoding UTF-8',
+        '-d ' + (Quoted $harnessOut),
+        '-cp ' + (Quoted $cp),
+        (Quoted (Join-Path $harnessSrc 'PsiTreeDiff.java')),
+        # Coverage.java is compiled alongside: every harness in this plugin ends with
+        # the same coverage triple, and PsiTreeDiff is not special enough to be the
+        # one tool that keeps a bare PASS/FAIL.  Naming it here (rather than passing
+        # *.java) is deliberate: this driver checks one particular diff, and pulling in
+        # the other ten tools would make a compile error in an unrelated harness look
+        # like a failure of this one.
+        (Quoted (Join-Path $harnessSrc 'Coverage.java'))
+    ), (New-Object System.Text.UTF8Encoding($false)))
+& $javac ('@' + $javacArgsFile) 2>&1 |
     Tee-Object -FilePath (Join-Path $harnessOut 'javac.log')
 if ($LASTEXITCODE -ne 0) { Die "javac failed for the harness (see $harnessOut\javac.log)" }
+if (-not (Test-Path -LiteralPath (Join-Path $harnessOut 'PsiTreeDiff.class'))) {
+    Die "javac reported success but wrote no PsiTreeDiff.class into $harnessOut"
+}
 
 Step 'Every file in the corpus, through the platform''s own builder'
-$harnessArgs = @('-cp', "$harnessOut;$pluginClasses;$classpath", 'PsiTreeDiff', $RepoRoot)
+$harnessArgs = @('PsiTreeDiff', $RepoRoot)
 if ($ShowTrees) { $harnessArgs += '--verbose' }
 if ($Single)    { $harnessArgs += @('--single', $Single) }
 $log = Join-Path $harnessOut 'psi-tree-diff.log'
-& $java @harnessArgs 1> $log 2> "$log.err"
+$runArgsFile = Join-Path $harnessOut 'psi-tree-diff.args'
+[System.IO.File]::WriteAllLines($runArgsFile, [string[]] (@('-cp ' + (Quoted $cp)) + @($harnessArgs | ForEach-Object { Quoted $_ })), (New-Object System.Text.UTF8Encoding($false)))
+& $java ('@' + $runArgsFile) 1> $log 2> "$log.err"
 $code = $LASTEXITCODE
 Get-Content -LiteralPath $log | ForEach-Object { Write-Host $_ }
 $errText = ''

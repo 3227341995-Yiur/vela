@@ -151,6 +151,13 @@ typedef struct {
     uint8_t kind;
 } shim_slot;
 
+typedef struct shim_layout {
+    LLVMTypeRef  type;
+    LLVMTypeRef *fields;
+    unsigned     count;
+    unsigned     cap;
+} shim_layout;
+
 typedef struct shim_module {
     int64_t id;
     LLVMContextRef ctx;
@@ -162,6 +169,15 @@ typedef struct shim_module {
     /* The primitives are created once per module and their handles are cached;
      * an emitter calling vshim_type_i64() in a loop must not grow the table. */
     int64_t h_void, h_i1, h_i8, h_i32, h_i64, h_f64, h_ptr, h_str;
+    /* Named struct types and the fields they have been given so far.  A body may
+     * be set once and only once, and `LLVMStructSetBody` takes the *whole* field
+     * list -- so the list is kept here and re-set on every field, which is what
+     * lets the emitter add one field per call across a boundary that has no
+     * variadic functions.  A linear scan: a module has a handful of structs, and
+     * a hash table here would be more machinery than the check is worth. */
+    shim_layout   *layouts;
+    size_t         layout_count;
+    size_t         layout_cap;
 } shim_module;
 
 /* Monotonic module ids, so a closed module's id is never handed out again.  One
@@ -631,7 +647,10 @@ int32_t vshim_module_close(int64_t module)
     LLVMContextDispose(m->ctx);
     {
         size_t index = (size_t)m->id - 1;
+        size_t i;
         g_modules[index] = NULL;
+        for (i = 0; i < m->layout_count; i++) free(m->layouts[i].fields);
+        free(m->layouts);
         free(m->slots);
         free(m);
     }
@@ -1671,6 +1690,100 @@ int64_t vshim_build_gep(int64_t module, int64_t element_type, int64_t pointer,
     h = slot_add(m, r, SHIM_KIND_VALUE);
     if (!h) return 0;
     return h;
+}
+
+/* ============================================================ named structs
+ *
+ * A Vela struct becomes one *named* LLVM struct type: the type exists first and
+ * its fields are added after, which is the ordering a recursive struct needs and
+ * the ordering that lets a struct value be one `load`/`store` pair instead of a
+ * copy per field.  The name is not load-bearing for the object -- LLVM struct
+ * names never reach the object file -- but it is what makes the IR text a person
+ * reads say `%vl_Vec2` instead of `%struct.anon.7`.
+ */
+
+int64_t vshim_struct_type_opaque_buf(int64_t module)
+{
+    shim_module *m;
+    vela_str name = buffer_as_str();
+    char buf[VSHIM_NAME_CAP];
+    LLVMTypeRef t;
+
+    clear_error();
+    m = module_of(module);
+    if (!m) return 0;
+    if (copy_cstr(name, buf, sizeof buf, "a struct type name") != VSHIM_OK) return 0;
+    t = LLVMStructCreateNamed(m->ctx, buf);
+    if (!t) {
+        fail("LLVMStructCreateNamed() returned NULL");
+        return 0;
+    }
+    if (m->layout_count == m->layout_cap) {
+        size_t cap = m->layout_cap ? m->layout_cap * 2 : 8;
+        shim_layout *grown = (shim_layout *)realloc(m->layouts,
+                                                    cap * sizeof(shim_layout));
+        if (!grown) {
+            fail("out of memory recording a struct type");
+            return 0;
+        }
+        m->layouts = grown;
+        m->layout_cap = cap;
+    }
+    m->layouts[m->layout_count].type    = t;
+    m->layouts[m->layout_count].fields  = NULL;
+    m->layouts[m->layout_count].count   = 0;
+    m->layouts[m->layout_count].cap     = 0;
+    m->layout_count++;
+    return slot_add(m, t, SHIM_KIND_TYPE);
+}
+
+int32_t vshim_struct_set_body(int64_t module, int64_t struct_type,
+                              int64_t field_type)
+{
+    shim_module *m, *owner = NULL;
+    shim_layout *l = NULL;
+    LLVMTypeRef t, f;
+    size_t i;
+
+    clear_error();
+    m = module_of(module);
+    if (!m) return VSHIM_ERR_ARG;
+    t = (LLVMTypeRef)lookup(struct_type, SHIM_KIND_TYPE, &owner);
+    if (!t) return VSHIM_ERR_ARG;
+    if (owner != m) {
+        fail("the struct type belongs to another module");
+        return VSHIM_ERR_ARG;
+    }
+    f = (LLVMTypeRef)lookup(field_type, SHIM_KIND_TYPE, &owner);
+    if (!f) return VSHIM_ERR_ARG;
+    if (owner != m) {
+        fail("the field type belongs to another module");
+        return VSHIM_ERR_ARG;
+    }
+    /* The struct must be one this shim created: LLVMStructSetBody on a type from
+     * somewhere else is how a caller would reshape a type out from under values
+     * already built against it. */
+    for (i = 0; i < m->layout_count; i++) {
+        if (m->layouts[i].type == t) { l = &m->layouts[i]; break; }
+    }
+    if (!l) {
+        fail("this type is not a named struct this shim created");
+        return VSHIM_ERR_ARG;
+    }
+    if (l->cap == l->count) {
+        unsigned cap = l->cap ? l->cap * 2 : 4;
+        LLVMTypeRef *grown = (LLVMTypeRef *)realloc(l->fields,
+                                                    cap * sizeof(LLVMTypeRef));
+        if (!grown) {
+            fail("out of memory laying out a struct");
+            return VSHIM_ERR_NO_MEMORY;
+        }
+        l->fields = grown;
+        l->cap = cap;
+    }
+    l->fields[l->count++] = f;
+    LLVMStructSetBody(t, l->fields, l->count, 0);
+    return VSHIM_OK;
 }
 
 /* ==================================================================== calls */

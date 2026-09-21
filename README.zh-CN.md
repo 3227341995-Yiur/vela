@@ -1,15 +1,15 @@
+# Vela
+
 [English](README.md) | **简体中文**
 
 <!--
 源文件 : README.md
-源文件字节 : 34356
-源文件 SHA256 : f3c90ab74dd830a1cbe7928ebf26e1a768fff96083ddfbe0393cadb64b132610
-翻译日期 : 2026-09-20
+源文件字节 : 34727
+源文件 SHA256 : 8ffbb2177ad5deea413c89f262e2fd110d151abe77d155fc14e3b1ff16a45be6
+翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
-
-# Vela
 
 一门系统级语言，具备 **Python 形状的语法、C 形状的性能，以及一套没有逃生舱的安全叙事**：没有 `unsafe`，没有裸指针，没有手工 `free`。
 

@@ -1,6 +1,6 @@
-**English** | [简体中文](DESIGN.zh-CN.md)
-
 # Vela — design notes
+
+**English** | [简体中文](DESIGN.zh-CN.md)
 
 Why the language is shaped the way it is, and how the parts fit. This is the
 document to read before changing anything: most of the unusual decisions below
@@ -37,12 +37,17 @@ not a thing a language needs to do to be fast, and pretending otherwise is how
 hobby compilers end up slow.
 
 The measured outcome is in `bench/RESULTS.md`, and it reports every variant rather
-than a score: the serial matmul is faster than either C++ serial build, the
-OpenMP matmul is about 17% behind the C++ build that also uses OpenMP because
-Vela's inner loop keeps its overflow checks, and every row carries the answer it
-must print so a fast wrong answer cannot pass. (That file's account of *why* the
-serial row wins still credits `restrict` and proved-away bounds checks; the
-compiler does neither yet, and the numbers are the numbers either way.)
+than a score: serial matmul 512² is **2.4× slower** than the C++ serial twin
+(0.5433 s against 0.2241 s) and the OpenMP matmul is **3.1× slower** than the C++
+build that also uses OpenMP (0.0680 s against 0.0221 s), both because Vela's inner
+loop keeps its checked index arithmetic, and every row carries the answer it must
+print so a fast wrong answer cannot pass. (The paragraph this one replaces said
+the serial matmul was faster than C++ and that the parallel row was
+"about 17% behind"; both numbers were wrong, and they were wrong in opposite
+directions. The first credited `restrict` and proved-away bounds checks, neither
+of which the compiler does; the second predated the 2026-09-19 emitter fix.
+Measured 2026-09-21 in `bench/RESULTS.md`, whose rows are the numbers quoted
+here.)
 
 ### 1.2 "Safer than Rust"
 

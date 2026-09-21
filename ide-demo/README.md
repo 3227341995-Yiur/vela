@@ -1,40 +1,46 @@
-# ide-demo — 用 IntelliJ IDEA 试 Vela 插件的小项目
+# ide-demo — a small project for trying the Vela plugin in IntelliJ IDEA
 
-A small, real project for trying the Vela plugin in IntelliJ IDEA. 每个文件都很小，
-但都是真程序，而且是**跑过、量过**的：下面每一段输出都是从这台机器上真实的
-`vm.exe build` + 真实运行的结果里逐字节抄下来的，不是"应该是这样"。
+**English** | [简体中文](README.zh-CN.md)
 
-本目录**故意**放在 Vela 仓库里面（`C:\Users\lu\Downloads\vela\ide-demo\`），原因见
-下面「为什么放在仓库里面」。它和 `vela\tests\` 无关，不依赖那里的任何东西。
+A small, real project for trying the Vela plugin in IntelliJ IDEA.  Every file in it
+is small, but every one is a real program, and one that has been **run and measured**:
+each block of output below was copied byte for byte out of a real `vm.exe build` and a
+real run on this machine, not written down as what it "should" be.
+
+This directory sits **deliberately** inside the Vela checkout
+(`C:\Users\lu\Downloads\vela\ide-demo\`), for the reason under "Why inside the
+checkout" below.  It has nothing to do with `vela\tests\` and depends on nothing there.
 
 ---
 
-## 目录内容 / What is in here
+## What is in here
 
-| 文件 | 作用 |
+| file | purpose |
 |---|---|
-| `hello.vel` | 最小的合法程序，打印三行。用来确认"从 IDEA 里能跑起来"。 |
-| `tour.vel` | 演示编辑功能的文件：struct + 方法、带参数的函数、函数调用函数、一个 `mut` 局部变量、一个合法的 `parallel for`。 |
-| `broken.vel` | **故意写错**的一个文件：故意的类型错误，插件会在编辑器里画出诊断。 |
-| `expected\hello.txt` | `hello.vel` 必须打印的确切 stdout（就是真机输出本身，逐字节）。 |
-| `expected\tour.txt` | `tour.vel` 必须打印的确切 stdout（同上）。 |
-| `README.md` | 本文件。 |
+| `hello.vel` | the smallest legal program, printing three lines.  Used to confirm that "it runs from inside IDEA" |
+| `tour.vel` | the file that demonstrates the editing features: a struct + methods, functions with parameters, a function calling a function, one `mut` local, and one legal `parallel for` |
+| `broken.vel` | **deliberately wrong**: an intentional type error, which the plugin draws as a diagnostic in the editor |
+| `expected\hello.txt` | the exact stdout `hello.vel` must print (the real machine's own output, byte for byte) |
+| `expected\tour.txt` | the exact stdout `tour.vel` must print (likewise) |
+| `README.md` | this file |
 
-运行之后目录里会多出 `hello.c` / `hello.exe` / `hello.obj` / `tour.c` / `tour.exe` /
-`tour.obj`：那是编译产物，正常现象。`vm.exe build` 的规则就是"把 `.c` 和 `.exe`
-写在源文件旁边"。
+After a run, the directory grows `hello.c` / `hello.exe` / `hello.obj` / `tour.c` /
+`tour.exe` / `tour.obj`: those are compile products and are expected.  The rule
+`vm.exe build` follows is "write the `.c` and the `.exe` beside the source file".
 
 ---
 
-## 为什么放在仓库里面 / Why inside the checkout
+## Why inside the checkout
 
-插件不保存编译器路径也能工作，因为它从**项目目录往上走**找编译器
-（`VelaCompiler.locate`：从项目目录开始，最多往上 6 层，找
-`<目录>\selfhost\build\vm.exe`）。
+The plugin works without a stored compiler path because it finds the compiler by
+**walking up from the project directory** (`VelaCompiler.locate`: starting at the
+project directory, up to 6 levels, looking for
+`<directory>\selfhost\build\vm.exe`).
 
-从 `vela\ide-demo` 往上走**一层**就是 `vela\`，那里有 `selfhost\build\vm.exe`，
-所以把 `vela\ide-demo` 当 IDEA 项目打开，插件不用任何配置就能找到编译器。
-这一走法我在本机实测过（照插件源码里的循环原样走一遍）：
+One level up from `vela\ide-demo` is `vela\`, which holds
+`selfhost\build\vm.exe`, so opening `vela\ide-demo` as an IDEA project lets the
+plugin find the compiler with no configuration at all.  I measured that walk on this
+machine (replaying the loop from the plugin's own source):
 
 ```
 项目目录: C:\Users\lu\Downloads\vela\ide-demo
@@ -51,75 +57,85 @@ runtimeDir()  从编译器自己的目录往上最多 4 层找 <目录>\runtime\
            -> velaRoot   = C:\Users\lu\Downloads\vela
 ```
 
-（`locate()` 两条规则用的是正斜杠 `selfhost/build/vm.exe`，Windows 上两种写法等价。）
+(Both rules in `locate()` use forward slashes, `selfhost/build/vm.exe`; on Windows
+the two spellings are equivalent.)
 
 ---
 
-## 怎么打开、怎么运行 / How to open it and run a file
+## How to open it and run a file
 
-1. **装插件**（已经装过就跳过）：`Settings → Plugins → ⚙ → Install Plugin from
-   Disk…`，选 `C:\Users\lu\Downloads\vela\idea-plugin\dist\vela-idea-plugin-0.1.1.zip`，
-   按提示重启 IDEA。
-2. **打开项目**：`File → Open`，选**目录本身**
-   `C:\Users\lu\Downloads\vela\ide-demo`（不是选里面的某个文件）→ 确认
-   `Trust Project`。IDEA 把它当成一个项目打开，而不是"往当前项目里加一个目录"。
-3. **等索引**：第一次打开时右下角会跑 indexing，几秒钟；等它结束再做别的。
-   语法高亮、Structure、补全都靠它。
-4. **编译器路径**：`Settings → Languages & Frameworks → Vela` 留空就行 —— 插件会按
-   上面那条规则自己找到 `vm.exe`。（也可以手填
-   `C:\Users\lu\Downloads\vela\selfhost\build\vm.exe`，效果一样。）
-5. **运行**（三种任选其一，都是同一个动作）：
-   * 在编辑器里右键 `hello.vel` → **Run 'hello.vel'**；
-   * 点行号槽（gutter）里的**绿色三角**；
-   * 光标在该文件里，按 **Ctrl+Shift+F10**。
-   插件会自己建一个 "Vela" 运行配置：先 `vm.exe build <文件>`，再跑生成出来的
-   `.exe`，两步的输出都进 IDEA 的 Run 控制台。运行配置也可以在
-   `Run → Edit Configurations…` 里存下来、改名、重复运行。
+1. **Install the plugin** (skip if it is already installed): `Settings → Plugins →
+   ⚙ → Install Plugin from Disk…`, choose
+   `C:\Users\lu\Downloads\vela\idea-plugin\dist\vela-idea-plugin-0.1.1.zip`, and
+   restart IDEA when prompted.
+2. **Open the project**: `File → Open`, choose the **directory itself**,
+   `C:\Users\lu\Downloads\vela\ide-demo` (not a file inside it) → confirm
+   `Trust Project`.  IDEA opens it as a project, rather than "adding a directory to
+   the current project".
+3. **Wait for indexing**: on the first open, indexing runs in the bottom right corner
+   for a few seconds; wait for it to finish before doing anything else.  Syntax
+   highlighting, Structure and completion all depend on it.
+4. **Compiler path**: leaving `Settings → Languages & Frameworks → Vela` blank is
+   fine — the plugin finds `vm.exe` itself by the rule above.  (You can also type
+   `C:\Users\lu\Downloads\vela\selfhost\build\vm.exe` by hand; the effect is the
+   same.)
+5. **Run** (any one of three, all the same action):
+   * right-click `hello.vel` in the editor → **Run 'hello.vel'**;
+   * click the **green triangle** in the gutter;
+   * with the cursor in the file, press **Ctrl+Shift+F10**.
+   The plugin creates a "Vela" run configuration by itself: `vm.exe build <file>`
+   first, then the `.exe` it produced, with both steps' output in IDEA's Run console.
+   The run configuration can also be saved, renamed and re-run from
+   `Run → Edit Configurations…`.
 
 ---
 
-## 每个文件演示什么 / What each file demonstrates
+## What each file demonstrates
 
 ### `hello.vel`
-最小可运行程序：`def main() -> None` 加三条 `print`。没有数组、没有循环。
-用来看"Run 这一整条路通不通"。
+The smallest runnable program: `def main() -> None` plus three `print`s.  No arrays,
+no loops.  It is there to show whether the whole Run path works.
 
 ### `tour.vel`
-一个文件里集中放齐了要试的东西，一眼能对上：
+Everything worth trying, gathered into one file so it can be lined up at a glance:
 
-| 位置 | 演示的功能 |
+| spot | feature demonstrated |
 |---|---|
-| `struct Point` + 两个方法 `manhattan` / `moved` | Structure 视图里出现结构体和方法；`.manhattan()` 这种调用有语义高亮 |
-| `def scale(v: int, factor: int)` 等带参数的函数 | 光标放进 `scale(` 里按 `Ctrl+P` 有参数信息；悬停（`Ctrl+Q`）有说明 |
-| `def moved(self: Point, dx: int, dy: int) -> Point` | 两个参数 + 返回结构体（用 `Point(x, y)` 构造，构造就是一次"调用"） |
-| `describe` 里调用 `scale(...)` | **Go to declaration 有目标**：在 `describe` 里 `Ctrl+Click` `scale` → 跳到 `def scale` |
-| `mut n: int = 8` | 一个可变局部变量，没和任何东西重名 |
-| `mut a` / `mut out` / `parallel for` | 一个**合法**的 `parallel for`（`SPEC.md` §7）：`out[i] = a[i] * 2`，被写的 `out` 是本函数的 `mut` 局部数组，只用一个循环下标索引，被读的 `a` 是**另一个**数组 |
+| `struct Point` + the two methods `manhattan` / `moved` | the struct and its methods appear in the Structure view; a call like `.manhattan()` has semantic highlighting |
+| parameterised functions such as `def scale(v: int, factor: int)` | put the cursor inside `scale(` and press `Ctrl+P` for parameter info; hover (`Ctrl+Q`) for documentation |
+| `def moved(self: Point, dx: int, dy: int) -> Point` | two parameters + a returned struct (`Point(x, y)` constructs it; construction is a "call") |
+| `scale(...)` called inside `describe` | **Go to declaration has a target**: `Ctrl+Click` `scale` in `describe` → jumps to `def scale` |
+| `mut n: int = 8` | a mutable local that collides with nothing |
+| `mut a` / `mut out` / `parallel for` | one **legal** `parallel for` (`SPEC.md` §7): `out[i] = a[i] * 2`, where the written `out` is this function's `mut` local array, indexed by a single loop variable, and the read `a` is a **different** array |
 
-`Ctrl+Click` 值得点几下，能跳到目标的有：`describe` 里的 `scale`、`Point(3, -4)`
-里的 `Point`、`p.manhattan()` 里的 `manhattan`、`p.moved(...)` 里的 `moved`、
-`p.x` / `q.x` 里的 `x`。
+`Ctrl+Click` is worth trying a few times; these have targets: `scale` inside
+`describe`, `Point` inside `Point(3, -4)`, `manhattan` inside `p.manhattan()`,
+`moved` inside `p.moved(...)`, and `x` inside `p.x` / `q.x`.
 
-有一类**故意**没有目标：像 `range(0, n)` 里的 `n`、`out[i]` 里的 `out` 这种"光秃秃
-读一个局部名"，插件不提供跳转目标（`VelaGotoDeclaration.kt` 里写明了：局部变量只
-作为接收者 `p.x` 这种形式解析，单独一个名字不猜）。这是设计，不是坏了。
+One class **deliberately** has no target: a bare read of a local name, such as `n` in
+`range(0, n)` or `out` in `out[i]`, gets no jump target from the plugin
+(`VelaGotoDeclaration.kt` says so explicitly: a local is resolved only in receiver
+position like `p.x`; a name on its own is not guessed).  That is the design, not a
+break.
 
 ### `broken.vel`
-顶部中英文都写了"这个文件是故意写错的"。它演示的是**输入时就能看到的实时诊断**，
-不是运行。
+Its top says, in both Chinese and English, that the file is deliberately wrong.  It
+demonstrates **real-time diagnostics as you type**, not running.
 
 ### `expected\`
-两个 `.txt` 是可运行文件的**确切 stdout**，是从真实运行里逐字节复制过来的
-（不是手打的），所以可以直接拿去比对，不必相信这份 README。注意它们是 Windows
-原样字节，行尾是 **CRLF**，末尾有换行。
+The two `.txt` files are the **exact stdout** of the runnable files, copied byte for
+byte out of real runs (not typed by hand), so they can be diffed directly without
+trusting this README.  Note that they are Windows bytes as-is: the line endings are
+**CRLF** and there is a trailing newline.
 
 ---
 
-## 确切的控制台输出 / The exact expected output
+## The exact expected output
 
-下面每段都是逐字节真机输出（代码块里行尾显示为换行，实际是 CRLF）。
+Every block below is real machine output, byte for byte (inside a code block the line
+endings display as newlines; they are actually CRLF).
 
-### `hello.vel` — 运行 `hello.exe`
+### `hello.vel` — running `hello.exe`
 
 ```
 hello from Vela
@@ -127,11 +143,11 @@ hello from Vela
 goodbye
 ```
 
-39 字节，SHA256 `FD3FA73FF967EDE73152D341738CA70B3598C33177D49CB75D334DD7C6955567`
-（`expected\hello.txt` 的哈希与它完全相同）。
-解释器 `vm.exe run ide-demo\hello.vel` 打印出**同样**的 39 字节。
+39 bytes, SHA256 `FD3FA73FF967EDE73152D341738CA70B3598C33177D49CB75D334DD7C6955567`
+(the hash of `expected\hello.txt` is identical to it).
+The interpreter, `vm.exe run ide-demo\hello.vel`, prints the **same** 39 bytes.
 
-### `tour.vel` — 运行 `tour.exe`
+### `tour.vel` — running `tour.exe`
 
 ```
 p = 3 -4
@@ -142,37 +158,38 @@ sum(out) = 72
 out[7] = 16
 ```
 
-87 字节，SHA256 `3D766FE028E4B8790C7A8FE2B851DC3BD8EC46B2E7D44AB2516908929EA093FF`
-（`expected\tour.txt` 的哈希与它完全相同）。
+87 bytes, SHA256 `3D766FE028E4B8790C7A8FE2B851DC3BD8EC46B2E7D44AB2516908929EA093FF`
+(the hash of `expected\tour.txt` is identical to it).
 
-最后两行就是那个 `parallel for` 的结果：`sum(out) = 2×(1+2+…+8) = 72`，
-`out[7] = 8×2 = 16`。
+The last two lines are that `parallel for`'s result: `sum(out) = 2×(1+2+…+8) = 72`,
+`out[7] = 8×2 = 16`.
 
-`tour.exe` 是**带 OpenMP** 编出来的（`vm.exe build` 的原话是
-`built ide-demo\tour.exe  (with OpenMP)`）。三种线程数下输出逐字节相同，而且和
-解释器也相同 —— 四个文件的 SHA256 一模一样：
+`tour.exe` is built **with OpenMP** (`vm.exe build` says exactly
+`built ide-demo\tour.exe  (with OpenMP)`).  Its output is byte-identical at three
+thread counts, and identical to the interpreter's too — one SHA256 for all four:
 
-| 怎么跑 | 输出 SHA256 |
+| how it was run | output SHA256 |
 |---|---|
-| `OMP_NUM_THREADS=1` 跑 `tour.exe` | `3D766FE0…93FF` |
-| `OMP_NUM_THREADS=8` 跑 `tour.exe` | `3D766FE0…93FF` |
-| 不设 `OMP_NUM_THREADS`（默认）跑 `tour.exe` | `3D766FE0…93FF` |
-| `vm.exe run ide-demo\tour.vel`（解释器） | `3D766FE0…93FF` |
+| `tour.exe` with `OMP_NUM_THREADS=1` | `3D766FE0…93FF` |
+| `tour.exe` with `OMP_NUM_THREADS=8` | `3D766FE0…93FF` |
+| `tour.exe` with `OMP_NUM_THREADS` unset (the default) | `3D766FE0…93FF` |
+| `vm.exe run ide-demo\tour.vel` (the interpreter) | `3D766FE0…93FF` |
 
-### `broken.vel` — 预期就是"被拒绝"
+### `broken.vel` — the expected outcome is "refused"
 
-在编辑器里打开 `broken.vel`，应该看到**第 11 行**（`if 1 {` 那一行）有一条红色
-波浪线，悬停的说明是：
+Opening `broken.vel` in the editor should show a **red squiggle on line 11** (the
+`if 1 {` line), whose hover text is:
 
 ```
 'if' condition must be bool, got int
 ```
 
-（这是插件在后台跑 `vm.exe check` 的结果：`kind` 是 `type error`，行号 11 是编译器
-报的，不是插件猜的。整行标红，因为编译器只给行号不给列。）
+(This is the plugin running `vm.exe check` in the background: the `kind` is
+`type error` and line 11 is the compiler's, not the plugin's guess.  The whole line is
+marked, because the compiler gives a line number and no column.)
 
-在这个文件上按 Run（或 Ctrl+Shift+F10），程序**不会**跑起来。Run 控制台里会是
-（构建这步的 stderr，退出码 **2**）：
+Pressing Run on that file (or Ctrl+Shift+F10) does **not** start the program.  The Run
+console shows (the stderr of the build step, exit code **2**):
 
 ```
 vela: type error: 'if' condition must be bool, got int
@@ -183,26 +200,32 @@ vela: panic: the program was refused
 vela: panic: build: this compiler could not write the C for that file
 ```
 
-前两行就是那条诊断；后两行 `panic:` 是驱动在说"我已经拒绝了"，插件**不**把它们当成
-额外的问题（`VelaCompiler.parse` 里明确跳过 `panic`），所以编辑器里只有**一条**波浪
-线，不是三条。把 `if 1` 改成 `if True`（或 `if n > 0`）就能跑起来，这正是拿它做
-"改一下就通"练习的用法。
+The first two lines are the diagnostic; the two `panic:` lines afterwards are the
+driver saying it has already refused, and the plugin does **not** treat them as extra
+problems (`VelaCompiler.parse` skips `panic` explicitly), so the editor shows
+**one** squiggle rather than three.  Changing `if 1` to `if True` (or `if n > 0`)
+makes it run, which is exactly what it is for: a "change one thing and it works"
+exercise.
 
 ---
 
-## 关于 Debug：故意没有 / Debug is deliberately not offered
+## Debug is deliberately not offered
 
-**这个插件现在没有调试器，而且不是"能点但没用"，是 IDEA 里根本不会给你 Debug 这个
-选项。** 原因有两层，都是实测的：
+**The plugin has no debugger today, and it is not "clickable but useless": IDEA
+simply does not offer you the Debug option.**  There are two reasons, both measured:
 
-1. **插件这边**：运行配置 `VelaRunConfiguration` 实现了平台接口
-   `RunConfigurationWithSuppressedDefaultDebugAction`。平台的
-   `DapProgramRunner.canRun` 正是检查这个接口，所以它不会接管 Vela 的运行配置，
-   也没有别的 runner 会接管 —— Debug 就不出现。插件源码里的理由写得很清楚：一个
-   看起来能用的 Debug，其实只是"贴了调试器标签的 Run"，用户要到最需要断点的那一刻
-   才会发现真相；不如一开始就说没有。
-2. **语言这边**：编译器源码里有一个 `debug` 模式（同一个解释器，停下来，从目录里读
-   命令），但**现在树里的这个 `vm.exe` 比那部分工作旧**，实测：
+1. **On the plugin side**: the run configuration `VelaRunConfiguration` implements the
+   platform interface `RunConfigurationWithSuppressedDefaultDebugAction`.  The
+   platform's `DapProgramRunner.canRun` checks exactly that interface, so it will not
+   take over a Vela run configuration, and no other runner will take it over either —
+   Debug does not appear.  The plugin's own source states the reason plainly: a Debug
+   that looks like it works is only a Run with a debugger label stuck on it, and the
+   user finds out at the moment they most need a breakpoint; better to say there is
+   none from the start.
+2. **On the language side**: the compiler has a `debug` mode — the same interpreter,
+   stopping, reading commands from a directory — and it works, but the IDEA plugin has
+   no UI for it, so nothing offers it.  Measured on the compiler that was in the tree
+   when this README's Chinese original was written (exit code **2**):
 
    ```
    > selfhost\build\vm.exe debug ide-demo\hello.vel
@@ -211,17 +234,34 @@ vela: panic: build: this compiler could not write the C for that file
    vela: panic: unknown mode            [退出码 2]
    ```
 
-   所以它答的是"未知模式"。要让它答，得先用 `tools\build.ps1` 把编译器重建一遍。
+   That is the original record, from a compiler older than the one in the tree today,
+   and it is kept rather than rewritten.  **Corrected 2026-09-21**, measured against the
+   compiler built into the working tree that day — a mid-round build, deliberately not
+   pinned here (the LLVM track owns the build slot this round and rebuilt
+   `selfhost\build\vm.exe` several times, and the binary is ignored rather than
+   committed, so a hash from it names a file nobody can go back to; the pin belongs to
+   the round's frozen compiler): the mode is a working protocol debugger with the
+   syntax `vela debug <file.vel> <cmddir> [arg...]`, and the usage line above is an
+   older one — it does **not** list `debug` or `build-llvm`, while today's usage line
+   does list both, and ends with `emit-llvm` and `build-llvm`.  Invoked the way the
+   original did above, the current compiler exits 2 with the usage block **and**
+   `vela: panic: debug needs a command directory: vela debug FILE <cmddir>` on stderr;
+   given a command directory it exits 0, prints `ready` on stderr, and waits for
+   `cmd.NNN` files, running the program to completion when none are supplied.  So the
+   accurate statement about this repository is that **the compiler has debug mode and
+   the plugin does not offer it** — not that the mode is missing.
 
-结论：**断点、单步、看帧都还没有。** 现在能"调试"的手段是 `print` / `emit_int`
-这类打印，以及在编辑器里靠实时诊断和 `vm.exe check` 的判断。
+Conclusion: **breakpoints, stepping and frames do not exist yet.**  The means of
+"debugging" available now are printing — `print` / `emit_int` and the like — plus the
+editor's real-time diagnostics and `vm.exe check`'s verdict.
 
 ---
 
-## 一个已知的坑：编译器的 include 路径 / The one known trap
+## The one known trap: the compiler's include path
 
-`vm.exe build` 的 include 目录默认是**相对路径** `runtime`，所以它要求**当前工作
-目录就是仓库根目录**。实测（从别的目录跑，即使源文件给的是绝对路径）：
+`vm.exe build`'s include directory defaults to the **relative** path `runtime`, so it
+requires the **current working directory to be the repository root**.  Measured
+(running from another directory, even with the source file given as an absolute path):
 
 ```
 > cd C:\Users\lu\Downloads\_demo
@@ -232,9 +272,10 @@ vela: build: the C compiler refused ...
                                                    [退出码 2]
 ```
 
-**在 IDEA 里 Run 不受影响**：插件把 `vm.exe` 的工作目录设成 vela 根目录
-（`VelaCompiler.velaRoot`），并且额外把 runtime 目录作为**第 4 个参数**传给 `build`。
-这个第 4 参数的路子我也单独测过 —— 从别的目录跑，只要给上 runtime 目录就成功：
+**Run inside IDEA is unaffected**: the plugin sets `vm.exe`'s working directory to the
+vela root (`VelaCompiler.velaRoot`), and additionally passes the runtime directory to
+`build` as a **4th argument**.  I measured that 4th-argument route separately too —
+running from another directory, supplying the runtime directory is all it takes:
 
 ```
 > cd C:\Users\lu\Downloads\_demo
@@ -242,10 +283,12 @@ vela: build: the C compiler refused ...
 built C:\Users\lu\Downloads\vela\ide-demo\hello.exe      [退出码 0]
 ```
 
-（顺带量到一件事：`VELA_RUNTIME` 环境变量在这版 `vm.exe` 里**不**起作用，源码里有、
-二进制里没有 —— 所以手工跑的时候用第 4 个参数，或者干脆先 `cd` 到根目录。）
+(One thing measured in passing: the `VELA_RUNTIME` environment variable does **not**
+work in this `vm.exe` — it is in the source and not in the binary — so when running by
+hand use the 4th argument, or just `cd` to the root first.)
 
-如果你想自己在命令行里重跑一遍，**先 `cd C:\Users\lu\Downloads\vela`**：
+If you want to replay this by hand at the command line, **`cd
+C:\Users\lu\Downloads\vela` first**:
 
 ```powershell
 cd C:\Users\lu\Downloads\vela
@@ -259,20 +302,34 @@ cd C:\Users\lu\Downloads\vela
 
 ---
 
-## 这些数字是怎么来的 / How these numbers were measured
+## How these numbers were measured
 
-* 编译器：`C:\Users\lu\Downloads\vela\selfhost\build\vm.exe`，508928 字节，
-  SHA256 `D35B330E3A72D00AFA4E84FBEB4F91A31F77971674E017FEA417D184BB990D6`。
-* 所有 `build` 都在仓库根目录执行，源文件写作 `ide-demo\<名字>.vel`；
-  `hello.exe`、`tour.exe` 的退出码都是 **0**，`check broken.vel` 是 **2**。
-* `expected\*.txt` 是用 shell 重定向抓下来的**原始 stdout 字节**，然后原样复制进
-  `expected\`，再对比 SHA256 确认一致（不是照着屏幕重打的）。
-* 四个 `tour` 输出（解释器、默认、1 线程、8 线程）SHA256 全等，就是
-  `3D766FE028E4B8790C7A8FE2B851DC3BD8EC46B2E7D44AB2516908929EA093FF`。
-* 编译器往上找的走法（`locate()` / `runtimeDir()`）是按
-  `idea-plugin\src\main\kotlin\dev\vela\plugin\VelaCompiler.kt` 里的循环原样重走
-  一遍量出来的，输出见上面「为什么放在仓库里面」。
+**This English file translates the Chinese `README.zh-CN.md`, which came first.**  The
+measurements and the phrasing belong to that original; this file is a faithful
+translation of it, kept in the repository's bilingual shape so the two can be read side
+by side.  Because the Chinese came first, it is the original record and this file is the
+source *by the repository's convention only*: `README.zh-CN.md`'s provenance header
+points at this file, so that `tools\docs-zh-check.ps1` still reports the pair and says
+when the two drift apart — and a change to either side should update that header.  Where
+the compiler's banner or mode list is quoted, it is quoted as it was at the time of
+measurement, and not re-checked against today's binary.
 
-一个诚实的边界：这里证明的是"程序真能编译、真能跑、输出就是这个"，以及"插件在本机
-应该怎么找到编译器和 runtime"。IDEA **界面里**的东西（菜单项是否出现、波浪线画在
-第几行、补全弹窗）没法在无头环境里证明，插件自己的 README 也这么写。
+* Compiler: `C:\Users\lu\Downloads\vela\selfhost\build\vm.exe`, 508928 bytes, SHA256
+  `D35B330E3A72D00AFA4E84FBEB4F91A31F77971674E017FEA417D184BB990D6`.
+* Every `build` was run in the repository root, with the source written as
+  `ide-demo\<name>.vel`; `hello.exe` and `tour.exe` both exited **0**, and
+  `check broken.vel` exited **2**.
+* `expected\*.txt` were captured as **raw stdout bytes** by shell redirection, then
+  copied into `expected\` unchanged and confirmed identical by comparing SHA256 (not
+  retyped from the screen).
+* All four `tour` outputs (interpreter, default, 1 thread, 8 threads) share one SHA256,
+  `3D766FE028E4B8790C7A8FE2B851DC3BD8EC46B2E7D44AB2516908929EA093FF`.
+* The compiler's upward search (`locate()` / `runtimeDir()`) was measured by replaying
+  the loop in `idea-plugin\src\main\kotlin\dev\vela\plugin\VelaCompiler.kt` exactly;
+  the output is in "Why inside the checkout" above.
+
+One honest boundary: what is proved here is that the programs really do compile, really
+do run, and print exactly this — and how the plugin is supposed to find the compiler
+and the runtime on this machine.  What happens **inside IDEA's UI** (whether a menu
+item appears, which line a squiggle is drawn on, a completion popup) cannot be proved in
+a headless environment, and the plugin's own README says the same.

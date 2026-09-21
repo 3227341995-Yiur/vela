@@ -21,6 +21,121 @@ action registered as a group, and three extension points that were never
 registered (or registered under the wrong attribute name). An entry that says
 "added X, unverified" is worth more than one that says "added X".
 
+## 0.1.4 — the verifiers are made falsifiable, and the AST window grows a second mode
+
+**What changed, and why each one was a bug rather than a feature.**
+
+1. **The go-to-declaration oracle was crashing on every file with an `extern`
+   declaration, and the crash was invisible.** `GotoOracle.bindUseLines` answers
+   `null` for "the compiler noticed nothing about renaming this declaration" and
+   an empty list for "not verified", and the call site used the answer as if it
+   were always a list. The enhanced-for over `null` threw
+   `NullPointerException: Cannot invoke "java.util.List.iterator()"`, the per-file
+   `catch (Throwable)` recorded it as "the oracle could not run", and the run
+   still ended with `VERDICT: no reference goes to a declaration the compiler
+   does not bind it to`. Nine files were never judged —
+   `tests/probes/extern_*.vel`, `tests/build/extern/extern_c_probe.vel`,
+   `selfhost/vela.vel`, `tests/run_tests.vel`, and two
+   `tests/safety/cases/hole_*` files — and the verdict was a pass over whatever
+   happened to survive. Fixed, and the `-` cache spelling the cached branch
+   already understood is now what the null case writes.
+
+2. **Every verifier now ends with a coverage triple, not a bare verdict.**
+   `COVERAGE: ran <n> / skipped <n> (<why> <n>, …) / wrong <n>`. Every category a
+   tool can skip for is **declared up front and printed even at zero**, because
+   "0" and "this category was never counted" must not look the same, and
+   `ran + skipped` is asserted against the corpus so a file that is neither
+   compared nor categorised is a printed NOTE rather than silence. This is the
+   general repair of the failure in (1): a verdict is now falsifiable by its own
+   measurement.
+
+3. **The verdicts now have exit codes.** `AstDiff`, `SymbolDiff`, `FoldDiff` and
+   `HintNames` exited 0 unconditionally, so `VERDICT: FAIL` and
+   `VERDICT: PASS` were indistinguishable to a build. Now: 1 = the plugin is
+   wrong, 3 = the harness or the corpus is at fault, 0 = a pass. `GotoOracle`
+   exits 3 for a crashed file instead of reporting a pass.
+
+4. **A crash and a disagreement are counted apart.** `SymbolDiff` and `FoldDiff`
+   counted a thrown exception as `differ`; `HintDiff` counted an argument
+   position with no hint drawn as nothing at all. Both are now their own
+   counters, and the missing-hint case is a finding.
+
+5. **`AstDiff` names the manifest line for a corpus entry that points at
+   nothing.** `tests/cases.txt:174` names `tests/build/lexer_error.vel`, which is
+   not on disk, so the harness was FAIL with **zero** tree differences — 108 files
+   identical over 119,923 node lines and one MISSING row. That is a defect of the
+   corpus, which this plugin's owner does not own; it is now its own category
+   (`missing-corpus-file`) with its own exit code, and it is reported rather than
+   absorbed.
+
+6. **`VelaSyntaxDump` is now reachable, so the "inert feature" check is
+   satisfied honestly and not by an allowlist.** The verifier had begun failing it
+   under `[check unregisteredImplementations]`: it compiled, shipped, and nothing
+   in the jar could call it. It is now the **second mode of the Vela AST tool
+   window** — `Live parse (editor buffer)` — which parses the text the editor is
+   holding (unsaved edits included, and files that were never saved) and prints it
+   in the compiler's own tree format. `vm.exe parse` can only ever describe the
+   last saved bytes, so this is a capability and not a duplicate. The window has
+   one view and one active mode, so the two modes cannot race for the same tree
+   model; `Compiler (vm.exe parse)` is the default and the behaviour is unchanged.
+
+7. **The oracle's cache write is safe under its own concurrency.** Eight threads
+   called `Files.write` on one path every 200 new entries, so two could tear the
+   file — and a torn cache is not a crash, it is a *wrong oracle* on the next run,
+   because the value is a list of line numbers keyed by a declaration hash. It is
+   now one writer at a time, through a temporary file and a move.
+
+**What was measured, in this version**
+
+- The four version locations read back at `0.1.4` (plugin.xml `<version>`,
+  `build.gradle.kts` `version`, the dist zip's own name, the heading in this file).
+- `build-offline.ps1` exit 0, `RESULT: PASS`, and the artifact it wrote:
+  `dist\vela\lib\vela-idea-plugin.jar` **344,626 bytes** (sha256
+  `0a36128e032a1b4fbd67e82d9d2f3fffe827d5e8905db762ed0072e152f0896e`) and
+  `dist\vela-idea-plugin-0.1.4.zip` **324,198 bytes** (sha256
+  `55bf14a3b68e5ccc3486bf9a6ec669fd2ce1dc48c859881704616128cb1409f7`, one entry:
+  `vela/lib/vela-idea-plugin.jar`).  36 Kotlin sources, 145 class files, highest
+  bytecode major 65 (Java 21).
+- **What could NOT be verified about installability**: no IDE was launched, so
+  "install this zip and it loads" is not measured here.  What *is* measured is
+  everything short of that: the descriptor inside the jar is byte-identical to the
+  source descriptor, every class named by `plugin.xml` is in the jar, every
+  extension point id resolves to a declaration in the installed platform, the
+  attribute each registration uses is the one the platform's own descriptor binds,
+  all 30 registered classes are re-read out of the jar as instances of the exact
+  interface the platform requires, and the class file major version is one IDEA
+  2024.2+ accepts.
+- The verifier's `RESULT: PASS`: 36 Kotlin sources, 145 class files, every
+  registration read back against the platform's own declaration of its extension
+  point, and the headless behaviour checks.
+- `FEATURE_PARITY.md` is new: one row per user-visible capability, with what the
+  Python plug-in does (grep out of `python-ce.jar`/`python.jar`/`python-dap.jar`
+  at `PythonCore 253.28294.336`), Vela's state, the file that implements it, and
+  the harness or platform registration that backs it.
+- **`vm.exe debug` stays `refused-deliberately`.** It is not advertised anywhere
+  in the plugin: `VelaRunConfiguration` implements
+  `RunConfigurationWithSuppressedDefaultDebugAction` and the configuration is
+  written to accept any profile that is not `Debug`, so IDEA shows the refusal
+  instead of a button that would attach to nothing. No debugger was implemented
+  and none is claimed.
+
+**What was NOT verified, in this version**
+
+- No IDE was launched. No IntelliJ instance can be started on this machine in
+  this session, so *nothing* here is evidence that the plugin loads, that a
+  tool window appears, that a menu entry is where it should be, or that any of
+  these features looks right on screen. The strongest available evidence is the
+  platform-registration read-back plus the headless differentials, and it is
+  labelled as such in `FEATURE_PARITY.md`.
+- The `Live parse (editor buffer)` mode is compiled and reachable; it has **not**
+  been run inside an IDE. What is verified is that its parse is the compiler's
+  parse (that is `ast-diff.ps1`), not that the Swing panel renders it.
+- `classRegisteredNowhere` is now caught only where the class implements a
+  contract an extension point requires; see `FEATURE_PARITY.md`'s verifier
+  section for the precise remaining limit.
+
+
+
 ## 0.1.3 — built and verified; the first version that compiles
 
 **Why there is a 0.1.3 at all.** 0.1.2's entry below says "unverified, not yet

@@ -1,15 +1,15 @@
+# Vela 语言，版本 0.1
+
 [English](SPEC.md) | **简体中文**
 
 <!--
 源文件 : SPEC.md
 源文件字节 : 27502
-源文件 SHA256 : 62182948fcf70c6160842e2f1943f486ffc62c79a7ab6a83a381bd38189afb09
-翻译日期 : 2026-09-20
+源文件 SHA256 : f3207f2c2e7d3635c320c5ec9bf42f48f844d7837e64aad7f52141f3e0d61e9c
+翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
-
-# Vela 语言，版本 0.1
 
 Vela 是一门编译型的系统语言。它读起来像 Python，但语法里没有任何一条规则依赖空白，
 也没有任何构造是可选的：如果你写了含糊的东西，编译器会拒绝它并告诉你原因。

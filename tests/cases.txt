@@ -139,6 +139,7 @@ refuse immutable_array_element               tests/build/check_cases/immutable_a
 refuse array_rebind                          tests/build/check_cases/array_rebind.vel
 refuse const_index_out_of_range              tests/build/check_cases/const_index_out_of_range.vel
 refuse negative_const_index                  tests/build/check_cases/negative_const_index.vel
+refuse const_index_zero_length               tests/build/check_cases/const_index_zero_length.vel
 refuse division_by_constant_zero             tests/build/check_cases/division_by_constant_zero.vel
 refuse divide_float_by_literal_zero          tests/build/check_cases/divide_float_by_literal_zero.vel
 refuse shift_out_of_range                    tests/build/check_cases/shift_out_of_range.vel
@@ -170,10 +171,27 @@ refuse unannotated_parameter                 tests/build/check_cases/unannotated
 refuse missing_return_annotation             tests/build/check_cases/missing_return_annotation.vel
 refuse struct_requires_place                 tests/build/check_cases/struct_requires_place.vel
 refuse duplicate_field                       tests/build/check_cases/duplicate_field.vel
+
+# ---------------------------------------------------- member names and arity
+#
+# The receiver-shaped half of the struct rules: a field or method name has to
+# exist in the struct it is used against, whether it is read, written or called,
+# and whether the receiver is a plain name or a field of one
+# (`selfhost/CHECKER_PLAN.md` rules 54, 87, 125 and 127).  Each of these four was
+# accepted by `check` before, and each one was caught — if at all — by something
+# that is not the checker: the interpreter at run time, or cl.exe on the C the
+# back end had already emitted.  A language whose selling point is that `check`
+# refuses unsafe programs cannot leave that to the C compiler.
+
+refuse member_nested_receiver                tests/build/check_cases/member_nested_receiver.vel
+refuse member_method_arity                   tests/build/check_cases/member_method_arity.vel
+refuse member_non_struct_receiver            tests/build/check_cases/member_non_struct_receiver.vel
+refuse member_write_missing_field            tests/build/check_cases/member_write_missing_field.vel
 refuse no_main                               tests/build/check_cases/no_main.vel
 refuse unterminated_string                   tests/build/lexer_error.vel
 refuse extern_str_parameter                  tests/build/extern/reject_str_parameter.vel
 refuse extern_non_scalar_parameter           tests/build/extern/reject_non_scalar.vel
+refuse extern_conflicting_prototypes         tests/build/check_cases/extern_conflicting_prototypes.vel
 
 # ------------------------------------------------------ where it stops later
 #

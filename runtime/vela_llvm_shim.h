@@ -375,6 +375,22 @@ int64_t vshim_build_icmp(int64_t module, int32_t predicate, int64_t left, int64_
  * how a checked language silently loses the check. */
 int64_t vshim_build_gep(int64_t module, int64_t element_type, int64_t pointer, int64_t index);
 
+/* A *named* struct type, created with no body and given one field at a time.
+ *
+ * Two calls rather than one that takes a list of field types, and that is what
+ * makes a struct expressible whose IR layout can name itself: the type has to
+ * exist before its own field list can mention it.  A body that is set a second
+ * time is refused (`VSHIM_ERR_STATE`), because a re-laid-out type would change
+ * the meaning of values already built against the first layout.
+ *
+ * A struct with no fields at all is legal and is what `vshim_type_ptr` is not:
+ * an opaque struct is a distinct type with a distinct identity, which is what a
+ * struct value's `load`/`store` pair needs in order to be one instruction.
+ *
+ * The name comes through the byte buffer, like every other name. */
+int64_t vshim_struct_type_opaque_buf(int64_t module);
+int32_t vshim_struct_set_body(int64_t module, int64_t struct_type, int64_t field_type);
+
 /* ================================================================== calls ====
  *
  * An argument list is built one value at a time and handed to `vshim_call`, which

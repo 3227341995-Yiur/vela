@@ -1,5 +1,7 @@
 # Enums with payloads and `match` — the design, before any code
 
+**English** | [简体中文](ENUMS_PLAN.zh-CN.md)
+
 Status: **not started.** This is the specification for stream 2, item 1 of
 `ROADMAP.md` ("enums with payloads + `match`"), written first because the feature
 is going into a compiler that is written in Vela and must keep compiling itself.

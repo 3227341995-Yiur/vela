@@ -75,7 +75,11 @@ if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
 $pluginRoot = $scriptDir
 $buildDir   = Join-Path $pluginRoot 'build'
 $distDir    = Join-Path $pluginRoot 'dist'
-$toolsSrc   = Join-Path $buildDir 'tools\src'
+# The verifier's *sources* live in tools\, not under build\: build\ is gitignored,
+# and a verifier that exists only in a gitignored directory is a verifier no fresh
+# clone can run, on a tree it cannot even build.  Only $toolsOut is output, so only
+# $toolsOut belongs under build\.
+$toolsSrc   = Join-Path $pluginRoot 'tools\build\src'
 $toolsOut   = Join-Path $buildDir 'tools\classes'
 $argsDir    = Join-Path $buildDir 'args'
 $classesDir = Join-Path $buildDir 'classes'

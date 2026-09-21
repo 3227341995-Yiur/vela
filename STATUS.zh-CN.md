@@ -1,17 +1,44 @@
+# STATUS —— 什么已验证、什么只是写好、什么挡在路上
+
 [English](STATUS.md) | **简体中文**
 
 <!--
 源文件 : STATUS.md
-源文件字节 : 19760
-源文件 SHA256 : b987ac295d938a0125d1c7dcfa2b2428646e69388afe01ad0326436d3c6d2f79
-翻译日期 : 2026-09-20
+源文件字节 : 29495
+源文件 SHA256 : 0e069d16bfeea6aebba47fe8c472373c8b598d308333680fac05f394204a7856
+翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
 
-# STATUS —— 什么已验证、什么只是写好、什么挡在路上
-
 一次工作会话的快照，不能替代运行它所点名的命令。下面每一条 "verified" 都是在这台机器上实测的；每一条 "written" 都是尚未经过它所需要的那件工具的源码，而它自己也这么说。
+
+## 0. 这次会话把代码树留在了哪里（2026-09-20，02:1x）
+
+**还有一件关于门禁本身的事，因为它曾经是坏的。** `tools\build.ps1` 第 374 行丢掉了 `| Out-Null` 与紧随其后的 `if` 之间的那个换行，于是 PowerShell 把那条流水线读成了一个名叫 `Out-Nullif` 的命令，并吞掉了**两个**步骤：构建链接器的步骤和运行它的步骤。因此 `selfhost\vm.vel` 从来没有从 `selfhost\parts\*.vel` 重新生成过，这让不动点变成了一次文件与自身的比较：`RESULT: ok` 和"编译器能复现自己"被打印了出来，而它们**为真且空洞**——自那个字节丢失以后，任何一处 part 编辑都无法经由 `build.ps1` 到达 `vm.exe`。发现它的，是一个试着让一处 part 改动落地、却眼看着它没有落地的 agent；那个缺失的字节已修好（`Out-Nullif` 计数为 0，文件解析无错误，diff 就是一行）。教训正是这个仓库反复重新学到的那一条：**一个不会失败的检查就不是检查**，而不动点只有在它所比较的那一步确实跑过时才算证据。在引入那行损坏的提交与修复之间，凡是通过 `build.ps1` 测到的任何结果，都应该重跑。
+
+写下来是因为这次会话在轮次上限处停了下来、工作没有完成，而下一个接手的人需要的是边界，而不是故事。这里的一切都是实测的；凡是"移动中的代码树"的快照，它都会说明。
+
+**北极星，一步一步看。** `vm.exe build-llvm x.vel` 只用一个外部程序 `lld-link` 就能构建一个程序——验证方式是把 `PATH` 裁到 `C:\Windows\System32;C:\Windows`，在那里 `where cl`、`where clang` 和 `where clang-cl` 什么都找不到，exit 0，可执行文件能运行，并且打印的字节与解释器和 C 后端相同。用户的目录里只有 `x.vel` 和 `x.exe`，没有别的。所以验收行里的 ①②③ **在这个后端能编译的那个子集上**成立，仅此而已：
+
+| 步骤 ⑤⑥ | 状态 |
+|---|---|
+| ⑤ 覆盖整个语料的三路差分 | **还没有做成工具**；leader 手跑过两次。**第 1 次运行：4 个一致，19 个被拒绝。第 2 次运行：7 个一致，16 个被拒绝。两次都是 `DIVERGE 0`**——这个后端从未打印出与另外两者不同的东西。那 16 个拒绝是一份可枚举的清单：`parallel for` 6 个（**按设计拒绝**：LLVM IR 没有 OpenMP）、`print`/数组 `len` 之外的内置函数 3 个、结构体参数或局部变量 2 个、`str` 的 `len`/比较 2 个、原地更新 1 个、`and`/`or` 1 个 |
+| ⑥ `build-llvm` 取代 `build` | **没有完成，也绝不能被声称完成。** `build` 仍然把 C 交给 `cl.exe`。一个只编译 23 个用例中 7 个的后端，不是一个能编译这门语言的后端 |
+| ④ `vm.exe` 自带它的代码生成器 | **已落地**：`vm.exe` 从 634 368 字节长到 782 848 字节，现在链接 `libLLVM`。它的代价是实测的：`LLVM-C.dll` 是一个**加载期**依赖，而一个被复制到任何地方、却少了它的 `vm.exe` **根本不会启动**——exit `0xC0000135`，发生在 `main` 之前，没有任何东西点名 LLVM。`tools\smoke.ps1` 断言那个 DLL 与运行时目标文件就放在编译器旁边 |
+
+**门禁是红的，而原因已经定位到行。** 最近一次完整运行，对着编译器的一份冻结副本（这样它就不会与构建抢跑）：**187 passed, 3 failed of 190**（190/0 是这次会话的 LLVM 工作之前它的状态）。
+
+- `vm_main lex output changed` / `vm_main parse output changed`——源码变了（`emit_llvm.vel` 加入了各个部件，所以链接后的编译器长大了）。这是 `tools\refreeze.ps1` 的日常工作：**重新记录摘要锁**，不是缺陷。
+- `selfhost_fixpoint`——**一次真实的集成失败，而且是最便宜的那一种。** 编译器自己的源码现在会调用 shim（`ll_new`、`ll_do_build_llvm`、`ll_emit_ir`、`ll_fail`），而套件的 fixpoint 用例用一个朴素的 `vm.exe build selfhost/vm.vel` 去构建它，那条命令不链接 shim：**49 个未解析的 `vshim_*` 符号**。在别处、在 `%TEMP%` 里实测（以免碰仓库）：把 shim 的目标文件和 `LLVM-C.lib` **作为一条额外的链接串**传进去，同一次构建就成功了——exit 0、`built … (with OpenMP)`，而且它产出的编译器能运行程序。（把它们作为*两个*参数传入会静默地丢掉 `LLVM-C.lib`，转而报告 79 个未解析的 `LLVM*` 符号——这个陷阱值得知道。）修法属于 fixpoint 用例（或者属于 runner 的调用方式），而编译器那个 agent 拿着它。
+
+**这个插件还不能用于开发，而缺口是被点名的。** `VelaGotoDeclaration.kt` 能解析四种符号——函数、结构体、方法、参数。**结构体字段、局部绑定以及 `for i in range` 的循环变量完全没有目标**，这就是"goto 非常有限"的意思。参数提示也有一个缺陷：一次调用可能渲染出 `s: s: s:`，而两个渲染点分别是 `VelaInlayHints.kt:151` 和 `VelaParameterInfo.kt:112`，都经由 `symbolParameters`（`VelaCompletion.kt:220`）。对两者的固定规则是：**一个提示要么正确、要么不出现，绝不能是错的**——而那个 agent 欠一张完整性表（引用 → 被声明的参数/声明，对着 `vm.exe parse` 验证），前后各一份。
+
+**安全问题现在有了一份文档和一份洞的清单。** `SAFETY.md` 带着那张承诺表、三种判定（`ENFORCED TODAY` / `NOT ENFORCED` / `REFUSED BY DESIGN`）、一节"什么不是洞"，以及按**它们产生的是一个静默的错误答案、一次响亮的失败，还是仅仅漏报了一个诊断**排序的漏洞清单，还有语料没有覆盖的东西。由 leader 在作者报告之外抽查过：抽样的 `hole_*` 用例 5 个里有 5 个被 `vm.exe check` *接受*（这个洞是真的），抽样的承诺用例 4 个里有 4 个被拒绝（承诺成立）。**这些洞被记录并排了序；没有一个被修好。**
+
+**这次会话新增的两条工程事实，都来自一次真实测量。** `tools\check-hygiene.ps1` 问 git：有没有超过 5 MB 的东西可能被提交（它抓到了 `LLVM-C.dll`，74,159,616 B，距离一份公开仓库只差一次 `git add -A`），并点名当前躺在检出里的 222,478,848 B 被忽略的副本。`tools\docs-zh-check.ps1` 点名那个变陈旧了的翻译。面向读者的那些文档是成对双语的，每一份的第一行都带着一条 GitHub 会读的那种形状的语言切换链接——**而这里故意不写出共有多少对**，因为写在正文里的计数，会在下一次有人翻译文件时过期（这句话为了"五对"这个说法活了大约一个小时）。检查器自己打印的 `found N` 就是那个数字，而它离你只有一条命令。
+
+**下一次会话该做什么，按顺序。** ① 让 fixpoint 用例传入编译器自己的链接输入，然后 `tools\refreeze.ps1` + 套件，把代码树弄回 **190/0**——它红着的时候别的都不值得做。② 插件：跳转到字段、局部变量和循环变量，以及参数提示，每一个都要先有一个被证明会失败的无头差分。③ emitter：那 16 个拒绝，按能解锁用例的顺序（内置函数、结构体、`str`、原地更新、`and`/`or`），同时让 `DIVERGE` 保持 0。④ 然后才是 ⑤⑥。
 
 ## 1. 曾经挡在路上、现在不再挡路的东西
 
@@ -27,6 +54,8 @@ before proving its managed range empty
 **在源头、在仓库里修好了，而且这个修复是活的**：`selfhost/parts/vm_main.vel` 里的 `reap_helpers()` 在每次 `cl` 调用之后立刻杀掉那个辅助进程，而那是唯一能做到这件事的地方——驱动套件的脚本会在它走到自己的清理逻辑之前就被杀掉。`tools/build.ps1` 的第 7 步在结尾再收割一次。这一轮跑了几十次构建，包括 190 个用例的套件运行，没有一次卡死。
 
 ## 2. 已验证，连同验证它们的命令
+
+**请把这张表读作产生它的那个提交处的状态，而不是今天的。** §0 才是今天的。下面有三行自写下以来已经移动过，它们被保留而不是被改写，因为每一行在它的命令被运行的那一刻都是真的：不动点哈希（`vm.exe` 现在链接 `libLLVM`，是 782 848 字节，而不是 634 368）、套件统计（最近一次完整运行是 187 passed, 3 failed——原因见 §0），以及声明那一行的字节数。摘要锁那一行，才是它的*值*被预期会在每次 part 变动时移动的那一行，而 `tools\refreeze.ps1` 正是为此存在的。
 
 | 什么 | 命令 | 结果 |
 |---|---|---|
@@ -74,7 +103,7 @@ before proving its managed range empty
 下面每一个都是靠读发现不了的：
 
 - **`build` 能为一次成功的构建报告失败，并且在那时把可执行文件留在身后。** 用被裁剪到 `C:\Windows\System32;C:\Windows` 的 `PATH`（所以 `cl` 只能通过绝对路径的 `vcvars64.bat` 到达）在一个全新目录里实测：`vm.exe build hello.vel` 以 **2** 退出，并打印 `vela: build: the C compiler refused <…>\hello.vel.c` 与 `vela: panic: build: no C compiler on this host could build the emitted C`，而 `hello.exe`（150016 B）**已被写出且能正确运行**（`hello from Vela` / `sum 0..99 = 4950`，exit 0）。把同样的序列手工打成一个 `.bat`——`call vcvars64.bat`、`set VSLANG=1033`、同一行 `cl`——每一步都返回 `ERRORLEVEL=0` 并产出同一个可执行文件，所以*编译器*没有错；错的是驱动的判定。形状在 `vm_main.vel` 里看得见：退出码在第 722-729 行做决定，而产物到之后第 730 行才被检查，于是"非零退出码 + 磁盘上有一个新的可执行文件"会在那个本可说出实情的检查之前 panic——留给用户的是一个能用的 `hello.exe` 和一条坚称什么都没构建出来的消息。修复方向，待构建路径不被其他工作占用时实施：**在调用 C 编译器之前删除目标文件**（Vela 没有 `stat`，所以"文件存在"只有在之前什么都不存在时才能证明新鲜），然后让产物做决定、让退出码做解释。目前有意不修：两个 agent 正在运行中，而构建路径是承重的。
-- **`vm.exe debug` 被宣传了却什么都不做。** 用法行列出了 `lex|count|parse|nodes|emit-c|run|check|debug|build`，而 `vm.exe debug examples\hello.vel` 以 2 退出、**完全没有输出**。所以 IDEA 插件拒绝提供 Debug 按钮是诚实的，并且在那个模式存在之前都保持诚实。
+- **`vm.exe debug` 是一个能用的协议调试器，"它什么都不做"只是它被运行的方式所造成的假象——2026-09-21 更正。** 用法行列出了 `lex|count|parse|nodes|emit-c|run|check|debug|build`，并且写明了真正的语法 `vela debug <file.vel> <cmddir> [arg...]`：事件走 stdout，命令放在 `<cmddir>/cmd.NNN`（`DESIGN.md` §10）。2026-09-21 对着当天构建进代码树里的编译器实测——**那是一个轮次中途的构建，这里有意不把它钉住**：本轮构建槽归 LLVM 那条线所有，在写这段文字的过程中它已经多次重建 `selfhost\build\vm.exe`（那个二进制被忽略、并未提交，而且 `selfhost\parts\emit_llvm.vel` 相对 HEAD `4ddfabc` 处于已修改状态；从一个这样的构建里取字节数和哈希，等于点名一个谁也回不去的文件，而 §5 已经把这记成了 `bench/RESULTS.md` 的缺陷——**下面的数字就是这次测量，而钉住要留给本轮冻结后的那个编译器**）：`vm.exe debug examples\hello.vel` 以 2 退出，**stdout 上 0 字节**，而**stderr** 上是整块用法说明加上 `vela: panic: debug needs a command directory: vela debug FILE <cmddir>`；`vm.exe debug examples\hello.vel <cmddir>` 以 0 退出，在 stderr 上打印 `ready`，然后等待 `cmd.NNN` 文件；完全不给 `cmd.NNN` 时，它会记下 `no command file from the driver; running to the end`，程序就跑到底（144 字节 stdout 是这样量到的）——所以 stdout 的大小取决于驱动让程序跑了多少，而不取决于这个模式。两个不同世代上独立量到的 stderr 字节数并不相同（两次构建分别是 893 字节与 2352 字节），这本身就说明为什么这一条不点名任何二进制。这一条里更早的那个说法——"什么都不做"、"完全没有输出"、"以 2 退出"——来自**不带**它的命令目录去调用这个模式，并且**只重定向 stdout**，所以那两半都是测量上的假象，而不是这个编译器的性质。IDEA 插件仍然可以说的只有一句：它不提供 Debug 按钮——那说的是插件，不是编译器。
 
 - `runtime/vela_runtime.h` 缺少 `vela_bounds_check`，于是**每一个编译过的程序**都链接失败；而 `vela_sub_overflows` 是错的，于是每一个编译后的减法都 panic——包括 `1 - 5`。
 - `find_runtime`/`has_runtime` 把运行时 include 目录解析成了仓库根目录，于是在其他任何目录下的构建都会死于 `C1083: cannot open include file: 'vela_runtime.h'`。

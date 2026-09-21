@@ -1,5 +1,7 @@
 # The LLVM backend — scope, interface, and what we will not claim
 
+**English** | [简体中文](LLVM_PLAN.zh-CN.md)
+
 Status: this file is the contract the work is done against, written before the
 code so that the hard parts are decided once instead of guessed at per agent.
 **Its decisions age well; its self-descriptions do not**, so the state is here as
@@ -72,7 +74,7 @@ What is recorded is that the choice exists, that the current one fails *silently
 when the DLL is missing, and that `rustc` ships its own libraries in the same
 shape, so "library beside the compiler" is a precedent and not a shortcut.
 
- — they are
+The paragraphs below keep the tense they were written in, on purpose — they are
 the record of what was decided before the code, and where one of them reads as
 "not started" or "not here", it was true then.  **Where a claim in this file and a
 measurement disagree, the measurement is right**, and the paragraph should be

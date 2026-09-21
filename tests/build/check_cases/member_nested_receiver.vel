@@ -1,0 +1,12 @@
+struct Inner {
+    x: int
+}
+
+struct Outer {
+    inner: Inner
+}
+
+def main() -> None {
+    mut o: Outer = Outer(Inner(1))
+    print(o.inner.zzz)
+}

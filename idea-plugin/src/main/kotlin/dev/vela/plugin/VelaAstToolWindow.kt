@@ -9,6 +9,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
@@ -42,6 +43,21 @@ import javax.swing.tree.TreeNode
  * refuses the file its diagnostic text is shown as the compiler wrote it,
  * because a plugin that paraphrased a diagnostic would be a second, worse
  * compiler.
+ *
+ * TWO MODES, AND WHY THE SECOND ONE IS NOT REDUNDANT
+ *
+ * `vm.exe parse` reads the file **on disk**.  While someone is typing, the file on
+ * disk is older than the buffer, so the compiler's answer describes text the user
+ * has already changed -- and a file that has never been saved has no on-disk form
+ * at all.  The second mode answers the question the reader is actually asking
+ * ("what does the editor think this is, right now") by running this plugin's own
+ * parser over the buffer's text and printing it through [VelaSyntaxDump], which is
+ * a transcription of the compiler's own `d_node` / `d_body` / `d_chain` printer.
+ *
+ * Both modes print the *same* format, which is the only reason the comparison is
+ * worth anything: the differential harness in `ast-diff.ps1` is that same
+ * comparison run over the whole corpus instead of over one file, and it is what
+ * makes the plugin's tree safe to show beside the compiler's.
  *
  * The dump carries no line numbers and no byte offsets, so nothing here can offer
  * navigation or editor highlighting: the honest thing to do is show the text.
@@ -78,6 +94,18 @@ private class VelaAstPanel(private val project: Project) : Disposable {
     private val bus: MessageBusConnection = project.messageBus.connect(this)
 
     /**
+     * Which of the two answers the window is showing.
+     *
+     * There is exactly one view and exactly one mode, rather than two panes that
+     * race: two independent refreshes would both write the same tree model and the
+     * slower one would win, so the window would show a different mode than the one
+     * the user last asked for.  Selecting a file re-runs whichever mode is active.
+     */
+    private enum class VelaAstMode { COMPILER, LIVE }
+
+    private var mode = VelaAstMode.COMPILER
+
+    /**
      * Bumped by every refresh.  A slow run whose file is no longer the selected
      * one is dropped instead of replacing a newer tree; without this, a stale
      * answer could land after a fresh one and describe the wrong file.
@@ -107,6 +135,9 @@ private class VelaAstPanel(private val project: Project) : Disposable {
             FileEditorManagerListener.FILE_EDITOR_MANAGER,
             object : FileEditorManagerListener {
                 override fun selectionChanged(event: FileEditorManagerEvent) {
+                    // Whichever mode is active follows the file the user is editing:
+                    // the compiler dump describes what is on disk, the live dump what
+                    // is in the buffer, and selecting another file invalidates both.
                     refresh()
                 }
             } as FileEditorManagerListener,
@@ -123,6 +154,7 @@ private class VelaAstPanel(private val project: Project) : Disposable {
     private fun toolbar(): JComponent {
         val group = DefaultActionGroup()
         group.add(RefreshAction())
+        group.add(LiveParseAction())
         val bar = ActionManager.getInstance()
             .createActionToolbar(ActionPlaces.TOOLWINDOW_CONTENT, group, true)
         bar.targetComponent = tree
@@ -131,16 +163,43 @@ private class VelaAstPanel(private val project: Project) : Disposable {
 
     private inner class RefreshAction : AnAction() {
         init {
-            templatePresentation.text = "Refresh"
+            templatePresentation.text = "Compiler (vm.exe parse)"
             templatePresentation.description =
                 "Run `vm.exe parse` on the file open in the editor and show what it prints"
         }
 
         // Constructing and updating an action presentation is UI work, so it
-        // belongs on the EDT — and `refresh()` itself only starts a task there.
+        // belongs on the EDT; the work itself only starts a task there.
         override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
         override fun actionPerformed(e: AnActionEvent) {
+            mode = VelaAstMode.COMPILER
+            refresh()
+        }
+    }
+
+    /**
+     * The other mode: parse the *buffer* with this plugin's own parser.
+     *
+     * This is the difference that matters while typing.  `vm.exe parse` is handed a
+     * path, so it can only ever describe the last saved bytes; this action is handed
+     * the text the editor is holding, so a file with unsaved edits -- or one that has
+     * never been saved -- still has a tree.  The output format is the compiler's, by
+     * construction: it is [VelaSyntaxDump], the transcription of the compiler's own
+     * printer that `ast-diff.ps1` holds to `vm.exe parse` across the corpus.
+     */
+    private inner class LiveParseAction : AnAction() {
+        init {
+            templatePresentation.text = "Live parse (editor buffer)"
+            templatePresentation.description =
+                "Parse the text in the editor right now, with this plugin's parser, " +
+                    "and print it in the compiler's own tree format"
+        }
+
+        override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+        override fun actionPerformed(e: AnActionEvent) {
+            mode = VelaAstMode.LIVE
             refresh()
         }
     }
@@ -148,11 +207,23 @@ private class VelaAstPanel(private val project: Project) : Disposable {
     // ------------------------------------------------------------------ refresh
 
     /**
-     * Look at what is open *now* and show the compiler's answer.  Called from the
-     * EDT only (the listener, the action, and the deferred first run all arrive
-     * there); it starts a background task and returns immediately.
+     * Show the active mode's answer for what is open *now*.  Called from the EDT
+     * only (the listener, the two actions, and the deferred first run all arrive
+     * there); each branch starts a background task and returns immediately.
      */
     private fun refresh() {
+        when (mode) {
+            VelaAstMode.COMPILER -> refreshCompiler()
+            VelaAstMode.LIVE -> refreshLive()
+        }
+    }
+
+    /**
+     * Look at what is open *now* and show the compiler's answer.  Called from the
+     * EDT only (the listener, the actions, and the deferred first run all arrive
+     * there); it starts a background task and returns immediately.
+     */
+    private fun refreshCompiler() {
         if (project.isDisposed) return
         val file = selectedVelaFile()
         if (file == null) {
@@ -175,6 +246,113 @@ private class VelaAstPanel(private val project: Project) : Disposable {
             return
         }
         compile(onDisk, compiler)
+    }
+
+    /**
+     * The other mode: parse the *buffer* with this plugin's own parser.
+     *
+     * This is the difference that matters while typing.  `vm.exe parse` is handed a
+     * path, so it can only ever describe the last saved bytes; this mode is handed the
+     * text the editor is holding, so a file with unsaved edits -- or one that has never
+     * been saved at all -- still has a tree.  The output format is the compiler's by
+     * construction: it is [VelaSyntaxDump], the transcription of the compiler's own
+     * `d_node`/`d_body`/`d_chain` printer that `ast-diff.ps1` holds to `vm.exe parse`
+     * across the whole corpus.
+     *
+     * The text is read here, on the EDT, because document access belongs to it; the
+     * parse and the dump are pure string work and go to a background thread, since a
+     * large file would otherwise freeze the UI for as long as the parse takes.
+     */
+    private fun refreshLive() {
+        if (project.isDisposed) return
+        val file = selectedVelaFile()
+        if (file == null) {
+            show(DefaultMutableTreeNode(NO_VELA_FILE))
+            return
+        }
+        val text = currentText(file)
+        if (text == null) {
+            show(DefaultMutableTreeNode("This file's text could not be read:\n${file.path}"))
+            return
+        }
+        val mine = ++generation
+        object : Task.Backgroundable(project, "Parsing ${file.name}", false) {
+            private var dump = ""
+            private var problems: List<VelaSyntaxProblem> = emptyList()
+            private var failure: String? = null
+
+            override fun run(indicator: ProgressIndicator) {
+                try {
+                    val tree = VelaSyntaxParser.parse(text)
+                    dump = VelaSyntaxDump.dump(tree)
+                    problems = tree.problems
+                } catch (t: Throwable) {
+                    // A parser that throws must not take the editor down with it: the
+                    // failure is shown as what it is rather than as an empty window.
+                    failure = t.toString()
+                }
+            }
+
+            override fun onSuccess() {
+                if (mine != generation) return
+                val f = failure
+                if (f != null) {
+                    show(DefaultMutableTreeNode("The parser failed on ${file.name}:\n$f"))
+                    return
+                }
+                applyLiveDump(file.name, dump, problems)
+            }
+
+            override fun onThrowable(error: Throwable) {
+                if (mine != generation) return
+                show(DefaultMutableTreeNode("The parser could not run:\n${error.message}"))
+            }
+        }.queue()
+    }
+
+    /**
+     * The text the editor is holding.
+     *
+     * `FileDocumentManager` is asked first: it is the *document* that carries unsaved
+     * edits, and a Vela file is very often being typed into while this window is open.
+     * A file with no loaded document (open in a project pane but never shown in an
+     * editor) falls back to its bytes, which is then the same text `vm.exe parse`
+     * would have seen.
+     */
+    private fun currentText(file: VirtualFile): String? = try {
+        FileDocumentManager.getInstance().getDocument(file)?.text
+            ?: String(file.contentsToByteArray(), Charsets.UTF_8)
+    } catch (t: Throwable) {
+        null
+    }
+
+    /**
+     * Render the live parse, and say plainly when the parser refused something.
+     *
+     * A refusal is not hidden: the problem list is put at the root, above the tree,
+     * because the tree is still a real shape for a file that is still being typed and
+     * the reader needs both facts.  (The compiler mode does the same, in the same
+     * place, for the same reason.)
+     */
+    private fun applyLiveDump(name: String, dump: String, problems: List<VelaSyntaxProblem>) {
+        val lines = parseDump(dump)
+        if (lines.isEmpty()) {
+            show(DefaultMutableTreeNode("This plugin's parser produced no tree for $name."))
+            return
+        }
+        if (problems.isNotEmpty()) {
+            val root = DefaultMutableTreeNode(
+                "refused: ${problems.size} problem(s) in this plugin's parse of the buffer"
+            )
+            for (p in problems) {
+                root.add(DefaultMutableTreeNode("${p.message}  [offset ${p.start}..${p.end}]"))
+            }
+            root.add(DefaultMutableTreeNode("--- the tree it built anyway ---"))
+            for (line in dump.lines()) root.add(DefaultMutableTreeNode(line))
+            show(root)
+        } else {
+            show(toTree(lines))
+        }
     }
 
     private fun selectedVelaFile(): VirtualFile? {
@@ -322,15 +500,19 @@ private class VelaAstPanel(private val project: Project) : Disposable {
 
     private companion object {
         const val NOTHING_YET =
-            "The compiler's syntax tree for the file in the editor appears here.\n" +
-                "Open a Vela file, or press Refresh."
+            "The syntax tree for the file in the editor appears here.\n" +
+                "Open a Vela file, or press one of the two refresh buttons:\n" +
+                "  \"Compiler (vm.exe parse)\" -- what the compiler says about the file ON DISK\n" +
+                "  \"Live parse (editor buffer)\" -- what this plugin's parser says about the text\n" +
+                "                                  in the editor RIGHT NOW, unsaved edits included."
 
         const val NO_VELA_FILE =
             "No Vela file is open in the editor.\n" +
-                "This window shows what `vm.exe parse` prints for a `.vel` or `.vela` file."
+                "This window shows the syntax tree of a `.vel` or `.vela` file."
 
         const val NO_COMPILER =
             "The Vela compiler was not found.\n" +
-                "Set its path in Settings | Languages & Frameworks | Vela, or set VELA_VM."
+                "Set its path in Settings | Languages & Frameworks | Vela, or set VELA_VM.\n" +
+                "(The \"Live parse (editor buffer)\" button needs no compiler.)"
     }
 }

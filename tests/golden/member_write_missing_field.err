@@ -1,0 +1,2 @@
+vela: type error: P has no field 'zzz'
+  at tests/build/check_cases/member_write_missing_field.vel:7

@@ -11,9 +11,11 @@
 
     This script is the only thing that compiles that harness, because the harness
     needs the plugin's own classes and build-offline.ps1 compiles its tools *before*
-    kotlinc runs -- so it cannot live in build\tools\src.  It lives in
-    build\tools\harness\src, and the plugin classes come from build\classes, which
-    means `build-offline.ps1` has to have run at least once.
+    kotlinc runs -- so it cannot live in the verifier's source directory.  Its
+    sources are tracked in `tools\harness\src` (they were under `build\tools\harness\src`,
+    which `build\` being gitignored made unreachable from a fresh clone), and the
+    plugin classes come from `build\classes`, which means `build-offline.ps1` has to
+    have run at least once.
 
     THE COMPILER IS FROZEN FIRST, and that is not a detail.  Another agent rebuilds
     selfhost\build\vm.exe while this runs; comparing against a file that changes
@@ -74,7 +76,9 @@ $pluginRoot = $scriptDir
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $pluginRoot '..')).Path }
 $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 
-$harnessSrc = Join-Path $pluginRoot 'build\tools\harness\src'
+# The harness's sources are tracked (tools\harness\src); its classes are output and
+# go under the gitignored build\.
+$harnessSrc = Join-Path $pluginRoot 'tools\harness\src'
 $harnessOut = Join-Path $pluginRoot 'build\tools\harness\classes'
 $pluginClasses = Join-Path $pluginRoot 'build\classes'
 $classpathFile = Join-Path $pluginRoot 'build\args\platform-classpath.txt'
@@ -145,24 +149,64 @@ $frozen = Get-Item -LiteralPath $FrozenVm
 $frozenHash = (Get-FileHash -LiteralPath $FrozenVm -Algorithm SHA256).Hash.ToLowerInvariant()
 Info "frozen compiler: $($frozen.Length) bytes  sha256 $frozenHash"
 
+# `vm.exe` DOES NOT START WITHOUT `LLVM-C.dll` BESIDE IT, and freezing only the .exe
+# is the mistake that made this whole comparison meaningless.  The compiler imports
+# the LLVM shim statically, so a bare copy exits 0xC0000135 with no message at all --
+# and this harness reads that exit code as "the compiler refused the file".  Measured:
+# a run that froze only vm.exe reported 119 of 120 files as
+# "compiler refused (exit -1073741515) -- but this parser accepted it", 0 matches and
+# VERDICT FAIL, while the parser under test was fine.  So the DLL is frozen too, and
+# its absence is fatal here rather than something the table quietly absorbs.
+$frozenDll = Join-Path (Split-Path -Parent $FrozenVm) 'LLVM-C.dll'
+if (-not (Test-Path -LiteralPath $frozenDll)) {
+    $treeDll = Join-Path $RepoRoot 'selfhost\LLVM-C.dll'
+    if (-not (Test-Path -LiteralPath $treeDll)) {
+        Die ("no LLVM-C.dll beside $FrozenVm and none at $treeDll.  Without it vm.exe exits " +
+             "0xC0000135 and every file in the table would read as 'the compiler refused it'.")
+    }
+    Copy-Item -LiteralPath $treeDll -Destination $frozenDll -Force
+    Info "froze LLVM-C.dll beside it ($((Get-Item -LiteralPath $treeDll).Length) bytes): vm.exe does not start without it"
+}
+
 # ---------------------------------------------------------------- compile the harness
 
 Step 'Compile the harness against the plugin classes'
 New-Item -ItemType Directory -Force -Path $harnessOut | Out-Null
-$classpath = Get-Content -LiteralPath $classpathFile -Raw
+$classpath = (Get-Content -LiteralPath $classpathFile -Raw).Trim()
 $sources = @(Get-ChildItem -LiteralPath $harnessSrc -Filter '*.java' | ForEach-Object { $_.FullName })
 if ($sources.Count -eq 0) { Die "no *.java under $harnessSrc" }
+
+# THE CLASSPATH DOES NOT FIT ON A COMMAND LINE.  `platform-classpath.txt` is 32 305
+# bytes over 429 jars and the JDK lives under `D:\JetBrains\IntelliJ IDEA 2026.2.1`,
+# so every entry contains a space and the command line goes past Windows' 32 767
+# character limit.  Passed directly, javac fails to *launch* ("The filename or
+# extension is too long") -- which looks like a compile error but writes no class
+# file, so the run then dies with `ClassNotFoundException` and reads as a harness bug.
+# An @argfile takes it off the command line; backslashes are escapes inside an
+# argfile, so every path is written with forward slashes, which javac accepts here.
+$cp = "$harnessOut;$pluginClasses;$classpath"
+function Quoted([string] $s) { '"' + ($s -replace '\\', '/') + '"' }
+$javacArgsFile = Join-Path $harnessOut 'javac.args'
+[System.IO.File]::WriteAllLines($javacArgsFile, [string[]] (@(
+            '--release 21',
+            '-encoding UTF-8',
+            '-d ' + (Quoted $harnessOut),
+            '-cp ' + (Quoted $cp)
+        ) + @($sources | ForEach-Object { Quoted $_ })), (New-Object System.Text.UTF8Encoding($false)))
 # Only the harness sources are passed, never a stale class file: the tree is what is
 # tested, and a class file from a previous round would silently disagree with it.
-& $javac --release 21 -encoding UTF-8 -cp "$pluginClasses;$classpath" -d $harnessOut @sources 2>&1 |
+& $javac ('@' + $javacArgsFile) 2>&1 |
     Tee-Object -FilePath (Join-Path $harnessOut 'javac.log')
 if ($LASTEXITCODE -ne 0) { Die "javac failed for the harness (see $harnessOut\javac.log)" }
-Info "$($sources.Count) source file(s) -> $harnessOut"
+if (-not (Test-Path -LiteralPath (Join-Path $harnessOut 'AstDiff.class'))) {
+    Die "javac reported success but wrote no AstDiff.class into $harnessOut"
+}
+Info "$($sources.Count) source file(s) -> $harnessOut (javac driven from an @argfile, $((Get-Item $javacArgsFile).Length) bytes)"
 
 # ---------------------------------------------------------------- run it
 
 Step 'Differential: the plugin''s tree vs the compiler''s tree'
-$harnessArgs = @('-cp', "$harnessOut;$pluginClasses;$classpath", 'AstDiff', $RepoRoot, '--vm', $FrozenVm)
+$harnessArgs = @('AstDiff', $RepoRoot, '--vm', $FrozenVm)
 if ($ShowTrees) { $harnessArgs += '--verbose' }
 if ($Shape)   { $harnessArgs += '--shape' }
 if ($Single)  { $harnessArgs += @('--single', $Single) }
@@ -170,10 +214,12 @@ if ($Single)  { $harnessArgs += @('--single', $Single) }
 # the same invocation also showed the comparison rejecting a wrong tree.
 if (-not $SkipSelfTest) { $harnessArgs += '--selftest' }
 $log = Join-Path $harnessOut 'ast-diff.log'
+$runArgsFile = Join-Path $harnessOut 'ast-diff.args'
+[System.IO.File]::WriteAllLines($runArgsFile, [string[]] (@('-cp ' + (Quoted $cp)) + @($harnessArgs | ForEach-Object { Quoted $_ })), (New-Object System.Text.UTF8Encoding($false)))
 # Written to a file rather than piped: this machine's shell turns a native program's
 # stderr into a terminating error when it is captured in a pipeline, and the harness
 # is a Java program that may write there.
-& $java @harnessArgs 1> $log 2> "$log.err"
+& $java ('@' + $runArgsFile) 1> $log 2> "$log.err"
 $code = $LASTEXITCODE
 Get-Content -LiteralPath $log | ForEach-Object { Write-Host $_ }
 if (Test-Path -LiteralPath "$log.err") {

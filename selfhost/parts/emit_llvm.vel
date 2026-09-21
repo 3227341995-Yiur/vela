@@ -139,11 +139,12 @@ struct LG {
     brkb: int         # the exit block of the innermost loop (0 outside one)
     contb: int        # ... and its continue block
     term: int         # 1 when `cur` already ends in a terminator
+    nstruct: int      # how many structs the program declares
 }
 
 def ll_zero() -> LG {
     return LG(0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 }
 
 # The frame-slot table this back end can address.  A slot is the resolver's own
@@ -260,8 +261,109 @@ def ll_ckst(lg: LG, what: str, st: int) -> None {
 
 # -------------------------------------------------------------- types, slots
 
+# ---------------------------------------------------------------- the structs
+#
+# Every struct is one *identified* (named) LLVM struct type, built field by field
+# from the resolver's struct table, and the name is the same `vl_`-prefixed Vela
+# name the C back end gives `struct vl_X`.  A named type is what makes a struct
+# value copyable as one `load`/`store` pair with no per-field work, and it is the
+# only spelling under which a struct can be a field of another struct.
+#
+# The handles live in a small `Array[int, …]` the generator owns, keyed by the
+# resolver's struct id, and are computed **on first use**.  That is deliberate: a
+# struct nothing refers to costs nothing, and -- more to the point -- the
+# generator must not build a type it cannot fill in, because `vshim_struct_type`
+# has to be called before the first body is set and a later `struct_set_body`
+# would have to be told the field count.
+def ll_sty_slot(sty: Array[int, 4096], sid: int) -> int {
+    return sid * 6
+}
+
+# The IR type of one struct, built on the first mention of it.
+def ll_sty_of(mut lg: LG, mem: Array[int, 3741696],
+              mut sty: Array[int, 4096], sid: int, path: str, line: int) -> int {
+    s: int = ll_sty_slot(sty, sid)
+    if sty[s + 1] != 0 {
+        return sty[s + 1]
+    }
+    if not ll_buf(concat("vl_", interned(stb_get(mem, sid, STB_NAME())))) {
+        ll_fail(lg, "naming a struct type")
+    }
+    t: int = ll_ck(lg, "an opaque struct type", vshim_struct_type_opaque_buf(lg.m))
+    sty[s + 1] = t
+    n: int = stb_get(mem, sid, STB_NFIELD())
+    off: int = stb_get(mem, sid, STB_FOFF())
+    mut i: int = 0
+    while i < n {
+        fk: int = sfl_get(mem, off + i * 2 + 1)
+        ft: int = ll_type_of_st(lg, mem, sty, path, line, fk, unpack_len(fk))
+        if ft == 0 {
+            trap(path, line,
+                 "a struct field's type has no IR spelling, so this struct has no IR layout")
+        }
+        ll_ckst(lg, "setting a struct field type",
+                vshim_struct_set_body(lg.m, t, ft))
+        i += 1
+    }
+    return t
+}
+
+def ll_find_field(mem: Array[int, 3741696], sid: int, name: int) -> int {
+    n: int = stb_get(mem, sid, STB_NFIELD())
+    off: int = stb_get(mem, sid, STB_FOFF())
+    mut i: int = 0
+    while i < n {
+        if sfl_get(mem, off + i * 2) == name {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+def ll_field_kind(mem: Array[int, 3741696], sid: int, name: int) -> int {
+    idx: int = ll_find_field(mem, sid, name)
+    if idx < 0 {
+        return K_BAD()
+    }
+    return sfl_get(mem, stb_get(mem, sid, STB_FOFF()) + idx * 2 + 1)
+}
+
+# The address this back end computes for a slot it reserved itself: a `K_ST`
+# value slot *is* where the struct lives, a pointer-bound one *points at* where
+# it lives, and a slot that holds some other kind is a bug in the caller.
+def ll_addr(mut lg: LG, slots: Array[int, 4096], slotkind: Array[int, 4096],
+            slot: int, k: int, packed: int, path: str, line: int) -> int {
+    h: int = ll_slot_for(lg, slots, slotkind, slot, k, path, line)
+    if k == K_ST() and is_ptr_binding(packed) {
+        return ll_ck(lg, "loading a struct pointer",
+                     vshim_build_load(lg.m, lg.t_ptr, h))
+    }
+    return h
+}
+
 # The IR type of a value kind.  0 means "this back end has no spelling for it",
-# and every caller refuses rather than building something.
+# and every caller refuses rather than building something.  A struct is the one
+# kind whose spelling needs the struct table, which is why `ll_type_of_st` exists
+# and this is the no-struct-table form of it.
+def ll_type_of_st(mut lg: LG, mem: Array[int, 3741696],
+                  mut sty: Array[int, 4096], path: str, line: int,
+                  k: int, sid: int) -> int {
+    if k == K_INT() { return lg.t_i64 }
+    if k == K_FLT() { return lg.t_f64 }
+    if k == K_BOOL() { return lg.t_i1 }
+    if k == K_STR() { return lg.t_str }
+    if k == K_I32() { return lg.t_i32 }
+    if k == K_U8() { return lg.t_i8 }
+    if k == K_ST() {
+        if sid < 0 or sid >= lg.nstruct {
+            return 0
+        }
+        return ll_sty_of(lg, mem, sty, sid, path, line)
+    }
+    return 0
+}
+
 def ll_type_of(lg: LG, k: int) -> int {
     if k == K_INT() { return lg.t_i64 }
     if k == K_FLT() { return lg.t_f64 }
@@ -270,6 +372,48 @@ def ll_type_of(lg: LG, k: int) -> int {
     if k == K_I32() { return lg.t_i32 }
     if k == K_U8() { return lg.t_i8 }
     return 0
+}
+
+# A struct value's slot, and the address of a struct field.
+#
+# `self` is the C back end's own rule, not a new one: `mut self` arrives as a
+# pointer (`self->x`), every other struct binding is a value (`s.x`), and
+# `emit_field_base` decides it with exactly this bit test.
+def ll_field_addr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+                  mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+                  slotkind: Array[int, 4096], mut sty: Array[int, 4096],
+                  path: str, e: int) -> int {
+    base: int = nd[e * 10 + 1]
+    if nd_kind(nd, base) != 25 {
+        trap(path, nd_line(nd, e),
+             "a field of a struct that is not a name is not compiled by the LLVM back end yet: the base's address has to be a slot this back end reserved")
+    }
+    bp: int = expr_packed(nd, ty, mem, vm, base)
+    sid: int = unpack_len(bp)
+    if sid < 0 or sid >= lg.nstruct {
+        trap(path, nd_line(nd, e), "this struct has no id this back end knows")
+    }
+    name: int = nd[e * 10 + 2]
+    idx: int = ll_find_field(mem, sid, name)
+    if idx < 0 {
+        trap(path, nd_line(nd, e), "this struct has no field of that name")
+    }
+    st: int = ll_sty_of(lg, mem, sty, sid, path, nd_line(nd, e))
+    h: int = ll_addr(lg, slots, slotkind, nt_get(mem, base, NT_SLOT()),
+                     K_ST(), bp, path, nd_line(nd, e))
+    fk: int = sfl_get(mem, stb_get(mem, sid, STB_FOFF()) + idx * 2 + 1)
+    return ll_ck(lg, "a field's address",
+                 vshim_build_gep(lg.m, st, h, idx))
+}
+
+# One `load` of a struct, spelled as a helper because both the field reader and
+# the assignment path want it and a struct load has to name the same type in both
+# places or LLVM refuses the module.
+def ll_load_st(mut lg: LG, mem: Array[int, 3741696], mut sty: Array[int, 4096],
+               sid: int, addr: int, path: str, line: int) -> int {
+    return ll_ck(lg, "loading a struct",
+                 vshim_build_load(lg.m, ll_sty_of(lg, mem, sty, sid, path, line),
+                                  addr))
 }
 
 # One alloca, in the entry block, of a kind's type.
@@ -713,6 +857,21 @@ def ll_reserve_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
         return
     }
     if k == 29 {
+        # A short circuit has to carry its value across a block boundary, and the
+        # shim exposes no `phi` on purpose.  A slot is the other way to do it, and
+        # it is reserved *here* rather than where the operator is emitted: the
+        # left operand can end in a panic call, so at emit time the current block
+        # may already be terminated and an alloca appended to it would be dead.
+        # Reserving in the entry block keeps every alloca where LLVM wants it.
+        # This shares the string-literal table because a node is one kind at a
+        # time -- `k == 22` above and `k == 29` here are disjoint -- and the two
+        # entries are alloca handles of the same shape.
+        # `t_i1` and not `t_i8`: an `icmp` result is `i1`, and a comparison
+        # (`print(a < b and ...)`) is the commonest left operand there is.
+        if lit[e] == 0 {
+            lit[e] = ll_ck(lg, "a slot for a short circuit",
+                           vshim_build_alloca(lg.m, lg.t_i1, 1))
+        }
         ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 2])
         ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 3])
         return
@@ -1199,6 +1358,58 @@ def ll_unary(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     return 0
 }
 
+def ll_logic(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+             flt: Array[float, 65536], src: str, path: str,
+             mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+             slotkind: Array[int, 4096], lit: Array[int, 65536],
+             fns: Array[int, 8192], e: int) -> int {
+    op: int = nd[e * 10 + 1]
+    line: int = nd_line(nd, e)
+    dst: int = lit[e]
+    if dst == 0 {
+        trap(path, line,
+             "this short circuit was never given a result slot in the entry block")
+    }
+    # The left operand is unconditional, so it is emitted into the block the
+    # operator is already in; the right one lives in a block of its own, which is
+    # what makes the operator short-circuit rather than evaluate both sides.
+    # `and` and `or` differ in one way and this is it: which value of the left
+    # side skips the right one.
+    l: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                     fns, nd[e * 10 + 2])
+    ll_open(lg)
+    ll_ckst(lg, "storing a short circuit's left operand",
+            vshim_build_store(lg.m, l, dst))
+    here: int = lg.cur
+    rhs: int = ll_new(lg, "rhs")
+    join: int = ll_new(lg, "join")
+    ll_at(lg, here, "positioning the builder back at the short circuit")
+    if op == 13 {
+        # `and`: a false left side is the answer and the right side never runs
+        ll_cbr(lg, l, rhs, join)
+    } else {
+        # `or`: a true left side is the answer and the right side never runs
+        ll_cbr(lg, l, join, rhs)
+    }
+    ll_at(lg, rhs, "positioning the builder in a short circuit's right operand")
+    r: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                     fns, nd[e * 10 + 3])
+    # A right operand whose last expression calls a function that returns None
+    # leaves this block terminated, and LLVM refuses an instruction after a
+    # terminator.  The value cannot be stored in a block that is not there, so
+    # this is refused rather than quietly dropped: the C back end would store it.
+    if lg.term == 1 {
+        trap(path, line,
+             "the right side of this `and` / `or` ends in a `return` or a panic, so this back end cannot store its value; the slot-and-block form needs the right side to fall through")
+    }
+    ll_ckst(lg, "storing a short circuit's right operand",
+            vshim_build_store(lg.m, r, dst))
+    ll_br(lg, join)
+    ll_at(lg, join, "positioning the builder after a short circuit")
+    return ll_ck(lg, "loading a short circuit's result",
+                 vshim_build_load(lg.m, lg.t_i1, dst))
+}
+
 def ll_call_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
                  flt: Array[float, 65536], src: str, path: str,
                  mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
@@ -1292,8 +1503,8 @@ def ll_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
                         lit, fns, e)
     }
     if k == 29 {
-        trap(path, nd_line(nd, e),
-             "`and` / `or` are not compiled by the LLVM back end yet: a short circuit needs a value that flows out of two blocks, and the shim exposes no `phi` on purpose (a slot would do it, and that is the next slice)")
+        return ll_logic(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                        lit, fns, e)
     }
     if k == 30 {
         return ll_cmp(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,

@@ -1,6 +1,6 @@
-**English** | [简体中文](ROADMAP.zh-CN.md)
-
 # Vela — the north star, and the road to it
+
+**English** | [简体中文](ROADMAP.zh-CN.md)
 
 The goal, as the language's owner states it:
 
@@ -26,31 +26,51 @@ it is either measurable or it is a slogan. Two constraints shape the whole order
 
 ## Where the four claims stand, measured
 
+**The rows below were last corrected 2026-09-22.** Three of them disagreed with
+`bench/RESULTS.md` before that: the parallel row still said "−17% behind" where
+the file measured 3.1× slower, Stream 4.1 still said this repository had no
+version control, and the two LLVM phases were written as outstanding work that
+had in fact landed. Every number in the table is the one `bench/RESULTS.md`
+carries, or it says which commit it came from instead.
+
 | claim | today | the gap |
 |---|---|---|
-| **faster than C++** | serial matmul wins (~0.2055 s vs 0.2270 s); parallel matmul **loses ~17%**; mandelbrot and sieve tie | the loss is the checked arithmetic still *in the inner loop*: `bench/matmul.vel` compiles to 6 `vela_bounds_check`, 10 `vela_add_range`, 6 `vela_mul_range` calls. Nothing is proven away yet — the proofs exist in the checker's design, not in the emitter |
-| **Rust's safety design** | no pointers, no `unsafe`, no `free`, arena-only, indexing checked, integer arithmetic checked, and the `parallel for` aliasing rule is written: the cross-iteration read is refused, `out[i] = a[i] * 2` and `a[i] = a[i] + 1` stay legal. **The five cases that would prove it are in `tests/cases.txt` and their goldens are not recorded yet** (`tests/cases.txt` says so at the block itself), so the rule is *written*, not yet *proved by a run* | the checks are not yet *proven away* where a proof exists, and there is no concurrency beyond `parallel for` |
+| **faster than C++** | **not established on either matmul row, and the loss is measured:** serial matmul 512² **0.5433 s against the C++ twin's 0.2241 s (2.4× slower)**, parallel matmul **0.0680 s against 0.0221 s (3.1× slower)**, mandelbrot a tie to the microsecond, sieve 1.5× slower against an explicitly *unchecked* C++ row — `bench/RESULTS.md` | the loss is the checked arithmetic still *in the inner loop*: `vm.exe emit-c bench/matmul.vel` emits 6 `vela_bounds_check`, 7 `vela_add_range` and 3 `vela_mul_range` calls (measured 2026-09-22 on the working tree's compiler, which is not the pinned revision of `bench/RESULTS.md`; the earlier counts quoted here were 6/10/6). **No check is proved away anywhere** — what the interval machinery proves today is confined to `parallel for`, and the two ordinary-loop rows of `SPEC.md` §6.1 are honestly marked "designed, not built" |
+| **Rust's safety design** | no pointers, no `unsafe`, no `free`, arena-only, indexing checked, integer arithmetic checked, and the `parallel for` aliasing rule is **complete**: the cross-iteration read is refused, `out[i] = a[i] * 2` and `a[i] = a[i] + 1` stay legal. All five cases that prove it are in `tests/cases.txt` with their recorded outputs — `parallel_alias_cross_iteration` is a `refuse` case whose `.err` holds the message; the four legal shapes are `run` cases whose `.out` files hold their answers — so the rule is written *and* there are five recorded verdicts behind it | two different things are still owed, and this cell used to name only one of them: the **proof machinery** that removes a check is not built (the checks are not yet *proven away* where a proof exists), and there is no concurrency beyond `parallel for`. Reading "finish the aliasing rule" as if the rule were unwritten is wrong — it is the check-removal proof that is unfinished |
 | **Python's syntax, strict semantics** | brace-based, statically typed, no truthiness, `/` refuses integers, string `+` refused, explicit `mut`, scope rules | the type system still has holes: a `str` bound to `int` is accepted by `check`; an undeclared type name is caught by an emitter panic instead of a diagnostic |
-| **pure-bred / independent** | the compiler's source is Vela; the linker is Vela; there is no Python and no C++ anywhere; `selfhost_fixpoint` passes | **`build` still needs `cl.exe`**: C is the code-generation backend. That is the remaining host-language dependence, and the LLVM workstream is what removes it |
+| **pure-bred / independent** | the compiler's source is Vela; the linker is Vela; there is no Python and no C++ anywhere; `selfhost_fixpoint` passes | **`build` still needs `cl.exe`**: C is the code-generation backend. That is the remaining host-language dependence, and the LLVM workstream is what removes it — `build-llvm` already links with `lld-link` alone, which is where that work stands (§ Stream 1 below) |
 
 ## Stream 1 — the backend, and "faster than C++"
 
 Ordered, each step verifiable on its own.
 
-1. **LLVM phase 1**: `vm.exe emit-llvm f.vel` writes IR text; `clang-cl`/`llc`
-   assembles and links it. Removes MSVC. Acceptance: `hello.vel` built by both
-   backends prints the same bytes; a corpus `run` case built by LLVM equals the
-   C-built one and the interpreter.
-2. **LLVM phase 2**: `runtime/vela_llvm_shim.c` (scalar interface over `llvm-c`)
-   linked into `vm.exe`, which writes `.obj` itself. Acceptance: no external
-   compiler; only a linker.
+1. **LLVM phase 1 — landed, measured 2026-09-22.** Removes MSVC.
+   `vm.exe emit-llvm f.vel` writes IR text (`examples/hello.vel` emits a module
+   with its target datalayout and triple, exit 0), and `clang-cl`/`llc` assembles
+   and links it; the M1 probe shows the interpreted, C-built and LLVM-linked
+   program printing the same bytes (`tools\llvm-m1.ps1`, `RESULT: ok`). The
+   acceptance below is met for the programs this backend compiles — 7 of the 23
+   `run` cases, the other 16 refused by name rather than miscompiled: `hello.vel`
+   built by both backends prints the same bytes; a corpus `run` case built by LLVM
+   equals the C-built one and the interpreter. Acceptance: what is still owed is
+   the rest of the corpus, not the mechanism.
+2. **LLVM phase 2 — landed, measured 2026-09-22.** `runtime/vela_llvm_shim.c`
+   (scalar interface over `llvm-c`) is linked into `vm.exe`, which writes the
+   `.obj` itself: `vm.exe build-llvm examples\hello.vel` prints `built hello.exe
+   (LLVM in-process; lld-link, no C compiler)` and exits 0, and the executable
+   runs, so the host dependency is a linker and nothing else. Acceptance:
+   no external compiler; only a linker. Met.
 3. **Proof-driven check removal** — *the actual performance lever*, and it does
    not need LLVM at all. The checker's interval analysis already exists; what is
    missing is the emitter consuming it. Acceptance, measurable today:
    `vm.exe emit-c bench/matmul.vel` contains **zero** `vela_bounds_check` and
    `vela_add_range` calls inside the inner loop, *the program prints the same
    answer*, and the parallel comparison against C++'s `restrict+omp` build moves
-   from −17% to a win or a tie. If elision does not move the number, say so.
+   from **3.1× slower** (measured 2026-09-22: 0.0680 s against 0.0221 s,
+   `bench/RESULTS.md`) to a win or a tie. If elision does not move the number, say
+   so. **The bar this bullet used to quote — "from −17%" — is no longer the
+   measurement**, and the two figures disagree because they were taken on
+   different sides of the 2026-09-19 emitter fix.
 4. **`parallel for` on the LLVM backend**, via the OpenMP runtime ABI or our own
    thread pool. Until then the LLVM backend refuses it with a message, because a
    loop that says it is parallel and runs serially is the one thing this project
@@ -117,9 +137,12 @@ should not), macros as text substitution, and a C++ dependency of any kind.
    type comparison, call-argument comparison, an undeclared type name refused by
    the checker. Acceptance: `check` and `build` give the same verdict and the
    same message on all four measured holes.
-2. **Finish the `parallel for` aliasing rule** and prove its five verdicts: the
-   cross-iteration read is refused, `out[i] = a[i] * 2` stays legal and still
-   emits `#pragma omp`, `a[i] = a[i] + 1` stays legal.
+2. **Finish the `parallel for` aliasing rule's evidence** and record its five
+   verdicts as cases: the cross-iteration read is refused, `out[i] = a[i] * 2`
+   stays legal and still emits `#pragma omp`, `a[i] = a[i] + 1` stays legal.
+   (The rule itself is already written — see the claim table above and `SPEC.md`
+   §7. The old wording, "finish the aliasing rule", read as though the rule were
+   incomplete, which is not what `SPEC.md` says.)
 3. **A safety corpus**: adversarial cases (races, aliasing, overflow, bounds,
    lifetime) whose goldens record the *diagnostic*, so a regression is a refusal
    that stopped happening.
@@ -128,11 +151,15 @@ should not), macros as text substitution, and a C++ dependency of any kind.
 
 ## Stream 4 — the tooling around it, which is what makes it usable
 
-1. **Version control.** This repository has none, and it has already lost a test
+1. **Version control — done, and this bullet is the record of why it came first.**
+   When it was written the repository had none, and it had already lost a test
    corpus to a single `del`, recovered only because session transcripts happened
-   to hold a copy of the old test file. `git init` and a first commit cost
-   nothing and remove the single largest risk to everything above. **This is the
-   first thing to do when a shell works again.**
+   to hold a copy of the old test file. `git init` and a first commit cost nothing
+   and removed the single largest risk to everything above. It is now `main` at 41
+   commits with `origin` on GitHub (`git rev-list --count HEAD`, measured
+   2026-09-22), so the risk this bullet named is closed; leaving "This repository
+   has none" in the list would have been a plan that had been carried out while
+   still reading as unstarted.
 2. **The IDEA plugin** (independent stream, already in progress): syntax,
    diagnostics, completion, hover, parameter info, goto, rename, structure, the
    AST window, run configuration, formatting, folding, comments, templates, and a
@@ -142,9 +169,13 @@ should not), macros as text substitution, and a C++ dependency of any kind.
    no build step, no executable written beside the program, no C toolchain, and the
    command line, the program's output and the exit status all go to the console.
    That is the same requirement as item 9 of stream 2, seen from the editor.
-3. **A debugger**: the compiler's `debug` mode exists in the sources; until it is
-   promoted and has a protocol the IDE can drive, Debug stays honestly refused
-   rather than faked.
+3. **A debugger**: the protocol debugger exists and works — `vela debug <file.vel>
+   <cmddir> [arg...]`, events on stdout and commands in `<cmddir>/cmd.NNN`
+   (`DESIGN.md` §10, measured 2026-09-22), and the earlier "`vm.exe debug` is
+   advertised and does nothing" was an artefact of running it without its command
+   directory (`STATUS.md` §5). What is still owed is the IDE side: until the plugin
+   can drive that protocol, Debug stays honestly refused in the editor rather than
+   faked.
 4. **One command that runs everything**: build, suite, benchmarks, differential
    tests, and a report — so "is it green" is never a matter of opinion.
 
@@ -173,7 +204,9 @@ section put the hand-edited variant at 0.176 s and concluded that the checks cos
 nothing — but that variant had hoisted *unchecked* index arithmetic while keeping
 only the bounds check, so its label ("index hoisted, checks kept") did not describe
 what it measured, and the conclusion was false.  Isolating the same cost a second
-time gave the five-row split above.  Three consequences, in order of importance:
+time gave the five-row split above.  Four consequences, ordered by how much they
+change what happens next — the count here used to read "three" over a list of
+four, which is the kind of arithmetic a reader cannot check without counting:
 
 1. **The fix is the emitter computing each index once** (a temporary, the way the
    hand-edited C above does).  Acceptance: the benchmark's Vela serial matmul at
@@ -187,7 +220,10 @@ time gave the five-row split above.  Three consequences, in order of importance:
    the C++ twin and beating it.  That is what `selfhost/ELISION_PLAN.md` is for, and
    this table is its justification — the plan is worth doing *after* step 1, not
    instead of it.
-3. **The bounds check itself is cheap** (~0.04 s), so the `NF_NO_BOUNDS` half of the
+3. **The bounds check itself is cheap** (removing it is one row of the ladder in
+   `bench/RESULTS.md`, worth `0.543 − 0.514 = **0.029 s**`; the `~0.04 s` this
+   bullet used to quote does not reproduce from that ladder, and it has been
+   dropped rather than re-guessed), so the `NF_NO_BOUNDS` half of the
    elision plan is the smaller half; `NF_NO_OVERFLOW` is where the time is.
 4. **A claim is only as good as the last measurement.**  This row of the README said
    "wins on serial matmul" for a day while the emitted code was, in fact, six times

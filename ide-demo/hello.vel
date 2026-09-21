@@ -3,11 +3,9 @@
 def main() -> None {
     print("hello from Vela")
     print("3 * 14 =", 3 * 14)
-    log("goodbye Vela")
-    log("err")
+    log("goodbye")
 }
 
 def log(s: str) -> None {
-    if (s == "err") { print("[==]", s) }
     print(s)
 }

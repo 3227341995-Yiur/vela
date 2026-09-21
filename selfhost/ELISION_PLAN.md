@@ -1,5 +1,7 @@
 # Deleting a check by proof — the design, and the reason it is the performance lever
 
+**English** | [简体中文](ELISION_PLAN.zh-CN.md)
+
 Status: **not started, and its first step is a prerequisite that does not exist
 yet.** This is stream 1, item 3 of `ROADMAP.md` ("proof-driven check removal — *the
 actual performance lever*"). It needs no LLVM. It does need **one new analysis**,
@@ -31,8 +33,12 @@ the interface, and they are the part that never has to change.
     6 vela_bounds_check      10 vela_add_range      6 vela_mul_range      1 #pragma omp parallel for
 
 and the innermost loop is where they are. `bench/RESULTS.md` records what that
-costs: Vela's parallel build is about **17% slower** than the C++ twin built with
-`restrict` and OpenMP, and its own explanation of the *serial* win ("the
+costs: Vela's parallel build is **3.1× slower** than the C++ twin built with
+`restrict` and OpenMP (0.0680 s against 0.0221 s — measured 2026-09-22; this
+paragraph used to say "about 17% slower", which was a reading from before the
+2026-09-19 emitter fix and is wrong by two orders of the gap's size), and Vela's
+*serial* build is 2.4× slower than its serial C++ twin (0.5433 s against 0.2241 s),
+and its own explanation of the *serial* win ("the
 `restrict`-by-language-rule and the proved-away bounds checks") was measured false
 and corrected — no `restrict` is ever emitted, and **no check is ever proved
 away**.
@@ -92,8 +98,9 @@ that turns checks off is the `--fast-int` lie this project already deleted once.
 These bits are set one site at a time, by the analysis, and cleared nowhere else.
 
 The shape of the change is still the smallest one available: the checker sets the
-bits, the emitter reads them, and nothing else moves.  Step 1 below sets the bits
-and has the emitter **ignore** them, which is a change with no behaviour at all.
+bits, the emitter reads them, and nothing else moves.  Item 1 of the order below
+sets the bits and has the emitter **ignore** them, which is a change with no
+behaviour at all.
 
 ## Soundness rules
 
@@ -105,9 +112,17 @@ and has the emitter **ignore** them, which is a change with no behaviour at all.
    `0 <= i < len(a)` loses its bounds check; the same `a[i]` in a loop whose bound
    is not proven keeps it. There is no "this function is checked/unchecked"
    switch anywhere.
-3. **`parallel for` is treated exactly like any other loop.** Nothing about
-   OpenMP changes a range proof; what the aliasing rule (already written) prevents
-   is a *race*, which is a different question.
+3. **`parallel for` is not a special case in the range proof.** Nothing about
+   OpenMP changes what a range proof means: an index proved inside a parallel body
+   is proved exactly as it would be in an ordinary loop. What *is* special today is
+   only the analysis's **scope**, and it matters enough to state: the interval
+   environment is owned by `ck_parallel`, so it holds the loops *inside* a parallel
+   body and not the ones that body is nested in (`SPEC.md` §6.1, rows "interval
+   analysis on every integer expression" and "loop-variable tracking"; the same
+   narrowness is named in `CHECKER_PLAN.md` and `DESIGN.md` §7.5). This paragraph
+   used to say `parallel for` "is treated exactly like any other loop", which
+   `SPEC.md` §6.1 contradicts. The **aliasing** rule is a separate question — it
+   prevents a *race*, and it is written.
 4. **Nothing is elided for a constant index that is out of range** — that is a
    refusal, not an elision, and it already works.
 5. **What must never happen**: a wrong answer. An unsound elision is the worst bug
@@ -118,17 +133,23 @@ and has the emitter **ignore** them, which is a change with no behaviour at all.
 
 ## Order of work
 
+Seven things have to happen, and the order among them is the argument of this
+section.  The list below is numbered **1–5**: items 1, 2 and 3 are one piece of work
+each, item 4 is done twice (once with the emitter **ignoring** the bits, once with it
+obeying them), and item 5 is both a rewrite of the rewrite and the second lever.
+The list previously read `1,2,3,4,4,5`, which is not a numbering.
+
 1. **Extend the interval walk to ordinary loops** — loop-variable tracking and
    condition narrowing, in the same shape the parallel proof already uses, driven
    from the ordinary statement walk instead of from `ck_parallel`. This is the
    prerequisite, and it is where "faster than C++" actually lives: matmul's checks
    are all inside ordinary loops, so nothing later in this file can move the number
    without it. Acceptance: a probe that reports, per site, the interval the walk
-   computed (step 3 below lists the programs), and **no change to the emitted C** —
+   computed (item 3 below lists the programs), and **no change to the emitted C** —
    nothing consumes an interval yet.
 2. **The checker writes the two bits; the emitter still ignores them.** No
    behaviour change at all, and the whole corpus must stay green, which proves the
-   writing is harmless before anything depends on it. Only for sites step 1's walk
+   writing is harmless before anything depends on it. Only for sites item 1's walk
    actually proves: a bit set from a proof that does not exist is the unsoundness
    this whole file is arranged to avoid. `AST.md` §1.1 records both bits in the same
    change.
@@ -149,33 +170,37 @@ and has the emitter **ignore** them, which is a change with no behaviour at all.
    everything. **The interpreter is the reference implementation for this
    feature**: with elision on, the compiled and interpreted paths still have to
    agree byte for byte, and if they ever disagree, the elision is wrong.
-4. **Measure, and report whatever it says.** `powershell -ExecutionPolicy Bypass
+5. **Measure, and report whatever it says.** `powershell -ExecutionPolicy Bypass
    -File tools\bench.ps1 -Reps 7`, with the thread sweep, and `bench/RESULTS.md`
    re-frozen with the new numbers and the date and compiler they were taken with.
    If the parallel gap does not close, the table says so and the claim stays
    unproven.
-5. **This is the second lever, and it is the big one — but it is second.**  Measured
-   2026-09-19, on the same emitted C, all variants printing 1090512707:
 
-   | variant | seconds |
-   |---|---|
-   | as the emitter writes it | 1.058 |
-   | index hoisted into a temporary, arithmetic still checked | 0.550 |
-   | index unchecked, bounds check kept | 0.177 |
-   | nothing checked | 0.181 |
-   | the C++ twin | 0.213 |
+## The second lever, and why it is second
 
-   Two things follow.  First, the emitter currently writes every index expression
-   **twice**, and fixing that (a separate piece of work, in the emitter) is what takes
-   1.058 s to 0.550 s.  Second, *after* that fix, the checked index arithmetic is
-   0.550 → 0.177, i.e. **~68% of what remains** — this plan's whole reason to exist,
-   and the difference between losing to the C++ twin and beating it.  The bounds check
-   itself is only ~0.04 s of that, so `NF_NO_OVERFLOW` on index arithmetic is the half
-   that pays, and `NF_NO_BOUNDS` is the smaller half.
-   (An earlier version of this item claimed the checks cost nothing and that this plan
-   was therefore worth less than it looked.  That claim came from a hand-edited variant
-   labelled "checks kept" that had in fact hoisted *unchecked* arithmetic, so the label
-   did not describe the measurement.  The table above replaced it.)
+Measured 2026-09-19, on the same emitted C, all variants printing 1090512707:
+
+| variant | seconds |
+|---|---|
+| as the emitter writes it | 1.058 |
+| index hoisted into a temporary, arithmetic still checked | 0.550 |
+| index unchecked, bounds check kept | 0.177 |
+| nothing checked | 0.181 |
+| the C++ twin | 0.213 |
+
+Two things follow.  First, the emitter currently writes every index expression
+**twice**, and fixing that (a separate piece of work, in the emitter) is what takes
+1.058 s to 0.550 s.  Second, *after* that fix, the checked index arithmetic is
+0.550 → 0.177, i.e. **~68% of what remains** — this plan's whole reason to exist,
+and the difference between losing to the C++ twin and beating it.  The bounds check
+is the smaller half — one row of `bench/RESULTS.md`'s ladder, worth `0.543 − 0.514 =
+0.029 s`; the `~0.04 s` this sentence used to quote does not reproduce from that
+ladder (see that file's arithmetic note) — so `NF_NO_OVERFLOW` on index arithmetic
+is the half that pays, and `NF_NO_BOUNDS` is the smaller half.
+(An earlier version of this item claimed the checks cost nothing and that this plan
+was therefore worth less than it looked.  That claim came from a hand-edited variant
+labelled "checks kept" that had in fact hoisted *unchecked* arithmetic, so the label
+did not describe the measurement.  The table above replaced it.)
 
 ## Acceptance tests, written as cases
 
@@ -187,7 +212,7 @@ and has the emitter **ignore** them, which is a change with no behaviour at all.
 | `elision_matches_interpreter` | every `run` case in the corpus, compiled with elision on, equals its interpreted output byte for byte |
 | `matmul_inner_loop_is_clean` | `emit-c bench/matmul.vel` contains no `vela_bounds_check`/`vela_add_range` inside the innermost loop |
 
-## What step 1 has to build, in the shape the code already uses
+## What item 1 has to build, in the shape the code already uses
 
 The prerequisite is **not a new algorithm** — the algorithm exists. It is a **change
 of scope**: the interval walk has to run for ordinary loops, and the parallel proof
@@ -195,7 +220,7 @@ has to become one of its *callers* rather than the owner of its state.
 
 From `parts/check.vel` as read:
 
-| piece | where it lives today | what step 1 does with it |
+| piece | where it lives today | what item 1 does with it |
 |---|---|---|
 | `iv`, `lb`, the `Par` cursor | **locals of `ck_parallel`** (~2400-2447) | hoist into a context the ordinary statement walk owns |
 | `ck_iv_expr`, `ck_iv_push`, `ck_lb_push`, `ck_range_iv` | called from `ck_pcol`/`ck_pwrite` only | call them from `ck_block`'s loop handling, and from `ck_parallel` as before |
@@ -211,12 +236,12 @@ and they are the reason it is sound:
 2. **Narrowing is per branch, not per function.** `if i < len(a) { a[i] }` proves the
    index in that branch only, and the walk must merge at the join toward the
    **widest** interval, never the narrowest.
-3. **Nothing consumes an interval in this step.** The emitted C must not change by a
+3. **Nothing consumes an interval in item 1.** The emitted C must not change by a
    byte, so the 190-case corpus and the fixpoint *are* the acceptance test: a change
    to either is a bug in this step, not a feature of it.
 
-Acceptance for step 1 is a probe that prints, per site, the interval the walk
-computed, run over the adversarial programs in step 3. That probe needs somewhere
+Acceptance for item 1 is a probe that prints, per site, the interval the walk
+computed, run over the adversarial programs in item 3. That probe needs somewhere
 to print from, and the shape matters: a dump that fires during `check` would put
 noise on every user's stderr, and a flag that enables it would be the kind of switch
 `SPEC.md` refuses. So it is a **separate driver mode** — `vm.exe iv <file>`, a tenth

@@ -47,7 +47,7 @@ def dump_tokens(tk: Array[int, 786432], cx: Ctx) -> None {
 }
 
 def usage() -> None {
-    warn_str("usage: vela <lex|count|parse|nodes|emit-c|run|check|debug|build> <file.vel>")
+    warn_str("usage: vela <lex|count|parse|nodes|emit-c|run|check|debug|build|emit-llvm|build-llvm> <file.vel>")
     warn_nl()
     warn_str("  lex    dump the token stream")
     warn_nl()

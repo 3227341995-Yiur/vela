@@ -1,0 +1,6 @@
+extern c def host_add(a: int, b: int) -> int
+extern c def host_add(a: float, b: float) -> float
+
+def main() -> None {
+    print(1)
+}

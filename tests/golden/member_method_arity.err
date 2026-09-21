@@ -1,0 +1,2 @@
+vela: type error: Pt.dot() takes 1 argument(s), got 3
+  at tests/build/check_cases/member_method_arity.vel:12

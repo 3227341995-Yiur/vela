@@ -1,5 +1,7 @@
 # Where Vela's safety actually is
 
+**English** | [简体中文](SAFETY.zh-CN.md)
+
 `DESIGN.md` §1.2 claims Vela is "safer than Rust" and lists the promises. This file
 is that list with a program behind every line: what is claimed, the case that
 proves it, the mode it is run in, what was measured, and whether the promise holds

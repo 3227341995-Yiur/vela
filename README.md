@@ -1,6 +1,6 @@
-**English** | [简体中文](README.zh-CN.md)
-
 # Vela
+
+**English** | [简体中文](README.zh-CN.md)
 
 A systems language with **Python-shaped syntax, C-shaped performance, and a
 safety story that has no escape hatch**: no `unsafe`, no raw pointers, no manual
@@ -72,7 +72,7 @@ there names its own acceptance test.
 
 | claim | the command | measured |
 |---|---|---|
-| **faster than C++** | `powershell -ExecutionPolicy Bypass -File tools\bench.ps1 -Reps 7` | **not established yet, and the gap is now measured in one place.**  After the emitter fix of 2026-09-19 (each array index computed once instead of twice), serial matmul 512² is **2.4x slower** than its C++ twin (0.5433 s against 0.2241 s, `bench\RESULTS.md`), parallel matmul 3.1x slower (0.0680 s against 0.0221 s), sieve 1.5x slower *while keeping its checks* against an explicitly unchecked C++ row (0.0197 s against 0.0134 s), and mandelbrot ties to the microsecond (0.011950 s both).  The whole remaining matmul gap is the **checked index arithmetic** — `vela_mul_range`/`vela_add_range` on the subscript are ~68% of the post-fix time, while the bounds check is ~0.04 s — so the number that decides this claim is the one `selfhost/ELISION_PLAN.md` will produce, not this row |
+| **faster than C++** | `powershell -ExecutionPolicy Bypass -File tools\bench.ps1 -Reps 7` | **not established yet, and the gap is now measured in one place.**  After the emitter fix of 2026-09-19 (each array index computed once instead of twice), serial matmul 512² is **2.4x slower** than its C++ twin (0.5433 s against 0.2241 s, `bench\RESULTS.md`), parallel matmul 3.1x slower (0.0680 s against 0.0221 s), sieve 1.5x slower *while keeping its checks* against an explicitly unchecked C++ row (0.0197 s against 0.0134 s), and mandelbrot ties to the microsecond (0.011950 s both).  The whole remaining matmul gap is the **checked index arithmetic** — `vela_mul_range`/`vela_add_range` on the subscript are ~68% of the post-fix time, while removing the bounds check alone is worth **0.029 s** (the ladder in `bench\RESULTS.md`: `0.543 − 0.514`; the earlier `~0.04 s` does not reproduce from that ladder and was dropped rather than re-guessed) — so the number that decides this claim is the one `selfhost/ELISION_PLAN.md` will produce, not this row |
 | **Rust's safety design** | the corpus's refusal cases, `tools\smoke.ps1`, `vm.exe check tests\probes\parallel_alias_*.vel` | no pointers, no `unsafe`, no `free`, arena-only; bounds and overflow checks fire in compiled code *and* in the interpreter, with the same message; a `parallel for` body that writes an array may read it only at its own index — **proved by a run**: the cross-iteration read is refused (`'parallel for' reads 'a' at an index other than the one it writes …`) while the four legal shapes compile and still emit `#pragma omp` |
 | **Python's syntax, strict semantics** | `vm.exe check` | conditions must be `bool`, `//` and `%` are floor, string `+` is refused, a value-producing statement is refused — but a `str` bound to an `int` is still accepted by `check`, and an undeclared type name is caught by an emitter panic rather than by a diagnostic |
 | **pure-bred** | `vm.exe build selfhost\vm.vel` with no `cl.exe` on `PATH` | the compiler's source is Vela, the linker is Vela, there is no Python and no C++ anywhere, and `selfhost_fixpoint` passes — but **`build` still needs a C compiler**: C is the code-generation backend. `run` needs nothing (`vm.exe run` is a built-in interpreter), and the LLVM backend that removes the C compiler from `build` is **started, not finished**: its M1 is met (the same program, through the interpreter, the C backend, and hand-written LLVM IR linked by `clang-cl`, prints identical bytes byte for byte — `tools\llvm-m1.ps1`), and the emitter that would write that IR does not exist yet |
@@ -175,10 +175,12 @@ parallel matmul 3.1× slower (0.0680 s against 0.0221 s), sieve 1.5× slower *wh
 keeping its checks* against an explicitly unchecked C++ row (0.0197 s against
 0.0134 s), and mandelbrot a tie to the microsecond (0.011950 s both).  The whole
 remaining matmul gap is the checked index arithmetic — `vela_mul_range` /
-`vela_add_range` on the subscript are ~68% of the post-fix time, while the bounds
-check is ~0.04 s — so the number that decides "faster than C++" is the one
-`selfhost/ELISION_PLAN.md` will produce, and **that claim is not established
-today**.
+`vela_add_range` on the subscript are ~68% of the post-fix time, while removing the
+bounds check alone is worth **0.029 s** (the ladder in `bench/RESULTS.md`:
+`0.543 − 0.514`; the earlier `~0.04 s` quoted here does not reproduce from that
+ladder and has been dropped rather than re-guessed) — so the number that decides
+"faster than C++" is the one `selfhost/ELISION_PLAN.md` will produce, and **that
+claim is not established today**.
 
 The `--fast-int` sieve variant no longer exists: the self-hosted compiler always
 emits checked arithmetic, so there is no unchecked Vela build to quote. The row

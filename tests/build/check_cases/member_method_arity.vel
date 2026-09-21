@@ -1,0 +1,13 @@
+struct Pt {
+    x: int
+
+    def dot(self: Pt, o: Pt) -> int {
+        return self.x + o.x
+    }
+}
+
+def main() -> None {
+    mut p: Pt = Pt(1)
+    mut q: Pt = Pt(2)
+    print(p.dot(p, q, p))
+}

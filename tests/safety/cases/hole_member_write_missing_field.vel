@@ -1,0 +1,25 @@
+# hole_member_write_missing_field -- a *write* to a field that does not exist is
+# not checked: `a.zzz = 99` is accepted by `check` (exit 0, `ok`), and the mistake
+# is discovered only later -- by the interpreter at run time ("this struct has no
+# field of that name"), or by cl.exe refusing the `vl_a.f_zzz` the C back end had
+# already emitted.
+#
+# The *read* path has caught exactly this since `099f6fc` (`P has no field 'zzz'`,
+# exit 2).  The write path never ran the same lookup, so `check` -- the engine the
+# language is sold on -- was the permissive one of the three.
+#
+# SPEC.md 4: a struct's fields are the ones it declares.  Reading one and writing
+# one are the same rule, and the write is the more dangerous half: a read of a
+# missing field is a wrong value, a write of one is a wrong *place*.
+#
+# `violation` row: it reports CLOSED once the checker refuses it itself.
+
+struct P {
+    x: int
+}
+
+def main() -> None {
+    mut a: P = P(1)
+    a.zzz = 99
+    print(a.x)
+}

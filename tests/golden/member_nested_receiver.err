@@ -1,0 +1,2 @@
+vela: type error: Inner has no field 'zzz'
+  at tests/build/check_cases/member_nested_receiver.vel:11
