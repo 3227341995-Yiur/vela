@@ -241,6 +241,14 @@ try {
     New-Item -ItemType Directory -Force -Path $mutRepo | Out-Null
     New-Item -ItemType Junction -Path (Join-Path $mutRepo 'selfhost') -Target (Join-Path $repo 'selfhost') -ErrorAction Stop | Out-Null
     New-Item -ItemType Junction -Path (Join-Path $mutRepo 'examples') -Target (Join-Path $repo 'examples') -ErrorAction Stop | Out-Null
+    # `tests` as well, and this is not tidiness: without it the verifier's fixture check
+    # (`no usable fixtures: looked for tests/build/arith_basics.vel ...`) fires first and
+    # the emitter/header section never runs, so the mutation was reported MISSED while
+    # the verifier had in fact failed on the *renamed header breaking the build*.  A
+    # mutation that is caught for the wrong reason is not caught, and it took this
+    # junction to see the difference.
+    New-Item -ItemType Junction -Path (Join-Path $mutRepo 'tests') -Target (Join-Path $repo 'tests') -ErrorAction Stop | Out-Null
+    New-Item -ItemType Junction -Path (Join-Path $mutRepo 'bench') -Target (Join-Path $repo 'bench') -ErrorAction SilentlyContinue | Out-Null
     Copy-Item -LiteralPath (Join-Path $repo 'runtime') -Destination (Join-Path $mutRepo 'runtime') -Recurse -Force
     $hPath = Join-Path $mutRepo 'runtime\vela_runtime.h'
     $hText = Get-Content -LiteralPath $hPath -Raw

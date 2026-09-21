@@ -475,7 +475,7 @@ Reuse and hazards:
    *equal* (content-addressed interning, §4). Build a `(struct, name)` map
    yourself.
 4. **Array length and element type are not attached to uses.** The declaring
-   type record has `elem`/`size` (`parser.vel:247`–`:248`), but nothing links an
+   type record has `elem`/`size` (`parser.vel:276`–`:277`), but nothing links an
    `index` node (31) or an array literal (33) to it. Asymmetry worth noting: an
    array *parameter* annotation is recorded and a `list` literal holds only a
    head and a count — the reason an empty literal is a hard error is that there
