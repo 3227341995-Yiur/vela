@@ -4,8 +4,8 @@
 
 <!--
 源文件 : AST.md
-源文件字节 : 31364
-源文件 SHA256 : 30bc5e0aa17ff03ef5af0b7dbd95b316f08baa54abcc6e94ca5469283c972c69
+源文件字节 : 33923
+源文件 SHA256 : 81c3b7c2ad3fdadfa0e67535d0a50ae764427b38b7a1cb1c35536455d60dfacd
 翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -14,6 +14,35 @@
 来源：**词法分析器** `selfhost/vela.vel`——它的前半部分，由 `tools/link_selfhost.vel` 拼接进 `selfhost/vm.vel`；**解析器** `selfhost/parts/parser.vel`；**解析与绑定（resolver）** `selfhost/parts/resolve.vel`；**检查器** `selfhost/parts/check.vel`；**解释器** `selfhost/parts/eval.vel` 与 `selfhost/parts/vm_state.vel`；**emitter** `selfhost/parts/emit.vel`；**dump** `selfhost/parts/dump.vel`；**驱动** `selfhost/parts/vm_main.vel`；**运行时** `runtime/vela_runtime.h`。所有部件作为一个翻译单元编译，所以各个池子与 `Ctx` 被每一个阶段共享。
 
 **下面这些 `file:line` 引用要当作历史来读。** 它们是在 `selfhost/parts/parser.vel` 还只有约 1270 行、而前端在解析器之后就停下的时候写下的；此后这个文件长大了很多，本文档里每一个行号如今都只是某项东西当年所在位置的近似。准确的是*形状*——步长、各个字的含义、链的链接方式、名字句柄——以及 §9，它列出了 AST 仍然不记录的东西。那份清单才是读本文档时真正要紧的部分：`resolve.vel` 与 `check.vel` 在运行期补上了其中一些缺口，而 §9 一直诚实地标明是哪些。
+
+**它们究竟偏了多少，2026-09-22 实测——以及为什么没有被"修好"。** 本文档共有 **183 处不重复的 `file:line` 引用**（`parser.vel` 156 处、`vela.vel` 39 处、`dump.vel` 18 处、`vm_main.vel` 18 处、`SPEC.md` 5 处、`runtime/vela_runtime.h` 4 处）。其中 22 处被**按名字**而不是按算术解析过：把每处引用与它正文里点名的那个符号配对，在引用所指向的文件里搜那个符号，然后记录差值。这些差值是**不统一的**：
+
+| 引用 | 实际 | 差值 | 正文点名的东西 |
+|---|---|---|---|
+| `parser.vel:602` | 602 | 0 | `nd[n * 10 + 4] = pcount`（`def` 的参数个数） |
+| `parser.vel:661` | 661 | 0 | `nd[n * 10 + 4] = else_head` |
+| `parser.vel:683` | 683 | 0 | `def parse_for` |
+| `parser.vel:755` | 755 | 0 | `nd[n * 10 + 4] = step` |
+| `vela.vel:49` | 49 | 0 | `tk[i * 6 + k]`（token 编码） |
+| `vela.vel:465` | 465 | 0 | `tkf[cx.ntok - 1]` |
+| `vela.vel:493` | 493 | 0 | `def scan_string` |
+| `parser.vel:11` | 12 | **+1** | "10 ints per node" 那段头注释 |
+| `parser.vel:120` | 121 | **+1** | 节点容量守卫 |
+| `parser.vel:258` | 259 | **+1** | 浮点字面量守卫 |
+| `parser.vel:270` | 271 | **+1** | 类型标注守卫 |
+| `vela.vel:326` | 327 | **+1** | token 容量守卫 |
+| `vela.vel:58` | 74 | **+16** | `tk_kind` |
+| `parser.vel:106` | 132 | **+26** | `new_node` 里的 `nd[i + 7] = -1` |
+| `parser.vel:89` | 118 | **+29** | `def new_node` |
+| `parser.vel:154` | 183 | **+29** | `def name_id` |
+| `parser.vel:238` | 267 | **+29** | `def ty_add` |
+| `vela.vel:12` | 49 | **+37** | token 编码那段头注释 |
+| `parser.vel:95` | 135 | **+40** | `new_node` 的结尾 |
+| `parser.vel:417` | 480 | **+63** | `return.a` 那个哨兵值 |
+| `vm_main.vel:57` | 1113 | **+1056** | `tk` 池的声明 |
+| `vm_main.vel:60` | 1116 | **+1056** | `ty` 池的声明 |
+
+那次抽样里出现的差值只有这些：`0, +1, +16, +26, +29, +37, +40, +63, +1056`。**没有任何一个可以统一加上的常数能修好它们**，这正是它们没有被批量平移的原因：这些引用是不同时间、不同读者写下的，22 处里有 7 处至今完全正确，而两处 `vm_main.vel` 池声明的引用偏了一千多行（那个声明已经搬进驱动自己的 `main` 里，所以那个数字连函数都不在同一个了）。要在这里找某个被点名东西，可靠的办法是搜**名字**而不是搜数字；当某个符号写在表格里时，把那个数字当作它来自的年代，让名字去做活。
 
 ---
 

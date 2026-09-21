@@ -16,15 +16,60 @@
 # Run it after changing VerifyPlugin, or after changing the shape of plugin.xml:
 #     powershell -ExecutionPolicy Bypass -File build\tools\negative-tests.ps1
 $ErrorActionPreference = 'Continue'
-$plugin = 'C:\Users\lu\Downloads\vela\idea-plugin'
-$repo   = 'C:\Users\lu\Downloads\vela'
-$ide    = 'D:\JetBrains\IntelliJ IDEA 2026.2.1'
+# PATHS ARE DERIVED, NOT TYPED, AND THE OUTPUT DIRECTORY CARRIES THE VERSION.
+#
+# Three things were wrong with the old shape and all three are the reason this file
+# was rewritten while producing the 0.1.4 negative set:
+#
+#   * the plugin root, the repo root and the IDE were absolute literals, so the
+#     script only ran on this one machine;
+#   * every artifact it produced landed in one unversioned `build\verify\negative\`,
+#     so the 0.1.4 proof and the 0.1.1 proof were the same directory and the same
+#     filenames -- a reader could not tell which build a green negative set
+#     described, and the whole point of a negative test is which artifact it broke;
+#   * nothing in the output named the version or the time, so freshness had to be
+#     inferred from a file timestamp.
+#
+# Now the scratch directory is `build\verify\negative-<version>\`, every log in it is
+# written by this run, and `negative-report.txt` starts with the version, the
+# descriptor's hash and the time.  `mutation-test.ps1` does the same thing with its
+# own name; "the verifier passed" and "the verifier can fail" are never the same
+# file at the same timestamp.
+$scriptDir = $PSScriptRoot
+$plugin = (Resolve-Path -LiteralPath (Join-Path $scriptDir '..')).Path
+$repo   = (Resolve-Path -LiteralPath (Join-Path $plugin '..')).Path
+
+function Get-InstalledIdes {
+    $roots = @('D:\JetBrains', 'C:\JetBrains', 'C:\Program Files\JetBrains',
+               'C:\Program Files (x86)\JetBrains',
+               (Join-Path $env:LOCALAPPDATA 'JetBrains\Toolbox\apps'),
+               (Join-Path $env:LOCALAPPDATA 'Programs'))
+    $found = New-Object System.Collections.Generic.List[string]
+    foreach ($root in $roots) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        foreach ($d in (Get-ChildItem -LiteralPath $root -Directory -Recurse -Depth 2 -ErrorAction SilentlyContinue)) {
+            if ((Test-Path -LiteralPath (Join-Path $d.FullName 'jbr\bin\java.exe')) -and
+                (Test-Path -LiteralPath (Join-Path $d.FullName 'build.txt'))) {
+                if (-not $found.Contains($d.FullName)) { $found.Add($d.FullName) }
+            }
+        }
+    }
+    return $found.ToArray()
+}
+$ides = @(Get-InstalledIdes | Sort-Object)
+if ($ides.Count -eq 0) { Write-Host 'no JetBrains IDE found' -ForegroundColor Red; exit 2 }
+$idea = @($ides | Where-Object { $_ -match 'IntelliJ|IDEA' })
+$ide    = if ($idea.Count -gt 0) { $idea[-1] } else { $ides[-1] }
 $java   = Join-Path $ide 'jbr\bin\java.exe'
 $tools  = Join-Path $plugin 'build\tools\classes'
 $cp     = Join-Path $plugin 'build\args\platform-classpath.txt'
 $resSrc = Join-Path $plugin 'src\main\resources'
 $classes= Join-Path $plugin 'build\classes'
-$scratch= Join-Path $plugin 'build\verify\negative'
+$pluginXmlPath = Join-Path $resSrc 'META-INF\plugin.xml'
+$pluginVersion = '0.0.0'
+$vm = [regex]::Match((Get-Content -LiteralPath $pluginXmlPath -Raw), '<version>\s*([^<\s]+)\s*</version>')
+if ($vm.Success) { $pluginVersion = $vm.Groups[1].Value }
+$scratch= Join-Path $plugin "build\verify\negative-$pluginVersion"
 
 if (-not (Test-Path -LiteralPath (Join-Path $classes 'dev\vela\plugin'))) {
     Write-Host 'build\classes is empty - run build-offline.ps1 first' -ForegroundColor Red
@@ -187,7 +232,27 @@ try {
 $summary | Select-Object -Last 1 | ForEach-Object { Write-Host $_ }
 Write-Host ''
 $missed = @($summary | Where-Object { $_ -like '*MISSED*' }).Count
-$void   = @($summary | Where-Object { $_ -like '*VOID*' }).Count
+$void   = @($summary | Where-Object { $_.TrimStart() -like 'VOID*' }).Count
+$caught = @($summary | Where-Object { $_ -like '*CAUGHT*' }).Count
 $total  = $cases.Count + 1
-Write-Host "negative tests: $($total - $missed - $void)/$total caught; $missed missed; $void void"
+Write-Host "negative tests: $caught/$total caught; $missed missed; $void void"
+
+# The record, in the directory that carries the version.
+$report = Join-Path $scratch 'negative-report.txt'
+$head = @(
+    "# Vela plugin negative tests -- the proof that VerifyPlugin CAN fail",
+    "# plugin version      : $pluginVersion",
+    "# descriptor          : $pluginXmlPath",
+    "# descriptor sha256   : $((Get-FileHash -LiteralPath $pluginXmlPath -Algorithm SHA256).Hash.ToLowerInvariant())",
+    "# jar under test      : $baseJar",
+    "# jar sha256          : $(if (Test-Path -LiteralPath $baseJar) { (Get-FileHash -LiteralPath $baseJar -Algorithm SHA256).Hash.ToLowerInvariant() } else { '(missing)' })",
+    "# platform            : $ide",
+    "# written             : $((Get-Date).ToString('o'))",
+    "# caught              : $caught of $total ($missed missed, $void void)",
+    "",
+    "each line below: verdict, verifier exit code, the pattern the verifier had to print,"
+    "the pattern it did print, and the defect that was injected."
+)
+[System.IO.File]::WriteAllLines($report, [string[]] ($head + $summary), (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "report: $report"
 if ($missed -gt 0) { exit 1 }

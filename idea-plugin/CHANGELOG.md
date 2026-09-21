@@ -265,8 +265,14 @@ and postfix templates are absent with the reason written down.
 ## 0.1.1 — built and verified
 
 - The file type was `extensions="vela"` only. Every Vela file in this repository
-  ends in `.vel`, so the plugin did nothing at all on a real file. Now
-  `vela;vela`.
+  ends in `.vel`, so the plugin did nothing at all on a real file. Now the
+  descriptor reads `extensions="vel;vela"`, and `VelaFileType.EXTENSIONS` is
+  `[vel, vela]` with `getDefaultExtension()` returning `vel` -- measured by
+  `VerifyPlugin` section 6, which reads the attribute out of the jar's descriptor
+  and the two constants out of the loaded class. (This entry said `vela;vela`
+  until 0.1.4: the first suffix was wrong here while `plugin.xml`, `README.md` and
+  the class itself all said `vel`. Corrected against the measurement, not against
+  whichever spelling appeared first.)
 - `<add-to-group group-id="Vela.BuildAndRun">` named an *action* as if it were a
   group: the platform logged
   `SEVERE ... should be instance of DefaultActionGroup` and neither action ever

@@ -130,7 +130,7 @@ $ selfhost\build\vm.exe emit-c tests\build\parallel_for_correct.vel
 
 **这些数字只住在一个地方：`bench/RESULTS.md`，而本节有意不再带第二张表。** 它曾经带过。曾经立在这里的那张表说 Vela 的串行 matmul 比 C++ 构建*快*约 10%（0.2055 s 对 0.2270 s），而本文件靠前的断言表把同一个基准引为慢 2.4 倍（0.5433 s 对 0.2241 s）——同一份文档里两个互斥的答案，是有人为了翻译而逐行读这个文件时发现的。更快的那一组是**在** 2026-09-19 那个 emitter 缺陷被发现**之前**的那次运行（每个数组下标都被计算了两次）；`bench/RESULTS.md` 是替换掉了那张表，而不是去编辑它，而它的撤回声明原话如此：*"The old table said Vela's serial matmul beat both C++ serial builds. It does not."*
 
-`bench/RESULTS.md` 现在所说的，是在那里描述的同一台机器上、对着同样的 C++ 孪生版本：串行 matmul **慢 2.4 倍**（0.5433 s 对 0.2241 s），并行 matmul 慢 3.1 倍（0.0680 s 对 0.0221 s），sieve 在一个显式未检查的 C++ 行面前慢 1.5 倍*同时又保留着自己的检查*（0.0197 s 对 0.0134 s），而 mandelbrot 精确到微秒打平（两者都是 0.011950 s）。剩下的 matmul 差距全部是带检查的下标算术——下标上的 `vela_mul_range` / `vela_add_range` 约占修复后耗时的 68%，而边界检查约 0.04 s——所以决定"比 C++ 更快"的数字是 `selfhost/ELISION_PLAN.md` 将产出的那个，而**那条断言今天不成立**。
+`bench/RESULTS.md` 现在所说的，是在那里描述的同一台机器上、对着同样的 C++ 孪生版本：串行 matmul **慢 2.4 倍**（0.5433 s 对 0.2241 s），并行 matmul 慢 3.1 倍（0.0680 s 对 0.0221 s），sieve 在一个显式未检查的 C++ 行面前慢 1.5 倍*同时又保留着自己的检查*（0.0197 s 对 0.0134 s），而 mandelbrot 精确到微秒打平（两者都是 0.011950 s）。剩下的 matmul 差距全部是带检查的下标算术——下标上的 `vela_mul_range` / `vela_add_range` 约占修复后耗时的 68%，而单独去掉边界检查值 **0.029 s**（`bench\RESULTS.md` 那张阶梯表：`0.543 − 0.514`；这里早先引用的 `~0.04 s` 无法从那张阶梯表推出来，所以它被去掉了，而不是被重新猜一个）——所以决定"比 C++ 更快"的数字是 `selfhost/ELISION_PLAN.md` 将产出的那个，而**那条断言今天不成立**。
 
 `--fast-int` 的 sieve 变体不再存在：自举编译器总是发出带检查的算术，所以已经没有未检查的 Vela 构建可供引用。以前出现在这里的那一行，是被删掉的 Python 前端产出的。
 

@@ -20,6 +20,48 @@ lists what the AST still does not record. That list is the part that matters for
 anything reading this document: `resolve.vel` and `check.vel` supply some of
 those gaps at run time, and §9 has been kept honest about which.
 
+**How far off they are, measured 2026-09-22 — and why they have not been
+"fixed".** This document contains **183 distinct `file:line` citations**. A sample
+of 22 of them was resolved by *name* rather than by arithmetic: each citation was
+paired with the symbol the prose names, that symbol was searched for in the file
+the citation points at, and the difference recorded. The deltas are **not a
+constant**:
+
+| cited | actual | delta | what the prose names |
+|---|---|---|---|
+| `parser.vel:602` | 602 | 0 | `nd[n * 10 + 4] = pcount` (the `def` parameter count) |
+| `parser.vel:661` | 661 | 0 | `nd[n * 10 + 4] = else_head` |
+| `parser.vel:683` | 683 | 0 | `def parse_for` |
+| `parser.vel:755` | 755 | 0 | `nd[n * 10 + 4] = step` |
+| `vela.vel:49` | 49 | 0 | `tk[i * 6 + k]` (the token encoding) |
+| `vela.vel:465` | 465 | 0 | `tkf[cx.ntok - 1]` |
+| `vela.vel:493` | 493 | 0 | `def scan_string` |
+| `parser.vel:11` | 12 | **+1** | the `10 ints per node` header comment |
+| `parser.vel:120` | 121 | **+1** | the node-capacity guard |
+| `parser.vel:258` | 259 | **+1** | the float-literal guard |
+| `parser.vel:270` | 271 | **+1** | the type-annotation guard |
+| `vela.vel:326` | 327 | **+1** | the token-capacity guard |
+| `vela.vel:58` | 74 | **+16** | `tk_kind` |
+| `parser.vel:106` | 132 | **+26** | `nd[i + 7] = -1` in `new_node` |
+| `parser.vel:89` | 118 | **+29** | `def new_node` |
+| `parser.vel:154` | 183 | **+29** | `def name_id` |
+| `parser.vel:238` | 267 | **+29** | `def ty_add` |
+| `vela.vel:12` | 49 | **+37** | the token-encoding header comment |
+| `parser.vel:95` | 135 | **+40** | the end of `new_node` |
+| `parser.vel:417` | 480 | **+63** | the `return.a` sentinel |
+| `vm_main.vel:57` | 1113 | **+1056** | the `tk` pool declaration |
+| `vm_main.vel:60` | 1116 | **+1056** | the `ty` pool declaration |
+
+Distinct deltas in that sample: `0, +1, +16, +26, +29, +37, +40, +63, +1056`.
+**No single added constant repairs these**, which is why they were not bulk-shifted:
+the citations were written at different times by different readers, and seven of the
+22 are still exactly right while the two `vm_main.vel` pool citations are off by more
+than a thousand lines (the declaration moved into the driver's `main`, so the number
+is not even in the same function any more). The reliable way to find a thing named
+here is to search for the **name**, not the number; where a symbol is named in a
+table, treat the number as the era it came from and let the name do the work.
+above is the resolvable half of a spread sample, not the whole document.)
+
 ---
 
 ## 1. Node pool

@@ -80,8 +80,8 @@ the artifact — 60 checks, each printing `OK` or `FAIL`, ending in
 | layer | what it proves |
 |---|---|
 | 1 structure | `META-INF/plugin.xml`, both icons, and a `.class` in the jar for every FQN named by *any* class-carrying attribute in `plugin.xml` (`implementationClass`, `instance`, `factoryClass`, `class`, `implementation`, `serviceImplementation`) |
-| 2 bytecode | 82 class files, highest class-file major 65 (Java 21) |
-| 3 platform | the installed IDE's own descriptors are read and indexed — 2215 XML descriptors out of 1987 jars, giving 279 plugin/module ids, 1386 extension point ids and 4662 action/group ids |
+| 2 bytecode | 148 class files, highest class-file major 65 (Java 21) — measured on the 0.1.4 build of 2026-09-22 00:26 |
+| 3 platform | the installed IDE's own descriptors are read and indexed — 2705 XML descriptors out of 2356 jars, giving 297 plugin/module ids, 1773 extension point ids and 5277 action/group ids (0.1.4 build) |
 | 4 extensions | every `<extensions>` entry names an extension point the installed platform declares, or that another installed plugin registers an extension under |
 | 5 depends | every `<depends>` module is one the installed platform provides |
 | 6 file type | `<fileType extensions="vel;vela">`, `VelaFileType.getDefaultExtension() = vel`, `EXTENSIONS = [vel, vela]`, `isVelaFileName("x.vel")` / `("x.vela")`; and every `language="..."` attribute equals the id of the language the file type is bound to |
@@ -105,10 +105,27 @@ live `ActionManager`, because the platform's `ActionManager` and extension
 registry need a booted application and cannot be asked headlessly.  A group id
 registered only from code would therefore be reported as unknown.
 
-**Current verdict** (`build\logs\verify.log`): **60 OK, 0 FAIL, RESULT: PASS**,
-script exit 0, against `dist\vela\lib\vela-idea-plugin.jar` (180 613 bytes) and
-`dist\vela-idea-plugin-0.1.1.zip` (169 056 bytes), with 19 Kotlin sources and
-`no warnings, no errors`.
+**Current verdict, 0.1.4 — re-measured, not carried forward.** Every number below
+was read back out of the build of 2026-09-22 00:26 and is named with the version
+it belongs to, because this block said `0.1.1` and `60 OK` for three releases
+while `dist\` held `0.1.3`, which is the kind of stale line a reader is entitled
+to be angry about:
+
+```
+build-offline.ps1            exit 0, RESULT: PASS, 154 OK, 0 FAIL   (build\logs\verify.log)
+                             checked at 2026-09-22T00:26:15
+artifact                     dist\vela\lib\vela-idea-plugin.jar   344 626 bytes
+                             dist\vela-idea-plugin-0.1.4.zip      324 198 bytes
+sources                      36 Kotlin file(s) -> 148 class file(s), highest major 65 (Java 21)
+compiler warnings            none ("no warnings, no errors")
+dead classes                 0 (98 concrete top-level classes: 29 named by plugin.xml, 69 reached)
+surface inventory            build\logs\surface.txt (36 fact(s))
+```
+
+`0.1.1`'s record, for the history and not for the current claim: 60 OK, jar
+180 613 bytes, `dist\vela-idea-plugin-0.1.1.zip` 169 056 bytes, 19 Kotlin
+sources. The `0.1.1` zip is still in `dist\`, which is why the version had to be
+named in this block rather than inferred from the directory.
 
 The inventory the verifier reads 鈥?every extension point id with the class it
 names, the action, the `add-to-group` target, the file type's suffixes and its
@@ -177,7 +194,7 @@ the final shape, and this block is updated with the result.)
 
 
 Install with **Settings → Plugins → ⚙ → Install Plugin from Disk…**, pick
-`dist\vela-idea-plugin-0.1.1.zip` (or point the IDE at the unpacked `dist\vela\`).
+`dist\vela-idea-plugin-0.1.4.zip` (or point the IDE at the unpacked `dist\vela\`).
 Every class `plugin.xml` names is loaded out of the built jar and linked against
 the platform it will run in — the failure that otherwise surfaces only as "the
 plugin does not load", with no explanation of why.

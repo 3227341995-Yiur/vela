@@ -158,12 +158,14 @@ public final class HintDiff {
                         // The file does not declare this callee: the only honest answer is
                         // no hint at all, so any hint here is a finding.
                         for (VelaSyntaxNode arg : args) {
-                            int off = argStart(tree, arg);
+                            int[] span = argSpan(tree, arg, text);
+                            if (span == null) continue;
                             for (Hint h : hintList) {
-                                if (h.offset != off) continue;
+                                if (h.offset < span[0] || h.offset > span[1]) continue;
                                 unresolvedWithHints++;
                                 if (findings.size() < 60) {
-                                    findings.add("  " + rel + ":" + lineOf(text, off) + " `" + callee
+                                    findings.add("  " + rel + ":" + lineOf(text, span[0]) + " `"
+                                            + callee
                                             + "` is not declared in this file, but a hint `" + h.label
                                             + "` was drawn from its argument");
                                 }
@@ -178,9 +180,14 @@ public final class HintDiff {
                     StringBuilder verdict = new StringBuilder();
                     for (int i = 0; i < args.size(); i++) {
                         int off = argStart(tree, args.get(i));
+                        int[] span = argSpan(tree, args.get(i), text);
+                        if (span == null) span = new int[]{off, off};
                         boolean sawOne = false;
                         for (Hint h : hintList) {
-                            if (h.offset != off) continue;
+                            // Inside the argument's whole span, not equal to one offset:
+                            // see argSpan for why the two sides' offsets differ by the
+                            // quote of a string literal.
+                            if (h.offset < span[0] || h.offset > span[1]) continue;
                             sawOne = true;
                             hints++;
                             drawn.add(strip(h.label));
@@ -247,8 +254,8 @@ public final class HintDiff {
         System.out.println("  hint names WRONG             : " + wrong);
         System.out.println("  hints beyond the parameters  : " + extra);
         System.out.println("  declared params with no hint : " + missingHint
-                + " (of which suppressed because the argument already reads as the parameter: "
-                + suppressedByConvention + ")");
+                + " (of which correctly suppressed because the argument already reads as the"
+                + " parameter's own name: " + suppressedByConvention + ")");
         System.out.println("  calls to an undeclared callee: " + unresolvedCalls
                 + ", of which drew a hint: " + unresolvedWithHints);
         System.out.println("  calls in files the compiler cannot parse, unjudged: " + unjudgedCalls);
@@ -269,14 +276,20 @@ public final class HintDiff {
         // parse is skipped.
         Coverage cov = new Coverage()
                 .category("compiler-cannot-parse")
-                .category("suppressed-by-convention")
-                // `judgedArgs` counts every argument position of every judged call, and a
-                // suppressed one is a position where there is no hint to judge; moving it
-                // to the skipped side is what keeps `ran + skipped` equal to the number of
-                // argument positions in the corpus rather than counting it twice.
-                .ran(judgedArgs - suppressedByConvention)
+                // THE SUPPRESSED POSITIONS ARE JUDGED, NOT SKIPPED, AND THAT IS THE POINT.
+                //
+                // They were counted as skipped in the first version of this triple, which
+                // put 14,932 of 29,008 argument positions on the skip side -- "a verifier
+                // that skips half its corpus and calls the rest green".  But nothing is
+                // being skipped there: the convention ("no hint when the argument already
+                // reads as the parameter's own name") is *checked*, string against string,
+                // by the branch above.  A position that satisfies it is a correct outcome;
+                // one that does not and has no hint is a `missingHint` and is counted as
+                // wrong.  So they belong on the `ran` side, and the skip side keeps only
+                // the one thing this harness genuinely cannot judge: a call in a file the
+                // compiler refuses to parse, which has no authority at all.
+                .ran(judgedArgs)
                 .skipped("compiler-cannot-parse", skipArgsUnparsable)
-                .skipped("suppressed-by-convention", suppressedByConvention)
                 .wrong(bad);
         cov.print();
         System.exit(bad == 0 ? 0 : 1);
@@ -483,16 +496,50 @@ public final class HintDiff {
      * reported 18,003 findings, and every one of them was that suppression.
      */
     private static String argText(VelaSyntaxTree tree, VelaSyntaxNode arg, String text) {
+        int[] span = argSpan(tree, arg, text);
+        if (span == null) return null;
+        return text.substring(span[0], span[1]).trim();
+    }
+
+    private static int[] argSpan(VelaSyntaxTree tree, VelaSyntaxNode arg, String text) {
         if (arg == null) return null;
         int start = argStart(tree, arg);
         if (start < 0) return null;
-        int end = start;
+        int end = argEnd(tree, arg);
+        if (end < start || end > text.length()) return null;
+        // WIDENED TO INCLUDE THE DELIMITERS, AND THIS IS THE WHOLE BUG THIS HARNESS HAD.
+        //
+        // A Vela string literal's *node* covers its contents, not its quotes: the
+        // compiler records the offset of `hello` inside `"hello"`, and
+        // `VelaParserDefinition`'s replay snaps that down to the lexer's token so the
+        // element gets the text it denotes.  `VelaInlayHints.parameterHints` does not
+        // go through the parser for this -- it scans the characters between the parens
+        // -- so the offset it reports for an argument is the position of the opening
+        // quote, one character below the parser's.
+        //
+        // The first version of the "declared parameter with no hint" check compared
+        // those two offsets for equality, so EVERY string-literal argument looked like
+        // an argument with no hint: 3,073 findings, every one of them the same
+        // off-by-quote, on `env("TEMP")`, `concat("abc", "de")`, `q("...exe")` and
+        // friends.  Meanwhile `hints drawn: 7769 / correct: 7769 / WRONG: 0` was
+        // unchanged, which is the tell that the *matcher* was wrong and not the plugin.
+        //
+        // So the span is widened to include a quote on either side, and a hint counts as
+        // this argument's if its offset falls anywhere inside the widened span.  Both
+        // sides are then measuring the same characters, whichever convention they use.
+        if (start > 0 && isQuote(text.charAt(start - 1))) start--;
+        if (end < text.length() && isQuote(text.charAt(end))) end++;
+        return new int[]{start, end};
+    }
+
+    private static boolean isQuote(char c) {
+        return c == '"' || c == '\'';
+    }
+
+    private static int argEnd(VelaSyntaxTree tree, VelaSyntaxNode arg) {
         int i = arg.endTok;
-        if (i >= 0 && i < tree.toks.size()) end = tree.toks.get(i).end;
-        else return null;
-        if (end > text.length()) end = text.length();
-        if (end < start) return null;
-        return text.substring(start, end).trim();
+        if (i >= 0 && i < tree.toks.size()) return tree.toks.get(i).end;
+        return -1;
     }
 
     private static int lineOf(String text, int offset) {
