@@ -1,1 +1,2 @@
-vela: cannot read tests/build/lexer_error.vel
+vela: syntax error: unterminated string literal
+  at line 2

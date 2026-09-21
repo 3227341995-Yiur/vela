@@ -4,8 +4,8 @@
 
 <!--
 源文件 : CHANGELOG.md
-源文件字节 : 17700
-源文件 SHA256 : 3d16f921eec59c5f4db7aabfb97dc4c77369b62fe7c0f0c77740a503f3f1a91b
+源文件字节 : 21903
+源文件 SHA256 : 048ca918d014d177122861ec22f61fd60e522d1fc48b73fefdaf8bbf19a86737
 翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -103,6 +103,57 @@
   而这个配置被写成接受任何不是 `Debug` 的 profile，所以 IDEA 显示那个拒绝，而不是一个
   会挂接到空处的按钮。没有实现任何调试器，也没有声称有。
 
+**这个版本带着发布出去的未决缺陷，以及它们背后那些原始数字。** 这些被写在这里，写在发布
+记录里，而不是写在别处的某条注记里，因为一条只列出顺利之处的发布说明，正是这个项目一直在
+为之付代价的东西。
+
+1. **`HintDiff`：30 个实参位置没有得到参数名提示，而 125 个无法被判定。** 原始的最后一行：
+
+   ```
+   VERDICT: 30 hint position(s) are not right
+   COVERAGE: ran 29006 / skipped 127 (compiler-cannot-parse 2,
+             arg-boundary-disagreement 125) / wrong 30
+   ```
+
+   *绘制出来*的每一样都是对的——`hints drawn 10688 / correct 10688 / WRONG 0 /
+   beyond 0`——所以这不是 `s: s: s:` 那一类缺陷。那 30 个里的每一个都是一个实参，其文本
+   是含 `'`、`(` 或 `)` 的字符串字面量，或者是一个嵌套调用：
+   `ck_quoted(s, x, "', which is not declared 'pure'")`、`concat(a, " does not fit in
+   int (64-bit signed)")`、`perr(kind, msg, ti_line(tk, cx))`。怀疑对象是
+   `VelaInlayHints.kt` 里那个逐字符扫描的实参范围读取器（`argumentRanges` /
+   `endOfQuoted` / `matchingParen`）；声明读取器是干净的（`HintDupes`：0 个重复参数名、
+   0 个空名字）。那 30 个全在 `selfhost/parts/*` 里，以及在 `selfhost/vm.vel` 里重复
+   出现的同一段文本。**被点名，没有被修复**，而这就是参数提示那一行在
+   `FEATURE_PARITY.md` 里是 `partial` 的原因。
+
+2. **`AstDiff` 在一个命名了不存在文件的语料条目上是 FAIL。**
+   `tests/cases.txt:174` 命名 `tests/build/lexer_error.vel`；那个文件不在磁盘上。
+   把那一行 MISSING 放在一边之后，语料是 108 个文件在 119,923 行节点上与
+   `vm.exe parse` 逐字节相同，0 个差异。`tests/**` 是另一个 track 的，所以它连同它的
+   清单行一起被报告，并拥有自己的退出码（3 = 语料缺陷），而不是被折进“插件是错的”
+   （退出 1）。
+
+3. **`SymbolDiff` 有 40 个文件不同，`FoldDiff` 有 61 个文件不同**，两者都是对着这个插件
+   自己*已退休的*实现，而不是对着某个权威（没有权威：编译器不打印折叠区域，也不打印
+   符号清单）。那些差异就是这次替换——树模型列出了 token 扫描漏掉的 `extern` 声明；
+   树把整个函数体从 `{` 折到 `}`，而那正是 PyCharm 对一个方法体所做的。两者都在
+   `build\evidence\harness-0.1.4.txt` 里逐文件枚举。不存在任何外部权威可以把每一个
+   单独的差异称为一次改进，而说得相反就会是一个声称。
+
+**在产生那份否定证明的过程中，发现并修复了两个验证器漏洞**——两个都是被否定测试发现的，
+而不是被读出来的，而且两个都是同样的形状：一项检查之所以是绿的，是因为它的问题比它看起来
+要弱。
+
+- `check smoke` 用了一个提前的 `return`，它中止了整个编译器部分——包括
+  `emitterHeaderContract`，那是两个文本的一次静态比较，并不需要 C 编译器。所以那项为
+  一个坏掉的 emitter/header 契约而存在的检查，在构建真的坏掉时从来没有跑过。构建结果现在
+  被记住了，只有那些需要一个已构建可执行文件的检查才被跳过。
+- `emitterHeaderContract` 问的是 `header.contains(symbol)`。把
+  `runtime/vela_runtime.h` 里的 `vela_bounds_check` 改名成
+  `vela_bounds_check_renamed`，仍然“包含”着 emitter 所调用的那个名字，所以那项检查对着
+  一个不再声明它的头文件打印了
+  `vela_bounds_check ... all defined`。它现在是一次整词匹配。
+
 **这个版本里没有被验证的东西**
 
 - 没有启动任何 IDE。这个会话里在这台机器上启动不了任何 IntelliJ 实例，所以这里的
@@ -111,8 +162,16 @@
   而它在 `FEATURE_PARITY.md` 里被标为如此。
 - `Live parse (editor buffer)` 模式编译过了、可达；它**没有**在 IDE 里跑过。被验证的
   是它的解析就是编译器的解析（那是 `ast-diff.ps1`），不是 Swing 面板把它渲染出来。
-- `classRegisteredNowhere` 现在只在一个类实现某个扩展点所要求的契约时被抓到；
-  精确的剩余限度见 `FEATURE_PARITY.md` 的验证器那一节。
+- 变异证明是当前的，而且它是与那次通过*不同的一个文件*：
+  `build\verify\mutation-0.1.4\mutation-report-0.1.4.txt`（头几行里有版本、jar SHA256 和
+  时间，外加每一个变异体一份验证器日志）报告 **13 个变异体、12 个被抓到、0 个漏洞、
+  1 个对照正确、0 个脚本/裁决问题**，基线是干净的——`classRegisteredNowhere` 确实被
+  抓到了，靠的是 `[check unregisteredImplementations]` 从已安装平台自己的描述符里读出
+  **1,332** 个必需类型。`build\verify\negative-0.1.4\negative-report.txt` 是更老的那套
+  A–I，现在是 **12/12 抓到、0 漏掉、0 无效**。仍然没有被抓到的是：一个实现着没有任何
+  已安装扩展点所声明的契约、并且哪里都没有注册的类——没有清单可以拿它去对照；这次构建里
+  那个计数是 0。
+- **没有启动任何 IDE**，所以“安装这个 zip，它就加载”没有被测量。
 
 
 
