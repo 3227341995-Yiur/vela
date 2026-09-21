@@ -121,6 +121,61 @@ registered (or registered under the wrong attribute name). An entry that says
   instead of a button that would attach to nothing. No debugger was implemented
   and none is claimed.
 
+**Open defects this version ships with, and the raw numbers behind them.** These are
+written here, in the release entry, rather than in a note somewhere else, because a
+release note that only lists what went well is the thing this project keeps paying for.
+
+1. **`HintDiff`: 30 argument positions get no parameter-name hint, and 125 cannot be
+   judged.** Raw final line:
+
+   ```
+   VERDICT: 30 hint position(s) are not right
+   COVERAGE: ran 29006 / skipped 127 (compiler-cannot-parse 2,
+             arg-boundary-disagreement 125) / wrong 30
+   ```
+
+   Everything that *is* drawn is right — `hints drawn 10688 / correct 10688 / WRONG 0 /
+   beyond 0` — so this is not the `s: s: s:` class of defect. Every one of the 30 is an
+   argument whose text is a string literal containing `'`, `(` or `)`, or a nested call:
+   `ck_quoted(s, x, "', which is not declared 'pure'")`, `concat(a, " does not fit in
+   int (64-bit signed)")`, `perr(kind, msg, ti_line(tk, cx))`. The suspicion is the
+   character-scanning argument-range reader in `VelaInlayHints.kt`
+   (`argumentRanges` / `endOfQuoted` / `matchingParen`); the declaration reader is clean
+   (`HintDupes`: 0 repeated parameter names, 0 empty names). All 30 are in
+   `selfhost/parts/*` and the same text again in `selfhost/vm.vel`. **Named, not
+   fixed**, and it is why the parameter-hint row is `partial` in `FEATURE_PARITY.md`.
+
+2. **`AstDiff` is FAIL on one corpus entry that names a file which does not exist.**
+   `tests/cases.txt:174` names `tests/build/lexer_error.vel`; the file is not on disk.
+   With that one MISSING row aside the corpus is 108 files byte-identical to
+   `vm.exe parse` over 119,923 node lines, 0 differences. `tests/**` is another
+   track's, so it is reported with its manifest line and given its own exit code
+   (3 = corpus defect) instead of being folded into "the plugin is wrong" (exit 1).
+
+3. **`SymbolDiff` 40 files differ and `FoldDiff` 61 files differ**, both against this
+   plugin's own *retired* implementations rather than against an authority (there is no
+   authority: the compiler prints no fold regions and no symbol list). The differences
+   are the replacement — the tree model lists `extern` declarations the token scan
+   missed; the tree folds a whole body from `{` to `}`, which is what PyCharm does for a
+   method body. Both are enumerated file by file in `build\evidence\harness-0.1.4.txt`.
+   No external authority exists to call each individual difference an improvement, and
+   saying otherwise would be a claim.
+
+**Two verifier holes were found and fixed while producing the negative proof** — both
+found by the negative test rather than by reading, and both the same shape: a check that
+was green because its question was weaker than it looked.
+
+- `check smoke` used an early `return`, which aborted the whole compiler section —
+  including `emitterHeaderContract`, a static comparison of two texts that needs no C
+  compiler. So the one check that exists for a broken emitter/header contract never ran
+  when the build actually broke. The build result is remembered now, and only the checks
+  that need a built executable are skipped.
+- `emitterHeaderContract` asked `header.contains(symbol)`. Renaming
+  `vela_bounds_check` to `vela_bounds_check_renamed` in `runtime/vela_runtime.h` still
+  "contained" the name the emitter calls, so the check printed
+  `vela_bounds_check ... all defined` over a header that no longer declares it. It is a
+  whole-word match now.
+
 **What was NOT verified, in this version**
 
 - No IDE was launched. No IntelliJ instance can be started on this machine in
@@ -132,9 +187,18 @@ registered (or registered under the wrong attribute name). An entry that says
 - The `Live parse (editor buffer)` mode is compiled and reachable; it has **not**
   been run inside an IDE. What is verified is that its parse is the compiler's
   parse (that is `ast-diff.ps1`), not that the Swing panel renders it.
-- `classRegisteredNowhere` is now caught only where the class implements a
-  contract an extension point requires; see `FEATURE_PARITY.md`'s verifier
-  section for the precise remaining limit.
+- The mutation proof is current, and it is a *different file* from the pass:
+  `build\verify\mutation-0.1.4\mutation-report-0.1.4.txt` (version, jar SHA256 and
+  time in its first lines, plus one verifier log per mutant) reports **13 mutants,
+  12 caught, 0 holes, 1 control correct, 0 script/verdict problems** with a clean
+  baseline — `classRegisteredNowhere` is genuinely caught, by
+  `[check unregisteredImplementations]` reading 1,332 required types out of the
+  installed platform's own descriptors. `build\verify\negative-0.1.4\negative-report.txt`
+  is the older A–I set, now **12/12 caught, 0 missed, 0 void**. What is still not
+  caught: a class implementing a contract no installed extension point declares and
+  registered nowhere — there is no list to check that against; the count in this build
+  is 0.
+- **No IDE was launched**, so "install this zip and it loads" is not measured.
 
 
 

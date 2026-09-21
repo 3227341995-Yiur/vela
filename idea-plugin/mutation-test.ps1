@@ -151,6 +151,18 @@ New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
 $logDir = Join-Path $ScratchRoot 'logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
+# THE EVIDENCE IS PUBLISHED, VERSION-STAMPED, INSIDE THE REPO.
+#
+# The run itself has to happen in a scratch tree (it builds mutant jars and mutant
+# descriptors, and nothing under idea-plugin\ must be written except by the build).  But
+# a proof that lives only in %TEMP% cannot be checked by a reader, and one that lands in
+# an unversioned directory cannot be told apart from the proof for a different build.
+# "The verifier passed" and "the verifier can fail" must not be the same file at the same
+# timestamp: `build\logs\verify.log` says the first, and
+# `build\verify\mutation-<version>\` says the second, with the version in the file name
+# and in the first line of every report.
+$publishDir = Join-Path $pluginRoot 'build\verify'
+
 Step '1/4  Compile the verifier from the tree (not from a stale class file)'
 $verifySrc = Join-Path $pluginRoot 'tools\build\src\VerifyPlugin.java'
 $jarToolSrc = Join-Path $pluginRoot 'tools\build\src\JarTool.java'
@@ -524,6 +536,28 @@ $table | ForEach-Object { Write-Host $_ }
 Write-Host ''
 Info "full report: $report"
 Info "per-mutant verifier logs: $logDir"
+
+# ---- publish the proof where a reader can find it, named for the build it describes
+$outDir = Join-Path $publishDir "mutation-$version"
+New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+$header = @(
+    "# Vela plugin mutation tests -- the proof that VerifyPlugin CAN fail",
+    "# plugin version      : $version",
+    "# jar under test      : $Jar",
+    "# jar sha256          : $((Get-FileHash -LiteralPath $Jar -Algorithm SHA256).Hash.ToLowerInvariant())",
+    "# verifier sources    : $verifySrc (+ JarTool.java), compiled fresh into $toolsDir",
+    "# classpath document  : $classpathFile",
+    "# written             : $((Get-Date).ToString('o'))",
+    "# baseline            : $($baseline.Verdict)",
+    "# mutants             : $($rows.Count)   caught: $caught   holes: $holes   controls correct: $controls   script/verdict problems: $wrong",
+    ""
+)
+[System.IO.File]::WriteAllLines((Join-Path $outDir "mutation-report-$version.txt"),
+    [string[]] ($header + $table), (New-Object System.Text.UTF8Encoding($false)))
+foreach ($f in (Get-ChildItem -LiteralPath $logDir -Filter '*.log' -File -ErrorAction SilentlyContinue)) {
+    Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $outDir $f.Name) -Force
+}
+Info "published          : $outDir (mutation-report-$version.txt + $($rows.Count) per-mutant verifier log(s))"
 
 if ($wrong -gt 0) { exit 1 }
 if ($RequireAllCaught -and $holes -gt 0) { exit 1 }

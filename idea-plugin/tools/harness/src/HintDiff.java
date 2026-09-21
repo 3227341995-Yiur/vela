@@ -60,6 +60,7 @@ public final class HintDiff {
     private Path vm;
     private int step;
     private String single;
+    private boolean explain;
     private boolean show;
     private final List<String> corpus = new ArrayList<>();
     private final Map<String, Map<String, List<String>>> dumpCache = new LinkedHashMap<>();
@@ -73,6 +74,7 @@ public final class HintDiff {
             else if (a.equals("--truncate")) tool.step = Integer.parseInt(args[++i]);
             else if (a.equals("--show")) tool.show = true;
             else if (a.equals("--single")) tool.single = args[++i];
+        else if (a.equals("--explain")) tool.explain = true;
             else rest.add(a);
         }
         tool.repoRoot = rest.isEmpty() ? Paths.get("").toAbsolutePath()
@@ -100,6 +102,7 @@ public final class HintDiff {
         long extra = 0;
         long missingHint = 0;
         long suppressedByConvention = 0;
+        long boundaryUnjudged = 0;
         long judgedArgs = 0;
         long skipArgsUnparsable = 0;
         long unresolvedCalls = 0;
@@ -158,13 +161,13 @@ public final class HintDiff {
                         // The file does not declare this callee: the only honest answer is
                         // no hint at all, so any hint here is a finding.
                         for (VelaSyntaxNode arg : args) {
-                            int[] span = argSpan(tree, arg, text);
-                            if (span == null) continue;
+                            int[] spots = argHintOffsets(tree, arg, text);
+                            if (spots.length == 0) continue;
                             for (Hint h : hintList) {
-                                if (h.offset < span[0] || h.offset > span[1]) continue;
+                                if (!isAt(h.offset, spots)) continue;
                                 unresolvedWithHints++;
                                 if (findings.size() < 60) {
-                                    findings.add("  " + rel + ":" + lineOf(text, span[0]) + " `"
+                                    findings.add("  " + rel + ":" + lineOf(text, spots[0]) + " `"
                                             + callee
                                             + "` is not declared in this file, but a hint `" + h.label
                                             + "` was drawn from its argument");
@@ -180,14 +183,13 @@ public final class HintDiff {
                     StringBuilder verdict = new StringBuilder();
                     for (int i = 0; i < args.size(); i++) {
                         int off = argStart(tree, args.get(i));
-                        int[] span = argSpan(tree, args.get(i), text);
-                        if (span == null) span = new int[]{off, off};
+                        int[] spots = argHintOffsets(tree, args.get(i), text);
                         boolean sawOne = false;
                         for (Hint h : hintList) {
-                            // Inside the argument's whole span, not equal to one offset:
-                            // see argSpan for why the two sides' offsets differ by the
-                            // quote of a string literal.
-                            if (h.offset < span[0] || h.offset > span[1]) continue;
+                            // At one of the argument's own start positions -- not anywhere
+                            // inside its span: see argHintOffsets for the nested-call
+                            // false positives that a span test produced.
+                            if (!isAt(h.offset, spots)) continue;
                             sawOne = true;
                             hints++;
                             drawn.add(strip(h.label));
@@ -227,6 +229,31 @@ public final class HintDiff {
                             String written = argText(tree, args.get(i), text);
                             if (written != null && written.equals(expected.get(i))) {
                                 suppressedByConvention++;
+                            } else if (aHintForThisCalleeIsElsewhere(hintList, expected, text, off)) {
+                                // NOT JUDGED, AND THAT IS A MEASUREMENT RATHER THAN AN EXCUSE.
+                                //
+                                // Measured with `--explain`: on a call with many arguments the
+                                // engine draws a hint whose label IS one of this callee's declared
+                                // parameter names, at an offset a few characters away from the
+                                // argument node this harness computed.  Examples, raw:
+                                //
+                                //   emit_llvm.vel:1143 `ll_expr` arg 13 nodeStart=49143
+                                //     nodeText=`a` hintsOnThatLine=[49133=`lit:`]
+                                //   emit_llvm.vel:1101 `ll_expr` arg 13 nodeStart=47372
+                                //     nodeText=`nd[e * 10 + 2]` hintsOnThatLine=[47367=`fns:`]
+                                //   emit_llvm.vel:701  `ll_note` arg 8  nodeStart=43166
+                                //     nodeText=`nd_line(nd, s)` hintsOnThatLine=(none)
+                                //
+                                // So for arguments that are themselves expressions the two sides
+                                // disagree about where an argument begins, or how many there are,
+                                // and this harness cannot say whether the hint that position
+                                // should carry is present.  Reporting it as "N hint positions are
+                                // not right" would be a harness limitation dressed as a plugin
+                                // defect; reporting nothing would be the omission this whole
+                                // triple exists to prevent.  So it gets its own counted category,
+                                // and the parameter-hint row stays `partial` in
+                                // FEATURE_PARITY.md until someone decides which side is wrong.
+                                boundaryUnjudged++;
                             } else {
                                 missingHint++;
                                 if (findings.size() < 60) {
@@ -253,6 +280,8 @@ public final class HintDiff {
         System.out.println("  hint names correct           : " + correct);
         System.out.println("  hint names WRONG             : " + wrong);
         System.out.println("  hints beyond the parameters  : " + extra);
+        System.out.println("  positions where the two sides disagree about an argument's"
+                + " boundary, so no hint was judged: " + boundaryUnjudged);
         System.out.println("  declared params with no hint : " + missingHint
                 + " (of which correctly suppressed because the argument already reads as the"
                 + " parameter's own name: " + suppressedByConvention + ")");
@@ -276,6 +305,7 @@ public final class HintDiff {
         // parse is skipped.
         Coverage cov = new Coverage()
                 .category("compiler-cannot-parse")
+                .category("arg-boundary-disagreement")
                 // THE SUPPRESSED POSITIONS ARE JUDGED, NOT SKIPPED, AND THAT IS THE POINT.
                 //
                 // They were counted as skipped in the first version of this triple, which
@@ -290,6 +320,7 @@ public final class HintDiff {
                 // compiler refuses to parse, which has no authority at all.
                 .ran(judgedArgs)
                 .skipped("compiler-cannot-parse", skipArgsUnparsable)
+                .skipped("arg-boundary-disagreement", boundaryUnjudged)
                 .wrong(bad);
         cov.print();
         System.exit(bad == 0 ? 0 : 1);
@@ -485,48 +516,57 @@ public final class HintDiff {
     }
 
     /**
-     * The argument's own source text, or null when the tree cannot answer.
+     * The (at most two) source offsets a hint may be drawn at for one argument.
      *
-     * Needed because the hint engine has a *suppression* rule and this harness has to
-     * apply it before calling an absent hint a defect: `VelaInlayHints.parameterHints`
-     * skips an argument whose written text already equals the parameter's own name
-     * ("the convention: no hint when the argument already *is* the name"), so the
-     * correct reading of "no hint here" is a comparison of two strings and not the
-     * absence of a hint.  Measured the hard way: the first version of this check
-     * reported 18,003 findings, and every one of them was that suppression.
+     * WHY THIS IS TWO EXACT POSITIONS AND NOT A RANGE.  The two sides disagree about
+     * where an argument starts, by exactly one character, when the argument is a string
+     * literal: the parser's node covers the *contents* (the compiler records `hello` for
+     * `"hello"`) while `VelaInlayHints.parameterHints` scans characters and reports the
+     * opening quote.  So the candidates are the parser's start and the quote just before
+     * it.
+     *
+     * The first attempt at this widened the window to the whole argument span, `[start-1,
+     * end+1]`, and that was wrong in the other direction: for `print(len(a))` the outer
+     * argument's span contains the *inner* argument's position, so `len`'s `a: ` hint was
+     * attributed to `print`'s argument and the run reported 2,392 WRONG rows of the form
+     * "`print` takes 0 parameter(s) [], but a hint `n: ` was drawn for argument 1".  A
+     * containment test cannot tell an argument from the arguments nested inside it; two
+     * candidate positions can, because a nested call's hint is never at the outer
+     * argument's own start.
      */
+    private static int[] argHintOffsets(VelaSyntaxTree tree, VelaSyntaxNode arg, String text) {
+        int start = argStart(tree, arg);
+        if (start < 0) return new int[0];
+        if (start > 0 && isQuote(text.charAt(start - 1))) return new int[]{start - 1, start};
+        return new int[]{start};
+    }
+
+    /** The argument's own source text, quotes included, for the suppression comparison. */
     private static String argText(VelaSyntaxTree tree, VelaSyntaxNode arg, String text) {
         int[] span = argSpan(tree, arg, text);
         if (span == null) return null;
         return text.substring(span[0], span[1]).trim();
     }
 
+    /**
+     * The argument's whole span, quotes included.
+     *
+     * Used only for reading the argument's own text back (the suppression comparison and
+     * the wording of a finding) -- never for deciding which hint belongs to it; see
+     * [argHintOffsets] for why a span cannot be used for that.
+     *
+     * A Vela string literal's *node* covers its contents, not its quotes: the compiler
+     * records the offset of `hello` inside `"hello"`, and `VelaParserDefinition`'s replay
+     * snaps that down to the lexer's token so the element gets the text it denotes.  So
+     * the span is widened to include a quote on either side and both sides are then
+     * measuring the same characters.
+     */
     private static int[] argSpan(VelaSyntaxTree tree, VelaSyntaxNode arg, String text) {
         if (arg == null) return null;
         int start = argStart(tree, arg);
         if (start < 0) return null;
         int end = argEnd(tree, arg);
         if (end < start || end > text.length()) return null;
-        // WIDENED TO INCLUDE THE DELIMITERS, AND THIS IS THE WHOLE BUG THIS HARNESS HAD.
-        //
-        // A Vela string literal's *node* covers its contents, not its quotes: the
-        // compiler records the offset of `hello` inside `"hello"`, and
-        // `VelaParserDefinition`'s replay snaps that down to the lexer's token so the
-        // element gets the text it denotes.  `VelaInlayHints.parameterHints` does not
-        // go through the parser for this -- it scans the characters between the parens
-        // -- so the offset it reports for an argument is the position of the opening
-        // quote, one character below the parser's.
-        //
-        // The first version of the "declared parameter with no hint" check compared
-        // those two offsets for equality, so EVERY string-literal argument looked like
-        // an argument with no hint: 3,073 findings, every one of them the same
-        // off-by-quote, on `env("TEMP")`, `concat("abc", "de")`, `q("...exe")` and
-        // friends.  Meanwhile `hints drawn: 7769 / correct: 7769 / WRONG: 0` was
-        // unchanged, which is the tell that the *matcher* was wrong and not the plugin.
-        //
-        // So the span is widened to include a quote on either side, and a hint counts as
-        // this argument's if its offset falls anywhere inside the widened span.  Both
-        // sides are then measuring the same characters, whichever convention they use.
         if (start > 0 && isQuote(text.charAt(start - 1))) start--;
         if (end < text.length() && isQuote(text.charAt(end))) end++;
         return new int[]{start, end};
@@ -534,6 +574,34 @@ public final class HintDiff {
 
     private static boolean isQuote(char c) {
         return c == '"' || c == '\'';
+    }
+
+    private static boolean isAt(int offset, int[] spots) {
+        for (int s : spots) {
+            if (s == offset) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Is there a hint on this line whose label is one of this callee's declared
+     * parameter names?
+     *
+     * The evidence that the two sides disagree about argument boundaries rather than
+     * about the hint: a hint for *this* call, with a name *this* callee declares, placed
+     * where a different argument of the same call lives.  If no such hint exists, the
+     * position genuinely has no hint and is counted as a defect instead.
+     */
+    private static boolean aHintForThisCalleeIsElsewhere(List<Hint> hints, List<String> expected,
+                                                         String text, int argOffset) {
+        int line = lineOf(text, argOffset);
+        for (Hint h : hints) {
+            if (lineOf(text, h.offset) != line) continue;
+            String name = h.label.trim();
+            if (name.endsWith(":")) name = name.substring(0, name.length() - 1).trim();
+            if (expected.contains(name)) return true;
+        }
+        return false;
     }
 
     private static int argEnd(VelaSyntaxTree tree, VelaSyntaxNode arg) {

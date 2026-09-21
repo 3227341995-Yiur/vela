@@ -93,7 +93,7 @@ harness run, in `build\evidence\`).
 | 6 | syntax error highlighting | `<annotator language="Python" implementationClass="com.jetbrains.python.validation.PySyntaxAnnotator" />` | implemented | `VelaParserDefinition.kt` (`PsiBuilder.error` during the replay), `VelaAnnotator.kt` | `[harness]` `psi-tree-diff.ps1` asserts that a parser problem produces an error element in the platform tree (`VELA_ERROR` / `ERROR_ELEMENT`); files where the parser reported a problem: 20. `[harness]` VerifyPlugin §9: problems parsed out of the compiler's own output with kind, message and line |
 | 7 | code completion (incl. after `.`) | 28 `<completion.contributor language="Python" …>` in `ce-plugin.xml`; member completion after `.` comes from `PyClassMembersProvider` / `pyModuleMembersProvider` | partial | `VelaCompletion.kt` | `[registration]` `<completion.contributor language="Vela">`. **No behavioural measurement exists**: nothing in `idea-plugin\` drives the completion contributor headlessly. This row is registered and compiled, and that is all that is claimed |
 | 8 | hover documentation | `<lang.documentationProvider language="Python" id="pythonDocumentationProvider" implementationClass="com.jetbrains.python.documentation.PythonDocumentationProvider" />` (4 entries), plus `pythonDocumentationQuickInfoProvider` | partial | `VelaDocumentation.kt` | `[registration]` `<lang.documentationProvider language="Vela">`. Not measured headlessly |
-| 9 | parameter info | `<codeInsight.parameterInfo language="Python" implementationClass="com.jetbrains.python.PyParameterInfoHandler" />`; pro adds `keywordArgumentProvider` and `Pythonid.pyBddParametersInspection` | implemented | `VelaParameterInfo.kt`, `VelaLanguage.kt` (`callAt`), `VelaTargets.kt` | `[harness]` `HintDiff` / `HintShapes` / `HintDupes` measure the same declaration reader the popup calls: `VelaParameterInfo.kt:56` and `VelaHints.parameterHints` both go through `VelaTargets.declaredParameterNames` / `builtinParameterNames`. `HintDiff`: **7,769 hints drawn, 7,769 correct, 0 wrong, 0 beyond the declared list**, over 8,946 calls with a declared callee. `HintDupes`: 0 callables with a repeated parameter name (the old `s: s: s:`), 0 with an empty name. What is **not** measured is the popup's own rendering |
+| 9 | parameter info | `<codeInsight.parameterInfo language="Python" implementationClass="com.jetbrains.python.PyParameterInfoHandler" />`; pro adds `keywordArgumentProvider` and `Pythonid.pyBddParametersInspection` | **partial** | `VelaParameterInfo.kt`, `VelaLanguage.kt` (`callAt`), `VelaTargets.kt` | `[harness]` `HintDiff` / `HintShapes` / `HintDupes` measure the same declaration reader the popup calls: `VelaParameterInfo.kt:56` and `VelaHints.parameterHints` both go through `VelaTargets.declaredParameterNames` / `builtinParameterNames`. `HintDiff`: **10,688 hints drawn, 10,688 correct, 0 wrong, 0 beyond the declared list**; `HintDupes`: 0 callables with a repeated parameter name (the old `s: s: s:`), 0 empty names. **But the inlay path is `partial`, not `implemented`, because 30 argument positions get no hint at all and 125 more cannot be judged — see the open-defects section.** The popup's own rendering is not measured either |
 | 10 | go to declaration | `<gotoDeclarationHandler implementation="com.jetbrains.python.psi.impl.PyGotoDeclarationHandler" />` + `PyBreakContinueGotoProvider`; the resolution itself is `pyReferenceResolveProvider` with `PyForwardReferenceResolveProvider` | implemented | `VelaGotoDeclaration.kt`, `VelaTargets.kt` | `[harness]` `GotoOracle` (one `vm.exe check` per declaration rename, the binding set verified by the file compiling again): **24,683 references judged, 0 WRONG**, and the skip side is categorised rather than dropped |
 | 11 | find usages / references | `<lang.findUsagesProvider language="Python" implementationClass="com.jetbrains.python.findUsages.PythonFindUsagesProvider" />`; `usageTypeProvider` in `py-plugin.xml` | partial | `VelaFindUsages.kt`, `VelaReferenceContributor` in `VelaGotoDeclaration.kt` | `[registration]` `<lang.findUsagesProvider language="Vela">`, `<psi.referenceContributor implementation="…VelaReferenceContributor">` (the attribute is `implementation`, proven in `PLUGIN_SURFACE.md`). The same reference is what `GotoOracle` drives, but the *usages window* itself is not measured |
 | 12 | rename refactoring | Python relies on PSI references; `py-plugin.xml` adds `vetoRenameCondition` and `customUsageSearcher` | partial | `VelaLeafManipulator` in `VelaGotoDeclaration.kt`, reference from `VelaReferenceContributor` | `[registration]` `<lang.elementManipulator forClass="com.intellij.psi.PsiElement" implementationClass="…VelaLeafManipulator">`. The write-back is compiled and registered; no harness renames a file and reads it back |
@@ -129,34 +129,33 @@ should do, and each says plainly how far it actually goes.
 
 | state | rows | which |
 |---|---|---|
-| `implemented` | **21** | 1, 2, 3, 4, 5, 6, 9, 10, 13, 15, 16, 17, 18, 20, 21, 22, 24, 25, 26, 27 and 14's diagnostics half — counted here as row 14 is `partial`, so: **20** |
-| `partial` | **6** | 7 completion, 8 hover, 11 find usages, 12 rename, 14 inspections/quick fixes, 19 typed/enter handler |
+| `implemented` | **19** | 1, 2, 3, 4, 5, 6, 10, 13, 15, 16, 17, 18, 20, 21, 22, 24, 25, 26, 27 |
+| `partial` | **7** | 7 completion, 8 hover, **9 parameter info**, 11 find usages, 12 rename, 14 inspections/quick fixes, 19 typed/enter handler |
 | `missing` | **0** | — |
 | `refused-deliberately` | **1** | 23 debugger |
-| total | **27** | |
+| total | **27** | `19 + 7 + 1 + 0 = 27` |
 
-Corrected count, since the line above was written by hand: `implemented` is **20**
-(rows 1,2,3,4,5,6,9,10,13,15,16,17,18,20,21,22,24,25,26,27), `partial` is **6**,
-`refused-deliberately` is **1**, `missing` is **0**, and `20+6+1+0 = 27`.
+Row 9 moved from `implemented` to `partial` during this round, because its own evidence
+said 30 hint positions are wrong and 125 cannot be judged. A row is not `implemented`
+while its own verifier is red.
 
 ### Rows backed by a harness vs by a registration only
 
 | evidence behind the row | rows | which |
 |---|---|---|
-| `[registration]` **and** `[harness]` | **15** | 2, 3, 4, 5, 6, 9, 13, 15, 16, 17, 18, 20, 21, 22, 25 |
-| `[harness]` only (no extension point of its own) | **1** | 14 (the diagnostics half runs as `externalAnnotator`, which *is* registered — so this row is `[registration]+[harness]` as well, giving **16**) |
+| `[registration]` **and** `[harness]` | **15** | 2, 3, 4, 5, 6, 9, 10, 13, 15, 16, 17, 18, 20, 21, 22 — row 25's inlay hints too, so this is 16 |
 | `[registration]` only | **10** | 1, 7, 8, 11, 12, 19, 23, 24, 26, 27 |
 | `[harness]` only, no registration | **0** | — |
 
-Corrected: **16** rows have both, **10** have a registration only, **1** has neither and
-needs none (it is a `refused-deliberately` row, backed by a registration of the
-*suppression*), and `16+10+1 = 27`.
+Corrected: **16** rows have both (2, 3, 4, 5, 6, 9, 10, 13, 15, 16, 17, 18, 20, 21, 22,
+25), **10** have a registration only, and row 23 is the `refused-deliberately` one whose
+evidence is the registration of the *suppression*: `16 + 10 + 1 = 27`.
 
-The ten registration-only rows are honest omissions, not oversights: completion,
-hover, find-usages, rename and the typed/enter handlers are document-and-editor
-features whose behaviour only exists with an editor attached, and the debugger row is
-a refusal. The `FeatureProbe` harness added in this round was written specifically to
-move rows 3, 17, 18, 15, 4 and 21 out of that group, and it did.
+The ten registration-only rows are honest omissions, not oversights: completion, hover,
+find-usages, rename and the typed/enter handlers are document-and-editor features whose
+behaviour only exists with an editor attached, and the debugger row is a refusal. The
+`FeatureProbe` harness added in this round was written specifically to move rows 3, 17,
+18, 15, 4 and 21 out of that group, and it did.
 
 ## The two regression detectors, and what their non-zero numbers mean
 
@@ -185,6 +184,152 @@ whether each individual difference is an improvement has been judged by reading 
 examples above rather than by measurement** — there is no external authority to
 measure it against. What the tools *do* guarantee is that the difference set is
 printed and counted, so it cannot change silently.
+
+## Open defects, with the raw verdict line for each
+
+These are the rows that are **not** green, written down here rather than averaged
+away. Each one names the tool, the corpus, the raw line, and what is actually wrong.
+
+### 1. `HintDiff`: 30 argument positions get no parameter-name hint (row 9 → `partial`)
+
+```
+TOOL     : HintDiff  (via harness.ps1 -Tool All)
+CORPUS   : tests + examples + ide-demo + selfhost/parts + bench + selfhost/vela.vel
+           = 194 files, 29,006 argument positions
+RAW      : VERDICT: 30 hint position(s) are not right
+           COVERAGE: ran 29006 / skipped 127 (compiler-cannot-parse 2,
+             arg-boundary-disagreement 125) / wrong 30
+```
+
+Everything that *is* drawn is right — `hints drawn 10688 / correct 10688 / WRONG 0 /
+beyond 0` — so this is not the `s: s: s:` class of bug and it is not a wrong name. It
+is 30 positions where a declared parameter should have a hint and nothing is drawn.
+The findings, verbatim:
+
+```
+  selfhost/parts/check.vel:1311 `ck_quoted` argument 3 is `suffix`, argument written `"', which is not declared 'pure'"`, but no hint was drawn at all
+  selfhost/parts/check.vel:2689 `ck_pread_msg` argument 3 is `rline`, argument written `nd_line(nd, e)`, but no hint was drawn at all
+  selfhost/parts/emit_llvm.vel:1011 `ll_note` argument 8 is `line`, argument written `nd_line(nd, s)`, but no hint was drawn at all
+  selfhost/parts/emit_llvm.vel:1845 `ll_cbr` argument 3 is `t`, argument written `bodyb`, but no hint was drawn at all
+  selfhost/parts/parser.vel:345 `perr` argument 3 is `line`, argument written `ti_line(tk, cx)`, but no hint was drawn at all
+  selfhost/vela.vel:477 `concat` argument 2 is `b`, argument written `" does not fit in int (64-bit signed)"`, but no hint was drawn at all
+```
+
+Read together those are one shape, and the shared feature is the **argument text,
+not the position**: a string literal containing `'`, `(` or `)` — `"', which is not
+declared 'pure'"`, `" does not fit in int (64-bit signed)"`, `"' inside 'parallel
+for'"` — or a nested call as the argument (`nd_line(nd, e)`, `ti_line(tk, cx)`).
+The declaration reader is not at fault (`HintDupes` is clean, and the hints that are
+drawn all carry the right name); the suspicion is the *argument range scanner* in
+`VelaInlayHints.kt` — `argumentRanges` / `endOfQuoted` / `matchingParen` — which
+scans the characters between the parens: a quote or a bracket inside a string
+literal is the classic way to make that scan land on the wrong close paren, after
+which the later arguments of the call are outside the range and get nothing.
+
+**Named, not fixed.** Every occurrence is in `selfhost/parts/*` (and the same text
+again in `selfhost/vm.vel`, which is their concatenation), so it is the language's
+own 400 KB of source that shows it — nothing in `examples/` or `tests/build/` does.
+Deciding whether the fix belongs in the range scanner or in the declared-name reader
+is the next round's job; the reproduction is the six lines above.
+
+### 2. `HintDiff`: 125 argument positions the harness cannot judge
+
+```
+COVERAGE: ... skipped 127 (compiler-cannot-parse 2, arg-boundary-disagreement 125) ...
+```
+
+Measured with `--explain`, which prints the disagreement instead of asserting one:
+
+```
+      [why] selfhost/parts/emit_llvm.vel:1143 arg 13 of `ll_expr` nodeStart=49143
+            nodeText=`a` hintsOnThatLine= [49133=`lit:`]
+      [why] selfhost/parts/emit_llvm.vel:1101 arg 13 of `ll_expr` nodeStart=47372
+            nodeText=`nd[e * 10 + 2]` hintsOnThatLine= [47367=`fns:`]
+      [why] selfhost/parts/emit_llvm.vel:1011 arg 8 of `ll_note` nodeStart=43166
+            nodeText=`nd_line(nd, s)` hintsOnThatLine=(none)
+```
+
+A hint *for this call*, carrying a name *this callee declares*, sits a few characters
+from where the parser puts the argument — so the two sides disagree about where a
+complex argument begins, or how many arguments there are, and the harness cannot say
+whether the position's own hint is present. It is counted (`arg-boundary-disagreement
+125`) rather than dropped, and it is the reason row 9 is `partial` even without
+defect 1.
+
+**Why this is not just the harness.** The first version of this check compared
+offsets exactly and reported 3,073 findings — those were the harness being wrong
+about string literals (a string literal's node covers its contents, the hint engine
+reports the opening quote). The second version widened the window to the whole
+argument span and reported 2,392 — those were nested calls, where an inner argument's
+hint falls inside an outer argument's span (`print(len(a))`). Both were found by
+reading the raw rows, and both are written into the source as comments so the next
+change does not re-introduce them. The 30 that remain are not explained by either.
+
+### 3. The verifier's remaining hole, and the one it had
+
+`mutation-test.ps1` proves `VerifyPlugin` can fail: **13 mutants, 12 caught, 0 holes,
+1 control correct, 0 script/verdict problems**, baseline `RESULT: PASS`, published to
+`build\verify\mutation-0.1.4\mutation-report-0.1.4.txt` with the version, the jar's
+SHA256 and the time in its first lines, plus one verifier log per mutant. The known
+open hole was `classRegisteredNowhere`, and it is **no longer a hole**: the mutant
+removes the `codeInsight.inlayProvider` registration and the verifier reports
+
+```
+dev.vela.plugin.VelaParameterNameInlayHintsProvider implements
+com.intellij.codeInsight.hints.InlayHintsProvider, a contract the installed
+platform's own extension points register, and no registration and no class file
+names it other than itself [check unregisteredImplementations].
+```
+
+It fires because the verifier reads 1,332 required types out of the installed
+platform's own descriptors. **What it still cannot catch**: a class that implements a
+contract no installed extension point declares *and* is registered nowhere — there is
+no list to check it against. The count of such classes in this build is 0.
+
+`tools\negative-tests.ps1` (the older A–I set) is **12/12 caught, 0 missed, 0 void**,
+published to `build\verify\negative-0.1.4\negative-report.txt`. Getting there required
+fixing two real verifier holes, both found by the negative test rather than by reading:
+
+| hole | what it looked like | fix |
+|---|---|---|
+| `check smoke` aborted the whole compiler section with an early `return`, so `emitterHeaderContract` — a static comparison of two texts that needs no C compiler — never ran when the build failed, which is exactly when it matters | case I4 reported MISSED while the verifier had exited 1 for a different reason | the build result is remembered; only the checks that need a built executable are skipped |
+| `emitterHeaderContract` asked `header.contains(symbol)`, a *substring* test, so renaming `vela_bounds_check` to `vela_bounds_check_renamed` still "contained" the name the emitter calls | case I4 still MISSED, and the verifier printed `vela_bounds_check ... all defined` over a header that no longer declares it | whole-word match (`\bsym\b`), so a prefix or a suffix is not a declaration |
+
+Both are the same class of failure this project keeps paying for: a check that is green
+because its question was weaker than it looked.
+
+### 4. `GotoOracle`: the `extern` NullPointerException — fixed, and counted
+
+```
+BEFORE: tests/probes/extern_calls_as_declared.vel: the oracle could not run:
+        java.lang.NullPointerException: Cannot invoke "java.util.List.iterator()"
+        because "<local13>" is null
+AFTER : COVERAGE: ran 24683 / skipped 21566 (crashed-file 0, compiler-refused 21557,
+        invisible-member 9, ambiguous 0) / wrong 0
+```
+
+`bindUseLines` answers `null` for "the compiler noticed nothing about renaming this
+declaration" and an empty list for "not verified", and the call site used the answer as
+if it were always a list; the enhanced-for over `null` threw per file, the per-file
+`catch (Throwable)` recorded it as "the oracle could not run", and the run still ended
+with a clean verdict over nine files it had never judged — `tests/probes/extern_*.vel`,
+`tests/build/extern/extern_c_probe.vel`, `selfhost/vela.vel`, `tests/run_tests.vel` and
+two `tests/safety/cases/hole_*` files. `crashed-file 0` is the fix; a crash now makes
+the verdict say `NOT A PASS` and exits 3 instead.
+
+### 5. The corpus names a file that is not there — not this plugin's to fix
+
+```
+tests/build/lexer_error.vel: file not found, named by tests/cases.txt:174
+COVERAGE: ran 114 / skipped 12 (compiler-refused 11, too-large 0,
+          missing-corpus-file 1, compiler-crashed 0) / wrong 0
+```
+
+108 files are byte-identical to `vm.exe parse` over 119,923 node lines, and the only
+non-match is a manifest entry pointing at a file that does not exist.
+`tests/**` belongs to another track, so this is reported rather than edited: it gets
+its own category, its own exit code (3 = corpus defect, 1 = the plugin is wrong), and
+`AstDiff` now prints the manifest line.
 
 ## What this table does not prove
 

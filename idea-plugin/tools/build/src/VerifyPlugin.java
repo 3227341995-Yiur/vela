@@ -1279,7 +1279,7 @@ public final class VerifyPlugin {
             List<String> fromEmitted = new ArrayList<>();
             Set<String> missing = new LinkedHashSet<>();
             for (String sym : called) {
-                if (h.contains(sym)) {
+                if (declaredInHeader(h, sym)) {
                     fromHeader.add(sym);
                 } else if (definedIn(c, sym)) {
                     fromEmitted.add(sym);
@@ -1311,6 +1311,28 @@ public final class VerifyPlugin {
     private static boolean definedIn(String c, String sym) {
         return Pattern.compile("(?m)^[^\\n;]*\\b" + Pattern.quote(sym) + "\\s*\\([^;\\n]*\\)\\s*\\{")
                 .matcher(c).find();
+    }
+
+    /**
+     * Does the runtime header declare *this* symbol, with the whole identifier spelled
+     * out?
+     *
+     * THIS WAS `h.contains(sym)`, AND THAT IS A DIFFERENT AND WEAKER QUESTION.  A
+     * substring test answers "does this text contain these characters anywhere", so
+     * renaming a symbol by *appending* to it -- `vela_bounds_check` becoming
+     * `vela_bounds_check_renamed` in runtime/vela_runtime.h -- still contains the name
+     * the emitter calls, and the check reported
+     * `vela_bounds_check ... all defined`.  The rename is exactly the drift this check
+     * exists for (the emitter's call and the header's declaration drifting apart), and
+     * the verifier called it fine.
+     *
+     * Found by `negative-tests.ps1` case I4, not by reading: the case renames the
+     * symbol and requires `[check emitterHeaderContract]` in the output; with the
+     * substring test it reported MISSED while the verifier exited 0 for that check.
+     * The fix is a whole-word match, so a prefix or a suffix is not a declaration.
+     */
+    private static boolean declaredInHeader(String header, String sym) {
+        return Pattern.compile("\\b" + Pattern.quote(sym) + "\\b").matcher(header).find();
     }
 
     /**
