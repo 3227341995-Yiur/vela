@@ -1,3 +1,22 @@
+# Two live arrays in one function body -- the shape no case in this corpus had before
+# 2026-09-24, which is why a silent wrong answer from the LLVM back end survived a 24-case
+# three-way differential with DIVERGE 0.
+#
+# `parts/emit_llvm.vel`'s `ll_array_decl` read the array's length out of a value it had
+# already stripped the length from, so the arena was asked for `arena_alloc(0)`, and
+# `vela_arena_alloc` advances by exactly the number it is given -- every array in a
+# function came back at the same address.  Before the fix this program printed
+#
+#     60 60 199 3      (a[i] reading b[i], then c[0] reading a[0])
+#
+# where the interpreter and the C back end both print
+#
+#     6 60 199 3
+#
+# and the correct third line is `a[2]` still being 3 after a *third*, longer array was
+# written.  Three sibling arrays of different lengths, because the arena's cursor is the
+# thing being asked about: `arena_alloc(i64 24) arena_alloc(i64 24) arena_alloc(i64 40)`
+# in the emitted IR is what the fix looks like there.
 def main() -> None {
     mut a: Array[int, 3]
     mut b: Array[int, 3]

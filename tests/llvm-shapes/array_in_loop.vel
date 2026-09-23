@@ -1,0 +1,24 @@
+# A fresh array per iteration: `row` is declared inside the loop, so each pass must get
+# its own storage out of the arena.  The arena is a bump allocator, so this either grows
+# (correct) or returns the same address (the defect `e119a8a` fixed).
+#
+# Honest about its own reach: this shape does **not** catch that defect -- each pass writes
+# and reads its array within the pass, so a shared address is self-consistent and the
+# numbers come out right either way.  It is here for the next bug that needs a declaration
+# executed more than once, which is a different question from the one `array_in_recursion`
+# asks.
+def main() -> None {
+    mut total: int = 0
+    mut i: int = 0
+    while i < 3 {
+        mut row: Array[int, 4]
+        row[0] = i + 1
+        row[1] = (i + 1) * 10
+        row[2] = (i + 1) * 100
+        row[3] = (i + 1) * 1000
+        total += row[0] + row[1] + row[2] + row[3]
+        print(row[0] + row[1] + row[2] + row[3])
+        i += 1
+    }
+    print(total)
+}

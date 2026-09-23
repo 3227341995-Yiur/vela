@@ -1,0 +1,37 @@
+# The strongest witness of the arena-size defect fixed in `e119a8a`, and it is stronger
+# than two sibling arrays on purpose.
+#
+# `parts/emit_llvm.vel` asked the arena for a local array's size out of a value whose
+# length had already been stripped (`unpack_len(unpack_kind(packed))` is always 0), and
+# `vela_arena_alloc` advances by exactly the number it is given -- so every array in one
+# function, and every array in one *recursion*, shared one address.  Two sibling `Array`
+# declarations catch that only because the second one overwrites the first; a recursive
+# frame catches it because the child overwrites the parent's array while the parent is
+# still holding it, which is the shape the compiler itself has.
+#
+# Measured against a compiler built from the C one commit *before* the fix
+# (`git show e119a8a^:selfhost/build/vm.c`, compiled by cl with the same two link inputs
+# `tools\build.ps1` gives the seed: `selfhost\build\vela_llvm_shim.obj` and `LLVM-C.lib`;
+# both compilers told where LLVM is with `VELA_LLD`/`VELA_LLVM`, or the difference being
+# measured becomes "where the binary happens to live"):
+#
+#     pre-fix compiler : build-llvm exit 0, program printed 0    <- a silent wrong answer
+#     fixed compiler   : build-llvm exit 0, program printed 48   <- and the interpreter 48
+#
+# 0 is what the child's `here[0] + here[1]` reads back into the parent.  Kept as a shape
+# so `tools\llvm-column.ps1` compares all three paths on it forever, and pinned in the
+# suite by the `array_in_recursion` row of `tests\cases.txt`.
+def depth(mut n: int) -> int {
+    mut here: Array[int, 2]
+    here[0] = n
+    here[1] = n * 7
+    if n <= 0 {
+        return here[0] + here[1]
+    }
+    below: int = depth(n - 1)
+    return here[0] + here[1] + below
+}
+
+def main() -> None {
+    print(depth(3))
+}

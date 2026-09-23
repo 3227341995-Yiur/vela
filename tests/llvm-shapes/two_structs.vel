@@ -1,0 +1,26 @@
+# Two struct locals alive at once, each with a method that mutates only its own receiver,
+# and then a field written on one of them -- the shape that tells "two live objects of the
+# same kind" apart from "two arrays", because a struct comes from a *slot* rather than from
+# the arena.  The array defect of `e119a8a` could not reach this case, and that is the
+# point of keeping both: a gate that only ever asks the arena question would have called
+# the struct side of the back end covered.
+struct Box {
+    n: int
+    m: int
+
+    def add(mut self: Box, by: int) -> None {
+        self.n += by
+    }
+}
+
+def main() -> None {
+    mut p: Box = Box(1, 2)
+    mut q: Box = Box(100, 200)
+    p.add(5)
+    q.add(50)
+    print(p.n + p.m)
+    print(q.n + q.m)
+    p.n = 1000
+    print(p.n)
+    print(q.n)
+}
