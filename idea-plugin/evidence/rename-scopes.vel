@@ -1,0 +1,31 @@
+# rename-scopes.vel -- the fixture the mutated-plugin control runs against.
+#
+# Two functions declare a parameter of the SAME name, n.  The compiler binds each n
+# to its own declaration, and the two are different declarations even though the text
+# spells them the same.  That is the whole point of this file: "the renamed file still
+# compiles" cannot tell a correct rename from one that moved another scope's
+# same-named variable, because both produce a legal program.  RenameOracle compares
+# sets of offsets against the compiler's own binding set, so on this file the two can
+# be told apart.
+#
+# main adds the other declaration kinds: a local binding and a loop variable, whose
+# uses sit in argument position -- f(i) -- where a reference is easy to drop.
+pure def f(n: int) -> int {
+    return n + 1
+}
+
+pure def g(n: int) -> int {
+    return n + 2
+}
+
+pure def h(m: int) -> int {
+    return m * 2
+}
+
+def main() -> None {
+    mut total: int = 0
+    for i in range(1, 4) {
+        total += f(i) + g(i) + h(i)
+    }
+    print(total)
+}

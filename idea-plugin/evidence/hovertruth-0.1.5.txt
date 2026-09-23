@@ -1,0 +1,500 @@
+================================================================================
+HoverTruth -- hover documentation, measured.  FEATURE_PARITY.md item 8 (was partial:
+"registered but no behaviour measured").
+================================================================================
+plugin version    : 0.1.5   (src\main\resources\META-INF\plugin.xml: <version>0.1.5</version>)
+plugin jar (this work)  : idea-plugin\dist\vela\lib\vela-idea-plugin.jar
+                    389881 bytes  sha256 d95c0d4b10434197cb665d5d6cf115c2a540d8bf1a23b805e1fa873e48f43bc8
+                    built by: (under %TEMP%\vela-plugin-build.lock)
+                              powershell -ExecutionPolicy Bypass -File build-offline.ps1 -SkipVerify
+                              -> exit 0, 12 s.   -SkipVerify on purpose: VerifyPlugin and the
+                              compiler slot belong to other agents this round.
+plugin jar (current)    : idea-plugin\dist\vela\lib\vela-idea-plugin.jar
+                    389885 bytes  sha256 dc87d54b06ab386af0e79a58be3089baee823399a95237c44bb2e6eccc474098
+                    another agent rebuilt it at 02:14:50 while this evidence was being produced.
+                    THE CLASS UNDER TEST IS BYTE-IDENTICAL IN BOTH:
+                    dev/vela/plugin/VelaDocumentationProvider.class 25308 bytes
+                    sha256 b1f03a66ef2e466a3b6f18118c4e217284ee2fc17070f476d701cc884c3dc994
+                    (read out of the jar above, and identical in build\classes and in a private
+                     kotlinc compile into %TEMP%, so the measured code is the shipped code)
+class under test  : dev.vela.plugin.VelaDocumentationProvider  (the same sha256 is printed in the
+                    header line "plugin :" of every run below)
+                    alongside: VelaDoc.class 3386 B, VelaDocParam.class 1393 B, both declared inside
+                    VelaDocumentation.kt -- no new Kotlin file was added
+sources           : src\main\kotlin\dev\vela\plugin\VelaDocumentation.kt
+                    sha256 ae735772f8a5b2bf98e5295b2a8f0f42586a2b83a96c1186c93f621599ef7f86  21156 B
+                    tools\harness\src\HoverTruth.java
+                    sha256 db9856c2e02ae7fcad7f3b9b77fdbaaf8237dec69ce1b8643bd9d4ece757e4ed
+compiler (frozen) : %TEMP%\vela-hovertruth\vm.exe
+                    861696 bytes  sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a
+                    %TEMP%\vela-hovertruth\LLVM-C.dll
+                    sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe
+                    frozen with Copy-Item from selfhost\build\vm.exe + selfhost\LLVM-C.dll and never
+                    refrozen.  Every number below is against THIS binary.
+tree compiler     : 867840 bytes  sha256 501b6cbb5701f3d5ef36396b9ddcaf4ce740e66d6ca325f482c2451e76810fdf
+                    (another agent rebuilds it continuously -- which is why the frozen copy exists;
+                     tools\build.ps1 and tools\refreeze.ps1 were never run by this work)
+git HEAD          : 778ff3a at the first runs, 9267437 when this file was written; other agents
+                    commit and rebuild concurrently, so the artifact is anchored by the sha256s
+                    above and not by the commit.
+runs made         : 2026-09-24 02:19:20 .. 02:19:28 (local)
+host              : Windows, PowerShell 5.1; JDK = D:\JetBrains\IntelliJ IDEA 2026.2.1\jbr
+                    (openjdk 25.0.3); javac --release 21
+how the harness was built (exactly what harness.ps1 does, output to %TEMP% so that no other
+agent's build\ is touched; the whole tools\harness\src\*.java set -- 20 sources -- compiles this
+way, exit 0, which is also the check that this new file breaks nobody's harness run):
+    javac @argfile   --release 21 -encoding UTF-8 -d %TEMP%\vela-hovertruth\harness-classes-built
+                     -cp "build\classes;src\main\resources;<build\args\platform-classpath.txt>"
+                     tools\harness\src\HoverTruth.java tools\harness\src\Coverage.java
+                     tools\harness\src\DeclReader.java
+how it was run:
+    java -Dstdout.encoding=UTF-8 -cp "<the above>;build\classes;src\main\resources;<platform cp>"
+         HoverTruth C:\Users\lu\Downloads\vela --vm %TEMP%\vela-hovertruth\vm.exe [options]
+REGISTRATION STILL NEEDED (harness.ps1 belongs to the leader, so it is written here and not
+applied): to run this tool through the driver, add 'HoverTruth' to the `` array in
+idea-plugin\harness.ps1 and a case to its `switch` that passes `--vm ` (and
+`--single ` when set).  Until then `-Tool HoverTruth` dies with "must be one of ..."
+(that array is why) and `-Tool All` compiles this file without running it.
+
+WHAT IS MEASURED, AND AGAINST WHAT
+  axis 1  `vm.exe parse <file>` prints every struct / field / def / param with the name, mut and
+          type the compiler itself writes, and `vm.exe lex <file>` prints the compiler's own line
+          for every token.  For every declaration in the corpus, the hover at that declaration's
+          name is held against that dump: kind, the parameter names in order with their types and
+          their mut, the return type, the struct it belongs to, the line, and a struct's fields.
+  axis 2  SPEC.md section 8 (read by DeclReader, which shares no code with the plugin) is the
+          authority for the parameter names a builtin's hover prints.
+  axis 3  every identifier in the compiler's own token stream that this file does not declare and
+          the language does not provide must be hovered as NOTHING.
+  axis 4  for each builtin, a program is written that makes the call its signature claims and
+          `vm.exe check` is asked to accept it; a control program is compiled first, so "control
+          accepted + builtin refused" means the signature is wrong and "control refused" means the
+          harness is.
+  a row = one hovered symbol; a row counts once however many of its claims disagree.
+  Nothing here reads the hover through the hover's own model: the oracle is the compiler, SPEC.md,
+  or the absence of any declaration.
+
+WHAT THE HOVER NOW SAYS (and what it refuses to say)
+  struct      `struct Vec2` + its fields with their types + one sentence
+  def/method  the signature as written + every parameter with its type (and `mut`) + the return
+              type + the struct it is a method of + one sentence
+  field       `x: float` + which struct it belongs to
+  param       `mut k: float` + which callable declares it
+  builtin     the model's own signature + its own prose sentence + the parameters with their types
+  unknown     nothing at all: a name this file does not declare and the language does not provide
+              gets no kind, no signature and no sentence
+  the one sentence for a name a FILE declares is built from what the model records (kind, owner,
+  return type, parameter count) -- the model holds no prose for user code and none is invented;
+  the only prose anywhere is a builtin's `prose` field in VelaModel.BUILTINS, used as written.
+  A parameter list the model cannot read draws NO names, and the hover says so in words.
+
+FILES CHANGED BY THIS WORK (nothing else in the tree)
+  M idea-plugin\src\main\kotlin\dev\vela\plugin\VelaDocumentation.kt
+      + VelaDoc / VelaDocParam: the hover's claims as data (kind, signature, parameters with
+        names/types/mut, return type, struct fields, owner, one sentence, line)
+      + VelaDocumentationProvider.documentationAt(text, offset): PSI-free, so a harness can call
+        the same code the popup calls; hoverHtml(doc) is the popup's own text
+      + unknown names answer null; a parameter list the model cannot read answers null and the
+        hover then prints NO names (never a name taken out of the text between the parentheses)
+      + resolution order made specific-first (the declaration on this line, then the enclosing
+        struct's member, then the enclosing callable's parameter, then the rest)
+  ?? idea-plugin\tools\harness\src\HoverTruth.java  (new; the tool whose raw output is below)
+  ?? idea-plugin\evidence\hovertruth-0.1.5.txt      (this file)
+  plugin.xml, build.gradle.kts, version numbers, harness.ps1, VerifyPlugin.java, VelaModel.kt,
+  VelaSyntax.kt and every other .java were not touched.
+
+================================================================================
+1. THE CLEAN RUN OVER THE WHOLE CORPUS (exit 0)
+   java ... HoverTruth <repo> --vm <frozen vm.exe>
+================================================================================
+hover    : VelaDocumentationProvider.documentationAt(text, offset), then
+           hoverHtml(doc) -- the popup's own text, not a re-rendering of it
+oracle 1 : `vm.exe parse <file>` -- every struct / field / def / param with the
+           name, mut and type the compiler itself writes, plus `vm.exe lex` for
+           the compiler's own line of the token being hovered
+oracle 2 : SPEC.md section 8 -- the parameter names a builtin is documented with
+oracle 3 : `vm.exe check` on a program that writes the call each builtin's
+           signature claims; a control program is compiled first
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-gdTwFG\vela-hovertruth\vm.exe (861696 bytes, sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a)
+plugin   : dev.vela.plugin.VelaDocumentationProvider (class sha256 b1f03a66ef2e466a3b6f18118c4e217284ee2fc17070f476d701cc884c3dc994)
+corpus   : 311 file(s)
+
+== axis 1: the hover at a declaration, against what the compiler says it is ==
+  declarations hovered            : 7708
+  disagreeing with the compiler   : 0
+  parameter lists the hover withheld : 0
+
+== axis 2/3: the language's names, and names nothing declares ==
+  builtin hover(s) judged         : 540
+  disagreeing with SPEC.md        : 0
+  builtin(s) SPEC.md does not name: 24
+  undeclared name(s) hovered      : 3542
+  of those, the hover said something : 0
+
+== axis 4: the call each builtin's signature claims, against the compiler ==
+  control program (`c0: int = len("")`) : accepted
+  builtin signature(s) the compiler judged : 33
+  refused                                : 0
+
+== findings ==
+  (none)
+
+== what this run did not judge ==
+  spec-documents-the-arity-without-parameter-names24
+  compiler-refused-the-file                   53
+  nested-def-outside-the-model                12
+  variadic-signature-declares-no-parameter    1
+  builtin-signature-writes-no-return-type     1
+  the files `vm.exe parse` refused (first 24):
+      tests/build/check_cases/literal_overflow.vel  (`vm.exe parse` exit 2: vela: safety error: integer literal 99999999999999999999 does not fit in int (64-bit signed)   at line 2  vela: panic: the front end stopped after an error)
+      tests/build/check_cases/chained_comparison.vel  (`vm.exe parse` exit 2: vela: syntax error: chained comparison is not allowed   at line 4  vela: panic: the front end stopped after an error)
+      tests/build/check_cases/elif_is_not_vela.vel  (`vm.exe parse` exit 2: vela: syntax error: 'elif' is not part of Vela; write 'else if'   at line 6  vela: panic: the front end stopped after an error)
+      tests/build/check_cases/tuple.vel  (`vm.exe parse` exit 2: vela: syntax error: tuples are not supported   at line 3  vela: panic: the front end stopped after an error)
+      tests/build/check_cases/adjacent_string_literals.vel  (`vm.exe parse` exit 2: vela: syntax error: adjacent string literals are not allowed   at line 3  vela: panic: the front end stopped after an error)
+      tests/build/check_cases/missing_open_brace.vel  (`vm.exe parse` exit 2: vela: syntax error: expected '{' to open a block, found ':'   at line 1  vela: panic: the front end stopped after an error)
+      tests/build/check_cases/missing_close_brace.vel  (`vm.exe parse` exit 2: vela: syntax error: missing '}': a block is never closed   at line 4  vela: panic: the front end stopped after an error)
+      tests/build/check_cases/statements_need_newlines.vel  (`vm.exe parse` exit 2: vela: syntax error: expected a newline between statements, found 'mut'   at line 3  vela: panic: the front end stopped after an error)
+      tests/build/check_cases/unannotated_parameter.vel  (`vm.exe parse` exit 2: vela: syntax error: parameter 'n' has no type annotation   at line 2  vela: panic: the front end stopped after an error)
+      tests/build/check_cases/missing_return_annotation.vel  (`vm.exe parse` exit 2: vela: syntax error: function 'f' has no return type annotation   at line 2  vela: panic: the front end stopped after an error)
+      tests/build/check_cases/duplicate_field.vel  (`vm.exe parse` exit 2: vela: syntax error: expected '{' to open a block, found ':'   at line 2  vela: panic: the front end stopped after an error)
+      tests/build/lexer_error.vel  (`vm.exe parse` exit 2: vela: syntax error: unterminated string literal   at line 2  vela: panic: the front end stopped after an error)
+      tests/accept/closure_escaping_refused.vel  (`vm.exe parse` exit 2: vela: syntax error: expected '{' to open a block, found '('   at line 9  vela: panic: the front end stopped after an error)
+      tests/accept/closure_fn_parameter.vel  (`vm.exe parse` exit 2: vela: syntax error: expected ')' after the parameters   at line 7  vela: panic: the front end stopped after an error)
+      tests/accept/closure_lambda_as_argument.vel  (`vm.exe parse` exit 2: vela: syntax error: expected ')' after the parameters   at line 10  vela: panic: the front end stopped after an error)
+      tests/accept/closure_lambda_local.vel  (`vm.exe parse` exit 2: vela: syntax error: expected a newline between statements, found '('   at line 15  vela: panic: the front end stopped after an error)
+      tests/accept/enum_binding_arity.vel  (`vm.exe parse` exit 2: vela: syntax error: expected a newline between statements, found 'Shape'   at line 5  vela: panic: the front end stopped after an error)
+      tests/accept/enum_duplicate_arm.vel  (`vm.exe parse` exit 2: vela: syntax error: expected a newline between statements, found 'Color'   at line 5  vela: panic: the front end stopped after an error)
+      tests/accept/enum_else_not_last.vel  (`vm.exe parse` exit 2: vela: syntax error: expected a newline between statements, found 'Color'   at line 5  vela: panic: the front end stopped after an error)
+      tests/accept/enum_exhaustive_switch.vel  (`vm.exe parse` exit 2: vela: syntax error: expected a newline between statements, found 'Op'   at line 9  vela: panic: the front end stopped after an error)
+      tests/accept/enum_in_array.vel  (`vm.exe parse` exit 2: vela: syntax error: expected a newline between statements, found 'Slot'   at line 10  vela: panic: the front end stopped after an error)
+      tests/accept/enum_match_non_enum.vel  (`vm.exe parse` exit 2: vela: syntax error: expected a newline between statements, found 'Color'   at line 5  vela: panic: the front end stopped after an error)
+      tests/accept/enum_match_no_else.vel  (`vm.exe parse` exit 2: vela: syntax error: expected a newline between statements, found 'Color'   at line 7  vela: panic: the front end stopped after an error)
+      tests/accept/enum_missing_variant.vel  (`vm.exe parse` exit 2: vela: syntax error: expected a newline between statements, found 'Color'   at line 5  vela: panic: the front end stopped after an error)
+  declarations outside the model's scope (first 12), hovered but not claimed by the model:
+      tests/build/check_cases/nested_function.vel:2 `inner` (def)
+      tests/accept/nested_fn_called.vel:9 `succ` (def)
+      tests/accept/nested_fn_called.vel:9 `n` (param)
+      tests/accept/nested_fn_capture_refused.vel:13 `add_base` (def)
+      tests/accept/nested_fn_capture_refused.vel:13 `n` (param)
+      tests/accept/nested_fn_recurse.vel:8 `fact` (def)
+      tests/accept/nested_fn_recurse.vel:8 `n` (param)
+      tests/accept/nested_fn_sibling_call.vel:9 `succ` (def)
+      tests/accept/nested_fn_sibling_call.vel:9 `n` (param)
+      tests/accept/nested_fn_sibling_call.vel:12 `twice_succ` (def)
+      tests/accept/nested_fn_sibling_call.vel:12 `n` (param)
+      tests/safety/cases/escape_nested_function_refused.vel:2 `inner` (def)
+
+== totals ==
+  files in the corpus            : 311
+  files with a compiler dump     : 258
+  rows judged (a hovered symbol) : 11823
+  rows that disagree             : 0
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 11823
+  skipped                 : 91
+      harness-threw         0         <- a defect, not a limit
+      spec-documents-the-arity-without-parameter-names  24      
+      compiler-refused-the-file  53      
+      nested-def-outside-the-model  12      
+      variadic-signature-declares-no-parameter  1       
+      builtin-signature-writes-no-return-type  1       
+  wrong                   : 0
+  corpus accounted for    : 11914  (ran + skipped)
+
+COVERAGE: ran 11823 / skipped 91 (harness-threw 0, spec-documents-the-arity-without-parameter-names 24, compiler-refused-the-file 53, nested-def-outside-the-model 12, variadic-signature-declares-no-parameter 1, builtin-signature-writes-no-return-type 1) / wrong 0
+
+  VERDICT: declarations the hover names what the compiler declares, with its parameters, its return type and its line
+  VERDICT: builtins     every builtin hover names the parameters SPEC.md documents (24 builtin(s) SPEC.md documents without names)
+  VERDICT: unknown      a name neither this file nor the language declares is hovered as nothing
+  VERDICT: call shapes  the compiler accepts the call every builtin signature claims
+VERDICT: every one of the 11823 row(s) judged says what the compiler, SPEC.md or the absence of a declaration says
+
+
+================================================================================
+2. THE SAME HOVER, ROW BY ROW -- one file, --dump 40 --quick (the popup text IS in here)
+================================================================================
+hover    : VelaDocumentationProvider.documentationAt(text, offset), then
+           hoverHtml(doc) -- the popup's own text, not a re-rendering of it
+oracle 1 : `vm.exe parse <file>` -- every struct / field / def / param with the
+           name, mut and type the compiler itself writes, plus `vm.exe lex` for
+           the compiler's own line of the token being hovered
+oracle 2 : SPEC.md section 8 -- the parameter names a builtin is documented with
+oracle 3 : `vm.exe check` on a program that writes the call each builtin's
+           signature claims; a control program is compiled first
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-gdTwFG\vela-hovertruth\vm.exe (861696 bytes, sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a)
+plugin   : dev.vela.plugin.VelaDocumentationProvider (class sha256 b1f03a66ef2e466a3b6f18118c4e217284ee2fc17070f476d701cc884c3dc994)
+corpus   : 1 file(s), --single, --dump 40, --quick (axis 4 not run)
+
+== axis 1: the hover at a declaration, against what the compiler says it is ==
+  ---- tests/build/struct_and_methods.vel:1 `Vec2` (struct)
+       hover  : <div class='definition'><pre>struct Vec2</pre></div><div class='content'>A struct declared in this file, with 2 field(s).<br/>Fields: `x: float`, `y: float`</div><table class='sections'><span class='grayed'>struct · line 1</span></table>
+       claims : kind=struct line=1 returns= owner= params=(withheld) fields=[x:float, y:float]
+       oracle : kind=struct line=1 returns= owner= params=[]
+  ---- tests/build/struct_and_methods.vel:2 `x` (field)
+       hover  : <div class='definition'><pre>x: float</pre></div><div class='content'>A field of the struct `Vec2`.</div><table class='sections'><span class='grayed'>field · line 2</span></table>
+       claims : kind=field line=2 returns= owner=Vec2 params=(withheld) fields=[]
+       oracle : kind=field line=2 returns= owner=Vec2 params=[]
+  ---- tests/build/struct_and_methods.vel:3 `y` (field)
+       hover  : <div class='definition'><pre>y: float</pre></div><div class='content'>A field of the struct `Vec2`.</div><table class='sections'><span class='grayed'>field · line 3</span></table>
+       claims : kind=field line=3 returns= owner=Vec2 params=(withheld) fields=[]
+       oracle : kind=field line=3 returns= owner=Vec2 params=[]
+  ---- tests/build/struct_and_methods.vel:5 `dot` (def)
+       hover  : <div class='definition'><pre>dot(self: Vec2, o: Vec2) -&gt; float</pre></div><div class='content'>A method of the struct `Vec2`.<br/>Parameters: `self: Vec2`, `o: Vec2`<br/>Returns `float`.</div><table class='sections'><span class='grayed'>def · line 5</span></table>
+       claims : kind=def line=5 returns=float owner=Vec2 params=[self:Vec2, o:Vec2] fields=[]
+       oracle : kind=def line=5 returns=float owner=Vec2 params=[self:Vec2, o:Vec2]
+  ---- tests/build/struct_and_methods.vel:5 `self` (param)
+       hover  : <div class='definition'><pre>self: Vec2</pre></div><div class='content'>A parameter of `dot`.</div><table class='sections'><span class='grayed'>param · line 5</span></table>
+       claims : kind=param line=5 returns= owner=dot params=(withheld) fields=[]
+       oracle : kind=param line=5 returns= owner=dot params=[]
+  ---- tests/build/struct_and_methods.vel:5 `o` (param)
+       hover  : <div class='definition'><pre>o: Vec2</pre></div><div class='content'>A parameter of `dot`.</div><table class='sections'><span class='grayed'>param · line 5</span></table>
+       claims : kind=param line=5 returns= owner=dot params=(withheld) fields=[]
+       oracle : kind=param line=5 returns= owner=dot params=[]
+  ---- tests/build/struct_and_methods.vel:9 `scale` (def)
+       hover  : <div class='definition'><pre>scale(mut self: Vec2, k: float) -&gt; None</pre></div><div class='content'>A method of the struct `Vec2`.<br/>Parameters: `mut self: Vec2`, `k: float`<br/>Returns `None`.</div><table class='sections'><span class='grayed'>def · line 9</span></table>
+       claims : kind=def line=9 returns=None owner=Vec2 params=[self:Vec2:mut, k:float] fields=[]
+       oracle : kind=def line=9 returns=None owner=Vec2 params=[self:Vec2:mut, k:float]
+  ---- tests/build/struct_and_methods.vel:9 `self` (param)
+       hover  : <div class='definition'><pre>mut self: Vec2</pre></div><div class='content'>A parameter of `scale`.</div><table class='sections'><span class='grayed'>param · line 9</span></table>
+       claims : kind=param line=9 returns= owner=scale params=(withheld) fields=[]
+       oracle : kind=param line=9 returns= owner=scale params=[]
+  ---- tests/build/struct_and_methods.vel:9 `k` (param)
+       hover  : <div class='definition'><pre>k: float</pre></div><div class='content'>A parameter of `scale`.</div><table class='sections'><span class='grayed'>param · line 9</span></table>
+       claims : kind=param line=9 returns= owner=scale params=(withheld) fields=[]
+       oracle : kind=param line=9 returns= owner=scale params=[]
+  ---- tests/build/struct_and_methods.vel:15 `main` (def)
+       hover  : <div class='definition'><pre>main() -&gt; None</pre></div><div class='content'>A function declared in this file.<br/>Parameters: none.<br/>Returns `None`.</div><table class='sections'><span class='grayed'>def · line 15</span></table>
+       claims : kind=def line=15 returns=None owner= params=[] fields=[]
+       oracle : kind=def line=15 returns=None owner= params=[]
+  ---- tests/build/struct_and_methods.vel:18 `print` (builtin)
+       hover  : <div class='definition'><pre>print(...) -&gt; None</pre></div><div class='content'>write values, separated by spaces<br/>Variadic: the declaration names no parameter to name an argument with.<br/>Returns `None`.</div><table class='sections'><span class='grayed'>builtin · not declared in this file</s...
+       claims : signature=print(...) -> None variadic=true returns=None params=(withheld: variadic)
+       oracle : SPEC.md section 8 names=(documents the arity without names)
+  declarations hovered            : 10
+  disagreeing with the compiler   : 0
+  parameter lists the hover withheld : 0
+
+== axis 2/3: the language's names, and names nothing declares ==
+  builtin hover(s) judged         : 1
+  disagreeing with SPEC.md        : 0
+  builtin(s) SPEC.md does not name: 1
+  undeclared name(s) hovered      : 8
+  of those, the hover said something : 0
+
+== findings ==
+  (none)
+
+== what this run did not judge ==
+  spec-documents-the-arity-without-parameter-names1
+
+== totals ==
+  files in the corpus            : 1
+  files with a compiler dump     : 1
+  rows judged (a hovered symbol) : 19
+  rows that disagree             : 0
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 19
+  skipped                 : 1
+      harness-threw         0         <- a defect, not a limit
+      spec-documents-the-arity-without-parameter-names  1       
+  wrong                   : 0
+  corpus accounted for    : 20  (ran + skipped)
+
+COVERAGE: ran 19 / skipped 1 (harness-threw 0, spec-documents-the-arity-without-parameter-names 1) / wrong 0
+
+  VERDICT: declarations the hover names what the compiler declares, with its parameters, its return type and its line
+  VERDICT: builtins     every builtin hover names the parameters SPEC.md documents (1 builtin(s) SPEC.md documents without names)
+  VERDICT: unknown      a name neither this file nor the language declares is hovered as nothing
+  VERDICT: call shapes  (not measured: --quick)
+VERDICT: every one of the 19 row(s) judged says what the compiler, SPEC.md or the absence of a declaration says
+
+
+================================================================================
+3. FALSIFICATION A -- a hover is DEMANDED for a name nothing declares (exit 1 on purpose)
+================================================================================
+hover    : VelaDocumentationProvider.documentationAt(text, offset), then
+           hoverHtml(doc) -- the popup's own text, not a re-rendering of it
+oracle 1 : `vm.exe parse <file>` -- every struct / field / def / param with the
+           name, mut and type the compiler itself writes, plus `vm.exe lex` for
+           the compiler's own line of the token being hovered
+oracle 2 : SPEC.md section 8 -- the parameter names a builtin is documented with
+oracle 3 : `vm.exe check` on a program that writes the call each builtin's
+           signature claims; a control program is compiled first
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-gdTwFG\vela-hovertruth\vm.exe (861696 bytes, sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a)
+plugin   : dev.vela.plugin.VelaDocumentationProvider (class sha256 b1f03a66ef2e466a3b6f18118c4e217284ee2fc17070f476d701cc884c3dc994)
+corpus   : 1 file(s), --single, --quick (axis 4 not run)
+
+!! --demand-hover zzz_hovertruth_phantom: a hover is DEMANDED for a name the
+!! compiler does not declare.  A clean run is impossible by construction; the
+!! point is to watch the tool report the failure.
+
+== axis 1: the hover at a declaration, against what the compiler says it is ==
+  declarations hovered            : 10
+  disagreeing with the compiler   : 0
+  parameter lists the hover withheld : 0
+
+== axis 2/3: the language's names, and names nothing declares ==
+  builtin hover(s) judged         : 1
+  disagreeing with SPEC.md        : 0
+  builtin(s) SPEC.md does not name: 1
+  undeclared name(s) hovered      : 8
+  of those, the hover said something : 0
+
+== falsification: a hover is DEMANDED for a name nothing declares ==
+  file    : C:\Users\lu\AppData\Local\Temp\dsh-gdTwFG\vela-hovertruth-gen5055471900666690304.vel
+  the call: zzz_hovertruth_phantom(1)
+  compiler: `vm.exe check` exit 2 -- vela: type error: undeclared name 'zzz_hovertruth_phantom'   at C:\Users\lu\AppData\Local\Temp\dsh-gdTwFG\vela-hovertruth-gen5055471900666690304.vel:2  vela: panic: the interpreted program was refused
+  demand  : a hover must exist for `zzz_hovertruth_phantom`
+  hover   : (none: the model has no such declaration)
+  DEMAND UNMET: the tool reports this as a failure, so `wrong` is not a number that can only ever be 0.
+
+== findings ==
+  the demanded hover for `zzz_hovertruth_phantom` does not exist: the compiler does not declare it, the language does not provide it, and the hover gave nothing.  THE DEMAND FAILED, WHICH IS WHAT --demand-hover EXISTS TO SHOW.
+
+== what this run did not judge ==
+  spec-documents-the-arity-without-parameter-names1
+
+== totals ==
+  files in the corpus            : 1
+  files with a compiler dump     : 1
+  rows judged (a hovered symbol) : 20
+  rows that disagree             : 1
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 20
+  skipped                 : 1
+      harness-threw         0         <- a defect, not a limit
+      spec-documents-the-arity-without-parameter-names  1       
+  wrong                   : 1
+  corpus accounted for    : 21  (ran + skipped)
+
+COVERAGE: ran 20 / skipped 1 (harness-threw 0, spec-documents-the-arity-without-parameter-names 1) / wrong 1
+
+  VERDICT: declarations the hover names what the compiler declares, with its parameters, its return type and its line
+  VERDICT: builtins     every builtin hover names the parameters SPEC.md documents (1 builtin(s) SPEC.md documents without names)
+  VERDICT: unknown      a name neither this file nor the language declares is hovered as nothing
+  VERDICT: call shapes  (not measured: --quick)
+  VERDICT: demand       [FAIL] the demanded hover did not exist -- the demand failed, which is what it was written to do
+VERDICT: 1 row(s) of the 20 judged disagree with the compiler, SPEC.md or the absence of a declaration
+
+
+================================================================================
+4. FALSIFICATION B -- the oracle's parameter names are reversed on purpose (exit 1 on purpose)
+================================================================================
+hover    : VelaDocumentationProvider.documentationAt(text, offset), then
+           hoverHtml(doc) -- the popup's own text, not a re-rendering of it
+oracle 1 : `vm.exe parse <file>` -- every struct / field / def / param with the
+           name, mut and type the compiler itself writes, plus `vm.exe lex` for
+           the compiler's own line of the token being hovered
+oracle 2 : SPEC.md section 8 -- the parameter names a builtin is documented with
+oracle 3 : `vm.exe check` on a program that writes the call each builtin's
+           signature claims; a control program is compiled first
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-gdTwFG\vela-hovertruth\vm.exe (861696 bytes, sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a)
+plugin   : dev.vela.plugin.VelaDocumentationProvider (class sha256 b1f03a66ef2e466a3b6f18118c4e217284ee2fc17070f476d701cc884c3dc994)
+corpus   : 1 file(s), --single, --quick (axis 4 not run)
+
+!! --swap-params: the parameter names the oracle expects are REVERSED for the
+!! first declaration that declares two or more.  A clean run is impossible by
+!! construction.
+
+== axis 1: the hover at a declaration, against what the compiler says it is ==
+  !! the oracle's parameter names for tests/build/struct_and_methods.vel:5 `dot` (def) were reversed on purpose -> [o:Vec2, self:Vec2]
+  declarations hovered            : 10
+  disagreeing with the compiler   : 1
+  parameter lists the hover withheld : 0
+
+== axis 2/3: the language's names, and names nothing declares ==
+  builtin hover(s) judged         : 1
+  disagreeing with SPEC.md        : 0
+  builtin(s) SPEC.md does not name: 1
+  undeclared name(s) hovered      : 8
+  of those, the hover said something : 0
+
+== findings ==
+  tests/build/struct_and_methods.vel:5 `dot` (def)
+      parameters: the compiler declares [o:Vec2, self:Vec2], the hover says [self:Vec2, o:Vec2]
+      hover: def dot(self: Vec2, o: Vec2) -> float  params [self:Vec2, o:Vec2]
+
+== what this run did not judge ==
+  spec-documents-the-arity-without-parameter-names1
+
+== totals ==
+  files in the corpus            : 1
+  files with a compiler dump     : 1
+  rows judged (a hovered symbol) : 19
+  rows that disagree             : 1
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 19
+  skipped                 : 1
+      harness-threw         0         <- a defect, not a limit
+      spec-documents-the-arity-without-parameter-names  1       
+  wrong                   : 1
+  corpus accounted for    : 20  (ran + skipped)
+
+COVERAGE: ran 19 / skipped 1 (harness-threw 0, spec-documents-the-arity-without-parameter-names 1) / wrong 1
+
+  VERDICT: declarations [FAIL] 1 declaration(s) hovered differently from what the compiler says
+  VERDICT: builtins     every builtin hover names the parameters SPEC.md documents (1 builtin(s) SPEC.md documents without names)
+  VERDICT: unknown      a name neither this file nor the language declares is hovered as nothing
+  VERDICT: call shapes  (not measured: --quick)
+  VERDICT: swap-params  (the oracle's parameter names were reversed for one declaration)
+VERDICT: 1 row(s) of the 19 judged disagree with the compiler, SPEC.md or the absence of a declaration
+
+
+================================================================================
+5. THE SAME FILE AGAIN, SWITCHES REMOVED (exit 0: the failure was the oracle, not the hover)
+================================================================================
+hover    : VelaDocumentationProvider.documentationAt(text, offset), then
+           hoverHtml(doc) -- the popup's own text, not a re-rendering of it
+oracle 1 : `vm.exe parse <file>` -- every struct / field / def / param with the
+           name, mut and type the compiler itself writes, plus `vm.exe lex` for
+           the compiler's own line of the token being hovered
+oracle 2 : SPEC.md section 8 -- the parameter names a builtin is documented with
+oracle 3 : `vm.exe check` on a program that writes the call each builtin's
+           signature claims; a control program is compiled first
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-gdTwFG\vela-hovertruth\vm.exe (861696 bytes, sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a)
+plugin   : dev.vela.plugin.VelaDocumentationProvider (class sha256 b1f03a66ef2e466a3b6f18118c4e217284ee2fc17070f476d701cc884c3dc994)
+corpus   : 1 file(s), --single, --quick (axis 4 not run)
+
+== axis 1: the hover at a declaration, against what the compiler says it is ==
+  declarations hovered            : 10
+  disagreeing with the compiler   : 0
+  parameter lists the hover withheld : 0
+
+== axis 2/3: the language's names, and names nothing declares ==
+  builtin hover(s) judged         : 1
+  disagreeing with SPEC.md        : 0
+  builtin(s) SPEC.md does not name: 1
+  undeclared name(s) hovered      : 8
+  of those, the hover said something : 0
+
+== findings ==
+  (none)
+
+== what this run did not judge ==
+  spec-documents-the-arity-without-parameter-names1
+
+== totals ==
+  files in the corpus            : 1
+  files with a compiler dump     : 1
+  rows judged (a hovered symbol) : 19
+  rows that disagree             : 0
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 19
+  skipped                 : 1
+      harness-threw         0         <- a defect, not a limit
+      spec-documents-the-arity-without-parameter-names  1       
+  wrong                   : 0
+  corpus accounted for    : 20  (ran + skipped)
+
+COVERAGE: ran 19 / skipped 1 (harness-threw 0, spec-documents-the-arity-without-parameter-names 1) / wrong 0
+
+  VERDICT: declarations the hover names what the compiler declares, with its parameters, its return type and its line
+  VERDICT: builtins     every builtin hover names the parameters SPEC.md documents (1 builtin(s) SPEC.md documents without names)
+  VERDICT: unknown      a name neither this file nor the language declares is hovered as nothing
+  VERDICT: call shapes  (not measured: --quick)
+VERDICT: every one of the 19 row(s) judged says what the compiler, SPEC.md or the absence of a declaration says
