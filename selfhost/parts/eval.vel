@@ -349,6 +349,9 @@ def print_cell(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
         emit_str("None")
         return
     }
+    # a struct or an enum value has no `print` spelling in Vela 0.1 (the plan
+    # lists printing an enum among what is out of scope for v1), and the trap
+    # below is where the interpreter says so
     trap(path, line, "this value cannot be printed")
 }
 
@@ -628,6 +631,14 @@ def eval_name(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
     sv: int = nt_get(mem, e, NT_VAL())
     if sk == SYM_LOCAL() {
         copy_cell(mem, fmem, vm.dst, vm.fp + sv)
+        return
+    }
+    if sk == SYM_VARIANT() {
+        # A bare variant name is a value: `Empty`, `Red`.  Only a variant with no
+        # payload can be written this way -- the checker refuses the other case,
+        # naming the payload -- so this is a construction with no arguments and
+        # nothing to copy: the tagged block and nothing else.
+        set_variant(mem, fmem, path, vm, sv, vm.dst)
         return
     }
     if sk == SYM_FUNC() {
@@ -1395,6 +1406,152 @@ def exec_construct(nd: Array[int, 655360], ty: Array[int, 262144],
     vm.sp = mark
 }
 
+# ------------------------------------------------------------------- enums
+#
+# An enum value *is* a struct value with a tag inside it: `stride` heap cells, cell
+# 0 the tag and cells 1.. the payload of whichever variant the tag names, where
+# `stride` is 1 + the widest variant (the enum's layout row, `ENB_SID()`).  The
+# value cell itself is an ordinary `K_ST` cell, so `copy_value`, `assign_value`,
+# `elem_load`/`elem_store` for `Array[E, N]` and the frame-escape rule in
+# `enter_call` all work unchanged.  The tag rides in the first *payload* cell
+# instead of a word of its own, which is exactly why they can.
+#
+# The tag is the variant's record index **plus one**.  Zero is what a zero-filled
+# array element holds, so "no variant was ever written here" stays distinguishable
+# from "variant 0", and a `match` on an element nobody wrote is refused instead of
+# answered with the first variant.  (`enum_in_array` writes every element before
+# reading it and says so; this is what makes that a requirement rather than a hope.)
+
+def variant_stride(mem: Array[int, 3741696], vi: int) -> int {
+    return enb_get(mem, vrb_get(mem, vi, VRB_ENUM()), ENB_STRIDE())
+}
+
+# The block, allocated and tagged, with `dst` pointing at it.  The payload is the
+# caller's job: it has the values.
+def set_variant(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                path: str, mut vm: VM, vi: int, dst: int) -> int {
+    stride: int = variant_stride(mem, vi)
+    if vm.hp + stride >= CELL_HEAP_MAX() {
+        selflimit("the interpreter ran out of heap cells")
+    }
+    base: int = vm.hp
+    vm.hp += stride
+    set_int(mem, fmem, base, vi + 1)
+    mem[dst * 4 + 0] = K_ST()
+    mem[dst * 4 + 1] = base
+    mem[dst * 4 + 2] = enb_get(mem, vrb_get(mem, vi, VRB_ENUM()), ENB_SID())
+    mem[dst * 4 + 3] = stride
+    fmem[dst] = 0.0
+    return base
+}
+
+def exec_make_variant(nd: Array[int, 655360], ty: Array[int, 262144],
+                      mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                      flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                      mut fpool: Array[float, 1048576],
+                      mut bpool: Array[u8, 33554432], src: str, path: str,
+                      mut vm: VM, vi: int, args: int, dst: int) -> None {
+    nf: int = vrb_get(mem, vi, VRB_NFIELD())
+    n: int = count_chain(nd, args)
+    if n != nf {
+        # the resolver refuses a construction with the wrong number of values, so
+        # this is the backstop for a path that reached the interpreter without it
+        trap(path, vm.line, "this variant takes a different number of values")
+    }
+    mark: int = vm.sp
+    argbase: int = vm.sp
+    reserve_args(nd, vm, args)
+    mut a: int = args
+    mut i: int = 0
+    while a > 0 {
+        keep: int = vm.dst
+        vm.dst = argbase + i
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, a)
+        vm.dst = keep
+        a = nd_nx(nd, a)
+        i += 1
+    }
+    base: int = set_variant(mem, fmem, path, vm, vi, dst)
+    mut f: int = 0
+    while f < nf {
+        copy_value(mem, fmem, path, vm, base + 1 + f, argbase + f)
+        f += 1
+    }
+    vm.sp = mark
+}
+
+# The payload of the arm's variant, into the frame slots the resolver gave the
+# binding names.  `copy_value`, not `copy_cell`: a payload field may itself be a
+# struct or an enum, and the arm's local must own its cells.
+def bind_arm(nd: Array[int, 655360], mem: Array[int, 3741696],
+             mut fmem: Array[float, 786432], path: str, vm: VM, a: int,
+             subj: int) -> None {
+    base: int = mem[subj * 4 + 1]
+    mut b: int = nd[a * 10 + 2]
+    mut i: int = 0
+    while b > 0 {
+        copy_value(mem, fmem, path, vm, vm.fp + nt_get(mem, b, NT_SLOT()),
+                   base + 1 + i)
+        i += 1
+        b = nd_nx(nd, b)
+    }
+}
+
+# `match v { ... }` as a statement.  The subject is evaluated **once** into a temp
+# cell, because an arm body may call something that would change what the subject
+# expression reads the second time; then the tag picks the arm, one arm runs, and
+# its control code is this statement's control code (so `return` inside an arm
+# returns from the function, exactly as it would from anywhere else in the block).
+def exec_match(nd: Array[int, 655360], ty: Array[int, 262144],
+               mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+               flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+               src: str, path: str, mut vm: VM, s: int) -> int {
+    mark: int = vm.sp
+    subj: int = cell_alloc(vm)
+    keep: int = vm.dst
+    vm.dst = subj
+    eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+              nd[s * 10 + 1])
+    vm.dst = keep
+    if mem[subj * 4 + 0] != K_ST() {
+        trap(path, vm.line, "the subject of a match must be an enum value")
+    }
+    tag: int = mem[mem[subj * 4 + 1] * 4 + 1]
+    if tag == 0 {
+        vm.sp = mark
+        trap(path, vm.line, "this enum value was never given a variant (an array element nobody wrote, or a zero-filled struct field)")
+    }
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        pat: int = nd[a * 10 + 1]
+        mut hit: int = 0
+        if pat < 0 {
+            # `else`: the escape hatch, and the checker has already required it to
+            # be last, so reaching it means no pattern arm matched
+            hit = 1
+        } else {
+            vi: int = find_variant(mem, vm, pat)
+            if vi >= 0 {
+                if vi + 1 == tag {
+                    hit = 1
+                }
+            }
+        }
+        if hit == 1 {
+            bind_arm(nd, mem, fmem, path, vm, a, subj)
+            c: int = run_body(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src,
+                              path, vm, nd[a * 10 + 4])
+            vm.sp = mark
+            return c
+        }
+        a = nd_nx(nd, a)
+    }
+    vm.sp = mark
+    trap(path, vm.line, "this value holds a variant that no arm of this match handles")
+    return C_STOP()
+}
+
 def call_method(nd: Array[int, 655360], ty: Array[int, 262144],
                 mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                 flt: Array[float, 65536], mut ipool: Array[int, 2097152],
@@ -1502,6 +1659,11 @@ def eval_call(nd: Array[int, 655360], ty: Array[int, 262144],
     if sk == SYM_STRUCT() {
         exec_construct(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
                        sv, args, vm.dst)
+        return
+    }
+    if sk == SYM_VARIANT() {
+        exec_make_variant(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path,
+                          vm, sv, args, vm.dst)
         return
     }
     trap(path, vm.line, "this is not something that can be called")
@@ -2021,6 +2183,10 @@ def exec_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
     }
     if k == 15 {
         return C_NEXT()
+    }
+    if k == 37 {
+        return exec_match(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path,
+                          vm, s)
     }
     warn_str("vela: interpreter: no case for statement kind ")
     warn_int(k)

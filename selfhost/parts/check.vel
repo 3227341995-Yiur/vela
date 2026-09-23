@@ -1560,7 +1560,26 @@ def ck_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696],
         ck_expr(nd, mem, path, vm, nd[e * 10 + 3])
         return
     }
-    # 20 int, 21 float, 22 str, 23 bool, 24 none, 25 name are leaves
+    # 20 int, 21 float, 22 str, 23 bool, 24 none are leaves, and so is a name --
+    # except for the one name case the resolver cannot judge: a bare variant name
+    # is a value only when the variant carries nothing.  `Circle` on its own is a
+    # construction that lost its payload, and a wrong answer is what it would
+    # otherwise become, so it is refused here by name.
+    if k == 25 {
+        if nt_get(mem, e, NT_SYM()) == SYM_VARIANT() {
+            vi: int = nt_get(mem, e, NT_VAL())
+            if vrb_get(mem, vi, VRB_NFIELD()) != 0 {
+                ck_type(path, nd_line(nd, e),
+                        concat(concat(concat(concat(concat(
+                                   "variant '", interned(nd[e * 10 + 1])),
+                                   "' carries "),
+                                   ck_int_text(vrb_get(mem, vi, VRB_NFIELD()))),
+                                   " payload value(s)"),
+                               ", so naming it without them is not a value"))
+            }
+        }
+        return
+    }
 }
 
 def ck_store_name(nd: Array[int, 655360], mut mem: Array[int, 3741696],
