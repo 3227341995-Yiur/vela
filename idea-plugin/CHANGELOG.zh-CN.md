@@ -4,8 +4,8 @@
 
 <!--
 源文件 : CHANGELOG.md
-源文件字节 : 33992
-源文件 SHA256 : 1491ac02a0a30b3aaeb8fccfbf740816277b797a0c1ec4d554e9b23650c67611
+源文件字节 : 34528
+源文件 SHA256 : 971e8a430e70cf37d89baae04177573db0dc1e313e3c3239194f9dac6861e731
 翻译日期 : 2026-09-24
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -56,13 +56,18 @@
    | `FoldDiff` | **内容** | 某个区域落在另一份的任何区域之外——一次真正的分歧，也就是失败计数 | 24 |
    | `SymbolDiff` | **只是类型拼法** | 退休扫描的 `[int, 786432]` 拼法一旦归一成规范的 `Array[int,786432]`，两份清单就完全相同；同一批声明，拼法不同 | 2 |
    | `SymbolDiff` | **结构性** | 符号个数与退休扫描相同，但 kind/name/line/parent 有差异，或者有一处熬过归一化的细节差异——失败计数 | 13 |
+   | `SymbolDiff` | **个数不同** | 两者对一个文件里有多少个声明意见不一，树报告的比退休扫描多——被计数并打印，不算失败（`tree-reports-more-declarations` 25、`scan-reports-more-declarations` 0） | 25 |
 
    `FoldDiff` 那条规则是**在被写进去之前先被测量过的**，而那次测量被留着：
    `tools\probes\src\FoldShapeProbe.java`。在 126 个文件的语料上，它发现 64 个完全相同、
    38 个两个方向都不同、24 个只在一个方向不同，而**0** 个文件出现任何区域不在另一份清单的
-   跨度里。退出码跟着可判定的那一半走：`FoldDiff` 只为那 24 个内容文件退出 1，对那 38 个
-   只是粒度的不判失败；`SymbolDiff` 只为那 13 个个数相同而内容不同的退出 1，对那 2 个只是
-   同一批声明、拼法不同的不判失败。
+   跨度里。
+
+   按总数读，`FoldDiff` 的 62 处差异和 `SymbolDiff` 的 40 处就是这些类别，没有别的：
+   38 + 24 = 62，而 2 + 25 + 13 = 40。五类里只有两类是**分歧**——`FoldDiff` 的内容类（24）
+   和 `SymbolDiff` 的个数相同而内容不同类（13）。另外三类（38 只是粒度、2 只是类型拼法、
+   25 个数不同）只被计数并打印，不是失败。退出码跟着这条线走：`FoldDiff` 只为那 24 个内容
+   文件退出 1，`SymbolDiff` 只为那 13 个个数相同而内容不同的退出 1。
 
 3. **`HintNames` 不再把一个被声明的限度叫作一次分歧。** 在
    `tests/build/check_cases/unannotated_parameter.vel` 上——`def f(n)`，被编译器拒绝——

@@ -59,15 +59,21 @@ two verifiers that were reporting things a reader could not act on.
    | `FoldDiff` | **content** | some region lies inside no region of the other — a real disagreement, and the failing count | 24 |
    | `SymbolDiff` | **type spelling only** | the two lists become identical once the retired scan's `[int, 786432]` spelling is normalised to the canonical `Array[int,786432]`; the same declarations, spelled differently | 2 |
    | `SymbolDiff` | **structural** | the same symbol count as the retired scan, but a kind/name/line/parent difference, or a detail difference that survives the normalisation — the failing count | 13 |
+   | `SymbolDiff` | **count differs** | the two disagree about how many declarations the file has, the tree reporting more than the retired scan — counted and printed, not a failure (`tree-reports-more-declarations` 25, `scan-reports-more-declarations` 0) | 25 |
 
    The rule for `FoldDiff` was **measured before it was written in**, and the
    measurement is kept: `tools\probes\src\FoldShapeProbe.java`. Over the 126-file
    corpus it finds 64 identical, 38 differing in both directions, 24 in one, and
-   **0** files where any region is in no other list's spans. Exit codes follow the
-   decidable part: `FoldDiff` exits 1 only for the 24 content files, and does not
-   fail on the 38 granularity-only ones; `SymbolDiff` exits 1 only for the 13 whose
-   count matches but whose content differs, and does not fail on the 2 that are the
-   same declarations spelled differently.
+   **0** files where any region is in no other list's spans.
+
+   Read as totals, `FoldDiff`'s 62 differences and `SymbolDiff`'s 40 are these
+   classes and nothing else: 38 + 24 = 62, and 2 + 25 + 13 = 40. Only two of the
+   five are **disagreements** — `FoldDiff`'s content class (24) and `SymbolDiff`'s
+   same-count-different-content class (13). The other three (38 granularity only, 2
+   type spelling only, 25 count differs) are counted and printed and are not
+   failures. Exit codes follow that line: `FoldDiff` exits 1 only for the 24 content
+   files, and `SymbolDiff` only for the 13 whose count matches but whose content
+   differs.
 
 3. **`HintNames` stopped calling a stated limit a disagreement.** On
    `tests/build/check_cases/unannotated_parameter.vel` — `def f(n)`, refused by the

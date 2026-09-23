@@ -86,30 +86,30 @@ harness run, in `build\evidence\`).
 | # | capability | what the Python plugin does (cited from the descriptors) | Vela state | file that implements it | measured evidence |
 |---|---|---|---|---|---|
 | 1 | file type + language id | 5 `<fileType>` registrations in `ce-plugin.xml`; the language id is `Python` | implemented | `VelaLanguage.kt`, `VelaFileType` | `[registration]` VerifyPlugin §6: `extensions="vel;vela"`, `getDefaultExtension()=vel`, `isVelaFileName` true/false for `hello.vel`/`hello.vela`/`hello.py`/`vel` |
-| 2 | lexer | the lexer lives inside `PythonParserDefinition`; not an extension | implemented | `VelaLanguage.kt` (`VelaLexer`) | `[harness]` `FeatureProbe` §1: **180,497 tokens over 194 files**, 12 distinct element types, every one produced from real source |
+| 2 | lexer | the lexer lives inside `PythonParserDefinition`; not an extension | implemented | `VelaLanguage.kt` (`VelaLexer`) | `[harness]` `FeatureProbe` §1: **188,152 tokens over 195 files**, 12 distinct element types, every one produced from real source |
 | 3 | syntax highlighting | `<lang.syntaxHighlighterFactory language="Python" implementationClass="com.jetbrains.python.highlighting.PySyntaxHighlighterFactory" />` (4 `syntaxHighlighterFactory` in `ce-plugin.xml`) | implemented | `VelaHighlighting.kt` | `[harness]` `FeatureProbe` §1: **12 of 12** token types the lexer emits get a non-empty `TextAttributesKey[]`; 0 types would be drawn uncoloured. `[registration]` `<lang.syntaxHighlighterFactory>` |
-| 4 | semantic highlighting | 14 `<annotator>` entries in `ce-plugin.xml` (e.g. `PyKeywordHighlightingAnnotator`, `PySyntaxAnnotator`) plus the type system (`Pythonid.typeProvider`, `pyClassMembersProvider`, `pyModuleMembersProvider` — extension points the plugin *declares* for others) | implemented | `VelaSemanticHighlighting.kt` | `[harness]` `FeatureProbe` §4: **15,467 name uses** classified across 7 kinds (FIELD 787, FUNCTION_CALL 4826, FUNCTION_DECLARATION 1030, PARAMETER 2733, STRUCT_DECLARATION 28, STRUCT_USE 231, TYPE 5832), 0 unclassified, and the per-offset lookup `classify(text, offset)` agrees with `classifyAll` on **all 15,467**. `[registration]` `<annotator>` |
-| 5 | real PSI parser | `<lang.parserDefinition language="Python" implementationClass="com.jetbrains.python.PythonParserDefinition" />`; plus `<lang.ast.factory language="Python" …PythonASTFactory />` and `<stubElementTypeHolder class="com.jetbrains.python.PyStubElementTypes" externalIdPrefix="py." />` | partial | `VelaParserDefinition.kt`, `VelaSyntax.kt`, `VelaNodeTypes.kt` | `[harness]` `ast-diff.ps1`: **114 files identical to `vm.exe parse`, 121,856 node lines**, exact string equality line for line, `VERDICT: PASS` with 0 different / 0 suspect / 0 missing / 0 crashed and 12 files the compiler refuses (all 12 of which this parser also refuses); plus a self-test that rejects a wrong tree (`6 cross pairs, 6 detected as different, 0 missed`). `[harness]` `psi-tree-diff.ps1`: **125 of 126 files** replayed through the platform's own `PsiBuilderImpl`, leaves tile the text exactly — with one FAIL on `tests/build/lexer_error.vel`, whose unterminated string makes the replay pull in a `VELA_STRING` leaf the parser never claimed. See open defect 1; the row is `partial` because of it |
-| 6 | syntax error highlighting | `<annotator language="Python" implementationClass="com.jetbrains.python.validation.PySyntaxAnnotator" />` | implemented | `VelaParserDefinition.kt` (`PsiBuilder.error` during the replay), `VelaAnnotator.kt` | `[harness]` `psi-tree-diff.ps1` asserts that a parser problem produces an error element in the platform tree (`VELA_ERROR` / `ERROR_ELEMENT`); files where the parser reported a problem: 20. `[harness]` VerifyPlugin §9: problems parsed out of the compiler's own output with kind, message and line |
+| 4 | semantic highlighting | 14 `<annotator>` entries in `ce-plugin.xml` (e.g. `PyKeywordHighlightingAnnotator`, `PySyntaxAnnotator`) plus the type system (`Pythonid.typeProvider`, `pyClassMembersProvider`, `pyModuleMembersProvider` — extension points the plugin *declares* for others) | implemented | `VelaSemanticHighlighting.kt` | `[harness]` `FeatureProbe` §4: **15,994 name uses** classified across 7 kinds (FIELD 898, FUNCTION_CALL 4967, FUNCTION_DECLARATION 1049, PARAMETER 2805, STRUCT_DECLARATION 28, STRUCT_USE 236, TYPE 6011), 0 unclassified, and the per-offset lookup `classify(text, offset)` agrees with `classifyAll` on **all 15,994**. `[registration]` `<annotator>` |
+| 5 | real PSI parser | `<lang.parserDefinition language="Python" implementationClass="com.jetbrains.python.PythonParserDefinition" />`; plus `<lang.ast.factory language="Python" …PythonASTFactory />` and `<stubElementTypeHolder class="com.jetbrains.python.PyStubElementTypes" externalIdPrefix="py." />` | implemented | `VelaParserDefinition.kt`, `VelaSyntax.kt`, `VelaNodeTypes.kt` | `[harness]` `ast-diff.ps1`: **114 files identical to `vm.exe parse`, 127,318 node lines**, exact string equality line for line, `VERDICT: PASS` with 0 different / 0 suspect / 0 missing / 0 crashed and 12 files the compiler refuses (all 12 of which this parser also refuses); plus a self-test that rejects a wrong tree (`6 cross pairs, 6 detected as different, 0 missed`). `[harness]` `psi-tree-diff.ps1`: **126 of 126 files** replayed through the platform's own `PsiBuilderImpl`, `failed 0`, `VERDICT : PASS`, `COVERAGE: ran 126 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0) / wrong 0`. The single FAIL this row was `partial` for — `tests/build/lexer_error.vel`, an unterminated string — is fixed at its root: the scanner's closing newline claimed a character it had never read and is now zero-width at the failure offset (0.1.5 entry, item 1). **What is still not measured**: nothing drove this parser from a running IDE, so the row rests on those two headless differentials and not on an editor |
+| 6 | syntax error highlighting | `<annotator language="Python" implementationClass="com.jetbrains.python.validation.PySyntaxAnnotator" />` | implemented | `VelaParserDefinition.kt` (`PsiBuilder.error` during the replay), `VelaAnnotator.kt` | `[harness]` `psi-tree-diff.ps1` asserts that a parser problem produces an error element in the platform tree (`VELA_ERROR` / `ERROR_ELEMENT`); files where the parser reported a problem: 12 (recovery is exercised, not avoided). `[harness]` VerifyPlugin §9: problems parsed out of the compiler's own output with kind, message and line |
 | 7 | code completion (incl. after `.`) | 28 `<completion.contributor language="Python" …>` in `ce-plugin.xml`; member completion after `.` comes from `PyClassMembersProvider` / `pyModuleMembersProvider` | partial | `VelaCompletion.kt` | `[registration]` `<completion.contributor language="Vela">`. **No behavioural measurement exists**: nothing in `idea-plugin\` drives the completion contributor headlessly. This row is registered and compiled, and that is all that is claimed |
 | 8 | hover documentation | `<lang.documentationProvider language="Python" id="pythonDocumentationProvider" implementationClass="com.jetbrains.python.documentation.PythonDocumentationProvider" />` (4 entries), plus `pythonDocumentationQuickInfoProvider` | partial | `VelaDocumentation.kt` | `[registration]` `<lang.documentationProvider language="Vela">`. Not measured headlessly |
-| 9 | parameter info | `<codeInsight.parameterInfo language="Python" implementationClass="com.jetbrains.python.PyParameterInfoHandler" />`; pro adds `keywordArgumentProvider` and `Pythonid.pyBddParametersInspection` | **partial** | `VelaParameterInfo.kt`, `VelaLanguage.kt` (`callAt`), `VelaTargets.kt` | `[harness]` `HintDiff` / `HintShapes` / `HintDupes` measure the same declaration reader the popup calls: `VelaParameterInfo.kt:56` and `VelaHints.parameterHints` both go through `VelaTargets.declaredParameterNames` / `builtinParameterNames`. `HintDiff`: **10,688 hints drawn, 10,688 correct, 0 wrong, 0 beyond the declared list**; `HintDupes`: 0 callables with a repeated parameter name (the old `s: s: s:`), 0 empty names. **But the inlay path is `partial`, not `implemented`, because 30 argument positions get no hint at all and 125 more cannot be judged — see the open-defects section.** The popup's own rendering is not measured either |
-| 10 | go to declaration | `<gotoDeclarationHandler implementation="com.jetbrains.python.psi.impl.PyGotoDeclarationHandler" />` + `PyBreakContinueGotoProvider`; the resolution itself is `pyReferenceResolveProvider` with `PyForwardReferenceResolveProvider` | implemented | `VelaGotoDeclaration.kt`, `VelaTargets.kt` | `[harness]` `GotoOracle` (one `vm.exe check` per declaration rename, the binding set verified by the file compiling again): **24,683 references judged, 0 WRONG**, and the skip side is categorised rather than dropped |
+| 9 | parameter info | `<codeInsight.parameterInfo language="Python" implementationClass="com.jetbrains.python.PyParameterInfoHandler" />`; pro adds `keywordArgumentProvider` and `Pythonid.pyBddParametersInspection` | **partial** | `VelaParameterInfo.kt`, `VelaLanguage.kt` (`callAt`), `VelaTargets.kt` | `[harness]` `HintDiff` / `HintShapes` / `HintDupes` measure the same declaration reader the popup calls: `VelaParameterInfo.kt:56` and `VelaHints.parameterHints` both go through `VelaTargets.declaredParameterNames` / `builtinParameterNames`. `HintDiff`: **11,441 hints drawn, 11,441 correct, 0 wrong, 0 beyond the declared list**, `COVERAGE: ran 31188 / skipped 14 (compiler-cannot-parse 2, arg-boundary-disagreement 12) / wrong 0`; `HintDupes`: 0 callables with a repeated parameter name (the old `s: s: s:`), 0 empty names. **The row stays `partial`, and not for the 30 positions it used to be `partial` for**: that finding is not in the current run — which is not the same corpus either (29,006 argument positions then, 31,188 now), and what removed it is not recorded in the evidence I have. What keeps the row `partial` is the other half: the harness measures *the reader the popup calls*, and nothing drives the popup itself, so its rendering is not measured |
+| 10 | go to declaration | `<gotoDeclarationHandler implementation="com.jetbrains.python.psi.impl.PyGotoDeclarationHandler" />` + `PyBreakContinueGotoProvider`; the resolution itself is `pyReferenceResolveProvider` with `PyForwardReferenceResolveProvider` | implemented | `VelaGotoDeclaration.kt`, `VelaTargets.kt` | `[harness]` `GotoOracle` (one `vm.exe check` per declaration rename, the binding set verified by the file compiling again): **26,077 references judged, 0 WRONG**, and the skip side is categorised rather than dropped |
 | 11 | find usages / references | `<lang.findUsagesProvider language="Python" implementationClass="com.jetbrains.python.findUsages.PythonFindUsagesProvider" />`; `usageTypeProvider` in `py-plugin.xml` | partial | `VelaFindUsages.kt`, `VelaReferenceContributor` in `VelaGotoDeclaration.kt` | `[registration]` `<lang.findUsagesProvider language="Vela">`, `<psi.referenceContributor implementation="…VelaReferenceContributor">` (the attribute is `implementation`, proven in `PLUGIN_SURFACE.md`). The same reference is what `GotoOracle` drives, but the *usages window* itself is not measured |
 | 12 | rename refactoring | Python relies on PSI references; `py-plugin.xml` adds `vetoRenameCondition` and `customUsageSearcher` | partial | `VelaLeafManipulator` in `VelaGotoDeclaration.kt`, reference from `VelaReferenceContributor` | `[registration]` `<lang.elementManipulator forClass="com.intellij.psi.PsiElement" implementationClass="…VelaLeafManipulator">`. The write-back is compiled and registered; no harness renames a file and reads it back |
-| 13 | structure view | `<lang.psiStructureViewFactory language="Python" implementationClass="com.jetbrains.python.structureView.PyStructureViewFactory" />` | implemented | `VelaStructureView.kt`, `VelaPsiStructureViewFactory.kt`, `VelaModel.kt` | `[registration]` `<lang.psiStructureViewFactory language="Vela">`. `[harness]` the symbol list it renders is `VelaModel.symbols`, measured by `SymbolDiff` over 125 files (see row 14's note and the SymbolDiff section below) |
+| 13 | structure view | `<lang.psiStructureViewFactory language="Python" implementationClass="com.jetbrains.python.structureView.PyStructureViewFactory" />` | implemented | `VelaStructureView.kt`, `VelaPsiStructureViewFactory.kt`, `VelaModel.kt` | `[registration]` `<lang.psiStructureViewFactory language="Vela">`. `[harness]` the symbol list it renders is `VelaModel.symbols`, measured by `SymbolDiff` over 126 files (see row 14's note and the SymbolDiff section below) |
 | 14 | problems / inspections / quick fixes | **98** `<localInspection language="Python" …>` in `ce-plugin.xml` (e.g. `PyUnusedLocalInspection`, `PyTypeCheckerInspection`), and the plugin declares `Pythonid.inspectionExtension` for others to add to | partial | `VelaAnnotator.kt` (`VelaExternalAnnotator`), `VelaDiagnostics.kt` | `[harness]` VerifyPlugin §9/§10: the compiler is run end to end — `arith_basics.vel` accepted (0 problems), `truthiness.vel` refused (1 problem, correct kind and **line read from the compiler**, not guessed), and the same diagnostic 4 lines lower moves to line 7. **Missing: there are no `localInspection`s and no quick fixes at all** — `grep -i 'QuickFix\|localInspection'` over `src\main\kotlin` returns nothing. Diagnostics come from the compiler; a fix is left to the user |
-| 15 | code formatter | `<lang.formatter language="Python" implementationClass="com.jetbrains.python.formatter.PythonFormattingModelBuilder" />`, `codeStyleSettingsProvider`, `fileIndentOptionsProvider` | implemented | `VelaFormatter.kt`, `VelaFormatRules.kt`, `VelaCodeStyle.kt` | `[harness]` `FeatureProbe` §5, over 194 files and 115,415 tokens: **18,115 gaps in the corpus contain a line feed and 0 of them can be closed by this rule set** (every such gap either keeps line breaks or demands ≥1 line feed), 0 depth/spacing length mismatches, 0 negative depths. That is the property that separates reformatting from changing the program. `[registration]` `<lang.formatter>`, `<codeStyleSettingsProvider>`, `<langCodeStyleSettingsProvider>` |
-| 16 | code folding | `<lang.foldingBuilder language="Python" implementationClass="com.jetbrains.python.PythonFoldingBuilder" />` | implemented | `VelaFolding.kt` | `[harness]` `FoldDiff` over 125 files: 64 identical, 61 differ from the **retired** brace-matching reference (`[29,103)` the whole function body vs `[44,66)` an inner block). See "the two regression detectors" below — this is a comparison against this plugin's own predecessor, not against an authority |
-| 17 | commenter | `<lang.commenter language="Python" implementationClass="com.jetbrains.python.PythonCommenter" />` | implemented | `VelaCommenter.kt` | `[harness]` `FeatureProbe` §3: the prefix is `#` and **all 3,506 comment tokens** in the corpus start with it, so `Ctrl+/` writes what the lexer reads. `[registration]` `<lang.commenter>` |
-| 18 | brace matcher | `<lang.braceMatcher language="Python" implementationClass="com.jetbrains.python.PyBraceMatcher" />` | implemented | `VelaBraceMatcher.kt` | `[harness]` `FeatureProbe` §2: `getPairs()` declares `{}`(structural) `()` `[]`, and **every delimiter in the corpus** (`{` 3525, `}` 3524, `(` 7931, `)` 7931, `[` 2552, `]` 2552) is one of those types; 0 unmatched. `[registration]` `<lang.braceMatcher>` |
+| 15 | code formatter | `<lang.formatter language="Python" implementationClass="com.jetbrains.python.formatter.PythonFormattingModelBuilder" />`, `codeStyleSettingsProvider`, `fileIndentOptionsProvider` | implemented | `VelaFormatter.kt`, `VelaFormatRules.kt`, `VelaCodeStyle.kt` | `[harness]` `FeatureProbe` §5, over 195 files and 120,468 tokens: **18,899 gaps in the corpus contain a line feed and 0 of them can be closed by this rule set** (every such gap either keeps line breaks or demands ≥1 line feed), 0 depth/spacing length mismatches, 0 negative depths. That is the property that separates reformatting from changing the program. `[registration]` `<lang.formatter>`, `<codeStyleSettingsProvider>`, `<langCodeStyleSettingsProvider>` |
+| 16 | code folding | `<lang.foldingBuilder language="Python" implementationClass="com.jetbrains.python.PythonFoldingBuilder" />` | implemented | `VelaFolding.kt` | `[harness]` `FoldDiff` over 126 files: 64 identical, 38 differing only in granularity and 24 disagreeing about content, against the **retired** brace-matching reference (`[29,103)` the whole function body vs `[44,66)` an inner block). See "the two regression detectors" below — this is a comparison against this plugin's own predecessor, not against an authority |
+| 17 | commenter | `<lang.commenter language="Python" implementationClass="com.jetbrains.python.PythonCommenter" />` | implemented | `VelaCommenter.kt` | `[harness]` `FeatureProbe` §3: the prefix is `#` and **all 3,805 comment tokens** in the corpus start with it, so `Ctrl+/` writes what the lexer reads. `[registration]` `<lang.commenter>` |
+| 18 | brace matcher | `<lang.braceMatcher language="Python" implementationClass="com.jetbrains.python.PyBraceMatcher" />` | implemented | `VelaBraceMatcher.kt` | `[harness]` `FeatureProbe` §2: `getPairs()` declares `{}`(structural) `()` `[]`, and **every delimiter in the corpus** (`{` 3617, `}` 3616, `(` 8271, `)` 8270, `[` 2628, `]` 2628) is one of those types; 0 unmatched. `[registration]` `<lang.braceMatcher>` |
 | 19 | typed handler / Enter auto-indent | `<typedHandler implementation="com.jetbrains.python.codeInsight.PyKeywordTypedHandler" id="pyCommaAfterKwd" />` and `<typedHandler implementation="com.jetbrains.python.editor.PythonSpaceHandler" />` (4 in `ce-plugin.xml`); Enter indentation is in the formatter | partial | `VelaTypedHandler.kt` | `[registration]` `<typedHandler implementation="…VelaTypedHandlerDelegate">` and `<enterHandlerDelegate implementation="…VelaEnterHandlerDelegate" order="first">`, both **not** language-keyed (they test the file name themselves, which is why `velaIsVelaFile` exists). Not measured headlessly: the code is a document edit and needs an editor |
 | 20 | colour settings page | `<colorSettingsPage implementation="com.jetbrains.python.highlighting.PythonColorsPage" />` | implemented | `VelaColorsAndFontsPage.kt`, `VelaColorSettingsPage.kt`, `VelaHighlighting.kt` | `[registration]` `<colorSettingsPage implementation="…VelaColorsAndFontsPage">`; `[harness]` the keys it exposes are the same 14 `TextAttributesKey`s `FeatureProbe` §1 proves are actually used, because it reads them out of `VelaColors` rather than listing strings |
 | 21 | live templates | `<defaultLiveTemplates file="liveTemplates/Python.xml" />` and 3 `<liveTemplateContext contextId="Python" …>` | implemented | `VelaLiveTemplates.kt`, `src\main\resources\liveTemplates\Vela.xml` | `[harness]` `FeatureProbe` §6: `liveTemplates/Vela.xml` is present **inside the built artifact** (`dist\vela\lib\vela-idea-plugin.jar`, 5,050 bytes, read back out of the zip), declares its templates, and every one is in the `VELA` context. `[registration]` `<defaultLiveTemplates>`, `<liveTemplateContext implementation="…VelaTemplateContextType">` |
 | 22 | run configuration (+ Run action) | `<configurationType implementation="com.jetbrains.python.run.PythonConfigurationType" />` (8 in `ce-plugin.xml`), `<runConfigurationProducer implementation="com.jetbrains.python.run.PythonRunConfigurationProducer" />` (4 in `ce-plugin.xml`, 4 in `py-plugin.xml`), plus `runnerFactory` and `programRunner` | implemented | `VelaRunConfig.kt`, `VelaRunConfigurationProducer.kt` | `[registration]` `<configurationType implementation="…VelaRunConfigurationType">`, `<runConfigurationProducer implementation="…VelaRunConfigurationProducer">` — this is what makes IDEA's *own* Run menu offer a `.vel` file, instead of a private submenu. `[harness]` VerifyPlugin §10 builds and runs `examples/hello.vel` (exit 0, both fixed lines printed) and §11 reads the run path out of the class constant pool (no private console) |
 | 23 | debugger | `<xdebugger.breakpointType implementation="com.jetbrains.python.debugger.PyLineBreakpointType" />` + `PyExceptionBreakpointType`; the plugin *declares* `Pythonid.debugSessionFactory`; and `python-dap.jar` is a Debug Adapter Protocol client: `PythonDapAttachConfigurationType`, `platform.dap.debugAdapterSupportProvider`, `platform.dap.launchArgumentsProvider`, and 8 `python.dap.run.debugpyConfigProvider` entries | **refused-deliberately** | `VelaRunConfig.kt` | `[registration]` `VelaRunConfiguration` implements `RunConfigurationWithSuppressedDefaultDebugAction` and accepts any profile that is **not** `Debug`, so IDEA shows the refusal instead of a Debug button that would attach to nothing. `vm.exe debug` is **not advertised anywhere** in `plugin.xml`, `.kt` sources, README or CHANGELOG except as this refusal. There is no breakpoint type, no debug session, no DAP client, and no claim of one |
 | 24 | PSI / AST tree window | **No registration found.** A descriptor scan of all 429 jars in the installed platform's `lib\` finds **0** hits for `PSI Structure` (and 0 for `idea.is.internal`), with a control string (`lang.parserDefinition`) found 3 times by the same scan — so the platform's PSI viewer is not a descriptor-registered extension, and the Python plugin registers nothing for it | implemented (more than Python) | `VelaAstToolWindow.kt`, `VelaSyntaxDump.kt` | `[registration]` `<toolWindow id="Vela AST" factoryClass="…VelaAstToolWindowFactory">`. `[harness]` the format it prints is the compiler's own, held there by `ast-diff.ps1`; and the window has **two** modes — `Compiler (vm.exe parse)` reads the file on disk, `Live parse (editor buffer)` runs this plugin's parser over the editor's text so unsaved edits and never-saved files still have a tree |
-| 25 | parameter-name inlay hints | `ce-plugin.xml` registers no parameter-name inlay provider: the 2 `codeInsight.declarativeInlayProvider` entries are Ruff-ish (`group="OTHER_GROUP"`, `providerId="RuffSuppressionCodes"` / `RuffTomlCodes`). Core Python parameter hints are not in this descriptor | implemented | `VelaInlayHints.kt` | `[harness]` `HintDiff` (7,769 hints drawn, 0 wrong), `HintShapes` (every label is a plain identifier over every 16-byte prefix of every file), `HintDupes` (0 repeated parameter names). `[registration]` `<codeInsight.inlayProvider id="dev.vela.plugin.parameterNames" isEnabledByDefault="true">` |
+| 25 | parameter-name inlay hints | `ce-plugin.xml` registers no parameter-name inlay provider: the 2 `codeInsight.declarativeInlayProvider` entries are Ruff-ish (`group="OTHER_GROUP"`, `providerId="RuffSuppressionCodes"` / `RuffTomlCodes`). Core Python parameter hints are not in this descriptor | implemented | `VelaInlayHints.kt` | `[harness]` `HintDiff` (11,441 hints drawn, 11,441 correct, 0 wrong), `HintShapes` (every label is a plain identifier, over at most 256 prefixes of every file), `HintDupes` (0 repeated parameter names). `[registration]` `<codeInsight.inlayProvider id="dev.vela.plugin.parameterNames" isEnabledByDefault="true">` |
 | 26 | settings page (where the compiler is) | Python's SDK/interpreter settings are dozens of points (`projectSdkConfigurationExtension`, `pythonSdkReadOnlyProvider`, …) — Vela has no SDK and no interpreter | implemented | `VelaCompiler.kt` (`VelaSettingsConfigurable`, `VelaSettings`) | `[registration]` `<applicationConfigurable id="dev.vela.settings" instance="…VelaSettingsConfigurable">`; `VELA_VM` is the environment fallback |
 | 27 | "New → Vela File" | Python ships `internalFileTemplate` entries rather than a New action | implemented | `VelaNewFile.kt` | `[registration]` `<action id="Vela.NewFile" class="…VelaNewFileAction">` with `<add-to-group group-id="NewGroup" anchor="first">`, and §7 of the verifier resolves `NewGroup` to the platform's own group (`intellij.platform.ide.impl.jar!idea/LangActions.xml`). This is the line that was wrong in 0.1.0 and the check that would have caught it |
 
@@ -129,15 +129,20 @@ should do, and each says plainly how far it actually goes.
 
 | state | rows | which |
 |---|---|---|
-| `implemented` | **18** | 1, 2, 3, 4, 6, 10, 13, 15, 16, 17, 18, 20, 21, 22, 24, 25, 26, 27 |
-| `partial` | **8** | **5 PSI parser**, 7 completion, 8 hover, **9 parameter info**, 11 find usages, 12 rename, 14 inspections/quick fixes, 19 typed/enter handler |
+| `implemented` | **19** | 1, 2, 3, 4, 5, 6, 10, 13, 15, 16, 17, 18, 20, 21, 22, 24, 25, 26, 27 |
+| `partial` | **7** | 7 completion, 8 hover, 9 parameter info, 11 find usages, 12 rename, 14 inspections/quick fixes, 19 typed/enter handler |
 | `missing` | **0** | — |
 | `refused-deliberately` | **1** | 23 debugger |
-| total | **27** | `18 + 8 + 1 + 0 = 27` |
+| total | **27** | `19 + 7 + 1 + 0 = 27` |
 
-Two rows moved from `implemented` to `partial` during this round, each because its own
-evidence went red: row 5 (`psi-tree-diff` 125 of 126, one FAIL) and row 9 (`HintDiff` 30
-positions wrong, 125 unjudged). A row is not `implemented` while its own verifier is red.
+Row 5 moved from `implemented` to `partial` when its own verifier went red (`psi-tree-diff`
+125 of 126, one FAIL) and moved back to `implemented` when that verifier went green —
+`126 of 126`, `failed 0`, `VERDICT : PASS`, `COVERAGE: ran 126 / skipped 0 / wrong 0` — with
+the FAIL's root cause fixed rather than the expectation restated. Row 9's first reason
+(30 positions wrong, 125 unjudged) is not in the current run either, but that row stays
+`partial` on the part no harness reaches: the popup's own rendering. A row is not
+`implemented` while its own verifier is red; a green verifier is not by itself enough when
+the capability's own surface was never driven.
 
 ### Rows backed by a harness vs by a registration only
 
@@ -169,20 +174,30 @@ the **retired** implementation it replaced:
 
 Neither the compiler nor any other authority defines a fold region list or a symbol
 list, so a difference here is **not** a correctness failure and must not be reported
-as one. Both numbers are non-zero. (Until this round neither tool had ever reached the
-end of the corpus: `harness.ps1 -Tool All` sat on `HintShapes` for over 50 minutes
-because its prefix sweep was O(size²) over a 400 KB file, so these two tools never ran
-in an `All` pass at all and their absence from the evidence read as their agreement.
-`HintShapes` now sweeps at most 256 prefixes per file — 5,797 runs — and an `All` pass
-completes in under four minutes.)
+as one. Both totals are non-zero, and as of 0.1.5 each total is split into classes, only
+one of which per tool is a disagreement. (Until the previous round neither tool had ever
+reached the end of the corpus: `harness.ps1 -Tool All` sat on `HintShapes` for over 50
+minutes because its prefix sweep was O(size²) over a 400 KB file, so these two tools never
+ran in an `All` pass at all and their absence from the evidence read as their agreement.
+`HintShapes` now sweeps at most 256 prefixes per file — 5,793 runs in the current pass —
+and an `All` pass completes in under four minutes.)
 
-| tool | files compared | identical | differ | what the differences are |
-|---|---|---|---|---|
-| `SymbolDiff` | 126 | 86 | **40** | the tree model lists `extern` function declarations (e.g. `sqrt(x: float) -> float` at `tests/build/extern/extern_c_probe.vel:15`) that the retired token scan does not see at all. That is the tree model gaining a declaration you can navigate to |
-| `FoldDiff` | 126 | 64 | **62** | the tree folds a whole body from its opening `{` to its `}` (`[29,103)`, 5 lines, `tests/build/recursion_fib.vel`); the brace matcher folded only inner blocks (`[44,66)`, 2 lines). The tree's shape is the one PyCharm uses for a method body |
+| tool | files compared | identical | differ | of which | what the differences are |
+|---|---|---|---|---|---|
+| `SymbolDiff` | 126 | 86 | **40** | 2 type spelling only, **13 same count / different content**, 25 count differs | the tree model lists `extern` function declarations (e.g. `sqrt(x: float) -> float` at `tests/build/extern/extern_c_probe.vel:15`, where the tree counts 5 declarations and the scan 2) that the retired token scan does not see at all — that is the 25-file `tree-reports-more-declarations` class, the tree gaining a declaration you can navigate to |
+| `FoldDiff` | 126 | 64 | **62** | 38 granularity only, **24 content** | the tree folds a whole body from its opening `{` to its `}` (`[29,103)`, 5 lines, `tests/build/recursion_fib.vel`); the brace matcher folded only inner blocks (`[44,66)`, 2 lines). The tree's shape is the one PyCharm uses for a method body |
 
-Both differences are enumerated in full, file and region, in
-`build\evidence\harness-0.1.4.txt`. The honest statement is: **the shipping side is
+Only the bolded class of each row is a disagreement, and the tools say so in their own
+verdict lines: `SymbolDiff` — `VERDICT: 13 file(s) have the same symbol count as the
+retired token scan and different content, and 0 threw`; `FoldDiff` — `VERDICT: 24 file(s)
+fold text the retired brace matcher does not fold at all, and 0 threw`. A
+type-spelling-only, count-differs or granularity-only file is counted and printed and does
+not fail the run: the two tools exit 1 for those two classes alone, which is why both
+still exit 1 here.
+
+Both are enumerated in full, file and region, in
+`idea-plugin\evidence\detectors-0.1.5.txt` — git-visible, unlike the extracts under
+`build\`. The honest statement is: **the shipping side is
 the tree, the retired side is the reference, the difference is the replacement, and
 whether each individual difference is an improvement has been judged by reading the
 examples above rather than by measurement** — there is no external authority to
@@ -193,30 +208,35 @@ printed and counted, so it cannot change silently.
 
 Every verifier in this plugin ends with `COVERAGE: ran N / skipped M (categorised) / wrong K`, and
 every skip category is declared up front so a declared-and-zero category is printed rather than
-omitted. From the final `harness.ps1 -Tool All` pass plus the two drivers, on the 0.1.4 build:
+omitted. From the `harness.ps1 -Tool All` pass on the 0.1.5 build, plus `ast-diff.ps1` /
+`psi-tree-diff.ps1` and the `SymbolDiff`/`FoldDiff` re-run with the classes in it — the raw logs
+are `idea-plugin\evidence\harness-0.1.5.txt`, `ast-diff-0.1.5.txt`, `psi-tree-diff-0.1.5.txt` and
+`detectors-0.1.5.txt`:
 
 | tool | exit | coverage triple | verdict |
 |---|---|---|---|
-| `ast-diff.ps1` | 0 | `ran 114 / skipped 12 (compiler-refused 12, too-large 0, missing-corpus-file 0, compiler-crashed 0) / wrong 0` | PASS -- 121,856 node lines identical |
-| `psi-tree-diff.ps1` | 1 | `ran 125 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0) / wrong 1` | FAIL -- open defect 1 |
-| `GotoOracle` | 0 | `ran 24683 / skipped 21566 (crashed-file 0, compiler-refused 21557, invisible-member 9, ambiguous 0) / wrong 0` | clean, and no longer clean-by-omission |
-| `HintDiff` | 1 | `ran 29006 / skipped 127 (compiler-cannot-parse 2, arg-boundary-disagreement 125) / wrong 30` | FAIL -- open defect 2 |
-| `HintNames` | 1 | `ran 1745 / skipped 2 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 2, too-large 0) / wrong 1` | one disagreement, below |
-| `HintShapes` | 0 | `ran 5797 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 0` | clean -- 0 labels that are not plain identifiers |
-| `HintDupes` | 0 | `ran 1745 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 0` | clean -- no repeated or empty parameter name |
-| `SymbolDiff` | 1 | `ran 86 / skipped 0 (threw 0, missing-corpus-file 0, too-large 0) / wrong 40` | regression detector, above |
-| `FoldDiff` | 1 | `ran 64 / skipped 0 (threw 0, missing-corpus-file 0, too-large 0) / wrong 62` | regression detector, above |
+| `ast-diff.ps1` | 0 | `ran 114 / skipped 12 (compiler-refused 12, too-large 0, missing-corpus-file 0, compiler-crashed 0) / wrong 0` | PASS -- 127,318 node lines identical |
+| `psi-tree-diff.ps1` | 0 | `ran 126 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0) / wrong 0` | PASS -- 126 of 126 files replayed |
+| `GotoOracle` | 0 | `ran 26077 / skipped 22960 (crashed-file 0, compiler-refused 22951, invisible-member 9, ambiguous 0) / wrong 0` | clean, and no longer clean-by-omission |
+| `HintDiff` | 0 | `ran 31188 / skipped 14 (compiler-cannot-parse 2, arg-boundary-disagreement 12) / wrong 0` | clean -- every hint names the parameter its declaration gives, and every declared parameter has a hint |
+| `HintNames` | 0 | `ran 1781 / skipped 2 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 2, too-large 0, not-judgeable-in-a-refused-file 0) / wrong 0` | clean, with the refused-file case counted rather than called a disagreement |
+| `HintShapes` | 0 | `ran 5793 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 0` | clean -- 0 labels that are not plain identifiers |
+| `HintDupes` | 0 | `ran 1781 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 0` | clean -- no repeated or empty parameter name |
+| `SymbolDiff` | 1 | `ran 86 / skipped 27 (threw 0, missing-corpus-file 0, too-large 0, type-spelling-only-difference 2, tree-reports-more-declarations 25, scan-reports-more-declarations 0) / wrong 13` | regression detector, above |
+| `FoldDiff` | 1 | `ran 64 / skipped 38 (threw 0, missing-corpus-file 0, too-large 0, granularity-only-difference 38) / wrong 24` | regression detector, above |
 | `FeatureProbe` | 0 | `ran 976 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) / wrong 0` | clean -- six features that had only a registration |
 
-`HintNames`'' one row, in full: ``tests/build/check_cases/unannotated_parameter.vel line 2 `f` tree=[] model=[n]``.
+`HintNames`'s one case, in full: ``tests/build/check_cases/unannotated_parameter.vel line 2 `f` tree=[] model=[n]``.
 That file is a compiler-refused case -- `def f(n)` with an unannotated parameter -- so the tree
 records no parameter and the symbol model reads `n` out of the detail text. On illegal Vela the
-tree''s reading is the defensible one, but the two sources disagree and the count says so rather
-than rounding to zero.
+tree's reading is the defensible one, and the case is now counted as
+`not-judgeable-in-a-refused-file` (printed even at zero, and zero in this pass) rather than as a
+disagreement -- so the count reads 0 while the case stays named here.
 ## Open defects, with the raw verdict line for each
 
-These are the rows that are **not** green, written down here rather than averaged
-away. Each one names the tool, the corpus, the raw line, and what is actually wrong.
+These are the entries that were **not** green, written down here rather than averaged
+away. Each one names the tool, the corpus, the raw line, and what is actually wrong, and
+the ones the 0.1.5 round closed say so in their own heading rather than being deleted.
 
 ### 0. The `since-build="253"` claim was false — FOUND AND FIXED this round
 
@@ -248,12 +268,18 @@ kept for the record at `build\evidence\artifact-0.1.4-253\`. This is the one def
 this list that is **closed**, and it was closed by keeping a promise rather than by
 weakening one.
 
-### 1. `psi-tree-diff.ps1`: 125 of 126 files — an unterminated string breaks the replay's own invariant (row 5 → `partial`)
+### 1. `psi-tree-diff.ps1`: 126 of 126 — an unterminated string broke the replay's own invariant (row 5, FIXED in 0.1.5)
 
 ```
+0.1.5 pass (`idea-plugin\evidence\psi-tree-diff-0.1.5.txt`):
+         files replayed through the platform's builder : 126 of 126 in the corpus
+         failed 0
+         VERDICT : PASS
+         COVERAGE: ran 126 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0) / wrong 0
+
+0.1.4 pass, the FAIL this entry was written for:
 RAW  :   tests/build/lexer_error.vel: leaf VELA_STRING at 31..38 is not a token this
          parser claimed: `"hello)`
-         files replayed through the platform's builder : 126 of 126 in the corpus
          ok 125   failed 1
          VERDICT : FAIL
          COVERAGE: ran 125 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0)
@@ -269,22 +295,35 @@ boundary so that a string element gets the text it denotes) then pulls that toke
 the tree, where `psi-tree-diff` asserts that every non-trivia leaf is a token the
 parser claimed — and it is not.
 
-**Which side is wrong is not yet decided.** The compiler and the plugin's parser agree
-with each other on this file (`ast-diff.ps1` counts it as `compiler refused`, and the
-parser also refused it — the two agree that the file is not legal Vela), so the plugin
-is not wrong about the *language*. It is inconsistent with *itself* about which lexer
-token covers an unterminated string. The consequence in an editor is small — the text
-is coloured as a string, and there is a leaf with no parser opinion about it — but the
-invariant the harness holds is broken, so the row is `partial` until it is either fixed
-or the expectation is restated with a reason.
+**The root cause was the scanner's, and it is fixed.** The token list a failed scan keeps
+was closed with `newline(pos)` — a **one-character-wide** token at the offset the scan
+stopped at, which on an unterminated string is the opening quote. The parser's list
+therefore claimed both `31..32` and `31..36`, and the largest end among its tokens — the
+newline's 32, not the string's 31 — made a leaf starting at exactly 31 fall inside "every
+non-trivia leaf must be a token the parser claimed". The closing newline is now zero-width
+at the failure offset (`VelaSyntax.kt:559-561`, `VelaTok(NEWLINE, pos, pos, …)`): still a
+token, still a statement boundary for a truncated statement, and it claims no character.
+126 of 126, `failed 0`, exit 0 — the root cause fixed rather than the expectation restated
+with a reason.
 
-Note the shape of this one: the file was a `missing-corpus-file` defect an hour ago and
-is now a `FAIL` row. A corpus entry pointing at nothing was hiding a corpus entry that
-tests something.
+**What is still not measured**: the parse agreeing with the compiler's, and the replay
+tiling the text, say nothing about an editor rendering it — no IDE was launched, and row
+5's evidence column says that in place.
 
-### 2. `HintDiff`: 30 argument positions get no parameter-name hint (row 9 → `partial`)
+Note the shape of this one: the file was a `missing-corpus-file` defect an hour before the
+FAIL, and the FAIL is what a corpus entry pointing at nothing had been hiding.
+
+### 2. `HintDiff`: 30 argument positions got no parameter-name hint — gone from the 0.1.5 run (row 9 keeps `partial` for another reason)
 
 ```
+0.1.5 pass (`idea-plugin\evidence\harness-0.1.5.txt`):
+RAW      : VERDICT: every hint names the parameter the compiler declares for that argument,
+             and every declared parameter has a hint
+           hints drawn 11441 / correct 11441 / WRONG 0 / beyond 0
+           COVERAGE: ran 31188 / skipped 14 (compiler-cannot-parse 2,
+             arg-boundary-disagreement 12) / wrong 0
+
+0.1.4 pass, the finding this entry was written for:
 TOOL     : HintDiff  (via harness.ps1 -Tool All)
 CORPUS   : tests + examples + ide-demo + selfhost/parts + bench + selfhost/vela.vel
            = 194 files, 29,006 argument positions
@@ -294,9 +333,9 @@ RAW      : VERDICT: 30 hint position(s) are not right
 ```
 
 Everything that *is* drawn is right — `hints drawn 10688 / correct 10688 / WRONG 0 /
-beyond 0` — so this is not the `s: s: s:` class of bug and it is not a wrong name. It
-is 30 positions where a declared parameter should have a hint and nothing is drawn.
-The findings, verbatim:
+beyond 0` in that run, `11441 / 11441 / 0 / 0` in the current one — so this was never the
+`s: s: s:` class of bug and never a wrong name. It was 30 positions where a declared
+parameter should have a hint and nothing was drawn. The findings, verbatim:
 
 ```
   selfhost/parts/check.vel:1311 `ck_quoted` argument 3 is `suffix`, argument written `"', which is not declared 'pure'"`, but no hint was drawn at all
@@ -318,19 +357,27 @@ scans the characters between the parens: a quote or a bracket inside a string
 literal is the classic way to make that scan land on the wrong close paren, after
 which the later arguments of the call are outside the range and get nothing.
 
-**Named, not fixed.** Every occurrence is in `selfhost/parts/*` (and the same text
-again in `selfhost/vm.vel`, which is their concatenation), so it is the language's
-own 400 KB of source that shows it — nothing in `examples/` or `tests/build/` does.
-Deciding whether the fix belongs in the range scanner or in the declared-name reader
-is the next round's job; the reproduction is the six lines above.
+**Every occurrence was in `selfhost/parts/*`** (and the same text again in
+`selfhost/vm.vel`, which is their concatenation), so it was the language's own 400 KB of
+source that showed it — nothing in `examples/` or `tests/build/` did.
 
-### 3. `HintDiff`: 125 argument positions the harness cannot judge
+**Superseded, and the cause is not established.** The current run has no such position
+(`wrong 0`) and the unjudged class fell from 125 to 12, but the two runs are not over the
+same corpus (29,006 argument positions then, 31,188 now) and nothing in the evidence
+records *which* change removed the 30. `VelaInlayHints.kt` — the file this entry
+suspected — is not among the files the 0.1.5 round modified, while `selfhost/parts/*.vel`,
+where every one of the 30 was, is. So this is recorded as "the finding is not in the
+current run", not as "fixed here".
+
+### 3. `HintDiff`: argument positions the harness cannot judge — 125 in the 0.1.4 run, 12 now
 
 ```
-COVERAGE: ... skipped 127 (compiler-cannot-parse 2, arg-boundary-disagreement 125) ...
+0.1.5: COVERAGE: ... skipped 14 (compiler-cannot-parse 2, arg-boundary-disagreement 12) ...
+0.1.4: COVERAGE: ... skipped 127 (compiler-cannot-parse 2, arg-boundary-disagreement 125) ...
 ```
 
-Measured with `--explain`, which prints the disagreement instead of asserting one:
+Measured with `--explain`, which prints the disagreement instead of asserting one (the
+rows below are from the 0.1.4 run):
 
 ```
       [why] selfhost/parts/emit_llvm.vel:1143 arg 13 of `ll_expr` nodeStart=49143
@@ -344,9 +391,9 @@ Measured with `--explain`, which prints the disagreement instead of asserting on
 A hint *for this call*, carrying a name *this callee declares*, sits a few characters
 from where the parser puts the argument — so the two sides disagree about where a
 complex argument begins, or how many arguments there are, and the harness cannot say
-whether the position's own hint is present. It is counted (`arg-boundary-disagreement
-125`) rather than dropped, and it is the reason row 9 is `partial` even without
-defect 1.
+whether the position's own hint is present. It is counted rather than dropped
+(`arg-boundary-disagreement 125` then, `12` now), and it is no longer why row 9 is
+`partial` — the unmeasured popup is. What keeps this entry is that 12 is not 0.
 
 **Why this is not just the harness.** The first version of this check compared
 offsets exactly and reported 3,073 findings — those were the harness being wrong
@@ -355,13 +402,14 @@ reports the opening quote). The second version widened the window to the whole
 argument span and reported 2,392 — those were nested calls, where an inner argument's
 hint falls inside an outer argument's span (`print(len(a))`). Both were found by
 reading the raw rows, and both are written into the source as comments so the next
-change does not re-introduce them. The 30 that remain are not explained by either.
+change does not re-introduce them. The 30 that remained were not explained by either, and
+are not in the current run.
 
 ### 4. The verifier's remaining hole, and the one it had
 
 `mutation-test.ps1` proves `VerifyPlugin` can fail: **13 mutants, 12 caught, 0 holes,
 1 control correct, 0 script/verdict problems**, baseline `RESULT: PASS`, published to
-`build\verify\mutation-0.1.4\mutation-report-0.1.4.txt` with the version, the jar's
+`build\verify\mutation-0.1.5\mutation-report-0.1.5.txt` with the version, the jar's
 SHA256 and the time in its first lines, plus one verifier log per mutant. The known
 open hole was `classRegisteredNowhere`, and it is **no longer a hole**: the mutant
 removes the `codeInsight.inlayProvider` registration and the verifier reports
@@ -379,7 +427,7 @@ contract no installed extension point declares *and* is registered nowhere — t
 no list to check it against. The count of such classes in this build is 0.
 
 `tools\negative-tests.ps1` (the older A–I set) is **12/12 caught, 0 missed, 0 void**,
-published to `build\verify\negative-0.1.4\negative-report.txt`. Getting there required
+published to `build\verify\negative-0.1.5\negative-report.txt`. Getting there required
 fixing two real verifier holes, both found by the negative test rather than by reading:
 
 | hole | what it looked like | fix |
