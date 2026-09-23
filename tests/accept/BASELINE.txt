@@ -1,0 +1,56 @@
+# tests\accept\BASELINE.txt -- what the acceptance corpus does TODAY.
+#
+# Written by `tools\accept-status.ps1 -Record`.  Every program here is written for a
+# feature Vela does not have yet, so REFUSED is the expected state and the diagnostic
+# is what the compiler says today.  A difference is a failure even when it looks like
+# progress: the day a feature lands, this file is what says so, and the program moves
+# into tests\cases.txt with a golden.  Shape:  name | outcome | first diagnostic line
+# recorded against compiler sha256 42e5d5eec76aa13a28b265daaa438fb835927948ab3af665e49c34c0d80f1bdb
+tests/accept/closure_escaping_refused.vel | REFUSED | vela: syntax error: expected '{' to open a block, found '('
+tests/accept/closure_fn_parameter.vel | REFUSED | vela: syntax error: expected ')' after the parameters
+tests/accept/closure_lambda_as_argument.vel | REFUSED | vela: syntax error: expected ')' after the parameters
+tests/accept/closure_lambda_local.vel | REFUSED | vela: syntax error: expected a newline between statements, found '('
+tests/accept/enum_binding_arity.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Shape'
+tests/accept/enum_duplicate_arm.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Color'
+tests/accept/enum_else_not_last.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Color'
+tests/accept/enum_exhaustive_switch.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Op'
+tests/accept/enum_in_array.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Slot'
+tests/accept/enum_match_no_else.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Color'
+tests/accept/enum_match_non_enum.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Color'
+tests/accept/enum_missing_variant.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Color'
+tests/accept/enum_nested_pattern.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Inner'
+tests/accept/enum_payload_bind.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Shape'
+tests/accept/enum_self_payload.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Tree'
+tests/accept/enum_unknown_variant.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Shape'
+tests/accept/generics_identity.vel | REFUSED | vela: syntax error: expected '(' after the function name
+tests/accept/generics_infinite_monomorph.vel | REFUSED | vela: syntax error: expected '(' after the function name
+tests/accept/generics_struct.vel | REFUSED | vela: syntax error: expected '{' to open a block, found '['
+tests/accept/generics_type_arg_arity.vel | REFUSED | vela: syntax error: expected '(' after the function name
+tests/accept/iterate_forin_array.vel | REFUSED | vela: syntax error: this front end iterates range(...) only
+tests/accept/iterate_forin_array_of_structs.vel | REFUSED | vela: syntax error: this front end iterates range(...) only
+tests/accept/iterate_forin_not_iterable.vel | REFUSED | vela: syntax error: this front end iterates range(...) only
+tests/accept/modules/mathlib.vel | REFUSED | vela: type error: no 'main' function
+tests/accept/modules/module_cycle_a.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'module_cycle_b'
+tests/accept/modules/module_cycle_b.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'module_cycle_a'
+tests/accept/modules/module_import_from.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'mathlib'
+tests/accept/modules/module_import_missing.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'nosuchmodule'
+tests/accept/modules/module_import_qualified.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'mathlib'
+tests/accept/modules/module_import_reserved_name.vel | ACCEPTED | 
+tests/accept/modules/module_import_twice.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'mathlib'
+tests/accept/modules/module_import_unknown_name.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'mathlib'
+tests/accept/nested_fn_called.vel | REFUSED | vela: type error: nested functions are not supported
+tests/accept/nested_fn_capture_refused.vel | REFUSED | vela: type error: nested functions are not supported
+tests/accept/nested_fn_recurse.vel | REFUSED | vela: type error: nested functions are not supported
+tests/accept/nested_fn_sibling_call.vel | REFUSED | vela: type error: nested functions are not supported
+tests/accept/result_question_generic.vel | REFUSED | vela: syntax error: character is not part of Vela
+tests/accept/result_question_non_result.vel | REFUSED | vela: syntax error: character is not part of Vela
+tests/accept/result_question_propagate.vel | REFUSED | vela: syntax error: character is not part of Vela
+tests/accept/result_question_void_function.vel | REFUSED | vela: syntax error: character is not part of Vela
+tests/accept/slices_array_const.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
+tests/accept/slices_const_out_of_range.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
+tests/accept/slices_reversed_bounds.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
+tests/accept/slices_runtime_end_out_of_range.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
+tests/accept/slices_str.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
+tests/accept/string_concat_basic.vel | REFUSED | vela: type error: string concatenation is not implemented in Vela 0.1
+tests/accept/string_concat_growth.vel | REFUSED | vela: type error: string concatenation is not implemented in Vela 0.1
+tests/accept/string_concat_int_operand.vel | REFUSED | vela: type error: operator '+' mixes str and int
