@@ -328,11 +328,51 @@ function Place-LlvmRuntime([string] $vmPath) {
     }
 }
 
+# A build cannot overwrite an executable that is running, and in this tree something is almost
+# always running `selfhost\build\vm.exe`: the gates spawn it once per corpus file, and
+# `GotoOracle` alone runs `vm.exe check` about 27,000 times per pass.  The link output is then
+# held open and the build dies two steps before the promotion with
+#
+#     LINK : fatal error LNK1104: cannot open file "...\selfhost\build\vm.exe"
+#
+# which reads as a broken build rather than as a busy file.  Measured 2026-09-24: the compiler
+# agent renamed the held binary aside and a new `vm.exe` existed again within the second, with
+# 24 stray `vm` processes in the list -- so this is a spawn rate, not one stray process.
+#
+# Renaming the held file aside costs nothing: the processes already running it keep the old
+# inode, and the link writes a fresh path.  It used to be done by hand, which cost one retry
+# per build; now the build does it, and says so.  (`/selfhost/build/*.held` is ignored, which
+# matters because the file it leaves behind is 867 KB of binary and cannot even be deleted
+# while a process still holds it.)
+function Clear-LockedTarget([string] $path) {
+    if (-not (Test-Path -LiteralPath $path)) { return }
+    $held = $false
+    try {
+        $fs = [System.IO.File]::Open($path, [System.IO.FileMode]::Open,
+                                     [System.IO.FileAccess]::ReadWrite,
+                                     [System.IO.FileShare]::None)
+        $fs.Close()
+    } catch {
+        $held = $true
+    }
+    if (-not $held) { return }
+    $aside = "$path.held"
+    Remove-Item -LiteralPath $aside -Force -ErrorAction SilentlyContinue
+    try {
+        Move-Item -LiteralPath $path -Destination $aside -Force -ErrorAction Stop
+        Say ("    {0} is held open by a running process; moved it aside to {1} so the link can write a fresh one" -f (Split-Path $path -Leaf), (Split-Path $aside -Leaf))
+    } catch {
+        Say ("    !! {0} is held open and could not be moved aside: {1}" -f $path, $_.Exception.Message)
+        $script:failed = $true
+    }
+}
+
 # ---------------------------------------------------------------- 2. vm.exe
 #
 # Built from the seed C when it is missing or stale, otherwise left alone: a
 # compiler is not rebuildable by itself until after this step, which is exactly
 # why the seed C is checked in.
+Clear-LockedTarget $seedExe
 $needSeed = $Force -or -not (Test-Path -LiteralPath $seedExe)
 if (-not $needSeed) {
     $needSeed = (Get-Item -LiteralPath $seedC).LastWriteTime -gt (Get-Item -LiteralPath $seedExe).LastWriteTime
@@ -490,11 +530,13 @@ Remove-Item -LiteralPath $scratchC -Force -ErrorAction SilentlyContinue
 # generation later the probe answers "yes" and this branch is never taken again.
 if (Test-ExtraLinkArg $vmExe) {
     Say '    the compiler knows the extra-link argument: passed as the 5th word'
+    Clear-LockedTarget (Join-Path $root 'selfhost\vm.exe')
     Step '4/8  build the compiler with the compiler' { & $vmExe build $selfSource $runtimeArg $extraLink } | Out-Null
 } else {
     Say '    this compiler predates the extra-link argument: the same inputs go'
     Say '    through `CL`, which the C compiler reads as extra arguments'
     $env:CL = $extraLink
+    Clear-LockedTarget (Join-Path $root 'selfhost\vm.exe')
     Step '4/8  build the compiler with the compiler' { & $vmExe build $selfSource $runtimeArg } | Out-Null
     Remove-Item Env:\CL -ErrorAction SilentlyContinue
 }
