@@ -1,0 +1,2 @@
+vela: type error: enum 'Tree' cannot carry itself in a payload: variant 'Node' has a field of that same enum type, and a value type cannot contain itself
+  at tests/build/enum_self_payload.vel:7

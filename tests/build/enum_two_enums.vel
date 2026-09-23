@@ -1,0 +1,48 @@
+# Two enums in one file, and a match on a payload that is itself an enum.
+#
+# This is the shape the first version of the feature got wrong, and nothing in
+# tests/accept could have caught it: every program there declares exactly one
+# enum, so an enum table whose variant list started at record 0 for every enum
+# looked right.  With two, the second enum's variant offset was written in the
+# pass that runs *before* any variant exists, so it pointed at the first enum's
+# variants -- and the exhaustiveness rule judged the wrong list.  Its visible half
+# was a refusal of a match that names every variant it has; its invisible half was
+# a match that omits a variant and passes because another enum's variant names
+# were covered, which is a wrong answer.
+#
+# Expected stdout, byte for byte:
+#     3
+#     -1
+
+enum Inner {
+    Small(n: int)
+    Zero
+}
+
+enum Outer {
+    Wrap(inner: Inner)
+    Nothing
+}
+
+def unwrap(o: Outer) -> int {
+    match o {
+        Wrap(i) {
+            match i {
+                Small(n) {
+                    return n
+                }
+                Zero {
+                    return 0 - 1
+                }
+            }
+        }
+        Nothing {
+            return 0 - 2
+        }
+    }
+}
+
+def main() -> None {
+    print(unwrap(Wrap(Small(3))))
+    print(unwrap(Wrap(Zero)))
+}

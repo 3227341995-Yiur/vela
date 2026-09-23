@@ -1,0 +1,2 @@
+vela: type error: this match does not handle variant 'Blue' of enum 'Color': name it, or add an else arm
+  at tests/build/enum_missing_variant.vel:12

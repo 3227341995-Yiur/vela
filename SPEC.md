@@ -46,8 +46,15 @@ Identifiers are `[A-Za-z_][A-Za-z0-9_]*`. Keywords:
 ```
 def return if elif else while for in range break continue pass
 and or not True False None mut struct parallel pure
+enum match                     # enums with payloads and `match`, see §13
 extern                         # `extern c`, implemented in 0.1 — see §12
 ```
+
+`enum` and `match` became keywords when §13 landed. Before that both spellings
+were ordinary identifiers, and the alternative — recognising a statement-position
+name as a `match` — has to guess between `match = 1`, `match(x)` and
+`match x { ... }`. A program that used either as a name is now refused, by name,
+which is the decision rather than an accident.
 
 `elif` is lexed but **refused by the parser**: Vela writes `else if`, and the
 diagnostic says so.
@@ -241,6 +248,8 @@ mut buf: Array[float, 1024]    # zero-filled array; scalars need an initialiser
 | `pure def f(...) -> R { ... }` | promises no side effects; required to call it from a `parallel for` |
 | `extern c def f(x: T) -> R` / `extern c pure def ...` | a C function, declared: no body, scalar types only, see §12 |
 | `struct S { field: T ... def m(self: S, ...) -> R { ... } }` | value type with methods; **fields may not be arrays** |
+| `enum E { V1(f: T) V2 }` | a nominal sum type; see §13 |
+| `match e { V1(x) { ... } else { ... } }` | a statement, not an expression; see §13 |
 | `x: T = e` / `mut x: T = e` / `x = e` / `x += e` | declaration, re-assignment, augmented assignment |
 | `a[i] = e`, `s.field = e` | indexed and field assignment |
 | `if c { } else if c { } else { }` | `c` must be `bool` |
@@ -584,3 +593,74 @@ promise is what the library does with what it is given — a C function can corr
 memory, and one that calls `abort()` still aborts. Rust has FFI too, and that is
 exactly why `unsafe` exists there. C++ is out of scope by decision, because it
 has no stable ABI (`DESIGN.md` §9.3).
+
+---
+
+## 13. Enums with payloads, and `match`
+
+```vela
+enum Shape {
+    Circle(radius: float)
+    Rect(w: float, h: float)
+    Empty
+}
+
+def area(s: Shape) -> float {
+    match s {
+        Circle(r) {
+            return 3.14159 * r * r
+        }
+        Rect(w, h) {
+            return w * h
+        }
+        Empty {
+            return 0.0
+        }
+    }
+}
+
+def main() -> None {
+    c: Shape = Circle(2.0)     # construction is the call shape
+    print(area(c), area(Empty))
+}
+```
+
+* **A variant carries at most one payload struct.** `Circle(radius: float)` has
+  one field, `Rect(w: float, h: float)` two, `Empty` none; the field list is
+  written like a parameter list and parsed like one.
+* **An enum is a nominal value type.** Like a struct it lives in the frame, is
+  fixed-size, is copied on assignment, and needs no heap, no `None` and no
+  exception: `Result[T, E]` is a two-variant enum when generics arrive.
+* **Construction is a call.** `Circle(2.0)` is the shape a call already has, and a
+  payload-free variant is its bare name (`Empty`). A variant whose fields are not
+  supplied is refused, and so is one supplied with the wrong number of values.
+* **`match` is a statement**, arms are blocks with braces, and binding is
+  *positional*: `Circle(r)` binds `r` to the payload field in declaration order.
+  Nested patterns (`Circle(Circle(r))`) and guards (`Circle(r) if r > 0`) are
+  refused rather than half-implemented.
+* **Every variant is reachable by name, and only one enum may claim one.** A
+  variant name is file-global, because v1 has no expected-type machinery to read
+  `Empty` as `Shape.Empty` in one position and `Tree.Empty` in another; a second
+  enum declaring the same variant name is refused, naming both.
+* **Exhaustiveness is required.** A `match` over an enum must name every variant
+  or end with `else`, which is the escape hatch and must be last. A missing variant
+  is refused with the variant *named* in the diagnostic, a duplicated arm is
+  refused, and an arm naming a variant of a different enum is refused as well.
+* **The subject must be an enum value**: `match n` over an `int` is refused.
+* **A value type cannot contain itself.** `enum Tree { Node(child: Tree) }` is
+  refused: containing itself needs a boxed representation or an explicit array,
+  and neither exists in 0.1.
+
+### 13.1 What is out of scope in 0.1, and what the back ends refuse
+
+Named here rather than discovered later: equality between two enum values (`==`),
+hashing, `print` of an enum value, generic payloads, and recursion through a
+payload. An enum inside `Array[E, N]` is a value type of a fixed size and the
+interpreter runs it; the C back end refuses that shape **by name**, because it
+does not lower an array of aggregates for structs either, and the LLVM back end
+refuses an enum value anywhere, because it lowers a struct by splatting its fields
+and a tag plus a union is not that shape. A `break` inside a `match` arm is
+refused by the C back end as well: in Vela the word leaves the enclosing loop, and
+in C a `break` inside a `switch` leaves the switch.
+
+

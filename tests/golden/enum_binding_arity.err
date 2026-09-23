@@ -1,0 +1,2 @@
+vela: type error: variant 'Circle' carries 1 payload value(s), so its pattern binds 1 name(s), not 2
+  at tests/build/enum_binding_arity.vel:12

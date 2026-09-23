@@ -328,3 +328,56 @@ run    parallel_alias_nested_rowmajor        tests/probes/parallel_alias_nested_
 # a coincidence.  `run_tests.exe fast` skips this case.
 
 fixpoint selfhost_fixpoint                   selfhost/vm.vel
+
+# ------------------------------------------- enums with payloads, and `match`
+#
+# The twelve programs ENUMS_PLAN.md's acceptance table names.  They were written
+# for `tests/accept/` (which pins what the compiler says *before* a feature lands)
+# and they move here, the way that directory's own README says they would, on the
+# day the feature landed: each one moves into tests\cases.txt with a golden, and
+# BASELINE.txt is re-recorded without them.
+#
+# Four of them are `run` -- both paths, byte for byte -- and the rest are `refuse`,
+# because a feature is only implemented if the programs it must reject are
+# rejected *for the reason the table gives*, with the missing variant named in the
+# diagnostic.
+#
+# `enum_in_array` is `ok` rather than `run`, and that is a measured limit and not a
+# preference: the C back end refuses `Array[E, N]` by name -- an array of
+# aggregates, which it does not lower for structs either -- so there is no compiled
+# program for a `run` row to compare against.  The interpreter runs it, and its
+# output was checked by hand against the bytes in that program's header.
+#
+# `enum_two_enums` and `enum_else_arm` are new here.  The first is the regression
+# case for a bug this corpus could not have caught: every program in tests/accept
+# declares exactly one enum, so an enum table whose variant lists all began at
+# record 0 looked correct, and with two enums the exhaustiveness rule judged the
+# second one against the first one's variants.  The second is the `else` arm that
+# runs -- the table only ever had the refusal for an `else` in the wrong place.
+
+run    enum_payload_bind                     tests/build/enum_payload_bind.vel
+run    enum_match_no_else                    tests/build/enum_match_no_else.vel
+run    enum_else_arm                         tests/build/enum_else_arm.vel
+run    enum_two_enums                        tests/build/enum_two_enums.vel
+ok     enum_in_array                         tests/build/enum_in_array.vel
+run    enum_exhaustive_switch                tests/build/enum_exhaustive_switch.vel
+# The emitted C itself, for the one property of it that a program's output cannot
+# show: an exhaustive match becomes a `switch` with no `default`, so a variant
+# added to the enum without its arm is caught by the checker and by anyone reading
+# the emitted C.  Three digests, so a change in the back end cannot hide behind an
+# unchanged parser.
+dumps  enum_exhaustive_switch                tests/build/enum_exhaustive_switch.vel
+# A keyword decision (SPEC.md 1.3): `enum` and `match` are reserved words now, so a
+# program that used `match` as a variable name is refused.  This pins the day it
+# stopped being accepted.
+refuse enum_keyword_reserved                 tests/build/enum_keyword_reserved.vel
+
+refuse enum_missing_variant                  tests/build/enum_missing_variant.vel
+refuse enum_duplicate_arm                    tests/build/enum_duplicate_arm.vel
+refuse enum_binding_arity                    tests/build/enum_binding_arity.vel
+refuse enum_unknown_variant                  tests/build/enum_unknown_variant.vel
+refuse enum_else_not_last                    tests/build/enum_else_not_last.vel
+refuse enum_match_non_enum                   tests/build/enum_match_non_enum.vel
+refuse enum_self_payload                     tests/build/enum_self_payload.vel
+refuse enum_nested_pattern                   tests/build/enum_nested_pattern.vel
+

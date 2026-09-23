@@ -4,8 +4,8 @@
 
 <!--
 源文件 : SPEC.md
-源文件字节 : 30228
-源文件 SHA256 : efd360e1ebbab421005cf2ac7a7d7a54c41872828b8dfb5c3eaaaae91aed6741
+源文件字节 : 33902
+源文件 SHA256 : db7b7cb8fcb97b47646e8e58b45ef9540d9b61e4268f2bf21bb5441483bc075e
 翻译日期 : 2026-09-24
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -48,8 +48,14 @@ Vela 是一门编译型的系统语言。它读起来像 Python，但语法里�
 ```
 def return if elif else while for in range break continue pass
 and or not True False None mut struct parallel pure
+enum match                     # 带载荷的 enum 与 `match`，见 §13
 extern                         # `extern c`, implemented in 0.1 — see §12
 ```
+
+`enum` 与 `match` 是 §13 落地时成为关键字的。在那之前这两个拼写都是普通标识符，
+而另一种做法——把语句位置上的名字识别成 `match`——必须在 `match = 1`、`match(x)`
+与 `match x { ... }` 之间去猜。现在把其中任何一个当名字用的程序都会被拒绝，而且指名道姓，
+这是决定，不是意外。
 
 `elif` 会被词法分析，但**被语法分析器拒绝**：Vela 写作 `else if`，诊断信息就是这么说的。
 
@@ -213,6 +219,8 @@ mut buf: Array[float, 1024]    # zero-filled array; scalars need an initialiser
 | `pure def f(...) -> R { ... }` | 承诺无副作用；从 `parallel for` 调用它时需要 |
 | `extern c def f(x: T) -> R` / `extern c pure def ...` | 一个 C 函数，只声明：没有函数体，仅标量类型，见 §12 |
 | `struct S { field: T ... def m(self: S, ...) -> R { ... } }` | 带方法的值类型；**字段不得是数组** |
+| `enum E { V1(f: T) V2 }` | 名义和类型（nominal sum type）；见 §13 |
+| `match e { V1(x) { ... } else { ... } }` | 是语句，不是表达式；见 §13 |
 | `x: T = e` / `mut x: T = e` / `x = e` / `x += e` | 声明、重新赋值、复合赋值 |
 | `a[i] = e`、`s.field = e` | 下标赋值和字段赋值 |
 | `if c { } else if c { } else { }` | `c` 必须是 `bool` |
@@ -505,3 +513,64 @@ extern c pure def sqrt(x: float) -> float    # `double sqrt(double)`, no side ef
 都不能承诺的是库拿它得到的东西做了什么——一个 C 函数可以破坏内存，而一个调用 `abort()`
 的 C 函数仍然会 abort。Rust 也有 FFI，这正是那里存在 `unsafe` 的原因。C++ 由决定排除在
 外，因为它没有稳定的 ABI（`DESIGN.md` §9.3）。
+
+---
+
+## 13. 带载荷的 enum，以及 `match`
+
+```vela
+enum Shape {
+    Circle(radius: float)
+    Rect(w: float, h: float)
+    Empty
+}
+
+def area(s: Shape) -> float {
+    match s {
+        Circle(r) {
+            return 3.14159 * r * r
+        }
+        Rect(w, h) {
+            return w * h
+        }
+        Empty {
+            return 0.0
+        }
+    }
+}
+
+def main() -> None {
+    c: Shape = Circle(2.0)     # 构造就是调用的形状
+    print(area(c), area(Empty))
+}
+```
+
+* **一个变体最多携带一个载荷结构体。** `Circle(radius: float)` 有一个字段，
+  `Rect(w: float, h: float)` 有两个，`Empty` 没有；字段表写起来像参数表，解析方式也一样。
+* **enum 是名义类型（nominal），也是值类型。** 和结构体一样，它活在栈帧里、大小固定、
+  赋值即复制，不需要堆、不需要 `None`、也不需要异常：等泛型落地时 `Result[T, E]`
+  就是一个双变体的 enum。
+* **构造就是调用。** `Circle(2.0)` 用的就是调用本来就有的形状，没有载荷的变体则是它的裸名字
+  （`Empty`）。该给字段的值没给会被拒绝，给多了也一样。
+* **`match` 是语句**，分支是带花括号的块，绑定是*按位置*的：`Circle(r)` 按声明顺序把 `r`
+  绑定到第 1 个载荷字段。嵌套模式（`Circle(Circle(r))`）与守卫（`Circle(r) if r > 0`）
+  是拒绝项，不是留待以后半实现的东西。
+* **每个变体都能按名字到达，并且只有一个 enum 能占住一个名字。** 变体名是文件全局的，
+  因为 v1 没有"期望类型"那套机制去让 `Empty` 在一个位置读作 `Shape.Empty`、在另一个位置
+  读作 `Tree.Empty`；第二个 enum 声明同名变体时会被拒绝，并同时点名两个 enum。
+* **必须穷尽。** 对 enum 的 `match` 要么点出每一个变体，要么以 `else` 结尾；`else`
+  是逃生口，而且必须是最后一个分支。缺变体会被拒绝，而且诊断里*点名*那个变体；重复分支会被
+  拒绝；分支点到另一个 enum 的变体也会被拒绝。
+* **主语必须是 enum 值**：对 `int` 做 `match n` 会被拒绝。
+* **值类型不能包含自身。** `enum Tree { Node(child: Tree) }` 会被拒绝：包含自身需要装箱
+  表示或者显式数组，而 0.1 里两者都不存在。
+
+### 13.1 0.1 不做的部分，以及各后端拒绝什么
+
+在这里点名，而不是留给人以后去发现：两个 enum 值之间的相等比较（`==`）、哈希、
+`print` 一个 enum 值、泛型载荷，以及通过载荷递归。`Array[E, N]` 里的 enum 是大小固定的
+值类型，解释器可以运行它；C 后端则**按名字**拒绝这个形状，因为它对结构体也没有降低
+聚合元素的数组；LLVM 后端在任何地方都拒绝 enum 值，因为它降低结构体的方式是把字段摊进寄存器，
+而"标签 + union"不是那个形状。`match` 分支里的 `break` 同样被 C 后端拒绝：在 Vela 里这个词
+离开的是外层循环，而在 C 里 `switch` 里的 `break` 离开的是 switch。
+

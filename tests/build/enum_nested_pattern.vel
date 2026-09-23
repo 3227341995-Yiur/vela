@@ -10,7 +10,7 @@ enum Inner {
 
 enum Outer {
     Wrap(inner: Inner)
-    None
+    Nothing
 }
 
 def unwrap(o: Outer) -> int {
@@ -21,12 +21,12 @@ def unwrap(o: Outer) -> int {
         Wrap(Zero) {
             return 0
         }
-        None {
+        Nothing {
             return 0 - 1
         }
     }
 }
 
-def main() -> None {
+def main() -> Nothing {
     print(unwrap(Wrap(Small(3))))
 }

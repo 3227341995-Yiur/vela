@@ -1,0 +1,28 @@
+# Claim: `else` is the exhaustiveness escape hatch, it matches last, and an arm
+# that goes through it behaves the same on both paths.  The plan's table has no
+# `else` case that *runs* -- `enum_else_not_last` is the refusal -- so this is the
+# case that would catch an `else` which stopped catching anything, or a `default:`
+# emitted where it does not belong.
+# Expected stdout, byte for byte:
+#     1 -1 -1
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+def code(c: Color) -> int {
+    match c {
+        Red {
+            return 1
+        }
+        else {
+            return 0 - 1
+        }
+    }
+}
+
+def main() -> None {
+    print(code(Red), code(Green), code(Blue))
+}

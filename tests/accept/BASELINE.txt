@@ -5,23 +5,11 @@
 # is what the compiler says today.  A difference is a failure even when it looks like
 # progress: the day a feature lands, this file is what says so, and the program moves
 # into tests\cases.txt with a golden.  Shape:  name | outcome | first diagnostic line
-# recorded against compiler sha256 42e5d5eec76aa13a28b265daaa438fb835927948ab3af665e49c34c0d80f1bdb
+# recorded against compiler sha256 2d1793afb26d0bf65fdaec25fb8728d49b7eced6a7ceee35086a233c71dfd3ce
 tests/accept/closure_escaping_refused.vel | REFUSED | vela: syntax error: expected '{' to open a block, found '('
 tests/accept/closure_fn_parameter.vel | REFUSED | vela: syntax error: expected ')' after the parameters
 tests/accept/closure_lambda_as_argument.vel | REFUSED | vela: syntax error: expected ')' after the parameters
 tests/accept/closure_lambda_local.vel | REFUSED | vela: syntax error: expected a newline between statements, found '('
-tests/accept/enum_binding_arity.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Shape'
-tests/accept/enum_duplicate_arm.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Color'
-tests/accept/enum_else_not_last.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Color'
-tests/accept/enum_exhaustive_switch.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Op'
-tests/accept/enum_in_array.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Slot'
-tests/accept/enum_match_no_else.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Color'
-tests/accept/enum_match_non_enum.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Color'
-tests/accept/enum_missing_variant.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Color'
-tests/accept/enum_nested_pattern.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Inner'
-tests/accept/enum_payload_bind.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Shape'
-tests/accept/enum_self_payload.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Tree'
-tests/accept/enum_unknown_variant.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'Shape'
 tests/accept/generics_identity.vel | REFUSED | vela: syntax error: expected '(' after the function name
 tests/accept/generics_infinite_monomorph.vel | REFUSED | vela: syntax error: expected '(' after the function name
 tests/accept/generics_struct.vel | REFUSED | vela: syntax error: expected '{' to open a block, found '['
