@@ -77,6 +77,18 @@ public final class FeatureProbe {
     private final Path repoRoot;
     private final List<String> corpus = new ArrayList<>();
 
+    /**
+     * The sections that failed, in their own words.
+     *
+     * Six sections each print their own `  VERDICT:` sentence, so the one line a driver
+     * reads has to be an aggregate, and the aggregate must not be able to be greener
+     * than its parts: a green section 6 must never cover a red section 1.  Before this
+     * existed, the tool's *only* whole-run conclusion was its exit code -- and
+     * `harness.ps1` reads the text, so it summarised a run that had printed six verdicts
+     * and exited 0 as "the tool did not finish".
+     */
+    private final List<String> sectionFailures = new ArrayList<>();
+
     private FeatureProbe(Path repoRoot) {
         this.repoRoot = repoRoot;
     }
@@ -98,6 +110,12 @@ public final class FeatureProbe {
         System.out.println("corpus   : " + repoRoot + " (" + corpus.size() + " file(s))");
         System.out.println("asking   : the six features that had a registration and no measurement");
         System.out.println();
+        // FIVE OF THE SIX SECTIONS ARE OVER THE CORPUS.  With none, they answer "yes" having
+        // looked at nothing, and the aggregate below must not call that clean.
+        if (corpus.isEmpty()) {
+            sectionFailures.add("corpus: no .vel file was found under " + repoRoot + ", so the"
+                    + " five corpus-wide sections had nothing to judge");
+        }
 
         Coverage cov = new Coverage()
                 .defectCategory("missing-corpus-file")
@@ -119,10 +137,28 @@ public final class FeatureProbe {
         System.out.println("  unit: one (capability, file) pair for sections 1-5, plus one"
                 + " artifact-level check for section 6");
         cov.print();
+        // THE ONE LINE A DRIVER READS, AND IT CANNOT BE GREENER THAN THE SIX SECTIONS.
+        //
+        // `[PASS]` / `[FAIL]` is machine-readable on purpose: `harness.ps1` collects
+        // `^\s*VERDICT` lines and lets a `[FAIL]` outrank whatever came last, because with
+        // six sections in one log "the last verdict line" is a green section 6 covering a
+        // red section 1.  Both this sentence and the exit code are computed from the same
+        // two facts -- `sectionFailures` and the coverage triple -- so they cannot disagree.
+        boolean clean = sectionFailures.isEmpty() && cov.wrong() == 0 && !cov.hasDefect();
+        System.out.println("VERDICT: " + (clean
+                ? "[PASS] all six features answered as the invariant requires, over "
+                        + cov.ran() + " judged unit(s) (5 corpus-wide checks per readable file,"
+                        + " plus one artifact-level check), wrong 0, no defect category tripped"
+                : "[FAIL] " + sectionFailures.size() + " of 6 feature section(s) failed -- "
+                        + String.join("; ", sectionFailures)
+                        + (cov.hasDefect() ? " -- and the run itself is not clean (a defect"
+                                + " category tripped: missing-corpus-file "
+                                + cov.get("missing-corpus-file") + ", too-large "
+                                + cov.get("too-large") + ")" : "")));
         // 1 is "a feature answered wrongly", 3 is "the harness or the corpus is at
         // fault".  The old shape -- a per-section count and no exit code -- could not
         // be used by anything.
-        System.exit(cov.wrong() > 0 ? 1 : (cov.hasDefect() ? 3 : 0));
+        System.exit(clean ? 0 : (sectionFailures.isEmpty() ? 3 : 1));
     }
 
     // ------------------------------------------------------------------ corpus
@@ -240,6 +276,10 @@ public final class FeatureProbe {
                 : uncoloured.size() + " token type(s) would be drawn uncoloured"));
         cov.ran(cov.ran() + files.size());
         cov.wrong(cov.wrong() + uncoloured.size());
+        if (!uncoloured.isEmpty()) {
+            sectionFailures.add("highlighting: " + uncoloured.size() + " token type(s) the lexer"
+                    + " emits over this corpus would be drawn with no colour key " + uncoloured);
+        }
         System.out.println();
     }
 
@@ -313,6 +353,10 @@ public final class FeatureProbe {
                 : unmatched + " delimiter(s) cannot be matched by the platform"));
         cov.ran(cov.ran() + files.size());
         cov.wrong(cov.wrong() + unmatched);
+        if (unmatched > 0) {
+            sectionFailures.add("brace matching: " + unmatched + " delimiter(s) are not one of the"
+                    + " types getPairs() declares, so the platform cannot match them");
+        }
         System.out.println();
     }
 
@@ -358,12 +402,23 @@ public final class FeatureProbe {
         }
         System.out.println("  comment tokens in corpus: " + comments);
         System.out.println("  whose text does not start with the prefix: " + wrongPrefix);
-        System.out.println("  VERDICT: " + (wrongPrefix == 0 && prefix != null && prefix.length() > 0
+        boolean prefixOk = wrongPrefix == 0 && prefix != null && prefix.length() > 0;
+        System.out.println("  VERDICT: " + (prefixOk
                 ? "the commenter's prefix is the lexer's comment character, over " + comments
                         + " real comment token(s)"
                 : "the two disagree, so Ctrl+/ would write text the lexer does not read as a comment"));
         cov.ran(cov.ran() + files.size());
-        cov.wrong(cov.wrong() + (wrongPrefix == 0 ? 0 : 1));
+        // 1 WHENEVER THE SENTENCE ABOVE SAYS THE TWO DISAGREE.  It used to count 0 for a
+        // prefix that is empty or absent (the condition and the count were separate, and
+        // the count only looked at wrongPrefix), which would have been a red verdict with
+        // `wrong 0` behind it -- exactly the shape this project refuses.
+        cov.wrong(cov.wrong() + (prefixOk ? 0 : 1));
+        if (!prefixOk) {
+            sectionFailures.add("commenting: " + (prefix == null || prefix.isEmpty()
+                    ? "the commenter declares no line-comment prefix at all"
+                    : wrongPrefix + " of " + comments + " comment token(s) do not start with the"
+                            + " prefix `" + prefix + "`"));
+        }
         System.out.println();
     }
 
@@ -423,6 +478,10 @@ public final class FeatureProbe {
                 : disagreements + " disagreement(s) and " + unclassified + " unclassified use(s)"));
         cov.ran(cov.ran() + files.size());
         cov.wrong(cov.wrong() + disagreements);
+        if (disagreements > 0 || unclassified > 0) {
+            sectionFailures.add("semantic highlighting: " + disagreements + " use(s) where"
+                    + " classify and classifyAll disagree, " + unclassified + " with no kind at all");
+        }
         System.out.println();
     }
 
@@ -496,6 +555,11 @@ public final class FeatureProbe {
                 : "the rule set can join lines it must not join"));
         cov.ran(cov.ran() + files.size());
         cov.wrong(cov.wrong() + atRisk + lengthMismatch + negativeDepth);
+        if (atRisk > 0 || lengthMismatch > 0 || negativeDepth > 0) {
+            sectionFailures.add("formatter: " + atRisk + " gap(s) a reformat could join, "
+                    + lengthMismatch + " depth/spacing length mismatch(es), " + negativeDepth
+                    + " negative depth(s)");
+        }
         System.out.println();
     }
 
@@ -567,6 +631,8 @@ public final class FeatureProbe {
                     + " offered");
             cov.ran(cov.ran() + 1);
             cov.wrong(cov.wrong() + 1);
+            sectionFailures.add("live templates: the file the descriptor names is in neither the"
+                    + " plugin artifact nor the classpath, so nothing would ever be offered");
             System.out.println();
             return;
         }
@@ -592,6 +658,12 @@ public final class FeatureProbe {
                                 + " nothing would be offered inside a .vel file")));
         cov.ran(cov.ran() + 1);
         cov.wrong(cov.wrong() + (ok ? 0 : 1));
+        if (!ok) {
+            sectionFailures.add("live templates: " + (!inArtifact
+                    ? "the template file is not in the plugin artifact, so nothing would ever be"
+                            + " offered inside an IDE"
+                    : "the file exists but declares no template in the VELA context"));
+        }
         System.out.println("  (the context type itself, and the descriptor line that names this"
                 + " file, are checked by VerifyPlugin against the installed platform)");
         System.out.println();

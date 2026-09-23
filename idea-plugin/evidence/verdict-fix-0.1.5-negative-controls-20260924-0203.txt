@@ -1,0 +1,484 @@
+NEGATIVE CONTROLS and before/after output for the VERDICT-line fix
+produced 2026-09-24 02:03 on this machine
+
+Files changed by this work (working tree, not committed):
+  idea-plugin\harness.ps1
+  idea-plugin\tools\harness\src\HintNames.java
+  idea-plugin\tools\harness\src\HintShapes.java
+  idea-plugin\tools\harness\src\HintDupes.java
+  idea-plugin\tools\harness\src\FeatureProbe.java
+
+Compiler used by every run here (a private copy, so a concurrent rebuild of
+selfhost\build\vm.exe cannot move the numerics underneath a control):
+  C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\vm\vm.exe
+  size  867328 bytes
+  sha256 bce9036c71aa5cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15
+  LLVM-C.dll sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe
+
+Tool runs were driven by C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\run1.ps1, which passes the same @argfile classpath
+harness.ps1 does (the classpath is 32 KB and does not fit on a command line).
+
+##############################################################################
+# 1. BEFORE -- the tree as it was (harness.ps1 + the four tools, unmodified HEAD)
+##############################################################################
+The three tools print their counts and a COVERAGE line and NO VERDICT line at all;
+FeatureProbe prints its verdicts indented by two spaces.  Counted, not eyeballed:
+  HintNames     lines matching -like 'VERDICT*' = 0   matching '^\s*VERDICT' = 0   COVERAGE lines = 1
+  HintShapes    lines matching -like 'VERDICT*' = 0   matching '^\s*VERDICT' = 0   COVERAGE lines = 1
+  HintDupes     lines matching -like 'VERDICT*' = 0   matching '^\s*VERDICT' = 0   COVERAGE lines = 1
+  FeatureProbe  lines matching -like 'VERDICT*' = 0   matching '^\s*VERDICT' = 6   COVERAGE lines = 1
+
+and the tails of the three that printed no verdict line at all:
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\BEFORE-HintNames.log  (16 line(s), showing 4)
+  wrong                   : 0
+  corpus accounted for    : 1791  (ran + skipped)
+
+COVERAGE: ran 1789 / skipped 2 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 2, too-large 0) / wrong 0
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\BEFORE-HintDupes.log  (13 line(s), showing 2)
+
+COVERAGE: ran 1789 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 0
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\BEFORE-HintShapes.log  (18 line(s), showing 2)
+
+COVERAGE: ran 5793 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 0
+
+FeatureProbe: the six verdict lines it did print (indented), and the exit code.
+C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\BEFORE-FeatureProbe.log
+      VERDICT: every token type the lexer emits over this corpus gets a colour key
+      VERDICT: every delimiter in the corpus is a type getPairs() declares
+      VERDICT: the commenter's prefix is the lexer's comment character, over 3867 real comment token(s)
+      VERDICT: the two paths agree on every one of 16107 name use(s)
+      VERDICT: no gap with a line feed in it can be closed by this rule set, over 19068 real line break(s)
+      VERDICT: the file is in the artifact, declares 7 template(s), and every one is in the VELA context
+
+
+##############################################################################
+# 2. BEFORE -- the false sentence, produced end to end by the unmodified harness.ps1
+##############################################################################
+harness.ps1 -Tool FeatureProbe, run against the unmodified tree.  The tool's own
+log in that same run carried six VERDICT lines and exit 0.  The lines that matter,
+out of the run below:
+      FeatureProbe   exit 0   COVERAGE: ran 1201 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 
+        the verdict each tool reached:
+      FeatureProbe   (no VERDICT line: the tool did not finish)
+
+The run in full:
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\BEFORE-harness-FeatureProbe.raw.txt  (118 line(s), showing 118)
+
+=== Preconditions
+    repo root     : C:\Users\lu\Downloads\vela
+    JDK           : D:\JetBrains\IntelliJ IDEA 2026.2.1
+    tools         : FeatureProbe
+    using the frozen compiler already at C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\vm\vm.exe (-Refreeze to re
+place it)
+    frozen compiler: 867328 bytes  sha256 bce9036c71aa5cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15
+    tree   compiler: 867328 bytes  sha256 bce9036c71aa5cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15
+
+=== Compile the harness against the plugin classes
+    17 source file(s) -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes (36 class file(s))
+    javac driven from an @argfile (33881 bytes, over the 32 767-character limit)
+
+=== FeatureProbe
+corpus   : C:\Users\lu\Downloads\vela (240 file(s))
+asking   : the six features that had a registration and no measurement
+
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+  files lexed             : 240
+  tokens                  : 193108
+  distinct token types    : 12
+      VELA_BRACES       7453      coloured
+      VELA_BRACKETS     5440      coloured
+      VELA_COLON        4815      coloured
+      VELA_COMMA        14347     coloured
+      VELA_COMMENT      4037      coloured
+      VELA_DOT          1437      coloured
+      VELA_IDENT        40789     coloured
+      VELA_KEYWORD      8732      coloured
+      VELA_NUMBER       7554      coloured
+      VELA_OP           9782      coloured
+      VELA_PARENS       17059     coloured
+      VELA_STRING       2176      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+
+== 2. brace matching: is every delimiter a declared pair? ==
+  pair: VELA_PARENS      .. VELA_PARENS     structural=false
+  pair: VELA_BRACKETS    .. VELA_BRACKETS   structural=false
+  pair: VELA_BRACES      .. VELA_BRACES     structural=true
+  delimiters seen in the corpus: {(=8530, )=8529, [=2720, ]=2720, {=3727, }=3726}
+      {   3727    present
+      }   3726    present
+      (   8530    present
+      )   8529    present
+      [   2720    present
+      ]   2720    present
+  delimiters with no declared pair: 0
+  VERDICT: every delimiter in the corpus is a type getPairs() declares
+
+== 3. commenting: is the prefix the lexer's own comment character? ==
+  line comment prefix     : `#`
+  block comment prefix    : null  (Vela has no block comment; null is the honest answer)
+  comment tokens in corpus: 4037
+  whose text does not start with the prefix: 0
+  VERDICT: the commenter's prefix is the lexer's comment character, over 4037 real comment token(s)
+
+== 4. semantic highlighting: classifyAll vs the per-offset lookup ==
+  files classified        : 240
+  name uses classified    : 16408
+      FIELD                     922
+      FUNCTION_CALL             5071
+      FUNCTION_DECLARATION      1116
+      PARAMETER                 2854
+      STRUCT_DECLARATION        33
+      STRUCT_USE                251
+      TYPE                      6161
+  uses with no kind       : 0
+  classify vs classifyAll: 0 disagreement(s)
+  VERDICT: the two paths agree on every one of 16408 name use(s)
+
+== 5. formatter: can reformatting join two statements? ==
+  indent size the rules declare: 4
+  files analysed          : 240
+  tokens analysed         : 123621
+  gaps containing a line feed: 19525
+  depth/spacing length mismatches: 0
+  negative depths         : 0
+  gaps a reformat could join: 0
+  VERDICT: no gap with a line feed in it can be closed by this rule set, over 19525 real line break(s)
+
+== 6. live templates: does the resource the descriptor names exist? ==
+  artifact                : C:\Users\lu\Downloads\vela\idea-plugin\dist\vela\lib\vela-idea-plugin.jar
+  liveTemplates/Vela.xml in the artifact: 5050 byte(s), read
+  on this JVM's classpath : 5037 char(s)
+  templates declared      : 7 [defn, main, struct, forr, whilee, ifel, parfor]
+  contexts on those       : [VELA]
+  VERDICT: the file is in the artifact, declares 7 template(s), and every one is in the VELA context
+  (the context type itself, and the descriptor line that names this file, are checked by VerifyPlugin against the insta
+lled platform)
+
+  unit: one (capability, file) pair for sections 1-5, plus one artifact-level check for section 6
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 1201
+  skipped                 : 0
+      missing-corpus-file   0         <- a defect, not a limit
+      too-large             0         <- a defect, not a limit
+      empty-or-whitespace-only  0       
+  wrong                   : 0
+  corpus accounted for    : 1201  (ran + skipped)
+
+COVERAGE: ran 1201 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) / wrong 0
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\FeatureProbe.log
+
+=== Coverage
+    the measurement behind every verdict above, one line per tool:
+  FeatureProbe   exit 0   COVERAGE: ran 1201 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 
+0) / wrong 0
+
+    the verdict each tool reached:
+  FeatureProbe   (no VERDICT line: the tool did not finish)
+
+=== Done
+    frozen compiler : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\vm\vm.exe (867328 bytes, sha256 bce9036c71aa5
+cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15)
+    logs            : C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes
+
+##############################################################################
+# 3. AFTER -- the same four tools, same tree, fixes applied
+##############################################################################
+Each now states its own conclusion on one line, derived from its own counters and
+its own defect categories (the same facts that set its exit code).
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\AFTER-HintNames.log  (17 line(s), showing 6)
+      too-large             0       
+  wrong                   : 0
+  corpus accounted for    : 1856  (ran + skipped)
+
+COVERAGE: ran 1854 / skipped 2 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 2, too-large 0) / wrong 0
+VERDICT: [PASS] the model and the tree give the same parameter names for all 1854 callable(s) compared (wrong 0, no defect category tripped)
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\AFTER-HintDupes.log  (14 line(s), showing 6)
+      too-large             0       
+  wrong                   : 0
+  corpus accounted for    : 1854  (ran + skipped)
+
+COVERAGE: ran 1854 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 0
+VERDICT: [PASS] no callable in the corpus and no builtin repeats or empties a parameter name (1854 asked, wrong 0, no defect category tripped)
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\AFTER-HintShapes.log  (19 line(s), showing 6)
+      too-large-for-prefix-sweep  4       
+  wrong                   : 0
+  corpus accounted for    : 6789  (ran + skipped)
+
+COVERAGE: ran 6785 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 0
+VERDICT: [PASS] no hint label drawn over 6785 prefix run(s) is anything but a plain identifier (wrong 0, no defect category tripped)
+HintShapes, second pass after the 'labels drawn' counter was added:
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\AFTER2-HintShapes.log  (19 line(s), showing 6)
+      too-large-for-prefix-sweep  4       
+  wrong                   : 0
+  corpus accounted for    : 6856  (ran + skipped)
+
+COVERAGE: ran 6852 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 0
+VERDICT: [PASS] every one of 239921 hint label(s) drawn over 6852 prefix run(s) is a plain identifier (wrong 0, no defect category tripped)
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\AFTER-FeatureProbe.log  (89 line(s), showing 8)
+      missing-corpus-file   0         <- a defect, not a limit
+      too-large             0         <- a defect, not a limit
+      empty-or-whitespace-only  0       
+  wrong                   : 0
+  corpus accounted for    : 1201  (ran + skipped)
+
+COVERAGE: ran 1201 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) / wrong 0
+VERDICT: [PASS] all six features answered as the invariant requires, over 1201 judged unit(s) (5 corpus-wide checks per readable file, plus one artifact-level check), wrong 0, no defect category tripped
+
+##############################################################################
+# 4. NEGATIVE CONTROL A -- HintNames with its criterion inverted (wrong != 0)
+##############################################################################
+One line changed: 'if (!model.equals(declared))' -> 'if (model.equals(declared))'.
+Every callable that AGREES is then counted as a disagreement.  Verdict and exit
+code both follow the counter:
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\NEG-SRC-HintNames.log  (47 line(s), showing 3)
+
+COVERAGE: ran 1872 / skipped 2 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 2, too-large 0) / wrong 1872
+VERDICT: [FAIL] 1872 of 1872 callable(s) name their parameters differently in the model than in the tree (each one listed above)
+    COVERAGE: ran 1872 / skipped 2 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 2, too-large 0) / wrong 1872
+    VERDICT: [FAIL] 1872 of 1872 callable(s) name their parameters differently in the model than in the tree (each one listed above)
+
+##############################################################################
+# 5. NEGATIVE CONTROL B -- HintDupes with its criterion inverted (wrong != 0)
+##############################################################################
+One line changed: 'if (hasDuplicate(names))' -> 'if (!hasDuplicate(names))'.
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\NEG-SRC-HintDupes.log  (54 line(s), showing 3)
+
+COVERAGE: ran 1872 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 1872
+VERDICT: [FAIL] 1872 symbol(s) repeat a parameter name, 0 whose detail does not start with its own name, 0 with an empty parameter name (each one listed above)
+    COVERAGE: ran 1872 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 1872
+    VERDICT: [FAIL] 1872 symbol(s) repeat a parameter name, 0 whose detail does not start with its own name, 0 with an empty parameter name (each one listed above)
+
+##############################################################################
+# 6. NEGATIVE CONTROL C -- HintShapes told every drawn label is anomalous
+##############################################################################
+One line changed: the last 'return true;' of isPlainName() became 'return false;'.
+That is the sweep's only criterion, so every one of the labels it drew (239 921
+of them) is counted:
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\NEG-SRC-HintShapes.log  (59 line(s), showing 3)
+
+COVERAGE: ran 6852 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 239921
+VERDICT: [FAIL] 239921 of 239921 drawn label(s) over 6852 prefix run(s) are not a plain identifier, which is the `s: s: s:` shape (each one listed above)
+    runs: 6852   hint labels drawn: 239921   labels that are not plain identifiers: 239921
+    COVERAGE: ran 6852 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 239921
+    VERDICT: [FAIL] 239921 of 239921 drawn label(s) over 6852 prefix run(s) are not a plain identifier, which is the `s: s: s:` shape (each one listed above)
+
+##############################################################################
+# 7. NEGATIVE CONTROL D -- FeatureProbe on a real input it must fail on
+##############################################################################
+No source change at all.  A scratch repo root (C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\neg-A) holding one real .vel
+file and no idea-plugin\dist\...\vela-idea-plugin.jar: section 6 (live templates)
+cannot pass, because the file the descriptor names would not be in any artifact.
+This also proves the new aggregate verdict cannot be greener than its sections.
+    corpus   : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\neg-A (1 file(s))
+      VERDICT: every token type the lexer emits over this corpus gets a colour key
+      VERDICT: every delimiter in the corpus is a type getPairs() declares
+      VERDICT: the commenter's prefix is the lexer's comment character, over 0 real comment token(s)
+      VERDICT: the two paths agree on every one of 13 name use(s)
+      VERDICT: no gap with a line feed in it can be closed by this rule set, over 9 real line break(s)
+      artifact                : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\neg-A\idea-plugin\dist\vela\lib\vela-idea-plugin.jar  (not built; run build-offline.ps1)
+      VERDICT: the file is not in the plugin artifact, so nothing would be offered
+    COVERAGE: ran 6 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) / wrong 1
+    VERDICT: [FAIL] 1 of 6 feature section(s) failed -- live templates: the template file is not in the plugin artifact, so nothing would ever be offered inside an IDE
+
+And the vacuous-corpus case (a root with no .vel file at all), which used to be a
+green PASS over nothing:
+    corpus   : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\neg-empty (0 file(s))
+    COVERAGE: ran 1 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) / wrong 1
+    VERDICT: [FAIL] 2 of 6 feature section(s) failed -- corpus: no .vel file was found under C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\neg-empty, so the five corpus-wide sections had nothing to judge; live templates: the template file is not in the plugin artifact, so nothing would ever be offered inside an IDE
+
+##############################################################################
+# 8. NEGATIVE CONTROL E -- a tool that FAILS while its exit code says 0
+##############################################################################
+FeatureProbe's exit line temporarily forced to 'System.exit(0)' so that a red
+verdict line and a green exit code coexist -- the case the harness exists to catch.
+The harness reports the contradiction, and does not exit 0 itself.  The lines that
+matter, out of the run below:
+        exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\FeatureProbe.log
+      FeatureProbe   VERDICT: [FAIL] 1 of 6 feature section(s) failed -- live templates: the template file is not in the pl
+      FeatureProbe   a [FAIL] verdict line with exit 0
+    1 tool(s) disagree with themselves; the harness exit code is 1 for that reason alone
+
+The run in full:
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\NEG5b-harness.txt  (121 line(s), showing 121)
+
+=== Preconditions
+    repo root     : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\neg-A
+    JDK           : D:\JetBrains\IntelliJ IDEA 2026.2.1
+    tools         : FeatureProbe
+    using the frozen compiler already at C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\vm\vm.exe (-Refreeze to re
+place it)
+    frozen compiler: 867328 bytes  sha256 bce9036c71aa5cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15
+    tree   compiler: 867328 bytes  sha256 bce9036c71aa5cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15
+
+=== Compile the harness against the plugin classes
+    17 source file(s) -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes (36 class file(s))
+    javac driven from an @argfile (33881 bytes, over the 32 767-character limit)
+
+=== FeatureProbe
+corpus   : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\neg-A (1 file(s))
+asking   : the six features that had a registration and no measurement
+
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+  files lexed             : 1
+  tokens                  : 91
+  distinct token types    : 8
+      VELA_BRACES       6         coloured
+      VELA_COLON        2         coloured
+      VELA_COMMA        6         coloured
+      VELA_IDENT        17        coloured
+      VELA_KEYWORD      6         coloured
+      VELA_NUMBER       6         coloured
+      VELA_OP           3         coloured
+      VELA_PARENS       14        coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+
+== 2. brace matching: is every delimiter a declared pair? ==
+  pair: VELA_PARENS      .. VELA_PARENS     structural=false
+  pair: VELA_BRACKETS    .. VELA_BRACKETS   structural=false
+  pair: VELA_BRACES      .. VELA_BRACES     structural=true
+  delimiters seen in the corpus: {(=7, )=7, {=3, }=3}
+      {   3       present
+      }   3       present
+      (   7       present
+      )   7       present
+      [   0       ABSENT from the corpus
+      ]   0       ABSENT from the corpus
+  delimiters with no declared pair: 0
+  VERDICT: every delimiter in the corpus is a type getPairs() declares
+
+== 3. commenting: is the prefix the lexer's own comment character? ==
+  line comment prefix     : `#`
+  block comment prefix    : null  (Vela has no block comment; null is the honest answer)
+  comment tokens in corpus: 0
+  whose text does not start with the prefix: 0
+  VERDICT: the commenter's prefix is the lexer's comment character, over 0 real comment token(s)
+
+== 4. semantic highlighting: classifyAll vs the per-offset lookup ==
+  files classified        : 1
+  name uses classified    : 13
+      FUNCTION_CALL             4
+      FUNCTION_DECLARATION      3
+      PARAMETER                 2
+      TYPE                      4
+  uses with no kind       : 0
+  classify vs classifyAll: 0 disagreement(s)
+  VERDICT: the two paths agree on every one of 13 name use(s)
+
+== 5. formatter: can reformatting join two statements? ==
+  indent size the rules declare: 4
+  files analysed          : 1
+  tokens analysed         : 60
+  gaps containing a line feed: 9
+  depth/spacing length mismatches: 0
+  negative depths         : 0
+  gaps a reformat could join: 0
+  VERDICT: no gap with a line feed in it can be closed by this rule set, over 9 real line break(s)
+
+== 6. live templates: does the resource the descriptor names exist? ==
+  artifact                : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\neg-A\idea-plugin\dist\vela\lib\vela-id
+ea-plugin.jar  (not built; run build-offline.ps1)
+  liveTemplates/Vela.xml in the artifact: ABSENT
+  on this JVM's classpath : 5037 char(s)
+  templates declared      : 7 [defn, main, struct, forr, whilee, ifel, parfor]
+  contexts on those       : [VELA]
+  VERDICT: the file is not in the plugin artifact, so nothing would be offered
+  (the context type itself, and the descriptor line that names this file, are checked by VerifyPlugin against the insta
+lled platform)
+
+  unit: one (capability, file) pair for sections 1-5, plus one artifact-level check for section 6
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 6
+  skipped                 : 0
+      missing-corpus-file   0         <- a defect, not a limit
+      too-large             0         <- a defect, not a limit
+      empty-or-whitespace-only  0       
+  wrong                   : 1
+  corpus accounted for    : 6  (ran + skipped)
+
+COVERAGE: ran 6 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) / wrong 1
+VERDICT: [FAIL] 1 of 6 feature section(s) failed -- live templates: the template file is not in the plugin artifact, so
+ nothing would ever be offered inside an IDE
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\FeatureProbe.log
+
+=== Coverage
+    the measurement behind every verdict above, one line per tool:
+  FeatureProbe   exit 0   COVERAGE: ran 6 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) 
+/ wrong 1
+
+    the verdict each tool reached:
+  FeatureProbe   VERDICT: [FAIL] 1 of 6 feature section(s) failed -- live templates: the template file is not in the pl
+ugin artifact, so nothing would ever be offered inside an IDE  [exit 0, wrong 1]
+
+=== Verdict vs exit vs coverage
+    the three things a reader has to reconcile, per tool; only disagreements are shown:
+  FeatureProbe   a [FAIL] verdict line with exit 0
+
+=== Done
+    frozen compiler : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\vm\vm.exe (867328 bytes, sha256 bce9036c71aa5
+cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15)
+    logs            : C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes
+
+1 tool(s) disagree with themselves; the harness exit code is 1 for that reason alone
+
+##############################################################################
+# 9. NEGATIVE CONTROL F -- a tool that prints nothing at all and exits 0
+##############################################################################
+FeatureProbe's main() temporarily exits before printing anything.  This is the only
+case in which the old wording ('the tool did not finish') was ever true, and the new
+wording names what actually happened instead of guessing why:
+        exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\FeatureProbe.log
+      FeatureProbe   exit 0   COVERAGE: (the tool printed none)
+      FeatureProbe   the tool printed neither a VERDICT nor a COVERAGE line: it reported no measurement, so its exit code i
+    1 tool(s) disagree with themselves; the harness exit code is 1 for that reason alone
+
+The run in full:
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\logs\NEG5a-harness.txt  (35 line(s), showing 35)
+
+=== Preconditions
+    repo root     : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\neg-A
+    JDK           : D:\JetBrains\IntelliJ IDEA 2026.2.1
+    tools         : FeatureProbe
+    using the frozen compiler already at C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\vm\vm.exe (-Refreeze to re
+place it)
+    frozen compiler: 867328 bytes  sha256 bce9036c71aa5cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15
+    tree   compiler: 867328 bytes  sha256 bce9036c71aa5cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15
+
+=== Compile the harness against the plugin classes
+    17 source file(s) -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes (36 class file(s))
+    javac driven from an @argfile (33881 bytes, over the 32 767-character limit)
+
+=== FeatureProbe
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\FeatureProbe.log
+
+=== Coverage
+    the measurement behind every verdict above, one line per tool:
+  FeatureProbe   exit 0   COVERAGE: (the tool printed none)
+
+    the verdict each tool reached:
+  FeatureProbe   (no VERDICT line and no COVERAGE line: the tool printed no measurement at all)
+
+=== Verdict vs exit vs coverage
+    the three things a reader has to reconcile, per tool; only disagreements are shown:
+  FeatureProbe   the tool printed neither a VERDICT nor a COVERAGE line: it reported no measurement, so its exit code i
+s the only thing here and nothing may be read as agreement
+
+=== Done
+    frozen compiler : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\vm\vm.exe (867328 bytes, sha256 bce9036c71aa5
+cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15)
+    logs            : C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes
+
+1 tool(s) disagree with themselves; the harness exit code is 1 for that reason alone
+
+##############################################################################
+# 10. REVERT -- every control's change is gone, byte for byte
+##############################################################################
+Each file was compared with the SHA256 of the copy taken before any control ran.
+  HintNames.java d5ba3a4d0d2e93dc353733fff0429a82  identical to the pre-control snapshot
+  HintShapes.java 187ac587ff275c5f30def3ddee8e9709  identical to the pre-control snapshot
+  HintDupes.java 7161f4355b8000641f9b44941ac60b01  identical to the pre-control snapshot
+  FeatureProbe.java 3fb14d8c22c91f699488ff8d0a3c0b69  identical to the pre-control snapshot
+  NEGATIVE-CONTROL markers left in the tree: 0

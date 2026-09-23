@@ -26,8 +26,12 @@ import java.util.Set;
  *                     can parse differently from the finished file -- so it is
  *                     where a hint name stops matching a parameter name.
  *
- * A label is reported when it is not a plain identifier, or when no declaration in
- * the file (nor any builtin) declares a parameter with that name.
+ * A label is reported when it is not a plain identifier -- which is exactly the shape
+ * the `s: s: s:` defect takes.  That one condition is the whole criterion, and it is
+ * the only condition in the sweep's own loop (`isPlainName`); an earlier revision of
+ * this sentence also promised "or no declaration in the file declares a parameter with
+ * that name", which was never implemented, and a header that promises a second check
+ * makes a one-check tool read as a two-check one.
  *
  *   java -cp <plugin classes> HintShapes --shapes
  *   java -cp <plugin classes> HintShapes --truncate 16 [repo-root]
@@ -108,11 +112,15 @@ public final class HintShapes {
             {"params with no annotations, one arg", "def f(s) -> int {\n    return 0\n}\ndef main() -> None {\n    print(f(1))\n}\n"},
             {"parallel for with a call", "def g(a: int, b: int) -> int {\n    return a\n}\ndef main() -> None {\n    parallel for i in range(0, 4) {\n        print(g(i, 1))\n    }\n}\n"},
         };
+        int caseCount = 0;
+        int threw = 0;
         for (String[] c : cases) {
+            caseCount++;
             List<Pair> hints;
             try {
                 hints = hints(c[1]);
             } catch (Throwable t) {
+                threw++;
                 System.out.println("---- " + c[0] + "\n     THREW " + t);
                 continue;
             }
@@ -126,6 +134,16 @@ public final class HintShapes {
                         + context(c[1], p.offset) + "`");
             }
         }
+        // THIS MODE IS A DUMP, NOT A CHECK, AND IT SAYS SO.  It deliberately includes call
+        // shapes whose drawn label is *expected* to look wrong (`s: s: s:` among them), so
+        // there is no pass/fail criterion to apply here -- the criterion lives in the
+        // `--truncate` sweep, which is what a caller who wants a verdict runs.  Saying
+        // "PASS" here would be a claim this mode cannot support, and saying nothing is what
+        // made the summary call a finished run unfinished.
+        System.out.println();
+        System.out.println("VERDICT: (not a check) --shapes printed what the hint engine drew for "
+                + caseCount + " hand-written call shape(s), " + threw + " of which threw; this mode has"
+                + " no pass/fail criterion of its own -- run the prefix sweep for a verdict");
     }
 
     private static String context(String text, int off) {
@@ -151,10 +169,15 @@ public final class HintShapes {
             for (Path f : found) seen.add(root.relativize(f).toString().replace('\\', '/'));
         }
         System.out.println("truncating every " + step + " byte(s) over " + seen.size()
-                + " file(s): a label is reported when it is not a plain identifier or no"
-                + " declaration in the file declares a parameter with that name");
+                + " file(s): a label is reported when it is not a plain identifier"
+                + " (that is the `s: s: s:` shape, and the whole criterion)");
         int anomalies = 0;
         long runs = 0;
+        // How many labels were actually drawn and judged.  Without it, `anomalies: 0` over a
+        // sweep that drew nothing at all prints the same line as a clean sweep of 6 785
+        // labels -- a green sentence about no work.  It is printed, and the verdict below
+        // carries it.
+        long labelsSeen = 0;
         long absent = 0;
         long tooLarge = 0;
         long tooLargeForPrefixSweep = 0;
@@ -210,6 +233,7 @@ public final class HintShapes {
                     continue;
                 }
                 for (Pair h : hints) {
+                    labelsSeen++;
                     String name = h.label.trim();
                     if (name.endsWith(":")) name = name.substring(0, name.length() - 1).trim();
                     if (isPlainName(name)) continue;
@@ -221,7 +245,8 @@ public final class HintShapes {
                 }
             }
         }
-        System.out.println("runs: " + runs + "   labels that are not plain identifiers: " + anomalies);
+        System.out.println("runs: " + runs + "   hint labels drawn: " + labelsSeen
+                + "   labels that are not plain identifiers: " + anomalies);
         Coverage cov = new Coverage()
                 .defectCategory("parameterHints-threw")
                 .defectCategory("missing-corpus-file")
@@ -234,9 +259,35 @@ public final class HintShapes {
                 .skipped("too-large-for-prefix-sweep", tooLargeForPrefixSweep)
                 .wrong(anomalies);
         cov.print();
-        // A diagnostic, but it still has to say what it did: `runs: 0` and
-        // `anomalies: 0` used to be the same line as a clean sweep.
-        System.exit(anomalies > 0 ? 1 : (cov.hasDefect() ? 3 : 0));
+        // THE CONCLUSION, FROM THIS RUN'S OWN NUMBERS -- see HintNames.java for the longer
+        // note.  It used to be the exit code alone: `harness.ps1` reads the *text* of a run
+        // to build its summary, found no `VERDICT` line here, and wrote that this tool "did
+        // not finish" about a tool that had just swept 5 793 prefixes and exited 0.
+        List<String> failed = new ArrayList<>();
+        if (labelsSeen == 0) {
+            // A sweep that drew nothing judged nothing: `wrong 0` over zero labels is the
+            // same shape as the crashed oracle that reported a clean pass.
+            failed.add("the sweep drew no hint label at all over " + runs + " prefix run(s), so"
+                    + " nothing was judged -- `wrong 0` here is the absence of a measurement,"
+                    + " not a clean one");
+        }
+        if (anomalies > 0) {
+            failed.add(anomalies + " of " + labelsSeen + " drawn label(s) over " + runs
+                    + " prefix run(s) are not a plain identifier, which is the `s: s: s:` shape"
+                    + " (each one listed above)");
+        }
+        if (cov.hasDefect()) {
+            failed.add("the run is not clean either: " + cov.get("parameterHints-threw")
+                    + " prefix run(s) threw, " + cov.get("missing-corpus-file")
+                    + " corpus file(s) missing");
+        }
+        boolean clean = failed.isEmpty();
+        System.out.println("VERDICT: " + (clean
+                ? "[PASS] every one of " + labelsSeen + " hint label(s) drawn over " + runs
+                        + " prefix run(s) is a plain identifier (wrong 0, no defect category"
+                        + " tripped)"
+                : "[FAIL] " + String.join("; ", failed)));
+        System.exit(clean ? 0 : (anomalies > 0 || labelsSeen == 0 ? 1 : 3));
     }
 
     private static boolean isPlainName(String s) {

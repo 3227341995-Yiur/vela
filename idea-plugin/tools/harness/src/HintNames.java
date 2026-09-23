@@ -145,10 +145,32 @@ public final class HintNames {
                 .skipped("too-large", tooLarge)
                 .wrong(disagree);
         cov.print();
-        // This tool is a measurement and used to have no exit code at all; it now
-        // reports one so a caller can tell "the two sources agree" from "the model had
-        // no entry for the defs I was looking at".
-        System.exit(disagree > 0 ? 1 : (cov.hasDefect() ? 3 : 0));
+        // THE CONCLUSION, FROM THIS RUN'S OWN NUMBERS.
+        //
+        // This tool used to print its counts and its coverage triple and nothing else, so
+        // the only place its conclusion existed was the exit code -- and a driver that read
+        // the *text* of the run had nothing to read, which is how it came to be summarised
+        // as "the tool did not finish" while it had just exited 0 with `wrong 0`.
+        //
+        // The sentence can only be a PASS under the same condition that makes the exit code
+        // 0, because both are computed from `failed` below: a verdict that cannot fail is
+        // not a verdict.
+        List<String> failed = new ArrayList<>();
+        if (disagree > 0) {
+            failed.add(disagree + " of " + compared + " callable(s) name their parameters differently"
+                    + " in the model than in the tree (each one listed above)");
+        }
+        if (cov.hasDefect()) {
+            failed.add("the run is not clean either: " + cov.get("threw") + " threw, "
+                    + cov.get("missing-corpus-file") + " corpus file(s) missing");
+        }
+        boolean clean = failed.isEmpty();
+        System.out.println("VERDICT: " + (clean
+                ? "[PASS] the model and the tree give the same parameter names for all "
+                        + compared + " callable(s) compared (wrong 0, no defect category tripped)"
+                : "[FAIL] " + String.join("; ", failed)));
+        // 1 is "the two sources disagree", 3 is "the harness or the corpus is at fault".
+        System.exit(clean ? 0 : (disagree > 0 ? 1 : 3));
     }
 
     private static void collectDefs(VelaSyntaxNode n, List<VelaSyntaxNode> out) {

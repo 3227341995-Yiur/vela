@@ -316,15 +316,49 @@ foreach ($t in $run) {
         }
     }
     Info "exit $code   log: $log"
-    # Every tool now ends with a COVERAGE line as well as a VERDICT, and the two are
-    # collected together: a verdict with no number behind it is what let a crashed
-    # oracle report a clean pass.
-    $verdict = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue | Where-Object { $_ -like 'VERDICT*' })
+    # Every tool ends with a COVERAGE line, and the conclusions come in two shapes.
+    # Both are read here, and the two are collected together: a verdict with no number
+    # behind it is what let a crashed oracle report a clean pass.
+    #
+    # THE VERDICT FILTER IS ANCHORED ON WHITESPACE, NOT ON THE FIRST CHARACTER.
+    #
+    # It used to be `$_ -like 'VERDICT*'`, which only matches column 0.  FeatureProbe
+    # prints its six per-feature verdicts indented inside their sections, so every one
+    # of them was invisible -- and the section below then said of a tool that had just
+    # exited 0 with `wrong 0` that it "did not finish".  Measured 2026-09-24 over its own
+    # log: 6 lines matched `^\s*VERDICT`, 0 matched `VERDICT*`.
+    #
+    # A tool may therefore print several verdict lines (one per feature).  `[PASS]` /
+    # `[FAIL]` is the machine-readable conclusion such a tool ends with, and a `[FAIL]`
+    # outranks the last line: a green section 6 must not cover a red section 1.
+    $verdict = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue | Where-Object { $_ -match '^\s*VERDICT' })
     $coverage = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue | Where-Object { $_ -like 'COVERAGE:*' })
     $covText = if ($coverage.Count -gt 0) { $coverage[-1].Trim() } else { 'COVERAGE: (the tool printed none)' }
-    $verText = if ($verdict.Count -gt 0) { $verdict[-1].Trim() } else { '(no VERDICT line: the tool did not finish)' }
+    # The number the verdict is supposed to be about, read back out of the tool's own
+    # COVERAGE line so the row can be cross-checked instead of taken on trust.
+    $covWrong = $null
+    if ($coverage.Count -gt 0 -and $coverage[-1] -match '/\s*wrong\s+(\d+)') { $covWrong = [int]$Matches[1] }
+    $failed = @($verdict | Where-Object { $_ -match '\[FAIL\]' })
+    if ($verdict.Count -eq 0) {
+        # NO VERDICT LINE IS NOT THE SAME AS NO RUN.  Say which one happened, and put the
+        # tool's own exit code and its own `wrong` count in the line, because that is all
+        # the evidence there is for a tool whose conclusion is only those two numbers.
+        if ($coverage.Count -gt 0) {
+            $verText = "(no VERDICT line: this tool reports a coverage triple and an exit code, not a conclusion -- exit $code, wrong $covWrong)"
+        } elseif ($code -eq 0) {
+            $verText = '(no VERDICT line and no COVERAGE line: the tool printed no measurement at all)'
+        } else {
+            $verText = "(no VERDICT line and no COVERAGE line, exit ${code}: the tool stopped before it measured anything)"
+        }
+    } elseif ($failed.Count -gt 0) {
+        $verText = "$($failed[-1].Trim())  [exit $code, wrong $covWrong]"
+    } else {
+        $verText = "$($verdict[-1].Trim())  [exit $code, wrong $covWrong]"
+    }
     $coverageRows.Add([pscustomobject]@{
         Tool = $t; Exit = $code; Coverage = $covText; Verdict = $verText
+        Verdicts = $verdict.Count; Failed = $failed.Count; Wrong = $covWrong
+        HasCoverage = ($coverage.Count -gt 0)
     })
     if ($code -ne 0) {
         $exit = $code
@@ -346,9 +380,41 @@ foreach ($r in $coverageRows) {
     Write-Host ("  {0,-14} {1}" -f $r.Tool, $r.Verdict)
 }
 
+# A verdict, an exit code and a `wrong` count that do not agree are how a red number
+# becomes a green line.  Nothing here guesses: each row is the tool's own three
+# numbers, and only rows that contradict each other are printed.
+Step 'Verdict vs exit vs coverage'
+Info 'the three things a reader has to reconcile, per tool; only disagreements are shown:'
+$contradictions = 0
+foreach ($r in $coverageRows) {
+    $bad = $null
+    if (-not $r.HasCoverage -and $r.Verdicts -eq 0) {
+        # Nothing at all came back.  This is the only case in which "it did not finish" was
+        # ever true, and it is still not the harness's place to guess *why*.
+        $bad = "the tool printed neither a VERDICT nor a COVERAGE line: it reported no measurement, so its exit code is the only thing here and nothing may be read as agreement"
+    } elseif ($r.Failed -gt 0 -and $r.Exit -eq 0) {
+        $bad = "a [FAIL] verdict line with exit 0"
+    } elseif ($null -ne $r.Wrong -and $r.Wrong -gt 0 -and $r.Exit -eq 0) {
+        $bad = "its own coverage line says wrong $($r.Wrong) while it exited 0"
+    } elseif ($null -ne $r.Wrong -and $r.Wrong -eq 0 -and $r.Exit -ne 0) {
+        $bad = "exit $($r.Exit) with wrong 0: the failure is not one its coverage counts (a harness/corpus defect, not a wrong answer)"
+    }
+    if ($bad) {
+        $contradictions++
+        Write-Host ("  {0,-14} {1}" -f $r.Tool, $bad) -ForegroundColor Yellow
+    }
+}
+if ($contradictions -eq 0) { Info '  (none: each tool''s verdict, exit code and wrong count agree)' }
+
 Step 'Done'
 Info "frozen compiler : $FrozenVm ($($frozen.Length) bytes, sha256 $frozenHash)"
 Info "logs            : $harnessOut"
+if ($contradictions -gt 0 -and $exit -eq 0) {
+    # The harness must not exit 0 while one of its tools contradicts itself.
+    $exit = 1
+    Write-Host ''
+    Write-Host "$contradictions tool(s) disagree with themselves; the harness exit code is 1 for that reason alone" -ForegroundColor Yellow
+}
 if ($summary.Count -gt 0) {
     Write-Host ''
     Write-Host 'non-zero exits (the harness found something):' -ForegroundColor Yellow

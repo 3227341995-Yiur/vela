@@ -1,0 +1,1762 @@
+
+=== Preconditions
+    repo root     : C:\Users\lu\Downloads\vela
+    JDK           : D:\JetBrains\IntelliJ IDEA 2026.2.1
+    tools         : GotoOracle, HintDiff, HintNames, HintShapes, HintDupes, SymbolDiff, FoldDiff, FeatureProbe, ParamNa
+mes, HintTruth
+    using the frozen compiler already at C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\vm\vm.exe (-Refreeze to re
+place it)
+    frozen compiler: 867328 bytes  sha256 bce9036c71aa5cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15
+    tree   compiler: 861696 bytes  sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a
+
+=== Compile the harness against the plugin classes
+    17 source file(s) -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes (36 class file(s))
+    javac driven from an @argfile (33881 bytes, over the 32 767-character limit)
+
+=== GotoOracle
+oracle   : `vm.exe check` with one declaration renamed at a time,
+           each set of bound use lines verified by the file compiling again
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\vm\vm.exe (867328 bytes, sha256 bce9036c71aa5cb43fa242bf
+1f620c642873bc5c2123eef2c209b2af0d235e15)
+answer   : VelaDeclarations.declarationRange(text, offset) -> target line
+threads  : 8
+
+== completeness: every reference in the corpus ==
+kind            refs    correct  no target  WRONG   ambiguous/u njudged
+----------------  ------  -------  ---------  -----  ------------------
+builtin         709     0        709        0       0
+field           59      59       0          0       0
+function        479     479      0          0       0
+local           1263    1263     0          0       0
+loop variable   103     103      0          0       0
+parameter       599     599      0          0       0
+struct          4       0        4          0       0
+unjudged        23341   0        0          0       0
+unjudged (member: the compiler does not resolve it)  10      0        0          0       0
+unprovable (member write: `check` resolves it in reads, not in writes)  64      0        0          0       0
+unresolved      77      0        13         0       0
+
+  files analysed          : 260, of which the compiler accepts (so the oracle can judge them): 129 (6098 declaration(s)
+, 4038 compiler run(s), 34 s)
+  references judged       : 26644
+  correct target          : 2503
+  no target               : 726
+  WRONG target            : 0
+  ambiguous (not judged)  : 0
+  unjudged (oracle silent): 23415
+
+== coverage: every reference, and why it was or was not judged ==
+  references in corpus    : 49995
+  ran (judged)            : 26644
+  skipped                 : 23351  (crashed-file 0 = 0 file(s), compiler-refused 23341, invisible-member 10, ambiguous 
+0)
+
+== coverage: which files the oracle could speak for ==
+  tests/build/arith_basics.vel                  17      judged
+  tests/build/arrays_and_len_folding.vel        15      judged
+  tests/build/array_zero_filled.vel             3       judged
+  tests/build/bom_first_byte.vel                8       judged
+  tests/build/bool_logic.vel                    6       judged
+  tests/build/check_cases/adjacent_string_literals.vel  0       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/array_rebind.vel      2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/array_struct_field.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/chained_comparison.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/const_index_out_of_range.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/const_index_zero_length.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/divide_by_mutable_zero_checks_at_runtime.vel  4       judged
+  tests/build/check_cases/divide_float_by_literal_zero.vel  2       UNJUDGED (vm.exe check refuses this file on its own
+)
+  tests/build/check_cases/division_by_constant_zero.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/duplicate_field.vel   1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/elif_is_not_vela.vel  3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/extern_conflicting_prototypes.vel  1       UNJUDGED (vm.exe check refuses this file on its ow
+n)
+  tests/build/check_cases/float_to_int_variable.vel  3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/immutable_array_element.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/immutable_rebind.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/implicit_int_to_float.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/literal_overflow.vel  0       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/member_method_arity.vel  9       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/member_nested_receiver.vel  4       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/member_non_struct_receiver.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/member_write_missing_field.vel  4       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/missing_close_brace.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/missing_open_brace.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/missing_return.vel    3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/missing_return_annotation.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/mutate_loop_variable.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/negative_const_index.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/nested_function.vel   2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/no_main.vel           1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/parallel_impure_call.vel  6       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/parallel_print.vel    4       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/parallel_shared_accumulator.vel  4       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/parallel_unprovable_index.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/parallel_writes_parameter.vel  5       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/pure_function_impure_call.vel  4       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/return_own_array.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/shift_out_of_range.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/slice_not_implemented.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/statements_need_newlines.vel  3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/string_concat_not_implemented.vel  4       UNJUDGED (vm.exe check refuses this file on its ow
+n)
+  tests/build/check_cases/struct_requires_place.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/truthiness.vel        2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/truthiness_string.vel 2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/tuple.vel             2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/unannotated_parameter.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/uninitialised_scalar.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/check_cases/useless_expression_statement.vel  3       UNJUDGED (vm.exe check refuses this file on its own
+)
+  tests/build/check_cases/value_from_void_function.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/control_flow.vel                  14      judged
+  tests/build/crlf_line_endings.vel             4       judged
+  tests/build/divide_by_mutable_zero_checks_at_runtime.vel  4       judged
+  tests/build/extern/extern_c_probe.vel         12      judged
+  tests/build/extern/reject_non_scalar.vel      1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/extern/reject_str_parameter.vel   2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/float_and_math.vel                10      judged
+  tests/build/host_surface_roundtrip.vel        33      judged
+  tests/build/int_width_literals.vel            5       judged
+  tests/build/lexer_error.vel                   0       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/build/parallel_for_correct.vel          9       judged
+  tests/build/parallel_nested_2d.vel            9       judged
+  tests/build/pure_call_inside_parallel.vel     9       judged
+  tests/build/python_floor_semantics.vel        10      judged
+  tests/build/recursion_fib.vel                 11      judged
+  tests/build/strings.vel                       7       judged
+  tests/build/string_escapes.vel                6       judged
+  tests/build/struct_and_methods.vel            19      judged
+  tests/build/struct_value_semantics.vel        6       judged
+  tests/build/while_with_narrowing.vel          7       judged
+  tests/llvm-shapes/abs_builtin.vel             3       judged
+  tests/llvm-shapes/array_of_float.vel          2       judged
+  tests/llvm-shapes/array_of_str.vel            2       judged
+  tests/llvm-shapes/array_param.vel             5       judged
+  tests/llvm-shapes/float_augmented_assign.vel  3       judged
+  tests/llvm-shapes/float_param.vel             3       judged
+  tests/llvm-shapes/inplace_element_update.vel  3       judged
+  tests/llvm-shapes/len_of_str.vel              2       judged
+  tests/llvm-shapes/mut_str_param.vel           3       judged
+  tests/llvm-shapes/negate_u8_value.vel         2       judged
+  tests/llvm-shapes/pow_operator.vel            3       judged
+  tests/llvm-shapes/recursive_str.vel           7       judged
+  tests/llvm-shapes/struct_by_value.vel         7       judged
+  tests/llvm-shapes/struct_return.vel           4       judged
+  tests/llvm-shapes/str_in_struct.vel           3       judged
+  tests/llvm-shapes/str_local.vel               2       judged
+  tests/llvm-shapes/str_param.vel               4       judged
+  tests/llvm-shapes/str_return.vel              2       judged
+  tests/llvm-shapes/str_two_params.vel          5       judged
+  tests/llvm-shapes/u8_subtraction.vel          3       judged
+  tests/probes/capture_probe.vel                106     judged
+  tests/probes/continue_in_for_range.vel        1       judged
+  tests/probes/extern_array_argument.vel        3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/extern_calls_as_declared.vel     10      judged
+  tests/probes/extern_call_result_argument.vel  3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/extern_constant_fits_declared_kind.vel  4       judged
+  tests/probes/extern_declared_after_the_call.vel  2       judged
+  tests/probes/extern_declared_never_called.vel 1       judged
+  tests/probes/extern_float_argument_for_i32.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/extern_int_argument_for_float.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/extern_int_variable_for_i32.vel  3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/extern_method.vel                1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/extern_struct_argument.vel       4       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/extern_struct_parameter.vel      1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/extern_str_argument.vel          2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/extern_str_result.vel            1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/extern_u8_argument_in_range.vel  2       judged
+  tests/probes/extern_u8_argument_out_of_range.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/extern_void_call_accepted.vel    1       judged
+  tests/probes/host_roundtrip.vel               27      judged
+  tests/probes/mut_scalar_parameter.vel         10      judged
+  tests/probes/mut_struct_parameter.vel         18      judged
+  tests/probes/oob_cond.vel                     8       judged
+  tests/probes/oob_read.vel                     3       judged
+  tests/probes/oob_write.vel                    4       judged
+  tests/probes/overflow_index.vel               4       judged
+  tests/probes/parallel_alias_cross_iteration.vel  6       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/probes/parallel_alias_nested_rowmajor.vel  9       judged
+  tests/probes/parallel_alias_read_any_index.vel  15      judged
+  tests/probes/parallel_alias_read_only.vel     17      judged
+  tests/probes/parallel_alias_same_index.vel    11      judged
+  tests/run_tests.vel                           1002    judged
+  tests/safety/cases/arith_div_by_const_zero.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/arith_div_by_zero_variable.vel  3       judged
+  tests/safety/cases/arith_float_div_by_literal_zero.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/arith_mod_by_const_zero.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/arith_mod_by_zero_variable.vel  3       judged
+  tests/safety/cases/arith_overflow_abs.vel     3       judged
+  tests/safety/cases/arith_overflow_add.vel     3       judged
+  tests/safety/cases/arith_overflow_division.vel  3       judged
+  tests/safety/cases/arith_overflow_mul.vel     3       judged
+  tests/safety/cases/arith_overflow_negation.vel  2       judged
+  tests/safety/cases/arith_overflow_pow.vel     3       judged
+  tests/safety/cases/arith_overflow_sub.vel     3       judged
+  tests/safety/cases/arith_pow_negative_exponent.vel  3       judged
+  tests/safety/cases/arith_shift_64_variable.vel  3       judged
+  tests/safety/cases/arith_shift_negative_variable.vel  3       judged
+  tests/safety/cases/bounds_const_index_len1.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/bounds_const_index_len2.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/bounds_const_index_negative.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/bounds_const_index_oob.vel 2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/bounds_runtime_index_negative.vel  3       judged
+  tests/safety/cases/bounds_runtime_index_oob.vel  3       judged
+  tests/safety/cases/bounds_runtime_write_oob.vel  4       judged
+  tests/safety/cases/bounds_zero_len_array_constant.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/bounds_zero_len_array_runtime.vel  3       judged
+  tests/safety/cases/bounds_zero_len_array_write.vel  5       judged
+  tests/safety/cases/concurrency_body_local_scalar_legal.vel  8       judged
+  tests/safety/cases/concurrency_cross_iteration_bare_index.vel  9       UNJUDGED (vm.exe check refuses this file on it
+s own)
+  tests/safety/cases/concurrency_cross_iteration_read_refused.vel  11      UNJUDGED (vm.exe check refuses this file on 
+its own)
+  tests/safety/cases/concurrency_impure_call_refused.vel  7       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/concurrency_impure_method_refused.vel  10      UNJUDGED (vm.exe check refuses this file on its own
+)
+  tests/safety/cases/concurrency_linear_stride_legal.vel  11      judged
+  tests/safety/cases/concurrency_nested_outer_read_accepted.vel  9       judged
+  tests/safety/cases/concurrency_non_injective_index_refused.vel  4       UNJUDGED (vm.exe check refuses this file on i
+ts own)
+  tests/safety/cases/concurrency_non_range_loop_refused.vel  1       UNJUDGED (vm.exe check refuses this file on its ow
+n)
+  tests/safety/cases/concurrency_parallel_outer_rowmajor_refused.vel  20      UNJUDGED (vm.exe check refuses this file 
+on its own)
+  tests/safety/cases/concurrency_parameter_array_read_legal.vel  11      judged
+  tests/safety/cases/concurrency_pure_call_legal.vel  7       judged
+  tests/safety/cases/concurrency_pure_method_legal.vel  7       judged
+  tests/safety/cases/concurrency_range_loop_legal.vel  5       judged
+  tests/safety/cases/concurrency_read_any_index_legal.vel  11      judged
+  tests/safety/cases/concurrency_same_index_legal.vel  11      judged
+  tests/safety/cases/concurrency_serial_outer_parallel_inner.vel  15      UNJUDGED (vm.exe check refuses this file on i
+ts own)
+  tests/safety/cases/concurrency_shared_scalar_refused.vel  8       UNJUDGED (vm.exe check refuses this file on its own
+)
+  tests/safety/cases/concurrency_stride_one_offset_legal.vel  5       judged
+  tests/safety/cases/concurrency_two_local_arrays_legal.vel  9       judged
+  tests/safety/cases/concurrency_two_write_expressions_refused.vel  6       UNJUDGED (vm.exe check refuses this file on
+ its own)
+  tests/safety/cases/concurrency_write_parameter_array_refused.vel  7       UNJUDGED (vm.exe check refuses this file on
+ its own)
+  tests/safety/cases/escape_array_struct_field_refused.vel  1       UNJUDGED (vm.exe check refuses this file on its own
+)
+  tests/safety/cases/escape_extern_argument_kind_refused.vel  2       UNJUDGED (vm.exe check refuses this file on its o
+wn)
+  tests/safety/cases/escape_extern_array_parameter_refused.vel  3       UNJUDGED (vm.exe check refuses this file on its
+ own)
+  tests/safety/cases/escape_extern_float_parameter_ok.vel  2       judged
+  tests/safety/cases/escape_extern_i32_parameter_ok.vel  2       judged
+  tests/safety/cases/escape_extern_int_constant_ok.vel  2       judged
+  tests/safety/cases/escape_extern_int_parameter_ok.vel  2       judged
+  tests/safety/cases/escape_extern_scalar_return_ok.vel  2       judged
+  tests/safety/cases/escape_extern_struct_parameter_refused.vel  4       UNJUDGED (vm.exe check refuses this file on it
+s own)
+  tests/safety/cases/escape_extern_str_parameter_refused.vel  2       UNJUDGED (vm.exe check refuses this file on its o
+wn)
+  tests/safety/cases/escape_extern_str_return_refused.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/escape_nested_function_refused.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/escape_no_closures.vel     3       judged
+  tests/safety/cases/escape_no_free_builtin.vel 3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/escape_no_global_state.vel 2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/hole_cmp_bool_bool.vel     1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/hole_cmp_bool_int.vel      1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/hole_cmp_int_float.vel     3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/hole_cmp_str_int.vel       1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/hole_extern_conflicting_prototypes.vel  1       UNJUDGED (vm.exe check refuses this file on its ow
+n)
+  tests/safety/cases/hole_member_method_arity.vel  9       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/hole_member_method_as_value.vel  4       judged
+  tests/safety/cases/hole_member_nested_receiver.vel  4       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/hole_member_non_struct_receiver.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/hole_member_write_missing_field.vel  4       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/hole_mut_scalar_parameter.vel  5       judged
+  tests/safety/cases/hole_narrowing_binding_i32.vel  3       judged
+  tests/safety/cases/hole_narrowing_binding_u8.vel  2       judged
+  tests/safety/cases/hole_parallel_impure_method_nested_receiver.vel  11      judged
+  tests/safety/cases/hole_unary_neg_bool.vel    2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/hole_unary_neg_str.vel     2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/hole_unary_not_int.vel     2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/memory_return_own_array.vel  4       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/memory_return_param_array.vel  5       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/memory_return_str_binding.vel  3       judged
+  tests/safety/cases/memory_return_substr.vel   4       judged
+  tests/safety/cases/probe_mut_array_parameter.vel  5       judged
+  tests/safety/cases/probe_mut_struct_parameter.vel  7       judged
+  tests/safety/cases/scope_array_element_write_ok.vel  6       judged
+  tests/safety/cases/scope_array_rebind_refused.vel  6       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/scope_assign_undeclared_name.vel  3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/scope_block_declaration_inside_ok.vel  2       judged
+  tests/safety/cases/scope_block_declaration_invisible.vel  2       UNJUDGED (vm.exe check refuses this file on its own
+)
+  tests/safety/cases/scope_declare_then_assign_ok.vel  3       judged
+  tests/safety/cases/scope_duplicate_declaration.vel  2       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/scope_shadow_across_blocks_ok.vel  5       judged
+  tests/safety/cases/strict_array_index_ok.vel  3       judged
+  tests/safety/cases/strict_break_inside_loop_ok.vel  6       judged
+  tests/safety/cases/strict_break_outside_loop.vel  0       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/strict_call_float_into_int_param.vel  3       judged
+  tests/safety/cases/strict_call_int_into_float_param.vel  3       judged
+  tests/safety/cases/strict_chained_comparison_split_ok.vel  3       judged
+  tests/safety/cases/strict_continue_inside_loop_ok.vel  5       judged
+  tests/safety/cases/strict_continue_outside_loop.vel  0       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/strict_immutability.vel    3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/strict_no_adjacent_string_literals.vel  0       UNJUDGED (vm.exe check refuses this file on its ow
+n)
+  tests/safety/cases/strict_no_array_slice.vel  3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/strict_no_chained_comparison.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/strict_no_elif.vel         3       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/strict_no_implicit_conversion.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/strict_no_string_concatenation.vel  1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/strict_no_truthiness.vel   1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/strict_no_tuples.vel       1       UNJUDGED (vm.exe check refuses this file on its own)
+  tests/safety/cases/strict_single_string_literal_ok.vel  1       judged
+  tests/safety/cases/strict_string_concat_builtin_ok.vel  2       judged
+  tests/safety/cases/strict_to_float_explicit.vel  4       judged
+  tests/safety/cases/strict_to_int_explicit.vel 4       judged
+  tests/safety/cases/strict_useless_expression_statement.vel  3       UNJUDGED (vm.exe check refuses this file on its o
+wn)
+  examples/hello.vel                            17      judged
+  ide-demo/broken.vel                           1       UNJUDGED (vm.exe check refuses this file on its own)
+  ide-demo/hello.vel                            5       judged
+  ide-demo/tour.vel                             40      judged
+  selfhost/parts/check.vel                      4510    UNJUDGED (vm.exe check refuses this file on its own)
+  selfhost/parts/dump.vel                       775     UNJUDGED (vm.exe check refuses this file on its own)
+  selfhost/parts/emit.vel                       3497    UNJUDGED (vm.exe check refuses this file on its own)
+  selfhost/parts/emit_llvm.vel                  5314    UNJUDGED (vm.exe check refuses this file on its own)
+  selfhost/parts/eval.vel                       4343    UNJUDGED (vm.exe check refuses this file on its own)
+  selfhost/parts/llvm_shim.vel                  0       UNJUDGED (vm.exe check refuses this file on its own)
+  selfhost/parts/parser.vel                     2155    UNJUDGED (vm.exe check refuses this file on its own)
+  selfhost/parts/resolve.vel                    1132    UNJUDGED (vm.exe check refuses this file on its own)
+  selfhost/parts/vm_main.vel                    1137    UNJUDGED (vm.exe check refuses this file on its own)
+  selfhost/parts/vm_state.vel                   131     UNJUDGED (vm.exe check refuses this file on its own)
+  bench/mandelbrot.vel                          35      judged
+  bench/matmul.vel                              30      judged
+  bench/matmul_serial.vel                       30      judged
+  bench/run_bench.vel                           608     judged
+  bench/sieve.vel                               25      judged
+  selfhost/vela.vel                             708     judged
+
+== every wrong target, in full ==
+  (none)
+
+== what the oracle could not judge ==
+  tests/build/check_cases/array_rebind.vel:4 `a` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/array_rebind.vel:4 `b` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/array_struct_field.vel:6 `print` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/chained_comparison.vel:5 `print` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/const_index_out_of_range.vel:3 `a` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/const_index_zero_length.vel:3 `print` (the compiler refuses this file, so the oracle cannot s
+ay)
+  tests/build/check_cases/const_index_zero_length.vel:3 `a` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/divide_float_by_literal_zero.vel:3 `x` (the compiler refuses this file, so the oracle cannot 
+say)
+  tests/build/check_cases/divide_float_by_literal_zero.vel:3 `x` (the compiler refuses this file, so the oracle cannot 
+say)
+  tests/build/check_cases/division_by_constant_zero.vel:3 `a` (the compiler refuses this file, so the oracle cannot say
+)
+  tests/build/check_cases/division_by_constant_zero.vel:3 `a` (the compiler refuses this file, so the oracle cannot say
+)
+  tests/build/check_cases/duplicate_field.vel:7 `print` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/elif_is_not_vela.vel:4 `n` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/elif_is_not_vela.vel:5 `print` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/elif_is_not_vela.vel:7 `print` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/extern_conflicting_prototypes.vel:5 `print` (the compiler refuses this file, so the oracle ca
+nnot say)
+  tests/build/check_cases/float_to_int_variable.vel:4 `a` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/float_to_int_variable.vel:4 `a` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/float_to_int_variable.vel:4 `f` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/check_cases/immutable_array_element.vel:3 `a` (the compiler refuses this file, so the oracle cannot say)
+  tests/build/extern/extern_c_probe.vel:18 `abs`: renaming its declaration changes nothing the compiler notices (member
+ access is unresolved by `vm.exe check`)
+  tests/build/extern/extern_c_probe.vel:19 `abs`: renaming its declaration changes nothing the compiler notices (member
+ access is unresolved by `vm.exe check`)
+  tests/build/extern/extern_c_probe.vel:22 `sqrt`: renaming its declaration changes nothing the compiler notices (membe
+r access is unresolved by `vm.exe check`)
+  tests/probes/extern_calls_as_declared.vel:15 `sqrt`: renaming its declaration changes nothing the compiler notices (m
+ember access is unresolved by `vm.exe check`)
+  tests/probes/extern_calls_as_declared.vel:20 `abs`: renaming its declaration changes nothing the compiler notices (me
+mber access is unresolved by `vm.exe check`)
+  tests/probes/extern_calls_as_declared.vel:21 `abs`: renaming its declaration changes nothing the compiler notices (me
+mber access is unresolved by `vm.exe check`)
+  tests/probes/extern_constant_fits_declared_kind.vel:14 `abs`: renaming its declaration changes nothing the compiler n
+otices (member access is unresolved by `vm.exe check`)
+  tests/probes/extern_constant_fits_declared_kind.vel:15 `abs`: renaming its declaration changes nothing the compiler n
+otices (member access is unresolved by `vm.exe check`)
+  tests/probes/extern_declared_after_the_call.vel:9 `abs`: renaming its declaration changes nothing the compiler notice
+s (member access is unresolved by `vm.exe check`)
+  tests/safety/cases/scope_shadow_across_blocks_ok.vel:8 `x`: renaming its declaration changes nothing the compiler not
+ices (member access is unresolved by `vm.exe check`)
+
+VERDICT: no reference goes to a declaration the compiler does not bind it to, over 26644 judged reference(s)
+COVERAGE: ran 26644 / skipped 23351 (crashed-file 0, compiler-refused 23341, invisible-member 10, ambiguous 0) / wrong 
+0
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\GotoOracle.log
+
+=== HintDiff
+expected : `vm.exe parse` -- the param name= lines under each def name=
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\vm\vm.exe (867328 bytes, sha256 bce9036c71aa5cb43fa242bf
+1f620c642873bc5c2123eef2c209b2af0d235e15)
+rule     : argument i's hint must read `<declared param i>: `, or not be drawn
+half-typed: not searched (pass --truncate N)
+
+== totals ==
+  calls with a declared callee : 9542 (of which multi-argument: 6168)
+  hints drawn                  : 11627
+  hint names correct           : 11627
+  hint names WRONG             : 0
+  hints beyond the parameters  : 0
+  positions where the two sides disagree about an argument's boundary, so no hint was judged: 12
+  declared params with no hint : 0 (of which correctly suppressed because the argument already reads as the parameter's
+ own name: 16329)
+  calls to an undeclared callee: 1267, of which drew a hint: 0
+  calls in files the compiler cannot parse, unjudged: 2
+
+== findings ==
+  (none)
+
+VERDICT: every hint names the parameter the compiler declares for that argument, and every declared parameter has a hin
+t
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 31724
+  skipped                 : 14
+      compiler-cannot-parse 2       
+      arg-boundary-disagreement  12      
+  wrong                   : 0
+  corpus accounted for    : 31738  (ran + skipped)
+
+COVERAGE: ran 31724 / skipped 14 (compiler-cannot-parse 2, arg-boundary-disagreement 12) / wrong 0
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\HintDiff.log
+
+=== HintNames
+comparing: parameterNames(VelaModel.symbols) against the tree's param nodes
+
+callables compared            : 1883
+where the two sources disagree: 0
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 1883
+  skipped                 : 2
+      threw                 0         <- a defect, not a limit
+      missing-corpus-file   0         <- a defect, not a limit
+      no-model-entry-for-this-def  2       
+      too-large             0       
+  wrong                   : 0
+  corpus accounted for    : 1885  (ran + skipped)
+
+COVERAGE: ran 1883 / skipped 2 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 2, too-large 0) / wrong 0
+VERDICT: [PASS] the model and the tree give the same parameter names for all 1883 callable(s) compared (wrong 0, no def
+ect category tripped)
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\HintNames.log
+
+=== HintShapes
+truncating every 16 byte(s) over 259 file(s): a label is reported when it is not a plain identifier (that is the `s: s:
+ s:` shape, and the whole criterion)
+  [skipped] selfhost/parts/check.vel (120272 bytes > 65536 byte cap for the prefix sweep; its parts are swept individua
+lly)
+  [skipped] selfhost/parts/emit.vel (81004 bytes > 65536 byte cap for the prefix sweep; its parts are swept individuall
+y)
+  [skipped] selfhost/parts/emit_llvm.vel (138820 bytes > 65536 byte cap for the prefix sweep; its parts are swept indiv
+idually)
+  [skipped] selfhost/parts/eval.vel (100320 bytes > 65536 byte cap for the prefix sweep; its parts are swept individual
+ly)
+runs: 6901   hint labels drawn: 239921   labels that are not plain identifiers: 0
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 6901
+  skipped                 : 4
+      parameterHints-threw  0         <- a defect, not a limit
+      missing-corpus-file   0         <- a defect, not a limit
+      too-large             0       
+      too-large-for-prefix-sweep  4       
+  wrong                   : 0
+  corpus accounted for    : 6905  (ran + skipped)
+
+COVERAGE: ran 6901 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 
+4) / wrong 0
+VERDICT: [PASS] every one of 239921 hint label(s) drawn over 6901 prefix run(s) is a plain identifier (wrong 0, no defe
+ct category tripped)
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\HintShapes.log
+
+=== HintDupes
+asking: does any symbol's parameter list repeat a name?  model=the tree (what ships now)
+callables asked: 1883   with a repeated parameter name: 0   with an empty name: 0   whose detail does not start with it
+s own name: 0
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 1883
+  skipped                 : 0
+      symbols-threw         0         <- a defect, not a limit
+      missing-corpus-file   0         <- a defect, not a limit
+      too-large             0       
+  wrong                   : 0
+  corpus accounted for    : 1883  (ran + skipped)
+
+COVERAGE: ran 1883 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 0
+VERDICT: [PASS] no callable in the corpus and no builtin repeats or empties a parameter name (1883 asked, wrong 0, no d
+efect category tripped)
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\HintDupes.log
+
+=== SymbolDiff
+model    : VelaModel.symbols (tree) vs VelaModel.referenceSymbols (token scan)
+comparison: the two lists, symbol for symbol: kind, name, detail, type, line, parent
+a difference is reported, not failed: the tree is supposed to be right where they disagree
+
+== corpus ==
+file                                                      tree  scan    verdict
+----------------------------------------------------------  ----  ----  ----------------------------------
+tests/build/arith_basics.vel                              1     1       identical
+tests/build/python_floor_semantics.vel                    1     1       identical
+tests/build/recursion_fib.vel                             3     3       identical
+tests/build/struct_and_methods.vel                        10    10      identical
+tests/build/struct_value_semantics.vel                    3     3       identical
+tests/build/arrays_and_len_folding.vel                    1     1       identical
+tests/build/array_zero_filled.vel                         1     1       identical
+tests/build/parallel_for_correct.vel                      1     1       identical
+tests/build/parallel_nested_2d.vel                        1     1       identical
+tests/build/while_with_narrowing.vel                      1     1       identical
+tests/build/int_width_literals.vel                        1     1       identical
+tests/build/strings.vel                                   1     1       identical
+tests/build/string_escapes.vel                            1     1       identical
+tests/build/control_flow.vel                              3     3       identical
+tests/build/float_and_math.vel                            1     1       identical
+tests/build/pure_call_inside_parallel.vel                 3     3       identical
+tests/build/bool_logic.vel                                1     1       identical
+tests/probes/host_roundtrip.vel                           1     1       identical
+examples/hello.vel                                        1     1       identical
+tests/build/extern/extern_c_probe.vel                     5     2       tree has more symbols (5 vs 2)
+tests/probes/extern_calls_as_declared.vel                 7     3       tree has more symbols (7 vs 3)
+tests/probes/extern_constant_fits_declared_kind.vel       3     2       tree has more symbols (3 vs 2)
+tests/probes/extern_declared_after_the_call.vel           3     3       identical
+tests/probes/extern_declared_never_called.vel             3     2       tree has more symbols (3 vs 2)
+tests/probes/extern_void_call_accepted.vel                3     2       tree has more symbols (3 vs 2)
+tests/probes/extern_u8_argument_in_range.vel              3     2       tree has more symbols (3 vs 2)
+tests/probes/extern_str_argument.vel                      3     2       tree has more symbols (3 vs 2)
+tests/probes/extern_float_argument_for_i32.vel            3     2       tree has more symbols (3 vs 2)
+tests/probes/extern_int_variable_for_i32.vel              3     2       tree has more symbols (3 vs 2)
+tests/probes/extern_int_argument_for_float.vel            3     2       tree has more symbols (3 vs 2)
+tests/probes/extern_u8_argument_out_of_range.vel          3     2       tree has more symbols (3 vs 2)
+tests/probes/extern_array_argument.vel                    3     2       tree has more symbols (3 vs 2)
+tests/probes/extern_struct_argument.vel                   5     4       tree has more symbols (5 vs 4)
+tests/probes/extern_call_result_argument.vel              4     3       tree has more symbols (4 vs 3)
+tests/probes/extern_str_result.vel                        2     1       tree has more symbols (2 vs 1)
+tests/probes/extern_struct_parameter.vel                  5     4       tree has more symbols (5 vs 4)
+tests/probes/extern_method.vel                            5     4       tree has more symbols (5 vs 4)
+tests/build/check_cases/implicit_int_to_float.vel         1     1       identical
+tests/build/check_cases/float_to_int_variable.vel         1     1       identical
+tests/build/check_cases/truthiness.vel                    1     1       identical
+tests/build/check_cases/truthiness_string.vel             1     1       identical
+tests/build/check_cases/immutable_rebind.vel              1     1       identical
+tests/build/check_cases/immutable_array_element.vel       1     1       identical
+tests/build/check_cases/array_rebind.vel                  1     1       identical
+tests/build/check_cases/const_index_out_of_range.vel      1     1       identical
+tests/build/check_cases/negative_const_index.vel          1     1       identical
+tests/build/check_cases/const_index_zero_length.vel       1     1       identical
+tests/build/check_cases/division_by_constant_zero.vel     1     1       identical
+tests/build/check_cases/divide_float_by_literal_zero.vel  1     1       identical
+tests/build/check_cases/shift_out_of_range.vel            1     1       identical
+tests/build/check_cases/literal_overflow.vel              1     1       identical
+tests/build/check_cases/parallel_shared_accumulator.vel   1     1       identical
+tests/build/check_cases/parallel_unprovable_index.vel     1     1       identical
+tests/build/check_cases/parallel_writes_parameter.vel     4     4       DIFFERS (same count, different content)
+tests/build/check_cases/parallel_impure_call.vel          3     3       identical
+tests/build/check_cases/parallel_print.vel                1     1       identical
+tests/build/check_cases/pure_function_impure_call.vel     3     3       identical
+tests/build/check_cases/chained_comparison.vel            1     1       identical
+tests/build/check_cases/elif_is_not_vela.vel              1     1       identical
+tests/build/check_cases/missing_return.vel                3     3       identical
+tests/build/check_cases/value_from_void_function.vel      2     2       identical
+tests/build/check_cases/uninitialised_scalar.vel          1     1       identical
+tests/build/check_cases/mutate_loop_variable.vel          1     1       identical
+tests/build/check_cases/return_own_array.vel              2     2       differs (type spelling only)
+tests/build/check_cases/array_struct_field.vel            3     3       differs (type spelling only)
+tests/build/check_cases/string_concat_not_implemented.vel 1     1       identical
+tests/build/check_cases/slice_not_implemented.vel         1     1       identical
+tests/build/check_cases/nested_function.vel               1     1       identical
+tests/build/check_cases/tuple.vel                         1     1       identical
+tests/build/check_cases/adjacent_string_literals.vel      1     1       identical
+tests/build/check_cases/missing_open_brace.vel            1     1       identical
+tests/build/check_cases/missing_close_brace.vel           1     1       identical
+tests/build/check_cases/statements_need_newlines.vel      1     1       identical
+tests/build/check_cases/useless_expression_statement.vel  1     1       identical
+tests/build/check_cases/unannotated_parameter.vel         2     1       tree has more symbols (2 vs 1)
+tests/build/check_cases/missing_return_annotation.vel     3     2       tree has more symbols (3 vs 2)
+tests/build/check_cases/struct_requires_place.vel         3     3       identical
+tests/build/check_cases/duplicate_field.vel               2     1       tree has more symbols (2 vs 1)
+tests/build/check_cases/member_nested_receiver.vel        5     5       identical
+tests/build/check_cases/member_method_arity.vel           6     6       identical
+tests/build/check_cases/member_non_struct_receiver.vel    1     1       identical
+tests/build/check_cases/member_write_missing_field.vel    3     3       identical
+tests/build/check_cases/no_main.vel                       1     1       identical
+tests/build/lexer_error.vel                               1     1       identical
+tests/build/extern/reject_str_parameter.vel               3     2       tree has more symbols (3 vs 2)
+tests/build/extern/reject_non_scalar.vel                  4     2       tree has more symbols (4 vs 2)
+tests/build/check_cases/extern_conflicting_prototypes.vel 7     3       tree has more symbols (7 vs 3)
+tests/build/divide_by_mutable_zero_checks_at_runtime.vel  1     1       identical
+tests/run_tests.vel                                       111   111     identical
+selfhost/vela.vel                                         90    90      DIFFERS (same count, different content)
+selfhost/vm.vel                                           3491  3251    tree has more symbols (3491 vs 3251)
+bench/matmul.vel                                          1     1       identical
+bench/mandelbrot.vel                                      1     1       identical
+bench/sieve.vel                                           1     1       identical
+selfhost/parts/vm_state.vel                               244   244     DIFFERS (same count, different content)
+selfhost/parts/parser.vel                                 279   279     DIFFERS (same count, different content)
+selfhost/parts/resolve.vel                                137   137     DIFFERS (same count, different content)
+selfhost/parts/check.vel                                  516   516     DIFFERS (same count, different content)
+selfhost/parts/eval.vel                                   644   644     DIFFERS (same count, different content)
+selfhost/parts/emit.vel                                   497   497     DIFFERS (same count, different content)
+selfhost/parts/dump.vel                                   50    50      DIFFERS (same count, different content)
+selfhost/parts/vm_main.vel                                122   122     DIFFERS (same count, different content)
+tests/probes/parallel_alias_cross_iteration.vel           1     1       identical
+tests/probes/parallel_alias_read_only.vel                 1     1       identical
+tests/probes/parallel_alias_read_any_index.vel            1     1       identical
+tests/probes/parallel_alias_same_index.vel                1     1       identical
+tests/probes/parallel_alias_nested_rowmajor.vel           1     1       identical
+selfhost/parts/emit_llvm.vel                              723   723     DIFFERS (same count, different content)
+selfhost/parts/llvm_shim.vel                              193   1       tree has more symbols (193 vs 1)
+tests/build/bom_first_byte.vel                            1     1       identical
+tests/build/check_cases/divide_by_mutable_zero_checks_at_runtime.vel1     1       identical
+tests/build/crlf_line_endings.vel                         1     1       identical
+tests/build/host_surface_roundtrip.vel                    1     1       identical
+tests/probes/capture_probe.vel                            14    14      identical
+tests/probes/continue_in_for_range.vel                    1     1       identical
+tests/probes/mut_scalar_parameter.vel                     3     3       identical
+tests/probes/mut_struct_parameter.vel                     10    10      DIFFERS (same count, different content)
+tests/probes/oob_cond.vel                                 1     1       identical
+tests/probes/oob_read.vel                                 1     1       identical
+tests/probes/oob_write.vel                                1     1       identical
+tests/probes/overflow_index.vel                           1     1       identical
+bench/matmul_serial.vel                                   1     1       identical
+bench/run_bench.vel                                       70    70      DIFFERS (same count, different content)
+ide-demo/broken.vel                                       1     1       identical
+ide-demo/hello.vel                                        3     3       identical
+ide-demo/tour.vel                                         15    15      identical
+
+== totals ==
+  files compared            : 126
+  identical symbol lists    : 86 (of which both empty: 0)
+  different                 : 40
+    type spelling only            : 2   (same length, identical once the retired scan's `[T, n]` spelling is rewritten 
+as the canonical `Array[T,n]`)
+    same count, different content : 13   (of which 13 have a type spelling as their FIRST difference and something else
+ later, and 0 have a first difference that is not a spelling; the two sum to 13 -- see the pairs below)
+    the tree has MORE symbols     : 25   (declarations the retired token scan never produced)
+    the scan has MORE symbols     : 0
+  symbols in the identical ones: 266
+
+== the class that decides the verdict: same count, different content ==
+  Each line names the first symbol index at which the two descriptions
+  differ, and WHICH FIELD differs.  That is the point of this class: these
+  files have the same number of declarations, so the difference is inside
+  a symbol, and only a field name says which one.
+  tests/build/check_cases/parallel_writes_parameter.vel: tree 4 symbol(s), token scan 4 symbol(s)
+  tests/build/check_cases/parallel_writes_parameter.vel: tree 4 / scan 4, first difference at symbol 1 in `detail/type-
+spelling`
+  selfhost/vela.vel: tree 90 symbol(s), token scan 90 symbol(s)
+  selfhost/vela.vel: tree 90 / scan 90, first difference at symbol 12 in `detail/type-spelling`
+  selfhost/parts/vm_state.vel: tree 244 symbol(s), token scan 244 symbol(s)
+  selfhost/parts/vm_state.vel: tree 244 / scan 244, first difference at symbol 168 in `detail/type-spelling`
+  selfhost/parts/parser.vel: tree 279 symbol(s), token scan 279 symbol(s)
+  selfhost/parts/parser.vel: tree 279 / scan 279, first difference at symbol 11 in `detail/type-spelling`
+  selfhost/parts/resolve.vel: tree 137 symbol(s), token scan 137 symbol(s)
+  selfhost/parts/resolve.vel: tree 137 / scan 137, first difference at symbol 15 in `detail/type-spelling`
+  selfhost/parts/check.vel: tree 516 symbol(s), token scan 516 symbol(s)
+  selfhost/parts/check.vel: tree 516 / scan 516, first difference at symbol 25 in `detail/type-spelling`
+  selfhost/parts/eval.vel: tree 644 symbol(s), token scan 644 symbol(s)
+  selfhost/parts/eval.vel: tree 644 / scan 644, first difference at symbol 12 in `detail/type-spelling`
+  selfhost/parts/emit.vel: tree 497 symbol(s), token scan 497 symbol(s)
+  selfhost/parts/emit.vel: tree 497 / scan 497, first difference at symbol 5 in `detail/type-spelling`
+  selfhost/parts/dump.vel: tree 50 symbol(s), token scan 50 symbol(s)
+  selfhost/parts/dump.vel: tree 50 / scan 50, first difference at symbol 5 in `detail/type-spelling`
+  selfhost/parts/vm_main.vel: tree 122 symbol(s), token scan 122 symbol(s)
+  selfhost/parts/vm_main.vel: tree 122 / scan 122, first difference at symbol 1 in `detail/type-spelling`
+  selfhost/parts/emit_llvm.vel: tree 723 symbol(s), token scan 723 symbol(s)
+  selfhost/parts/emit_llvm.vel: tree 723 / scan 723, first difference at symbol 80 in `detail/type-spelling`
+  tests/probes/mut_struct_parameter.vel: tree 10 symbol(s), token scan 10 symbol(s)
+  tests/probes/mut_struct_parameter.vel: tree 10 / scan 10, first difference at symbol 8 in `detail/type-spelling`
+  bench/run_bench.vel: tree 70 symbol(s), token scan 70 symbol(s)
+  bench/run_bench.vel: tree 70 / scan 70, first difference at symbol 61 in `detail/type-spelling`
+
+== the same-count files whose first difference is NOT a type spelling ==
+  0 of 13 file(s) -- the honest defect count of this tool, with both sides for the first six:
+  tests/build/check_cases/parallel_writes_parameter.vel: tree 4 / scan 4, first difference at symbol 1 in `detail/type-
+spelling`
+      tree : PARAMETER `a` detail=`mut a: Array[int,64]` type=`Array[int,64]` line=1 parent=0
+      scan : PARAMETER `a` detail=`mut a: [int, 64]` type=`[int, 64]` line=1 parent=0
+  selfhost/vela.vel: tree 90 / scan 90, first difference at symbol 12 in `detail/type-spelling`
+      tree : PARAMETER `tk` detail=`tk: Array[int,786432]` type=`Array[int,786432]` line=74 parent=11
+      scan : PARAMETER `tk` detail=`tk: [int, 786432]` type=`[int, 786432]` line=74 parent=11
+  selfhost/parts/vm_state.vel: tree 244 / scan 244, first difference at symbol 168 in `detail/type-spelling`
+      tree : PARAMETER `mem` detail=`mem: Array[int,3741696]` type=`Array[int,3741696]` line=361 parent=167
+      scan : PARAMETER `mem` detail=`mem: [int, 3741696]` type=`[int, 3741696]` line=361 parent=167
+  selfhost/parts/parser.vel: tree 279 / scan 279, first difference at symbol 11 in `detail/type-spelling`
+      tree : PARAMETER `tk` detail=`tk: Array[int,786432]` type=`Array[int,786432]` line=104 parent=9
+      scan : PARAMETER `tk` detail=`tk: [int, 786432]` type=`[int, 786432]` line=104 parent=9
+  selfhost/parts/resolve.vel: tree 137 / scan 137, first difference at symbol 15 in `detail/type-spelling`
+      tree : PARAMETER `mem` detail=`mut mem: Array[int,3741696]` type=`Array[int,3741696]` line=64 parent=14
+      scan : PARAMETER `mem` detail=`mut mem: [int, 3741696]` type=`[int, 3741696]` line=64 parent=14
+  selfhost/parts/check.vel: tree 516 / scan 516, first difference at symbol 25 in `detail/type-spelling`
+      tree : PARAMETER `mem` detail=`mem: Array[int,3741696]` type=`Array[int,3741696]` line=155 parent=24
+      scan : PARAMETER `mem` detail=`mem: [int, 3741696]` type=`[int, 3741696]` line=155 parent=24
+
+== every count difference (tree vs retired scan), file by file ==
+  tests/build/extern/extern_c_probe.vel: tree 5 symbol(s), token scan 2 symbol(s)
+  tests/build/extern/extern_c_probe.vel: tree 5 / scan 2, first difference at symbol 2 in `kind`
+  tests/probes/extern_calls_as_declared.vel: tree 7 symbol(s), token scan 3 symbol(s)
+  tests/probes/extern_calls_as_declared.vel: tree 7 / scan 3, first difference at symbol 2 in `name`
+  tests/probes/extern_constant_fits_declared_kind.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/probes/extern_constant_fits_declared_kind.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/probes/extern_declared_never_called.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/probes/extern_declared_never_called.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/probes/extern_void_call_accepted.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/probes/extern_void_call_accepted.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/probes/extern_u8_argument_in_range.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/probes/extern_u8_argument_in_range.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/probes/extern_str_argument.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/probes/extern_str_argument.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/probes/extern_float_argument_for_i32.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/probes/extern_float_argument_for_i32.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/probes/extern_int_variable_for_i32.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/probes/extern_int_variable_for_i32.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/probes/extern_int_argument_for_float.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/probes/extern_int_argument_for_float.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/probes/extern_u8_argument_out_of_range.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/probes/extern_u8_argument_out_of_range.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/probes/extern_array_argument.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/probes/extern_array_argument.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/probes/extern_struct_argument.vel: tree 5 symbol(s), token scan 4 symbol(s)
+  tests/probes/extern_struct_argument.vel: tree 5 / scan 4, first difference at symbol 4 in `kind`
+  tests/probes/extern_call_result_argument.vel: tree 4 symbol(s), token scan 3 symbol(s)
+  tests/probes/extern_call_result_argument.vel: tree 4 / scan 3, first difference at symbol 3 in `kind`
+  tests/probes/extern_str_result.vel: tree 2 symbol(s), token scan 1 symbol(s)
+  tests/probes/extern_str_result.vel: tree 2 / scan 1, first difference at symbol 1 in `kind`
+  tests/probes/extern_struct_parameter.vel: tree 5 symbol(s), token scan 4 symbol(s)
+  tests/probes/extern_struct_parameter.vel: tree 5 / scan 4, first difference at symbol 4 in `kind`
+  tests/probes/extern_method.vel: tree 5 symbol(s), token scan 4 symbol(s)
+  tests/probes/extern_method.vel: tree 5 / scan 4, first difference at symbol 4 in `kind`
+  tests/build/check_cases/return_own_array.vel: tree 2 / scan 2, first difference at symbol 0 in `detail/type-spelling`
+  tests/build/check_cases/array_struct_field.vel: tree 3 / scan 3, first difference at symbol 1 in `detail/type-spellin
+g`
+  tests/build/check_cases/unannotated_parameter.vel: tree 2 symbol(s), token scan 1 symbol(s)
+  tests/build/check_cases/unannotated_parameter.vel: tree 2 / scan 1, first difference at symbol 0 in `detail`
+  tests/build/check_cases/missing_return_annotation.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/build/check_cases/missing_return_annotation.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/build/check_cases/duplicate_field.vel: tree 2 symbol(s), token scan 1 symbol(s)
+  tests/build/check_cases/duplicate_field.vel: tree 2 / scan 1, first difference at symbol 1 in `kind`
+  tests/build/extern/reject_str_parameter.vel: tree 3 symbol(s), token scan 2 symbol(s)
+  tests/build/extern/reject_str_parameter.vel: tree 3 / scan 2, first difference at symbol 2 in `kind`
+  tests/build/extern/reject_non_scalar.vel: tree 4 symbol(s), token scan 2 symbol(s)
+  tests/build/extern/reject_non_scalar.vel: tree 4 / scan 2, first difference at symbol 1 in `detail/type-spelling`
+  tests/build/check_cases/extern_conflicting_prototypes.vel: tree 7 symbol(s), token scan 3 symbol(s)
+  tests/build/check_cases/extern_conflicting_prototypes.vel: tree 7 / scan 3, first difference at symbol 3 in `kind`
+  selfhost/vm.vel: tree 3491 symbol(s), token scan 3251 symbol(s)
+  selfhost/vm.vel: tree 3491 / scan 3251, first difference at symbol 12 in `detail/type-spelling`
+  selfhost/parts/llvm_shim.vel: tree 193 symbol(s), token scan 1 symbol(s)
+  selfhost/parts/llvm_shim.vel: tree 193 / scan 1, first difference at symbol 1 in `kind`
+
+== the type-spelling-only differences ==
+  2 file(s): the same declarations, spelled differently -- the retired scan echoes the source text and the tree answers
+ with the canonical type name.
+
+== every difference, in full ==
+  tests/build/extern/extern_c_probe.vel: symbol 2
+      from the tree : FUNCTION `sqrt` detail=`sqrt(x: float) -> float` type=`float` line=15 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_calls_as_declared.vel: symbol 2
+      from the tree : FUNCTION `sqrt` detail=`sqrt(x: float) -> float` type=`float` line=9 parent=-1
+      token scan    : FUNCTION `main` detail=`main() -> None` type=`None` line=18 parent=-1
+  tests/probes/extern_constant_fits_declared_kind.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=13 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_declared_never_called.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=11 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_void_call_accepted.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=11 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_u8_argument_in_range.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=12 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_str_argument.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=10 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_float_argument_for_i32.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=10 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_int_variable_for_i32.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=11 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_int_argument_for_float.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=10 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_u8_argument_out_of_range.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=11 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_array_argument.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=11 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_struct_argument.vel: symbol 4
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=15 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_call_result_argument.vel: symbol 3
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=15 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_str_result.vel: symbol 1
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=11 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_struct_parameter.vel: symbol 4
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=14 parent=-1
+      token scan    : <end of list>
+  tests/probes/extern_method.vel: symbol 4
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=15 parent=-1
+      token scan    : <end of list>
+  tests/build/check_cases/parallel_writes_parameter.vel: symbol 1
+      from the tree : PARAMETER `a` detail=`mut a: Array[int,64]` type=`Array[int,64]` line=1 parent=0
+      token scan    : PARAMETER `a` detail=`mut a: [int, 64]` type=`[int, 64]` line=1 parent=0
+  tests/build/check_cases/return_own_array.vel: symbol 0
+      from the tree : FUNCTION `make` detail=`make() -> Array[int,4]` type=`Array[int,4]` line=1 parent=-1
+      token scan    : FUNCTION `make` detail=`make() -> [int, 4]` type=`[int, 4]` line=1 parent=-1
+      (identical after normalising the type spelling: FUNCTION `make` detail=`make() -> Array[int,4]` type=`Array[int,4
+]` line=1 parent=-1)
+  tests/build/check_cases/array_struct_field.vel: symbol 1
+      from the tree : FIELD `data` detail=`Array[int,4]` type=`Array[int,4]` line=2 parent=0
+      token scan    : FIELD `data` detail=`[int, 4]` type=`[int, 4]` line=2 parent=0
+      (identical after normalising the type spelling: FIELD `data` detail=`Array[int,4]` type=`Array[int,4]` line=2 par
+ent=0)
+  tests/build/check_cases/unannotated_parameter.vel: symbol 0
+      from the tree : FUNCTION `f` detail=`f(n) -> None` type=`None` line=2 parent=-1
+      token scan    : FUNCTION `f` detail=`f(n) -> int` type=`int` line=2 parent=-1
+  tests/build/check_cases/missing_return_annotation.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=5 parent=-1
+      token scan    : <end of list>
+  tests/build/check_cases/duplicate_field.vel: symbol 1
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=6 parent=-1
+      token scan    : <end of list>
+  tests/build/extern/reject_str_parameter.vel: symbol 2
+      from the tree : FUNCTION `main` detail=`main() -> None` type=`None` line=10 parent=-1
+      token scan    : <end of list>
+  tests/build/extern/reject_non_scalar.vel: symbol 1
+      from the tree : PARAMETER `a` detail=`a: Array[int,4]` type=`Array[int,4]` line=10 parent=0
+      token scan    : PARAMETER `a` detail=`a: [int, 4]` type=`[int, 4]` line=10 parent=0
+  tests/build/check_cases/extern_conflicting_prototypes.vel: symbol 3
+      from the tree : FUNCTION `host_add` detail=`host_add(a: float, b: float) -> float` type=`float` line=2 parent=-1
+      token scan    : <end of list>
+  selfhost/vela.vel: symbol 12
+      from the tree : PARAMETER `tk` detail=`tk: Array[int,786432]` type=`Array[int,786432]` line=74 parent=11
+      token scan    : PARAMETER `tk` detail=`tk: [int, 786432]` type=`[int, 786432]` line=74 parent=11
+  selfhost/vm.vel: symbol 12
+      from the tree : PARAMETER `tk` detail=`tk: Array[int,786432]` type=`Array[int,786432]` line=90 parent=11
+      token scan    : PARAMETER `tk` detail=`tk: [int, 786432]` type=`[int, 786432]` line=90 parent=11
+  selfhost/parts/vm_state.vel: symbol 168
+      from the tree : PARAMETER `mem` detail=`mem: Array[int,3741696]` type=`Array[int,3741696]` line=361 parent=167
+      token scan    : PARAMETER `mem` detail=`mem: [int, 3741696]` type=`[int, 3741696]` line=361 parent=167
+  selfhost/parts/parser.vel: symbol 11
+      from the tree : PARAMETER `tk` detail=`tk: Array[int,786432]` type=`Array[int,786432]` line=104 parent=9
+      token scan    : PARAMETER `tk` detail=`tk: [int, 786432]` type=`[int, 786432]` line=104 parent=9
+  selfhost/parts/resolve.vel: symbol 15
+      from the tree : PARAMETER `mem` detail=`mut mem: Array[int,3741696]` type=`Array[int,3741696]` line=64 parent=14
+      token scan    : PARAMETER `mem` detail=`mut mem: [int, 3741696]` type=`[int, 3741696]` line=64 parent=14
+  selfhost/parts/check.vel: symbol 25
+      from the tree : PARAMETER `mem` detail=`mem: Array[int,3741696]` type=`Array[int,3741696]` line=155 parent=24
+      token scan    : PARAMETER `mem` detail=`mem: [int, 3741696]` type=`[int, 3741696]` line=155 parent=24
+  selfhost/parts/eval.vel: symbol 12
+      from the tree : PARAMETER `mem` detail=`mut mem: Array[int,3741696]` type=`Array[int,3741696]` line=67 parent=11
+      token scan    : PARAMETER `mem` detail=`mut mem: [int, 3741696]` type=`[int, 3741696]` line=67 parent=11
+  selfhost/parts/emit.vel: symbol 5
+      from the tree : PARAMETER `nd` detail=`nd: Array[int,655360]` type=`Array[int,655360]` line=58 parent=4
+      token scan    : PARAMETER `nd` detail=`nd: [int, 655360]` type=`[int, 655360]` line=58 parent=4
+  selfhost/parts/dump.vel: symbol 5
+      from the tree : PARAMETER `nd` detail=`nd: Array[int,655360]` type=`Array[int,655360]` line=89 parent=4
+      token scan    : PARAMETER `nd` detail=`nd: [int, 655360]` type=`[int, 655360]` line=89 parent=4
+  selfhost/parts/vm_main.vel: symbol 1
+      from the tree : PARAMETER `tk` detail=`tk: Array[int,786432]` type=`Array[int,786432]` line=32 parent=0
+      token scan    : PARAMETER `tk` detail=`tk: [int, 786432]` type=`[int, 786432]` line=32 parent=0
+  selfhost/parts/emit_llvm.vel: symbol 80
+      from the tree : PARAMETER `mem` detail=`mem: Array[int,3741696]` type=`Array[int,3741696]` line=365 parent=78
+      token scan    : PARAMETER `mem` detail=`mem: [int, 3741696]` type=`[int, 3741696]` line=365 parent=78
+  selfhost/parts/llvm_shim.vel: symbol 1
+      from the tree : FUNCTION `vshim_shutdown` detail=`vshim_shutdown() -> i32` type=`i32` line=25 parent=-1
+      token scan    : <end of list>
+  tests/probes/mut_struct_parameter.vel: symbol 8
+      from the tree : PARAMETER `a` detail=`mut a: Array[int,2]` type=`Array[int,2]` line=39 parent=7
+      token scan    : PARAMETER `a` detail=`mut a: [int, 2]` type=`[int, 2]` line=39 parent=7
+  bench/run_bench.vel: symbol 61
+      from the tree : PARAMETER `v` detail=`mut v: Array[float,16]` type=`Array[float,16]` line=395 parent=60
+      token scan    : PARAMETER `v` detail=`mut v: [float, 16]` type=`[float, 16]` line=395 parent=60
+
+VERDICT: 13 file(s) have the same symbol count as the retired token scan and different content, and 0 threw; each is li
+sted above with both sides
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 86
+  skipped                 : 27
+      threw                 0         <- a defect, not a limit
+      missing-corpus-file   0         <- a defect, not a limit
+      too-large             0       
+      type-spelling-only-difference  2       
+      tree-reports-more-declarations  25      
+      scan-reports-more-declarations  0       
+  wrong                   : 13
+  corpus accounted for    : 113  (ran + skipped)
+
+COVERAGE: ran 86 / skipped 27 (threw 0, missing-corpus-file 0, too-large 0, type-spelling-only-difference 2, tree-repor
+ts-more-declarations 25, scan-reports-more-declarations 0) / wrong 13
+    exit 1   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\SymbolDiff.log
+
+=== FoldDiff
+model    : velaFoldRanges (tree) vs velaFoldRangesReference (brace matching)
+comparison: the region lists in order -- start, end, placeholder text
+
+== corpus ==
+file                                                      tree  brace   verdict
+----------------------------------------------------------  ----  ----  ------------------------------
+tests/build/arith_basics.vel                              1     1       identical
+tests/build/python_floor_semantics.vel                    1     1       identical
+tests/build/recursion_fib.vel                             4     4       differs (granularity only)
+tests/build/struct_and_methods.vel                        3     4       DIFFERS (CONTENT)
+tests/build/struct_value_semantics.vel                    1     2       DIFFERS (CONTENT)
+tests/build/arrays_and_len_folding.vel                    3     3       differs (granularity only)
+tests/build/array_zero_filled.vel                         1     1       identical
+tests/build/parallel_for_correct.vel                      3     3       differs (granularity only)
+tests/build/parallel_nested_2d.vel                        3     3       differs (granularity only)
+tests/build/while_with_narrowing.vel                      2     2       differs (granularity only)
+tests/build/int_width_literals.vel                        1     1       identical
+tests/build/strings.vel                                   1     1       identical
+tests/build/string_escapes.vel                            1     1       identical
+tests/build/control_flow.vel                              8     8       differs (granularity only)
+tests/build/float_and_math.vel                            1     1       identical
+tests/build/pure_call_inside_parallel.vel                 3     3       differs (granularity only)
+tests/build/bool_logic.vel                                1     1       identical
+tests/probes/host_roundtrip.vel                           1     1       identical
+examples/hello.vel                                        3     3       differs (granularity only)
+tests/build/extern/extern_c_probe.vel                     2     2       differs (granularity only)
+tests/probes/extern_calls_as_declared.vel                 2     2       identical
+tests/probes/extern_constant_fits_declared_kind.vel       1     1       identical
+tests/probes/extern_declared_after_the_call.vel           1     1       identical
+tests/probes/extern_declared_never_called.vel             1     1       identical
+tests/probes/extern_void_call_accepted.vel                1     1       identical
+tests/probes/extern_u8_argument_in_range.vel              1     1       identical
+tests/probes/extern_str_argument.vel                      1     1       identical
+tests/probes/extern_float_argument_for_i32.vel            1     1       identical
+tests/probes/extern_int_variable_for_i32.vel              1     1       identical
+tests/probes/extern_int_argument_for_float.vel            1     1       identical
+tests/probes/extern_u8_argument_out_of_range.vel          1     1       identical
+tests/probes/extern_array_argument.vel                    1     1       identical
+tests/probes/extern_struct_argument.vel                   1     2       DIFFERS (CONTENT)
+tests/probes/extern_call_result_argument.vel              2     2       identical
+tests/probes/extern_str_result.vel                        1     1       identical
+tests/probes/extern_struct_parameter.vel                  1     2       DIFFERS (CONTENT)
+tests/probes/extern_method.vel                            1     2       DIFFERS (CONTENT)
+tests/build/check_cases/implicit_int_to_float.vel         1     1       identical
+tests/build/check_cases/float_to_int_variable.vel         1     1       identical
+tests/build/check_cases/truthiness.vel                    2     2       differs (granularity only)
+tests/build/check_cases/truthiness_string.vel             2     2       differs (granularity only)
+tests/build/check_cases/immutable_rebind.vel              1     1       identical
+tests/build/check_cases/immutable_array_element.vel       1     1       identical
+tests/build/check_cases/array_rebind.vel                  1     1       identical
+tests/build/check_cases/const_index_out_of_range.vel      1     1       identical
+tests/build/check_cases/negative_const_index.vel          1     1       identical
+tests/build/check_cases/const_index_zero_length.vel       1     1       identical
+tests/build/check_cases/division_by_constant_zero.vel     1     1       identical
+tests/build/check_cases/divide_float_by_literal_zero.vel  1     1       identical
+tests/build/check_cases/shift_out_of_range.vel            1     1       identical
+tests/build/check_cases/literal_overflow.vel              1     0       DIFFERS (CONTENT)
+tests/build/check_cases/parallel_shared_accumulator.vel   2     2       differs (granularity only)
+tests/build/check_cases/parallel_unprovable_index.vel     2     2       differs (granularity only)
+tests/build/check_cases/parallel_writes_parameter.vel     3     3       differs (granularity only)
+tests/build/check_cases/parallel_impure_call.vel          3     3       differs (granularity only)
+tests/build/check_cases/parallel_print.vel                2     2       differs (granularity only)
+tests/build/check_cases/pure_function_impure_call.vel     3     3       identical
+tests/build/check_cases/chained_comparison.vel            1     2       DIFFERS (CONTENT)
+tests/build/check_cases/elif_is_not_vela.vel              2     3       DIFFERS (CONTENT)
+tests/build/check_cases/missing_return.vel                3     3       differs (granularity only)
+tests/build/check_cases/value_from_void_function.vel      2     2       identical
+tests/build/check_cases/uninitialised_scalar.vel          1     1       identical
+tests/build/check_cases/mutate_loop_variable.vel          2     2       differs (granularity only)
+tests/build/check_cases/return_own_array.vel              2     2       identical
+tests/build/check_cases/array_struct_field.vel            1     2       DIFFERS (CONTENT)
+tests/build/check_cases/string_concat_not_implemented.vel 1     1       identical
+tests/build/check_cases/slice_not_implemented.vel         1     1       identical
+tests/build/check_cases/nested_function.vel               2     2       differs (granularity only)
+tests/build/check_cases/tuple.vel                         1     1       identical
+tests/build/check_cases/adjacent_string_literals.vel      1     1       identical
+tests/build/check_cases/missing_open_brace.vel            0     0       identical
+tests/build/check_cases/missing_close_brace.vel           1     0       DIFFERS (CONTENT)
+tests/build/check_cases/statements_need_newlines.vel      1     1       identical
+tests/build/check_cases/useless_expression_statement.vel  1     1       identical
+tests/build/check_cases/unannotated_parameter.vel         0     0       identical
+tests/build/check_cases/missing_return_annotation.vel     0     0       identical
+tests/build/check_cases/struct_requires_place.vel         1     2       DIFFERS (CONTENT)
+tests/build/check_cases/duplicate_field.vel               0     0       identical
+tests/build/check_cases/member_nested_receiver.vel        1     3       DIFFERS (CONTENT)
+tests/build/check_cases/member_method_arity.vel           2     3       DIFFERS (CONTENT)
+tests/build/check_cases/member_non_struct_receiver.vel    1     1       identical
+tests/build/check_cases/member_write_missing_field.vel    1     2       DIFFERS (CONTENT)
+tests/build/check_cases/no_main.vel                       1     1       identical
+tests/build/lexer_error.vel                               1     0       DIFFERS (CONTENT)
+tests/build/extern/reject_str_parameter.vel               1     1       identical
+tests/build/extern/reject_non_scalar.vel                  1     1       identical
+tests/build/check_cases/extern_conflicting_prototypes.vel 1     1       identical
+tests/build/divide_by_mutable_zero_checks_at_runtime.vel  1     1       identical
+tests/run_tests.vel                                       157   158     DIFFERS (CONTENT)
+selfhost/vela.vel                                         172   173     DIFFERS (CONTENT)
+selfhost/vm.vel                                           2718  2723    DIFFERS (CONTENT)
+bench/matmul.vel                                          6     6       differs (granularity only)
+bench/mandelbrot.vel                                      5     5       differs (granularity only)
+bench/sieve.vel                                           6     6       differs (granularity only)
+selfhost/parts/vm_state.vel                               35    36      DIFFERS (CONTENT)
+selfhost/parts/parser.vel                                 220   220     differs (granularity only)
+selfhost/parts/resolve.vel                                111   111     differs (granularity only)
+selfhost/parts/check.vel                                  658   660     DIFFERS (CONTENT)
+selfhost/parts/eval.vel                                   496   496     differs (granularity only)
+selfhost/parts/emit.vel                                   357   357     differs (granularity only)
+selfhost/parts/dump.vel                                   104   104     differs (granularity only)
+selfhost/parts/vm_main.vel                                174   174     differs (granularity only)
+tests/probes/parallel_alias_cross_iteration.vel           2     2       differs (granularity only)
+tests/probes/parallel_alias_read_only.vel                 4     4       differs (granularity only)
+tests/probes/parallel_alias_read_any_index.vel            4     4       differs (granularity only)
+tests/probes/parallel_alias_same_index.vel                3     3       differs (granularity only)
+tests/probes/parallel_alias_nested_rowmajor.vel           3     3       differs (granularity only)
+selfhost/parts/emit_llvm.vel                              398   399     DIFFERS (CONTENT)
+selfhost/parts/llvm_shim.vel                              0     0       identical
+tests/build/bom_first_byte.vel                            1     1       identical
+tests/build/check_cases/divide_by_mutable_zero_checks_at_runtime.vel1     1       identical
+tests/build/crlf_line_endings.vel                         1     1       identical
+tests/build/host_surface_roundtrip.vel                    1     1       identical
+tests/probes/capture_probe.vel                            9     9       differs (granularity only)
+tests/probes/continue_in_for_range.vel                    2     2       differs (granularity only)
+tests/probes/mut_scalar_parameter.vel                     2     2       identical
+tests/probes/mut_struct_parameter.vel                     4     5       DIFFERS (CONTENT)
+tests/probes/oob_cond.vel                                 2     2       differs (granularity only)
+tests/probes/oob_read.vel                                 1     1       identical
+tests/probes/oob_write.vel                                1     1       identical
+tests/probes/overflow_index.vel                           1     1       identical
+bench/matmul_serial.vel                                   6     6       differs (granularity only)
+bench/run_bench.vel                                       103   104     DIFFERS (CONTENT)
+ide-demo/broken.vel                                       2     2       differs (granularity only)
+ide-demo/hello.vel                                        2     2       identical
+ide-demo/tour.vel                                         7     8       DIFFERS (CONTENT)
+
+== totals ==
+  files compared               : 126
+  identical region lists       : 64
+  different                    : 62
+    of which granularity only  : 38   (every region of each list is inside a region of the other)
+    of which CONTENT           : 24   (a region the other implementation does not fold at all)
+  fold regions in the identical ones: 67
+
+== the diffs that are a decidable disagreement (content), in full ==
+  tests/build/struct_and_methods.vel: 1 brace region(s) inside no tree region ([13,247))
+  tests/build/struct_value_semantics.vel: 1 brace region(s) inside no tree region ([10,22))
+  tests/probes/extern_struct_argument.vel: 1 brace region(s) inside no tree region ([496,508))
+  tests/probes/extern_struct_parameter.vel: 1 brace region(s) inside no tree region ([409,421))
+  tests/probes/extern_method.vel: 1 brace region(s) inside no tree region ([506,556))
+  tests/build/check_cases/literal_overflow.vel: 1 tree region(s) inside no brace region ([20,54)) 
+  tests/build/check_cases/chained_comparison.vel: 1 brace region(s) inside no tree region ([21,83))
+  tests/build/check_cases/elif_is_not_vela.vel: 1 brace region(s) inside no tree region ([21,113))
+  tests/build/check_cases/array_struct_field.vel: 1 brace region(s) inside no tree region ([12,37))
+  tests/build/check_cases/missing_close_brace.vel: 1 tree region(s) inside no brace region ([21,34)) 
+  tests/build/check_cases/struct_requires_place.vel: 1 brace region(s) inside no tree region ([10,22))
+  tests/build/check_cases/member_nested_receiver.vel: 2 brace region(s) inside no tree region ([14,26), [43,61))
+  tests/build/check_cases/member_method_arity.vel: 1 brace region(s) inside no tree region ([11,96))
+  tests/build/check_cases/member_write_missing_field.vel: 1 brace region(s) inside no tree region ([10,22))
+  tests/build/lexer_error.vel: 1 tree region(s) inside no brace region ([20,31)) 
+  tests/run_tests.vel: 1 brace region(s) inside no tree region ([2878,2935))
+  selfhost/vela.vel: 1 brace region(s) inside no tree region ([1918,2049))
+  selfhost/vm.vel: 5 brace region(s) inside no tree region ([2805,2936), [33236,36737), [164499,164566))
+  selfhost/parts/vm_state.vel: 1 brace region(s) inside no tree region ([12097,15598))
+  selfhost/parts/check.vel: 2 brace region(s) inside no tree region ([56933,57000), [62359,62393))
+  selfhost/parts/emit_llvm.vel: 1 brace region(s) inside no tree region ([8986,12154))
+  tests/probes/mut_struct_parameter.vel: 1 brace region(s) inside no tree region ([1326,1419))
+  bench/run_bench.vel: 1 brace region(s) inside no tree region ([1593,1630))
+  ide-demo/tour.vel: 1 brace region(s) inside no tree region ([849,1070))
+
+== the granularity-only differences ==
+  tests/build/recursion_fib.vel: tree 4 region(s), brace 4 -- every region of each is inside a region of the other
+  tests/build/arrays_and_len_folding.vel: tree 3 region(s), brace 3 -- every region of each is inside a region of the o
+ther
+  tests/build/parallel_for_correct.vel: tree 3 region(s), brace 3 -- every region of each is inside a region of the oth
+er
+  tests/build/parallel_nested_2d.vel: tree 3 region(s), brace 3 -- every region of each is inside a region of the other
+  tests/build/while_with_narrowing.vel: tree 2 region(s), brace 2 -- every region of each is inside a region of the oth
+er
+  tests/build/control_flow.vel: tree 8 region(s), brace 8 -- every region of each is inside a region of the other
+  tests/build/pure_call_inside_parallel.vel: tree 3 region(s), brace 3 -- every region of each is inside a region of th
+e other
+  examples/hello.vel: tree 3 region(s), brace 3 -- every region of each is inside a region of the other
+  tests/build/extern/extern_c_probe.vel: tree 2 region(s), brace 2 -- every region of each is inside a region of the ot
+her
+  tests/build/check_cases/truthiness.vel: tree 2 region(s), brace 2 -- every region of each is inside a region of the o
+ther
+  tests/build/check_cases/truthiness_string.vel: tree 2 region(s), brace 2 -- every region of each is inside a region o
+f the other
+  tests/build/check_cases/parallel_shared_accumulator.vel: tree 2 region(s), brace 2 -- every region of each is inside 
+a region of the other
+  tests/build/check_cases/parallel_unprovable_index.vel: tree 2 region(s), brace 2 -- every region of each is inside a 
+region of the other
+  tests/build/check_cases/parallel_writes_parameter.vel: tree 3 region(s), brace 3 -- every region of each is inside a 
+region of the other
+  tests/build/check_cases/parallel_impure_call.vel: tree 3 region(s), brace 3 -- every region of each is inside a regio
+n of the other
+  tests/build/check_cases/parallel_print.vel: tree 2 region(s), brace 2 -- every region of each is inside a region of t
+he other
+  tests/build/check_cases/missing_return.vel: tree 3 region(s), brace 3 -- every region of each is inside a region of t
+he other
+  tests/build/check_cases/mutate_loop_variable.vel: tree 2 region(s), brace 2 -- every region of each is inside a regio
+n of the other
+  tests/build/check_cases/nested_function.vel: tree 2 region(s), brace 2 -- every region of each is inside a region of 
+the other
+  bench/matmul.vel: tree 6 region(s), brace 6 -- every region of each is inside a region of the other
+  bench/mandelbrot.vel: tree 5 region(s), brace 5 -- every region of each is inside a region of the other
+  bench/sieve.vel: tree 6 region(s), brace 6 -- every region of each is inside a region of the other
+  selfhost/parts/parser.vel: tree 220 region(s), brace 220 -- every region of each is inside a region of the other
+  selfhost/parts/resolve.vel: tree 111 region(s), brace 111 -- every region of each is inside a region of the other
+  selfhost/parts/eval.vel: tree 496 region(s), brace 496 -- every region of each is inside a region of the other
+  selfhost/parts/emit.vel: tree 357 region(s), brace 357 -- every region of each is inside a region of the other
+  selfhost/parts/dump.vel: tree 104 region(s), brace 104 -- every region of each is inside a region of the other
+  selfhost/parts/vm_main.vel: tree 174 region(s), brace 174 -- every region of each is inside a region of the other
+  tests/probes/parallel_alias_cross_iteration.vel: tree 2 region(s), brace 2 -- every region of each is inside a region
+ of the other
+  tests/probes/parallel_alias_read_only.vel: tree 4 region(s), brace 4 -- every region of each is inside a region of th
+e other
+  tests/probes/parallel_alias_read_any_index.vel: tree 4 region(s), brace 4 -- every region of each is inside a region 
+of the other
+  tests/probes/parallel_alias_same_index.vel: tree 3 region(s), brace 3 -- every region of each is inside a region of t
+he other
+  tests/probes/parallel_alias_nested_rowmajor.vel: tree 3 region(s), brace 3 -- every region of each is inside a region
+ of the other
+  tests/probes/capture_probe.vel: tree 9 region(s), brace 9 -- every region of each is inside a region of the other
+  tests/probes/continue_in_for_range.vel: tree 2 region(s), brace 2 -- every region of each is inside a region of the o
+ther
+  tests/probes/oob_cond.vel: tree 2 region(s), brace 2 -- every region of each is inside a region of the other
+  bench/matmul_serial.vel: tree 6 region(s), brace 6 -- every region of each is inside a region of the other
+  ide-demo/broken.vel: tree 2 region(s), brace 2 -- every region of each is inside a region of the other
+
+== every difference, in full ==
+  tests/build/recursion_fib.vel: region 0
+      from the tree : [29,103) `{ 5 lines }`
+      brace matching: [44,66) `{ 2 lines }`
+      context around the tree's region: `-> int {\n    if n < 2 {\n        return n\n    }\n    return fib(n - 1) + fib
+(n - 2)\n}\n...`
+      context around the brace one : ` n < 2 {\n        return n\n    }\n    re`
+  tests/build/struct_and_methods.vel: region 2
+      from the tree : [270,390) `{ 6 lines }`
+      brace matching: [13,247) `{ 10 lines }`
+      context around the tree's region: `> None {\n    mut p: Vec2 = Vec2(3.0, 4.0)\n    q: Vec2 = Vec2(1.0, 2.0)\n    
+print(p.dot(...`
+      context around the brace one : `t Vec2 {\n    x: float\n    y: float\n\n    def dot(self: Vec2, o: Vec2) -> float
+ {\n     ...`
+  tests/build/struct_value_semantics.vel: region 0
+      from the tree : [45,112) `{ 5 lines }`
+      brace matching: [10,22) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut a: P = P(1)\n    b: P = a\n    a.x = 99\n    print(a.x, b.x)
+\n}\n`
+      context around the brace one : `ruct P {\n    x: int\n}\n\ndef m`
+  tests/build/arrays_and_len_folding.vel: region 0
+      from the tree : [20,224) `{ 10 lines }`
+      brace matching: [92,123) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut xs: Array[int, 16] = [1, 2, 3]\n    for i in range(0, len(xs
+)) {\n      ...`
+      context around the brace one : `n(xs)) {\n        xs[i] = xs[i] + 1\n    }\n    mu`
+  tests/build/parallel_for_correct.vel: region 0
+      from the tree : [20,210) `{ 10 lines }`
+      brace matching: [93,121) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut out: Array[int, 100] = [0]\n    parallel for i in range(0, 1
+00) {\n     ...`
+      context around the brace one : `, 100) {\n        out[i] = i * i\n    }\n    mu`
+  tests/build/parallel_nested_2d.vel: region 0
+      from the tree : [20,204) `{ 8 lines }`
+      brace matching: [122,165) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut m: Array[int, 256] = [0]\n    parallel for i in range(0, 16)
+ {\n        ...`
+      context around the brace one : `0, 16) {\n            m[i * 16 + j] = i + j\n        }\n    }\n`
+  tests/build/while_with_narrowing.vel: region 0
+      from the tree : [20,143) `{ 8 lines }`
+      brace matching: [83,122) `{ 3 lines }`
+      context around the tree's region: `> None {\n    mut it: int = 0\n    mut acc: int = 0\n    while it < 1000 {\n  
+      acc +=...`
+      context around the brace one : `< 1000 {\n        acc += it\n        it += 1\n    }\n    pr`
+  tests/build/control_flow.vel: region 0
+      from the tree : [34,143) `{ 8 lines }`
+      brace matching: [49,71) `{ 2 lines }`
+      context around the tree's region: `-> int {\n    if n < 0 {\n        return 0\n    } else if n == 0 {\n        re
+turn 1\n    ...`
+      context around the brace one : ` n < 0 {\n        return 0\n    } else i`
+  tests/build/pure_call_inside_parallel.vel: region 1
+      from the tree : [69,197) `{ 6 lines }`
+      brace matching: [140,168) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut out: Array[int, 64] = [0]\n    parallel for i in range(0, 64
+) {\n       ...`
+      context around the brace one : `0, 64) {\n        out[i] = sq(i)\n    }\n    pr`
+  examples/hello.vel: region 0
+      from the tree : [20,330) `{ 13 lines }`
+      brace matching: [101,125) `{ 2 lines }`
+      context around the tree's region: `> None {\n    print("hello from Vela")\n    mut total: int = 0\n    for i in r
+ange(0, 100)...`
+      context around the brace one : `, 100) {\n        total += i\n    }\n    pr`
+  tests/build/extern/extern_c_probe.vel: region 0
+      from the tree : [859,1048) `{ 8 lines }`
+      brace matching: [972,1011) `{ 2 lines }`
+      context around the tree's region: `> None {\n    print("abs(-7) =", abs(-7))\n    print("abs(9) =", abs(9))\n    
+mut s: float...`
+      context around the brace one : `0, 64) {\n        s = s + sqrt(to_float(i))\n    }\n    pr`
+  tests/probes/extern_struct_argument.vel: region 0
+      from the tree : [564,603) `{ 3 lines }`
+      brace matching: [496,508) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut p: P = P(1)\n    print(abs(p))\n}\n`
+      context around the brace one : `ruct P {\n    x: int\n}\n\nexter`
+  tests/probes/extern_struct_parameter.vel: region 0
+      from the tree : [478,504) `{ 2 lines }`
+      brace matching: [409,421) `{ 2 lines }`
+      context around the tree's region: `> None {\n    print("unreachable")\n}\n`
+      context around the brace one : `ruct P {\n    x: int\n}\n\nexter`
+  tests/probes/extern_method.vel: region 0
+      from the tree : [579,605) `{ 2 lines }`
+      brace matching: [506,556) `{ 3 lines }`
+      context around the tree's region: `> None {\n    print("unreachable")\n}\n`
+      context around the brace one : `ruct P {\n    x: int\n\n    extern c def abs(self: P) -> i32\n}\n\ndef m`
+  tests/build/check_cases/truthiness.vel: region 0
+      from the tree : [20,73) `{ 5 lines }`
+      brace matching: [46,71) `{ 2 lines }`
+      context around the tree's region: `> None {\n    n: int = 3\n    if n {\n        print("no")\n    }\n}\n`
+      context around the brace one : `  if n {\n        print("no")\n    }\n}\n`
+  tests/build/check_cases/truthiness_string.vel: region 0
+      from the tree : [20,78) `{ 5 lines }`
+      brace matching: [51,76) `{ 2 lines }`
+      context around the tree's region: `> None {\n    s: str = "x"\n    while s {\n        print("no")\n    }\n}\n`
+      context around the brace one : `hile s {\n        print("no")\n    }\n}\n`
+  tests/build/check_cases/literal_overflow.vel: region 0
+      from the tree : [20,54) `{ 2 lines }`
+      brace matching: <end of list>
+      context around the tree's region: `> None {\n    a: int = 99999999999999999999\n    pri`
+  tests/build/check_cases/parallel_shared_accumulator.vel: region 0
+      from the tree : [20,124) `{ 6 lines }`
+      brace matching: [81,105) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut total: int = 0\n    parallel for i in range(0, 100) {\n     
+   total += ...`
+      context around the brace one : `, 100) {\n        total += i\n    }\n    pr`
+  tests/build/check_cases/parallel_unprovable_index.vel: region 0
+      from the tree : [20,118) `{ 5 lines }`
+      brace matching: [89,116) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut a: Array[int, 64] = [0]\n    parallel for i in range(0, 60) 
+{\n        a...`
+      context around the brace one : `0, 60) {\n        a[i // 2] = 1\n    }\n}\n`
+  tests/build/check_cases/parallel_writes_parameter.vel: region 0
+      from the tree : [50,110) `{ 4 lines }`
+      brace matching: [86,108) `{ 2 lines }`
+      context around the tree's region: `> None {\n    parallel for i in range(0, n) {\n        a[i] = 1\n    }\n}\n\nd
+ef m`
+      context around the brace one : `(0, n) {\n        a[i] = 1\n    }\n}\n\ndef`
+  tests/build/check_cases/parallel_impure_call.vel: region 1
+      from the tree : [89,190) `{ 5 lines }`
+      brace matching: [158,188) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut a: Array[int, 64] = [0]\n    parallel for i in range(0, 64) 
+{\n        a...`
+      context around the brace one : `0, 64) {\n        a[i] = log_it(i)\n    }\n}\n`
+  tests/build/check_cases/parallel_print.vel: region 0
+      from the tree : [20,133) `{ 6 lines }`
+      brace matching: [89,131) `{ 3 lines }`
+      context around the tree's region: `> None {\n    mut a: Array[int, 64] = [0]\n    parallel for i in range(0, 64) 
+{\n        a...`
+      context around the brace one : `0, 64) {\n        a[i] = i\n        print("no")\n    }\n}\n`
+  tests/build/check_cases/chained_comparison.vel: region 0
+      from the tree : [21,81) `{ 4 lines }`
+      brace matching: [56,81) `{ 2 lines }`
+      context around the tree's region: `> None {\n    n: int = 3\n    if 0 < n < 10 {\n        print("no")\n    }\n}\n
+`
+      context around the brace one : `n < 10 {\n        print("no")\n    }\n}\n`
+  tests/build/check_cases/elif_is_not_vela.vel: region 0
+      from the tree : [21,111) `{ 6 lines }`
+      brace matching: [52,74) `{ 2 lines }`
+      context around the tree's region: `> None {\n    n: int = 3\n    if n == 1 {\n        print(1)\n    } elif n == 2
+ {\n        ...`
+      context around the brace one : `n == 1 {\n        print(1)\n    } elif n`
+  tests/build/check_cases/missing_return.vel: region 0
+      from the tree : [22,61) `{ 4 lines }`
+      brace matching: [37,59) `{ 2 lines }`
+      context around the tree's region: `-> int {\n    if n > 0 {\n        return 1\n    }\n}\n\ndef m`
+      context around the brace one : ` n > 0 {\n        return 1\n    }\n}\n\ndef`
+  tests/build/check_cases/mutate_loop_variable.vel: region 0
+      from the tree : [20,70) `{ 4 lines }`
+      brace matching: [48,68) `{ 2 lines }`
+      context around the tree's region: `> None {\n    for i in range(0, 10) {\n        i += 1\n    }\n}\n`
+      context around the brace one : `0, 10) {\n        i += 1\n    }\n}\n`
+  tests/build/check_cases/array_struct_field.vel: region 0
+      from the tree : [60,74) `{ 2 lines }`
+      brace matching: [12,37) `{ 2 lines }`
+      context around the tree's region: `> None {\n    print(1)\n}\n`
+      context around the brace one : `ct Bad {\n    data: Array[int, 4]\n}\n\ndef m`
+  tests/build/check_cases/nested_function.vel: region 0
+      from the tree : [20,88) `{ 5 lines }`
+      brace matching: [45,67) `{ 2 lines }`
+      context around the tree's region: `> None {\n    def inner() -> int {\n        return 1\n    }\n    print(inner()
+)\n}\n`
+      context around the brace one : `-> int {\n        return 1\n    }\n    pr`
+  tests/build/check_cases/missing_close_brace.vel: region 0
+      from the tree : [21,34) `{ 2 lines }`
+      brace matching: <end of list>
+      context around the tree's region: `> None {\n    print(1)\n`
+  tests/build/check_cases/struct_requires_place.vel: region 0
+      from the tree : [45,64) `{ 2 lines }`
+      brace matching: [10,22) `{ 2 lines }`
+      context around the tree's region: `> None {\n    print(P(1).x)\n}\n`
+      context around the brace one : `ruct P {\n    x: int\n}\n\ndef m`
+  tests/build/check_cases/member_nested_receiver.vel: region 0
+      from the tree : [84,143) `{ 3 lines }`
+      brace matching: [14,26) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut o: Outer = Outer(Inner(1))\n    print(o.inner.zzz)\n}\n`
+      context around the brace one : ` Inner {\n    x: int\n}\n\nstruc`
+  tests/build/check_cases/member_method_arity.vel: region 1
+      from the tree : [119,190) `{ 4 lines }`
+      brace matching: [11,96) `{ 5 lines }`
+      context around the tree's region: `> None {\n    mut p: Pt = Pt(1)\n    mut q: Pt = Pt(2)\n    print(p.dot(p, q, 
+p))\n}\n`
+      context around the brace one : `uct Pt {\n    x: int\n\n    def dot(self: Pt, o: Pt) -> int {\n        return sel
+f.x + o.x...`
+  tests/build/check_cases/member_write_missing_field.vel: region 0
+      from the tree : [45,96) `{ 4 lines }`
+      brace matching: [10,22) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut a: P = P(1)\n    a.zzz = 99\n    print(a.x)\n}\n`
+      context around the brace one : `ruct P {\n    x: int\n}\n\ndef m`
+  tests/build/lexer_error.vel: region 0
+      from the tree : [20,31) `{ 2 lines }`
+      brace matching: <end of list>
+      context around the tree's region: `> None {\n    print("hello)\n`
+  tests/run_tests.vel: region 0
+      from the tree : [2956,4144) `{ 7 lines }`
+      brace matching: [2878,2935) `{ 4 lines }`
+      context around the tree's region: `-> str {\n    s: str = env("VELA_SELF")\n    if len(s) > 0 {\n        return s
+\n    }\n   ...`
+      context around the brace one : ` Tally {\n    mut npass: int\n    mut nfail: int\n    mut ncap: int\n}\n\ndef c`
+  selfhost/vela.vel: region 0
+      from the tree : [3573,3595) `{ 2 lines }`
+      brace matching: [1918,2049) `{ 11 lines }`
+      context around the tree's region: `-> int {\n    return tk[i * 6]\n}\n\ndef t`
+      context around the brace one : `ct Ctx {\n    pos: int\n    line: int\n    ntok: int\n    ti: int\n    ni: int\n 
+   sp: in...`
+  selfhost/vm.vel: region 0
+      from the tree : [4460,4482) `{ 2 lines }`
+      brace matching: [2805,2936) `{ 11 lines }`
+      context around the tree's region: `-> int {\n    return tk[i * 6]\n}\n\ndef t`
+      context around the brace one : `ct Ctx {\n    pos: int\n    line: int\n    ntok: int\n    ti: int\n    ni: int\n 
+   sp: in...`
+  bench/matmul.vel: region 0
+      from the tree : [20,712) `{ 25 lines }`
+      brace matching: [172,265) `{ 3 lines }`
+      context around the tree's region: `> None {\n    mut a: Array[float, 262144] = [0.0]\n    mut b: Array[float, 262
+144] = [0.0]...`
+      context around the brace one : `62144) {\n        a[i] = to_float(i % 7) * 0.5 + 1.0\n        b[i] = to_float(i %
+ 11) * 0....`
+  bench/mandelbrot.vel: region 0
+      from the tree : [20,793) `{ 26 lines }`
+      brace matching: [425,579) `{ 5 lines }`
+      context around the tree's region: `> None {\n    mut img: Array[int, 1920000] = [0]\n    t0: float = now()\n    p
+arallel for ...`
+      context around the brace one : ` < 4.0 {\n                mut t: float = zr * zr - zi * zi + cr\n                
+zi = 2.0 ...`
+  bench/sieve.vel: region 0
+      from the tree : [20,523) `{ 24 lines }`
+      brace matching: [232,296) `{ 3 lines }`
+      context around the tree's region: `> None {\n    mut n: int = 20000000\n    mut comp: Array[u8, 20000000] = [0]\n
+    t0: floa...`
+      context around the brace one : ` j < n {\n                comp[j] = 1\n                j += i\n            }\n   
+   `
+  selfhost/parts/vm_state.vel: region 0
+      from the tree : [4776,4845) `{ 5 lines }`
+      brace matching: [4792,4817) `{ 2 lines }`
+      context around the tree's region: `-> int {\n    if n <= 0 {\n        return kind\n    }\n    return kind + n * 2
+56\n}\n\ndef...`
+      context around the brace one : `n <= 0 {\n        return kind\n    }\n    re`
+  selfhost/parts/parser.vel: region 0
+      from the tree : [4345,4561) `{ 11 lines }`
+      brace matching: [4366,4559) `{ 9 lines }`
+      context around the tree's region: `> None {\n    if cx.err == 0 {\n        cx.err = 1\n        warn_str("vela: ")
+\n        wa...`
+      context around the brace one : `r == 0 {\n        cx.err = 1\n        warn_str("vela: ")\n        warn_str(kind)\
+n        ...`
+  selfhost/parts/resolve.vel: region 3
+      from the tree : [3184,3678) `{ 9 lines }`
+      brace matching: [3215,3291) `{ 2 lines }`
+      context around the tree's region: `> None {\n    if vm.scn >= SCOPE_MAX() {\n        panic("vela: compiler: the r
+esolver ran ...`
+      context around the brace one : `_MAX() {\n        panic("vela: compiler: the resolver ran out of scope entries")\
+n    }\n ...`
+  selfhost/parts/check.vel: region 5
+      from the tree : [3877,4441) `{ 19 lines }`
+      brace matching: [4111,4135) `{ 2 lines }`
+      context around the tree's region: `-> str {\n    # messages quote numbers, and Vela has no `str(int)`: emit_int w
+rites to\n  ...`
+      context around the brace one : `v == 0 {\n        return "0"\n    }\n    ne`
+  selfhost/parts/eval.vel: region 3
+      from the tree : [2383,2532) `{ 7 lines }`
+      brace matching: [2418,2483) `{ 2 lines }`
+      context around the tree's region: `-> int {\n    if vm.sp >= CELL_STACK_MAX() {\n        selflimit("the interpret
+er ran out o...`
+      context around the brace one : `_MAX() {\n        selflimit("the interpreter ran out of stack cells")\n    }\n   
+ c:`
+  selfhost/parts/emit.vel: region 0
+      from the tree : [2593,2677) `{ 6 lines }`
+      brace matching: [2630,2675) `{ 3 lines }`
+      context around the tree's region: `> None {\n    mut i: int = 0\n    while i < n {\n        emit_str("    ")\n   
+     i += 1\...`
+      context around the brace one : ` i < n {\n        emit_str("    ")\n        i += 1\n    }\n}\n\ndef`
+  selfhost/parts/dump.vel: region 0
+      from the tree : [881,967) `{ 6 lines }`
+      brace matching: [922,965) `{ 3 lines }`
+      context around the tree's region: `> None {\n    mut i: int = 0\n    while i < depth {\n        emit_str("  ")\n 
+       i += ...`
+      context around the brace one : ` depth {\n        emit_str("  ")\n        i += 1\n    }\n}\n\n# -`
+  selfhost/parts/vm_main.vel: region 0
+      from the tree : [1893,2227) `{ 15 lines }`
+      brace matching: [1936,2225) `{ 12 lines }`
+      context around the tree's region: `> None {\n    mut i: int = 0\n    while i < cx.ntok {\n        emit_int(tk_kin
+d(tk, i))\n ...`
+      context around the brace one : `x.ntok {\n        emit_int(tk_kind(tk, i))\n        emit_str(" ")\n        emit_i
+nt(tk_lin...`
+  tests/probes/parallel_alias_cross_iteration.vel: region 0
+      from the tree : [874,989) `{ 6 lines }`
+      brace matching: [937,970) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut a: Array[int, 64]\n    parallel for i in range(1, 64) {\n   
+     a[i] = ...`
+      context around the brace one : `1, 64) {\n        a[i] = a[i - 1] + 1\n    }\n    pr`
+  tests/probes/parallel_alias_read_only.vel: region 0
+      from the tree : [619,919) `{ 15 lines }`
+      brace matching: [717,739) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut n: int = 8\n    mut a: Array[int, 8]\n    mut out: Array[int
+, 8]\n    fo...`
+      context around the brace one : `(0, n) {\n        a[i] = i\n    }\n    pa`
+  tests/probes/parallel_alias_read_any_index.vel: region 0
+      from the tree : [392,692) `{ 15 lines }`
+      brace matching: [490,517) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut n: int = 6\n    mut a: Array[int, 4]\n    mut out: Array[int
+, 6]\n    fo...`
+      context around the brace one : `(0, 4) {\n        a[k] = k * 10\n    }\n    pa`
+  tests/probes/parallel_alias_same_index.vel: region 0
+      from the tree : [782,982) `{ 11 lines }`
+      brace matching: [875,904) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut n: int = 1\n    mut a: Array[int, 4]\n    a[0] = 2\n    para
+llel for i i...`
+      context around the brace one : `(0, n) {\n        a[i] = a[i] + 1\n    }\n    pa`
+  tests/probes/parallel_alias_nested_rowmajor.vel: region 0
+      from the tree : [784,961) `{ 8 lines }`
+      brace matching: [877,930) `{ 2 lines }`
+      context around the tree's region: `> None {\n    mut m: Array[int, 64]\n    parallel for i in range(0, 8) {\n    
+    for j in...`
+      context around the brace one : `(0, 8) {\n            m[i * 8 + j] = m[i * 8 + j] + 1\n        }\n    }\n`
+  selfhost/parts/emit_llvm.vel: region 0
+      from the tree : [12178,12363) `{ 4 lines }`
+      brace matching: [8986,12154) `{ 48 lines }`
+      context around the tree's region: ` -> LG {\n    return LG(0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+ 0, 0, 0, 0,...`
+      context around the brace one : `uct LG {\n    m: int            # the module handle\n    tbl: str          # byte
+ index ->...`
+  tests/probes/capture_probe.vel: region 1
+      from the tree : [573,666) `{ 5 lines }`
+      brace matching: [601,651) `{ 2 lines }`
+      context around the tree's region: `-> str {\n    if len(env("OS")) > 0 {\n        return concat("\"", concat(c, "
+\""))\n    }...`
+      context around the brace one : `)) > 0 {\n        return concat("\"", concat(c, "\""))\n    }\n    re`
+  tests/probes/continue_in_for_range.vel: region 0
+      from the tree : [2023,2096) `{ 5 lines }`
+      brace matching: [2050,2072) `{ 2 lines }`
+      context around the tree's region: `> None {\n    for i in range(0, 3) {\n        continue\n    }\n    print("surv
+ived")\n}\n`
+      context around the brace one : `(0, 3) {\n        continue\n    }\n    pr`
+  tests/probes/mut_struct_parameter.vel: region 1
+      from the tree : [1456,1475) `{ 2 lines }`
+      brace matching: [1326,1419) `{ 5 lines }`
+      context around the tree's region: `> None {\n    b.v = b.v + 1\n}\n\ndef f`
+      context around the brace one : `ct Box {\n    v: int\n\n    def bump(mut self: Box, k: int) -> None {\n        se
+lf.v = se...`
+  tests/probes/oob_cond.vel: region 0
+      from the tree : [669,826) `{ 10 lines }`
+      brace matching: [759,811) `{ 4 lines }`
+      context around the tree's region: `> None {\n    mut a: Array[int, 4] = [1]\n    mut i: int = 0\n    mut n: int =
+ 0\n    whil...`
+      context around the brace one : `i] > 0 {\n        a[i] = 0\n        n += 1\n        i += 4\n    }\n    pr`
+  bench/matmul_serial.vel: region 0
+      from the tree : [20,703) `{ 25 lines }`
+      brace matching: [172,265) `{ 3 lines }`
+      context around the tree's region: `> None {\n    mut a: Array[float, 262144] = [0.0]\n    mut b: Array[float, 262
+144] = [0.0]...`
+      context around the brace one : `62144) {\n        a[i] = to_float(i % 7) * 0.5 + 1.0\n        b[i] = to_float(i %
+ 11) * 0....`
+  bench/run_bench.vel: region 0
+      from the tree : [1737,1779) `{ 2 lines }`
+      brace matching: [1593,1630) `{ 3 lines }`
+      context around the tree's region: `-> str {\n    return concat("\"", concat(s, "\""))\n}\n\n# Bac`
+      context around the brace one : `ct Run {\n    mut ncap: int\n    mut nbad: int\n}\n\n# ---`
+  ide-demo/broken.vel: region 0
+      from the tree : [489,580) `{ 4 lines }`
+      brace matching: [500,578) `{ 2 lines }`
+      context around the tree's region: `> None {\n    if 1 {\n        print("never printed: the program is refused bef
+ore it can r...`
+      context around the brace one : `  if 1 {\n        print("never printed: the program is refused before it can run"
+)\n    }\...`
+  ide-demo/tour.vel: region 2
+      from the tree : [1112,1135) `{ 2 lines }`
+      brace matching: [849,1070) `{ 9 lines }`
+      context around the tree's region: `-> int {\n    return v * factor\n}\n\ndef d`
+      context around the brace one : ` Point {\n    x: int\n    y: int\n\n    def manhattan(self: Point) -> int {\n    
+    retur...`
+
+VERDICT: 24 file(s) fold text the retired brace matcher does not fold at all, and 0 threw; each is listed above with bo
+th sides
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 64
+  skipped                 : 38
+      threw                 0         <- a defect, not a limit
+      missing-corpus-file   0         <- a defect, not a limit
+      too-large             0       
+      granularity-only-difference  38      
+  wrong                   : 24
+  corpus accounted for    : 102  (ran + skipped)
+
+COVERAGE: ran 64 / skipped 38 (threw 0, missing-corpus-file 0, too-large 0, granularity-only-difference 38) / wrong 24
+    exit 1   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\FoldDiff.log
+
+=== FeatureProbe
+corpus   : C:\Users\lu\Downloads\vela (260 file(s))
+asking   : the six features that had a registration and no measurement
+
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+  files lexed             : 260
+  tokens                  : 194088
+  distinct token types    : 12
+      VELA_BRACES       7519      coloured
+      VELA_BRACKETS     5470      coloured
+      VELA_COLON        4845      coloured
+      VELA_COMMA        14364     coloured
+      VELA_COMMENT      4037      coloured
+      VELA_DOT          1441      coloured
+      VELA_IDENT        40964     coloured
+      VELA_KEYWORD      8807      coloured
+      VELA_NUMBER       7592      coloured
+      VELA_OP           9838      coloured
+      VELA_PARENS       17191     coloured
+      VELA_STRING       2188      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+
+== 2. brace matching: is every delimiter a declared pair? ==
+  pair: VELA_PARENS      .. VELA_PARENS     structural=false
+  pair: VELA_BRACKETS    .. VELA_BRACKETS   structural=false
+  pair: VELA_BRACES      .. VELA_BRACES     structural=true
+  delimiters seen in the corpus: {(=8596, )=8595, [=2735, ]=2735, {=3760, }=3759}
+      {   3760    present
+      }   3759    present
+      (   8596    present
+      )   8595    present
+      [   2735    present
+      ]   2735    present
+  delimiters with no declared pair: 0
+  VERDICT: every delimiter in the corpus is a type getPairs() declares
+
+== 3. commenting: is the prefix the lexer's own comment character? ==
+  line comment prefix     : `#`
+  block comment prefix    : null  (Vela has no block comment; null is the honest answer)
+  comment tokens in corpus: 4037
+  whose text does not start with the prefix: 0
+  VERDICT: the commenter's prefix is the lexer's comment character, over 4037 real comment token(s)
+
+== 4. semantic highlighting: classifyAll vs the per-offset lookup ==
+  files classified        : 260
+  name uses classified    : 16536
+      FIELD                     931
+      FUNCTION_CALL             5105
+      FUNCTION_DECLARATION      1145
+      PARAMETER                 2863
+      STRUCT_DECLARATION        36
+      STRUCT_USE                260
+      TYPE                      6196
+  uses with no kind       : 0
+  classify vs classifyAll: 0 disagreement(s)
+  VERDICT: the two paths agree on every one of 16536 name use(s)
+
+== 5. formatter: can reformatting join two statements? ==
+  indent size the rules declare: 4
+  files analysed          : 260
+  tokens analysed         : 124256
+  gaps containing a line feed: 19626
+  depth/spacing length mismatches: 0
+  negative depths         : 0
+  gaps a reformat could join: 0
+  VERDICT: no gap with a line feed in it can be closed by this rule set, over 19626 real line break(s)
+
+== 6. live templates: does the resource the descriptor names exist? ==
+  artifact                : C:\Users\lu\Downloads\vela\idea-plugin\dist\vela\lib\vela-idea-plugin.jar
+  liveTemplates/Vela.xml in the artifact: 5050 byte(s), read
+  on this JVM's classpath : 5037 char(s)
+  templates declared      : 7 [defn, main, struct, forr, whilee, ifel, parfor]
+  contexts on those       : [VELA]
+  VERDICT: the file is in the artifact, declares 7 template(s), and every one is in the VELA context
+  (the context type itself, and the descriptor line that names this file, are checked by VerifyPlugin against the insta
+lled platform)
+
+  unit: one (capability, file) pair for sections 1-5, plus one artifact-level check for section 6
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 1301
+  skipped                 : 0
+      missing-corpus-file   0         <- a defect, not a limit
+      too-large             0         <- a defect, not a limit
+      empty-or-whitespace-only  0       
+  wrong                   : 0
+  corpus accounted for    : 1301  (ran + skipped)
+
+COVERAGE: ran 1301 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) / wrong 0
+VERDICT: [PASS] all six features answered as the invariant requires, over 1301 judged unit(s) (5 corpus-wide checks per
+ readable file, plus one artifact-level check), wrong 0, no defect category tripped
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\FeatureProbe.log
+
+=== ParamNames
+names    : VelaHints.parameterNames(sym) -- what completion inserts, per symbol
+template : VelaHints.callTemplate(sym, false, false) -- the text completion writes
+oracle   : the declaration's own parameter list, read from the source by this
+           harness (DeclReader); for a name no file declares, the builtin's
+           declared signature, cross-checked against SPEC.md section 8.
+
+== findings: a name list the declaration does not give ==
+  (none)
+
+== the structural invariants: where a parameter list may come from ==
+  a symbol whose detail is text, not a parsed parameter list `f(s: the same name twice, s: the same name twice) -> int`
+      parameterNames -> []   callTemplate -> ()[1,1)   ok (no name is taken from the detail text)
+  builtin table entries without a declared signature field : 0 (must be 0)
+  builtin descriptions that answer parameter names : 0 (must be 0)
+  builtin signatures that disagree with the names reported : 0 (must be 0)
+  SPEC.md section 8 parameter names the plugin's table disagrees with : 0 (must be 0; 11 builtin(s) named in SPEC.md, c
+ompared above for every entry)
+      (checked 35 builtin(s) with a signature field)
+
+== SPEC.md section 8's parameter names vs the plugin's own table ==
+  (every builtin SPEC.md names agrees with the plugin)
+
+== totals ==
+  callables judged                        : 1883
+  whose names are not available at all    : 0 (completion writes `()`, which is honest; not a defect
+                                           but the number a reader needs)
+  name lists the oracle does not give     : 0
+  symbols whose *display* detail is not a signature, and which answer no name from it : 0 (reported, not a defect: thes
+e are half-typed declarations)
+  SPEC.md / plugin disagreements          : 0
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 1883
+  skipped                 : 5785
+      harness-threw         0         <- a defect, not a limit
+      missing-corpus-file   0       
+      file-too-large        0       
+      not-a-callable        5785    
+      callee-not-in-this-file-and-not-a-builtin  0       
+      builtin-arity-only-SPEC-md-names-none  0       
+  wrong                   : 0
+  corpus accounted for    : 7668  (ran + skipped)
+
+COVERAGE: ran 1883 / skipped 5785 (harness-threw 0, missing-corpus-file 0, file-too-large 0, not-a-callable 5785, calle
+e-not-in-this-file-and-not-a-builtin 0, builtin-arity-only-SPEC-md-names-none 0) / wrong 0
+
+  ^ the line above counts CALLABLES.  The invariant checks are a second axis:
+INVARIANTS: declared 71 / broken 0 / not checkable in this build 0
+
+VERDICT: every parameter list either names what its declaration names, or names nothing
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\ParamNames.log
+
+=== HintTruth
+labels   : VelaHints.parameterHints(text, text.length()) -- every call in the file
+oracle   : the declaration's own parameter list, read from the source text by this
+           harness; for a builtin, SPEC.md section 8's table.  Not VelaTargets.
+compiler : the same declarations as `vm.exe parse` prints `param name=` for them,
+           which is where the shape of the oracle came from.
+
+== findings: a label the declaration does not give, or gives fewer times ==
+  (none)
+
+== what the oracle says about calls to the language's own names ==
+  (the plugin's own table is not the oracle here; SPEC.md section 8 is)
+  (no builtin call was judged)
+
+== totals ==
+  calls judged                     : 6495
+  arguments with no label drawn    : 0 (not a defect: a label is deliberately not drawn when the
+                                      argument already writes the parameter's name)
+  labels the oracle does not give  : 0
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 6495
+  skipped                 : 6926
+      harness-threw         0         <- a defect, not a limit
+      missing-corpus-file   0       
+      file-too-large        0       
+      no-argument-call      2524    
+      callee-not-declared-in-file  4402    
+      builtin-arity-documented-without-names  0       
+  wrong                   : 0
+  corpus accounted for    : 13421  (ran + skipped)
+
+COVERAGE: ran 6495 / skipped 6926 (harness-threw 0, missing-corpus-file 0, file-too-large 0, no-argument-call 2524, cal
+lee-not-declared-in-file 4402, builtin-arity-documented-without-names 0) / wrong 0
+
+VERDICT: every label drawn is a parameter name the declaration gives for that argument
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\HintTruth.log
+
+=== Coverage
+    the measurement behind every verdict above, one line per tool:
+  GotoOracle     exit 0   COVERAGE: ran 26644 / skipped 23351 (crashed-file 0, compiler-refused 23341, invisible-member
+ 10, ambiguous 0) / wrong 0
+  HintDiff       exit 0   COVERAGE: ran 31724 / skipped 14 (compiler-cannot-parse 2, arg-boundary-disagreement 12) / wr
+ong 0
+  HintNames      exit 0   COVERAGE: ran 1883 / skipped 2 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 2
+, too-large 0) / wrong 0
+  HintShapes     exit 0   COVERAGE: ran 6901 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, t
+oo-large-for-prefix-sweep 4) / wrong 0
+  HintDupes      exit 0   COVERAGE: ran 1883 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 
+0
+  SymbolDiff     exit 1   COVERAGE: ran 86 / skipped 27 (threw 0, missing-corpus-file 0, too-large 0, type-spelling-onl
+y-difference 2, tree-reports-more-declarations 25, scan-reports-more-declarations 0) / wrong 13
+  FoldDiff       exit 1   COVERAGE: ran 64 / skipped 38 (threw 0, missing-corpus-file 0, too-large 0, granularity-only-
+difference 38) / wrong 24
+  FeatureProbe   exit 0   COVERAGE: ran 1301 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 
+0) / wrong 0
+  ParamNames     exit 0   COVERAGE: ran 1883 / skipped 5785 (harness-threw 0, missing-corpus-file 0, file-too-large 0, 
+not-a-callable 5785, callee-not-in-this-file-and-not-a-builtin 0, builtin-arity-only-SPEC-md-names-none 0) / wrong 0
+  HintTruth      exit 0   COVERAGE: ran 6495 / skipped 6926 (harness-threw 0, missing-corpus-file 0, file-too-large 0, 
+no-argument-call 2524, callee-not-declared-in-file 4402, builtin-arity-documented-without-names 0) / wrong 0
+
+    the verdict each tool reached:
+  GotoOracle     VERDICT: no reference goes to a declaration the compiler does not bind it to, over 26644 judged refere
+nce(s)  [exit 0, wrong 0]
+  HintDiff       VERDICT: every hint names the parameter the compiler declares for that argument, and every declared pa
+rameter has a hint  [exit 0, wrong 0]
+  HintNames      VERDICT: [PASS] the model and the tree give the same parameter names for all 1883 callable(s) compared
+ (wrong 0, no defect category tripped)  [exit 0, wrong 0]
+  HintShapes     VERDICT: [PASS] every one of 239921 hint label(s) drawn over 6901 prefix run(s) is a plain identifier 
+(wrong 0, no defect category tripped)  [exit 0, wrong 0]
+  HintDupes      VERDICT: [PASS] no callable in the corpus and no builtin repeats or empties a parameter name (1883 ask
+ed, wrong 0, no defect category tripped)  [exit 0, wrong 0]
+  SymbolDiff     VERDICT: 13 file(s) have the same symbol count as the retired token scan and different content, and 0 
+threw; each is listed above with both sides  [exit 1, wrong 13]
+  FoldDiff       VERDICT: 24 file(s) fold text the retired brace matcher does not fold at all, and 0 threw; each is lis
+ted above with both sides  [exit 1, wrong 24]
+  FeatureProbe   VERDICT: [PASS] all six features answered as the invariant requires, over 1301 judged unit(s) (5 corpu
+s-wide checks per readable file, plus one artifact-level check), wrong 0, no defect category tripped  [exit 0, wrong 0]
+  ParamNames     VERDICT: every parameter list either names what its declaration names, or names nothing  [exit 0, wron
+g 0]
+  HintTruth      VERDICT: every label drawn is a parameter name the declaration gives for that argument  [exit 0, wrong
+ 0]
+
+=== Verdict vs exit vs coverage
+    the three things a reader has to reconcile, per tool; only disagreements are shown:
+      (none: each tool's verdict, exit code and wrong count agree)
+
+=== Done
+    frozen compiler : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi\vm\vm.exe (867328 bytes, sha256 bce9036c71aa5
+cb43fa242bf1f620c642873bc5c2123eef2c209b2af0d235e15)
+    logs            : C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes
+
+non-zero exits (the harness found something):
+  SymbolDiff : exit 1 -- VERDICT: 13 file(s) have the same symbol count as the retired token scan and different content
+, and 0 threw; each is listed above with both sides  [exit 1, wrong 13]
+  FoldDiff : exit 1 -- VERDICT: 24 file(s) fold text the retired brace matcher does not fold at all, and 0 threw; each 
+is listed above with both sides  [exit 1, wrong 24]

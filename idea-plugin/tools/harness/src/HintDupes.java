@@ -158,7 +158,27 @@ public final class HintDupes {
                 // does not start with its own name (which is *how* the repeat was produced).
                 .wrong(dupes + misSliced + empties);
         cov.print();
-        System.exit(dupes + misSliced + empties > 0 ? 1 : (cov.hasDefect() ? 3 : 0));
+        // THE CONCLUSION, FROM THIS RUN'S OWN NUMBERS -- see HintNames.java for the longer
+        // note.  It used to be the exit code alone, so a driver that reads text had nothing
+        // to read and summarised a finished, clean run as "the tool did not finish".
+        long wrong = dupes + misSliced + empties;
+        List<String> failed = new ArrayList<>();
+        if (wrong > 0) {
+            failed.add(dupes + " symbol(s) repeat a parameter name, " + misSliced
+                    + " whose detail does not start with its own name, " + empties
+                    + " with an empty parameter name (each one listed above)");
+        }
+        if (cov.hasDefect()) {
+            failed.add("the run is not clean either: " + cov.get("symbols-threw")
+                    + " symbols() call(s) threw, " + cov.get("missing-corpus-file")
+                    + " corpus file(s) missing");
+        }
+        boolean clean = failed.isEmpty();
+        System.out.println("VERDICT: " + (clean
+                ? "[PASS] no callable in the corpus and no builtin repeats or empties a parameter"
+                        + " name (" + symbols + " asked, wrong 0, no defect category tripped)"
+                : "[FAIL] " + String.join("; ", failed)));
+        System.exit(clean ? 0 : (wrong > 0 ? 1 : 3));
     }
 
     private static boolean hasDuplicate(List<String> names) {
