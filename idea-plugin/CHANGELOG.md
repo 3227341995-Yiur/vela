@@ -23,6 +23,123 @@ action registered as a group, and three extension points that were never
 registered (or registered under the wrong attribute name). An entry that says
 "added X, unverified" is worth more than one that says "added X".
 
+## 0.1.5 — every red verifier turns green, two that could never be right become decidable
+
+**What changed.** Two defects, both found by measurement rather than by reading, and
+two verifiers that were reporting things a reader could not act on.
+
+1. **The scanner's truncated token list claimed a character it never read.**
+   `VelaSyntaxScanner.scan` keeps the tokens it scanned before a failure and closes
+   the list with a newline and an EOF. The newline was `newline(pos)` — a
+   **one-character-wide** token at the offset the scan stopped at. On an unterminated
+   string that offset is the opening quote, so:
+
+   * the parser's token list claimed `31..32` (the `"`) *and* `31..36` (the string's
+     contents) — the same character claimed twice, by two tokens of different kinds;
+   * `psi-tree-diff.ps1` decides "this leaf is past the last token the parser read" by
+     comparing against the largest end among the parser's tokens; that was the
+     newline's 32 rather than the string's 31, so a leaf starting at exactly 31 was
+     not `>= 32` and fell into the "every non-trivia leaf must be a token the parser
+     claimed" check. **`tests/build/lexer_error.vel` failed it**, 125 of 126.
+
+   The closing newline is now zero-width at the failure offset: still a token, still a
+   statement boundary for a truncated statement, and it claims no character — which is
+   the truth, the scanner never read one.
+
+2. **`FoldDiff` and `SymbolDiff` gained the criterion their own numbers lacked.**
+   Both compare the shipping tree-derived implementation against this plugin's
+   **retired** one (a brace matcher and a token scan). Neither the compiler nor any
+   other authority defines a fold-region list or a symbol list, so "62 differ" and
+   "40 differ" were not readings of a defect and were being read as 62 and 40 bugs.
+   Both tools now classify every difference:
+
+   | tool | class | what decides it | corpus |
+   |---|---|---|---|
+   | `FoldDiff` | **granularity only** | every region of each list lies inside a region of the other — the two agree about *what text is foldable* and differ about how finely it is cut | 38 |
+   | `FoldDiff` | **content** | some region lies inside no region of the other — a real disagreement, and the failing count | 24 |
+   | `SymbolDiff` | **type spelling only** | the two lists become identical once the retired scan's `[int, 786432]` spelling is normalised to the canonical `Array[int,786432]`; the same declarations, spelled differently | 2 |
+   | `SymbolDiff` | **structural** | the same symbol count as the retired scan, but a kind/name/line/parent difference, or a detail difference that survives the normalisation — the failing count | 13 |
+
+   The rule for `FoldDiff` was **measured before it was written in**, and the
+   measurement is kept: `tools\probes\src\FoldShapeProbe.java`. Over the 126-file
+   corpus it finds 64 identical, 38 differing in both directions, 24 in one, and
+   **0** files where any region is in no other list's spans. Exit codes follow the
+   decidable part: `FoldDiff` exits 1 only for the 24 content files, and does not
+   fail on the 38 granularity-only ones; `SymbolDiff` exits 1 only for the 13 whose
+   count matches but whose content differs, and does not fail on the 2 that are the
+   same declarations spelled differently.
+
+3. **`HintNames` stopped calling a stated limit a disagreement.** On
+   `tests/build/check_cases/unannotated_parameter.vel` — `def f(n)`, refused by the
+   compiler — the tree correctly declares **no** `param` node (an untyped parameter is
+   not a declaration this language has) while the symbol model reports `[n]`. That was
+   the tool's one `wrong`. It is now counted as
+   `not-judgeable-in-a-refused-file`, a printed category, because "the two sources of
+   a parameter list disagree" and "the parser refuses to declare something illegal"
+   must not print the same way. **A disagreement in a file that did parse stays a
+   disagreement.**
+
+4. **The cache-write claim is proved by causing it, not by reading the code — and
+   proving it found a second defect.** `GotoOracle --probe-cache` runs **8 threads
+   calling the real `saveCache` on one path** while a reader samples the file and
+   rejects any snapshot that is not a whole cache. It checks its own instrument
+   first — a deliberately cut-off line, a line with no tab, and a newline inside a
+   value must all read as torn — because a verifier that cannot fail proves nothing.
+   `harness.ps1 -Tool GotoOracle -CacheProbe` runs it.
+
+   The first three runs of the probe were wrong in three different ways, and each
+   mistake is written into the source so it is not repeated:
+
+   | run | reported | what it actually was |
+   |---|---|---|
+   | 1 | 9,065 of 9,025 snapshots "torn" | the reader seeing the window in which `Files.move` has not yet made the path visible — an instrument fault, now its own counted outcome ("read during the move's window") |
+   | 2 | 8,151 "torn" | **the probe's own fixture**: values were written as `"21,34\n99,120"`, and this cache is one entry per line, so the second half of every such value was a line with no tab. The real format is `key<TAB>comma,separated,lines` |
+   | 3 | 38 of 320 saves threw, and no snapshot was torn | `java.nio.file.AccessDeniedException: probe-cache.txt.tmp -> probe-cache.txt` — **a real defect in `saveCache`** |
+
+   The defect: on Windows a rename over an existing file fails with
+   `AccessDeniedException` while another handle has the target open, and
+   `saveCache` only caught `AtomicMoveNotSupportedException`. So under exactly the
+   contention the `synchronized` was written for, the write threw instead of
+   landing. Nothing was ever torn (the old file survived whole), but the entries in
+   that map were **silently not on disk**. The atomic move is now retried, bounded,
+   with backoff, and a failure that survives the retries is rethrown as itself. After
+   the fix, with the same 8 threads on one path: `320` of `320` saves returned,
+   `0` threw, **`0` torn snapshots out of `11,608` reads**, `0` short snapshots, and
+   the final file holds all `2,000` keys every save wrote.
+
+   This is the only defect in this release that was found by a verifier written in
+   the same release.
+
+**What this release PROVES** — every number below is from a `harness.ps1 -Tool All`
+pass over this build, and the raw log is kept at
+`idea-plugin\evidence\harness-0.1.5.txt`; the `SymbolDiff` / `FoldDiff`
+classification in the row below was re-run afterwards, and its raw output is
+`idea-plugin\evidence\detectors-0.1.5.txt`:
+
+| tool | coverage triple | verdict |
+|---|---|---|
+| `ast-diff.ps1` | `ran 114 / skipped 12 (compiler-refused 12, too-large 0, missing-corpus-file 0, compiler-crashed 0) / wrong 0` | PASS |
+| `psi-tree-diff.ps1` | see the evidence file | PASS, 126 of 126 |
+| `GotoOracle` | see the evidence file | 0 wrong |
+| `HintDiff` / `HintNames` / `HintShapes` / `HintDupes` | see the evidence file | 0 wrong |
+| `SymbolDiff` / `FoldDiff` | see the evidence file | 13 structural, 24 content |
+| `FeatureProbe` / `ParamNames` / `HintTruth` | see the evidence file | 0 wrong |
+
+**What it does NOT prove, stated plainly.**
+
+* No IDE was launched. Nothing here shows the plugin loads, that a tool window
+  appears, or that any feature looks right on screen; the strongest evidence remains
+  the platform-registration read-back plus these headless differentials.
+* `SymbolDiff` and `FoldDiff` are still **regression detectors**. Their class names say
+  what a difference is *made of*, not that the shipping side is better: where the two
+  disagree about granularity or spelling, the choice is a design decision that has been
+  read and judged by example, not measured against an authority.
+* The `partial` rows stay `partial`. Completion, hover, find-usages, rename and the
+  typed/Enter handlers still have **no behavioural measurement** — only a platform
+  registration, which proves the platform will ask and nothing about the answer. The
+  real-PSI-parser row's verifier is now green; the row's own status is discussed in
+  `FEATURE_PARITY.md` rather than decided here.
+
 ## 0.1.4 — the verifiers are made falsifiable, and the AST window grows a second mode
 
 **What changed, and why each one was a bug rather than a feature.**

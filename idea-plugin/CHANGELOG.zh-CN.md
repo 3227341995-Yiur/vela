@@ -4,8 +4,8 @@
 
 <!--
 源文件 : CHANGELOG.md
-源文件字节 : 33569
-源文件 SHA256 : 3969e63fb6c402e62dd30394361ed5c38e254f22a61fff07c9c72907b5cc8230
+源文件字节 : 33992
+源文件 SHA256 : 1491ac02a0a30b3aaeb8fccfbf740816277b797a0c1ec4d554e9b23650c67611
 翻译日期 : 2026-09-24
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -52,15 +52,17 @@
 
    | 工具 | 类别 | 由什么判定 | 语料 |
    |---|---|---|---|
-   | `FoldDiff` | **只是粒度** | 每一份清单的每一个区域都落在另一份的某个区域之内——两者对*哪段文本可折叠*意见一致，差异只在切得多细 | 62 |
-   | `FoldDiff` | **内容** | 某个区域落在另一份的任何区域之外——一次真正的分歧，也就是失败计数 | 0 |
-   | `SymbolDiff` | **只是类型拼法** | 退休扫描的 `[int, 786432]` 拼法一旦归一成规范的 `Array[int,786432]`，两份清单就完全相同；同一批声明，拼法不同 | 40 |
-   | `SymbolDiff` | **结构性** | 符号个数不同，或者 kind/name/line/parent 有差异，或者一处熬过归一化的细节差异——失败计数 | 0 |
+   | `FoldDiff` | **只是粒度** | 每一份清单的每一个区域都落在另一份的某个区域之内——两者对*哪段文本可折叠*意见一致，差异只在切得多细 | 38 |
+   | `FoldDiff` | **内容** | 某个区域落在另一份的任何区域之外——一次真正的分歧，也就是失败计数 | 24 |
+   | `SymbolDiff` | **只是类型拼法** | 退休扫描的 `[int, 786432]` 拼法一旦归一成规范的 `Array[int,786432]`，两份清单就完全相同；同一批声明，拼法不同 | 2 |
+   | `SymbolDiff` | **结构性** | 符号个数与退休扫描相同，但 kind/name/line/parent 有差异，或者有一处熬过归一化的细节差异——失败计数 | 13 |
 
    `FoldDiff` 那条规则是**在被写进去之前先被测量过的**，而那次测量被留着：
-   `tools\harness\src\FoldShapeProbe.java`。在 126 个文件的语料上，它发现 64 个完全相同、
+   `tools\probes\src\FoldShapeProbe.java`。在 126 个文件的语料上，它发现 64 个完全相同、
    38 个两个方向都不同、24 个只在一个方向不同，而**0** 个文件出现任何区域不在另一份清单的
-   跨度里。退出码跟着可判定的那一半走：只有内容/结构性才退出 1。
+   跨度里。退出码跟着可判定的那一半走：`FoldDiff` 只为那 24 个内容文件退出 1，对那 38 个
+   只是粒度的不判失败；`SymbolDiff` 只为那 13 个个数相同而内容不同的退出 1，对那 2 个只是
+   同一批声明、拼法不同的不判失败。
 
 3. **`HintNames` 不再把一个被声明的限度叫作一次分歧。** 在
    `tests/build/check_cases/unannotated_parameter.vel` 上——`def f(n)`，被编译器拒绝——
@@ -82,7 +84,7 @@
    |---|---|---|
    | 1 | 9,065 份快照“撕裂”，一共 9,025 份 | 读者看到了 `Files.move` 还没让那个路径可见的那个窗口——一次仪器故障，现在它有自己的计数结果（“在移动的窗口期内读取”） |
    | 2 | 8,151 份“撕裂” | **探针自己的夹具**：值被写成了 `"21,34\n99,120"`，而这个缓存是一行一个条目，所以每个这样的值的后半段是一行没有制表符的内容。真正的格式是 `key<TAB>comma,separated,lines` |
-   | 3 | 37 份“撕裂”，以及底下的那个发现 | `java.nio.file.AccessDeniedException: probe-cache.txt.tmp -> probe-cache.txt`——**`saveCache` 里的一个真缺陷** |
+   | 3 | 320 次保存里有 38 次抛出，而没有一份快照被撕裂 | `java.nio.file.AccessDeniedException: probe-cache.txt.tmp -> probe-cache.txt`——**`saveCache` 里的一个真缺陷** |
 
    那个缺陷：在 Windows 上，当另一个句柄打开着目标文件时，把一个文件重命名到一个已存在的
    文件上会以 `AccessDeniedException` 失败，而 `saveCache` 只捕了
@@ -90,14 +92,15 @@
    写入是抛异常而不是落地。从来没有东西被撕裂过（老文件整个活了下来），但那个 map 里的条目
    **静默地不在磁盘上**。原子移动现在被重试，有界、带退避，而一个熬过重试的失败会作为它自己
    被重新抛出。修好之后，同样 8 个线程在同一个路径上：`320` 次保存里 `320` 次返回、`0` 次
-   抛出、**`10,135` 次读取里 `0` 份被撕裂的快照**、`0` 份短快照，而最终那个文件持有每一次
+   抛出、**`11,608` 次读取里 `0` 份被撕裂的快照**、`0` 份短快照，而最终那个文件持有每一次
    保存所写下的全部 `2,000` 个键。
 
    这是这个发布里唯一一个被同一个发布里写出来的验证器找到的缺陷。
 
 **这个发布证明了什么** —— 下面每一个数字都来自这一版构建上一次
 `harness.ps1 -Tool All` 通过，而原始日志留在
-`idea-plugin\evidence\harness-0.1.5.txt`：
+`idea-plugin\evidence\harness-0.1.5.txt`；下面那一行里 `SymbolDiff` / `FoldDiff`
+的分类是之后重跑的，它的原始输出是 `idea-plugin\evidence\detectors-0.1.5.txt`：
 
 | 工具 | 覆盖率三元组 | 裁决 |
 |---|---|---|
@@ -105,7 +108,7 @@
 | `psi-tree-diff.ps1` | 见证据文件 | PASS, 126 of 126 |
 | `GotoOracle` | 见证据文件 | 0 wrong |
 | `HintDiff` / `HintNames` / `HintShapes` / `HintDupes` | 见证据文件 | 0 wrong |
-| `SymbolDiff` / `FoldDiff` | 见证据文件 | 0 structural, 0 content |
+| `SymbolDiff` / `FoldDiff` | 见证据文件 | 13 structural, 24 content |
 | `FeatureProbe` / `ParamNames` / `HintTruth` | 见证据文件 | 0 wrong |
 
 **它不证明什么，直说。**
