@@ -525,8 +525,24 @@ if (-not $failed) {
     )
     foreach ($pair in $pairs) {
         if (Test-Path -LiteralPath $pair[0]) {
-            Copy-Item -LiteralPath $pair[0] -Destination $pair[1] -Force
-            Say "    $($pair[1].Replace($root + '\', '')) <- $($pair[0].Replace($root + '\', '')) ($((Get-Item -LiteralPath $pair[1]).Length) bytes)"
+            # The copy can fail while the destination is held open -- a running `vm.exe`
+            # is exactly that -- and `Copy-Item`'s failure is NON-TERMINATING, so this
+            # loop used to leave `$failed` unset and then print the DESTINATION's size,
+            # which is the stale file's size.  Measured 2026-09-24: a run wrote
+            # `build\vm_by_vela.exe` (868352 bytes, 02:21:47) and did not write
+            # `build\vm.exe` (still 867840 bytes, 02:07:04), printed a plausible line for
+            # both, and ended `RESULT: ok`.  That is why a tree one generation behind the
+            # source stayed invisible for half an hour while every gate measured the old
+            # compiler.  The size printed is the SOURCE's, so a mismatch with the
+            # destination would be visible even if this catch were ever removed.
+            try {
+                Copy-Item -LiteralPath $pair[0] -Destination $pair[1] -Force -ErrorAction Stop
+                Say "    $($pair[1].Replace($root + '\', '')) <- $($pair[0].Replace($root + '\', '')) ($((Get-Item -LiteralPath $pair[0]).Length) bytes)"
+            } catch {
+                Say "    !! could not write $($pair[1].Replace($root + '\', '')): $($_.Exception.Message)"
+                Say "       (a process may be holding it open -- a running vm.exe does exactly that)"
+                $failed = $true
+            }
         } else {
             Say "    !! missing $($pair[0])"
             $failed = $true
