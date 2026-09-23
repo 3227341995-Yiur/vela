@@ -20,6 +20,13 @@
       smoke     tools\smoke.ps1        is the tree alive: build, run, build from
                                        outside the repository, the user's directory
                                        staying clean, compiled == interpreted
+      coherence tools\check-coherence.ps1
+                                       after a build, three things that must agree:
+                                       the compiler the tests use is the one the source
+                                       produced (build.ps1's own warning is that it can
+                                       sit one generation behind, quietly), the three
+                                       generations of emitted C are byte-identical, and
+                                       every vm.exe that must load has LLVM-C.dll
       llvm-inproc tools\llvm-inproc.ps1
                                        the north star: build-llvm runs with no C
                                        compiler on PATH at all, and the only program
@@ -173,6 +180,18 @@ Write-Host ("  logs: {0}" -f $logDir)
 
 Invoke-Step -Name 'build'  -Script 'tools\build.ps1'    -SuccessPattern 'RESULT: ok'
 Invoke-Step -Name 'smoke'  -Script 'tools\smoke.ps1'    -SuccessPattern 'RESULT: ok'
+
+# `build.ps1` promotes the compiler it just built into the binary the tests and the
+# benchmarks actually run, and its own comment says why that line had to be added: without
+# it the tree's compiler "stayed the binary built from the *previous* source -- one
+# generation behind the tree, quietly", and every result was about the wrong program.
+#
+# Nothing asserted it.  Measured 2026-09-24, mid-session: `selfhost\vm.exe` was 868,352
+# bytes and had a fix, `selfhost\build\vm.exe` was 867,840 bytes and did not, for half an
+# hour -- both files named `vm.exe`, both inside one build step, and every gate in that
+# window measuring the old one.  This step is that assertion, and it is placed after the
+# build because the build is what is supposed to make it true.
+Invoke-Step -Name 'coherence' -Script 'tools\check-coherence.ps1' -SuccessPattern 'RESULT: ok'
 
 # The north star, as a check rather than as a memory: `build-llvm` produces a
 # native executable through libLLVM *inside this process*, and the only program
