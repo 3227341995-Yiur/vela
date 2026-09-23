@@ -20,14 +20,20 @@
 #
 #     <file name without .vel> | <substring the refusal must contain>
 
-# The string ABI.  A `str` is a 16-byte value that the Microsoft ABI passes by
-# reference and returns through a hidden first argument; the back end has not modelled
-# either yet.  The string milestone owns this.
-str_param           | a `str` parameter is not compiled by the LLVM back end yet
-str_two_params      | a `str` parameter is not compiled by the LLVM back end yet
-mut_str_param       | a `str` parameter is not compiled by the LLVM back end yet
-str_return          | a function that returns `str` is not compiled by the LLVM back end yet
-recursive_str       | a function that returns `str` is not compiled by the LLVM back end yet
+# CLOSED 2026-09-24: the string ABI.  Five rows stood here -- `str_param`,
+# `str_two_params`, `mut_str_param`, `str_return`, `recursive_str` -- for a `str`
+# crossing a user function's boundary in either direction.  A `str` is a 16-byte
+# value that the Microsoft ABI passes by reference and returns through a hidden
+# first pointer, and the back end now models exactly that: a `str` parameter
+# arrives as a pointer and the callee copies the 16 bytes into a slot of its own
+# (which is what the C back end's by-value `vela_str` parameter means), and a
+# function that returns `str` is declared `void @f(ptr sret(%vela_str), ...)` with
+# `vshim_fn_sret_param`, so the *caller* owns the storage and a call expression is
+# worth the address of it -- the same "a `str` is a pointer to its 16 bytes" rule
+# the rest of this back end follows, and what makes a recursive `str` function
+# work.  An `extern c` declaration with a `str` on either side is still refused,
+# deliberately: that ABI is somebody else's (`escape_extern_str_parameter_refused`,
+# `escape_extern_str_return_refused` hold the C back end to the same refusal).
 
 # Arrays are passed as a pointer plus a length in the C back end.  The LLVM back end
 # has no spelling for an array value, only for an element read and for `len(a)`.
@@ -42,13 +48,10 @@ array_param         | an array name is not a value the LLVM back end can read on
 
 # A struct returned by value is the Microsoft ABI's other direction; `str` is the same
 # mechanism, listed above.
-struct_return           | a function that returns a struct is not compiled by the LLVM back end yet
 
 # Operators and builtins whose runtime helper is `static` in runtime/vela_runtime.h, so
 # there is no exported symbol for the emitted IR to call -- and emitting the raw
 # instruction instead would drop the overflow check the language promises.
-pow_operator            | this integer operator is not compiled by the LLVM back end yet
-abs_builtin             | this builtin is not compiled by the LLVM back end yet
 
 # Arrays whose element kind has no IR spelling in this back end yet.
 array_of_str            | an array of this element kind is not compiled by the LLVM back end yet
@@ -56,3 +59,5 @@ array_of_str            | an array of this element kind is not compiled by the L
 # Updating an element in place through the array.  The back end handles a local scalar
 # and stops there.
 inplace_element_update  | only a local variable can be updated in place by the LLVM back end so far
+
+# CLOSED 2026-09-24, by the LLVM back end work: abs_builtin, pow_operator and struct_return
