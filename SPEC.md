@@ -139,19 +139,35 @@ if n < 2 {
   the other integer type when the value fits, so `comp[i] == 0` works for a `u8`
   array and `abs(-7)` works for an `i32` parameter.
 * `to_float(int) -> float` and `to_int(float) -> int`.
-* **A binding is not type-checked, and that is where the width question stops.**
-  `mut n: int = comp[i]` — a `u8` element read out of an `Array[u8, N]` — is
-  accepted and compiles to the widening itself (`int64_t vl_n = ... vl_a[0LL]`),
-  and `mut x: i32 = big` passes even when the value does not fit. An ordinary Vela
-  call is not type-checked either (`f("s")` for `def f(x: int)` is accepted, and
-  the mistake surfaces later in the C compiler's words), which is exactly why the
-  **foreign** call is the careful one: a width is load-bearing where a rule
-  compares two types — an operator, or the C boundary — and a binding is not such
-  a place. A width conversion the compiler can see is Vela 0.2 work.
-* **The interpreter is where the cost of that shows.** `vm.exe run` runs a `u8`
-  *scalar* into an `int` binding (the compiled twin agrees), but refuses any
-  program that has an `Array[u8]` at all — declaring one is enough, and a `u8`
-  read out of one is the case its message names:
+* **A narrowing binding is checked, and the check has two halves.** A binding is
+  the one place a width is load-bearing without a rule comparing two types, and
+  the two front ends used to answer it differently — `mut x: u8 = 300` printed
+  `300` under `vm.exe run` and `44` in the compiled twin. That disagreement is
+  gone; what replaced it is:
+  * **A literal that does not fit the declared width is refused where it is
+    written**, by the checker, and `run` reports the same refusal rather than
+    starting: `vela: type error: 256 does not fit in u8`,
+    `vela: type error: 3000000000 does not fit in i32`. A literal that does fit
+    is untouched — `mut x: u8 = 200` and `mut x: i32 = 7` are accepted.
+  * **A narrowing whose value is only known at run time is checked there.** With
+    `mut big: int = 5000000000`, the binding `mut x: i32 = big` passes the
+    checker and the program stops with
+    `vela: panic: 5000000000 does not fit in i32` — the same message, at the same
+    line, in the interpreter and in the compiled program. A program that means
+    two different things depending on how it is run is the bug this rule exists
+    to delete, so the three paths state one answer.
+  * **Widening is not a narrowing and gets no check.** `mut n: int = comp[i]` — a
+    `u8` element read out of an `Array[u8, N]` — is accepted and compiles to the
+    widening itself (`int64_t vl_n = ... vl_a[0LL]`).
+* An ordinary Vela call is still not type-checked (`f("s")` for `def f(x: int)`
+  is accepted, and the mistake surfaces later in the C compiler's words), which is
+  exactly why the **foreign** call is the careful one: a width is load-bearing
+  where a rule compares two types — an operator, or the C boundary (§12) — and an
+  ordinary call is not such a place.
+* **One width refusal is separate from all of this and unchanged.** `vm.exe run`
+  accepts a `u8` *scalar* into an `int` binding (the compiled twin agrees), but
+  refuses any program that has an `Array[u8]` at all — declaring one is enough,
+  and a `u8` read out of one is the case its message names:
   `vela: interpreter: Array[u8] needs an integer width conversion (SPEC 3.1)`.
   It states that refusal rather than guessing at the widening, and it is the
   reason `bench/sieve.vel` has a compiled result and no interpreted one
