@@ -445,6 +445,58 @@ def ll_esize(k: int) -> int {
     return 0
 }
 
+# ------------------------------------------------- the two narrow int kinds
+#
+# `u8` and `i32` are the two integer kinds whose values are *stored* narrower
+# than the arithmetic the language does with them, and both back ends do the
+# same thing about it, because both are following C: the C back end writes
+# `uint8_t vl_b` and lets C's integer promotions widen it to an `int` for every
+# operation, and this back end widens the same value to `i64` with an explicit
+# conversion and narrows it again on the way back into the slot.
+#
+# Which conversion is not a style choice.  A `u8` is *unsigned* -- `200` stored
+# in one byte and read back with a sign extension is `-56` -- so widening is a
+# `zext`; an `i32` is signed, so widening is a `sext`.  Both are the conversion
+# C makes for the same declaration, and the corpus compares the two back ends
+# byte for byte.
+#
+# `ll_wide` is also the spelling of `to_int`, which is the same widening with a
+# different name (`(int64_t)vl_b` in the C back end's output).
+def ll_wide(lg: LG, k: int, v: int) -> int {
+    if k == K_U8() {
+        return ll_ck(lg, "widening a u8 to an int", vshim_build_zext(lg.m, lg.t_i64, v))
+    }
+    if k == K_I32() {
+        return ll_ck(lg, "widening an i32 to an int", vshim_build_sext(lg.m, lg.t_i64, v))
+    }
+    return v
+}
+
+def ll_iso_wide(k: int) -> bool {
+    if k == K_U8() {
+        return True
+    }
+    if k == K_I32() {
+        return True
+    }
+    return False
+}
+
+# ... and the way back, which is where `u8` wraps: `200 + 100` is 300 as an
+# `int` and 44 in the byte, exactly as `vl_b += 100LL` truncates in the C back
+# end.  Measured, not assumed -- the interpreter prints 300 for that program, so
+# the two back ends already disagree there and this back end takes the side the
+# reference implementation takes.
+def ll_narrow(lg: LG, k: int, v: int) -> int {
+    if k == K_U8() {
+        return ll_ck(lg, "narrowing to u8", vshim_build_trunc(lg.m, lg.t_i8, v))
+    }
+    if k == K_I32() {
+        return ll_ck(lg, "narrowing to i32", vshim_build_trunc(lg.m, lg.t_i32, v))
+    }
+    return v
+}
+
 # `slots` says which alloca a frame slot is, and `slotkind` says which kind was
 # put there.  The second table is not bookkeeping: a frame slot that resolved to
 # another variable's storage would be a silently wrong program, so a reference
@@ -1434,8 +1486,26 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
             trap(path, nd_line(nd, e),
                  "`len` of a `str` is not compiled by the LLVM back end yet: it is the `.len` field of a 16-byte struct, and reading a field out of one is the string milestone's work")
         }
+        if b == B_TO_FLOAT() {
+            # `to_float(x)` is C's own `(double)x`, which is the cast the C back
+            # end writes and therefore the one conversion this has to be: `sitofp`
+            # from the *widened* source, so a `u8` argument widens unsigned first
+            # (200 -> 200.0, not -56.0) exactly as C's promotion of `uint8_t` does.
+            ak: int = expr_kind(nd, ty, mem, vm, nd[e * 10 + 2])
+            v: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                             lit, fns, nd[e * 10 + 2])
+            if ak == K_FLT() {
+                return v
+            }
+            if ak == K_INT() or ll_iso_wide(ak) {
+                return ll_ck(lg, "an integer-to-float conversion",
+                             vshim_build_sitofp(lg.m, lg.t_f64, ll_wide(lg, ak, v)))
+            }
+            trap(path, nd_line(nd, e),
+                 "`to_float` of this value kind is not compiled by the LLVM back end yet")
+        }
         trap(path, nd_line(nd, e),
-             "this builtin is not compiled by the LLVM back end yet (only `print` and `len` of an array are)")
+             "this builtin is not compiled by the LLVM back end yet (only `print`, `len` of an array and `to_float` are)")
     }
     if sk != SYM_FUNC() {
         trap(path, nd_line(nd, e),

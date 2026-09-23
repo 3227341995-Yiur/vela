@@ -78,6 +78,42 @@ if ($dropped.Count -gt 0) {
     throw $msg
 }
 
+# Reconcile the header against the *implementation*, which nothing else does.
+#
+# The check above is header-against-generated, and `-Check` below is
+# disk-against-generated, so both of them can pass while the header declares a
+# function that `runtime\vela_llvm_shim.c` does not define.  That function is then
+# declared in Vela, linked into the compiler as a declaration nothing calls yet --
+# so the build stays green -- and fails the day an emitter calls it, as
+# `LNK2019: unresolved external symbol` in a file nobody edited.  Measured
+# precedent: `tools\build.ps1` carries that exact linker error in a comment,
+# from the change that first made the driver call the shim.
+#
+# So the declaration set is derived from the header (the same `$inHeader` the
+# reconciliation above uses, so there is one answer to "what is declared") and
+# every name in it must have a definition-shaped line in the C: the name at a
+# line start, with a return type in front of it and an opening parenthesis after
+# it.  A definition is not a mention -- `fail("... vshim_x(...)")` does not
+# count, because the name is not at the start of the line.
+#
+# Run in both modes, deliberately: the failure is about the two C files, not
+# about the generated file, so a run that is about to *write* the declarations
+# has no more business producing an interface to a function that does not exist
+# than `-Check` has passing one.
+$cPath = Join-Path $repo 'runtime\vela_llvm_shim.c'
+if (-not (Test-Path -LiteralPath $cPath)) { throw "no shim implementation at $cPath" }
+$cText = Get-Content -LiteralPath $cPath -Raw
+$undeclared = @()
+foreach ($name in ($inHeader | Sort-Object -Unique)) {
+    if ($cText -notmatch ("(?m)^[A-Za-z_][A-Za-z0-9_ \*]*\b" + [regex]::Escape($name) + "\s*\(")) {
+        $undeclared += $name
+    }
+}
+if ($undeclared.Count -gt 0) {
+    $msg = "$($undeclared.Count) function(s) are declared in runtime\vela_llvm_shim.h and have no definition in runtime\vela_llvm_shim.c: $($undeclared -join ', ').  A declaration the C side never defines links only until something calls it."
+    throw $msg
+}
+
 function Convert-Type([string] $c, [string] $name) {
     switch ($c.Trim()) {
         'int64_t' { return "${name}: int" }

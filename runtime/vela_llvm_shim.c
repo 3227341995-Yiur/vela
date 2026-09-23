@@ -1580,6 +1580,143 @@ int64_t vshim_build_fdiv(int64_t module, int64_t left, int64_t right)
     return build_float_binop(module, left, right, LLVMBuildFDiv, "a float divide");
 }
 
+/* --------------------------------------------------------- width conversions
+ *
+ * One `llvm-c` build call behind one check, and the check is three steps every
+ * time: the destination is a type of this module, the value is a value of this
+ * module, and the width relation is the one the instruction requires.  That last
+ * step is not politeness.  `LLVMBuildZExt` with a destination as wide as its
+ * source does not fail here; it builds an instruction the **verifier** rejects
+ * later, with a sentence that names the instruction and not the call that asked
+ * for it -- and the emitter is the caller this layer exists to correct.
+ */
+static int64_t build_int_cast(int64_t module, int64_t dest_type, int64_t value,
+                              LLVMValueRef (*op)(LLVMBuilderRef, LLVMValueRef, LLVMTypeRef, const char *),
+                              const char *what, int wider)
+{
+    shim_module *m, *owner = NULL;
+    LLVMTypeRef dt, vt;
+    LLVMValueRef v, r;
+    unsigned dw, vw;
+    int64_t h;
+
+    m = module_of(module);
+    if (!m) return 0;
+    dt = (LLVMTypeRef)lookup(dest_type, SHIM_KIND_TYPE, &owner);
+    if (!dt) return 0;
+    if (owner != m) {
+        fail("the destination type belongs to another module");
+        return 0;
+    }
+    v = (LLVMValueRef)lookup(value, SHIM_KIND_VALUE, &owner);
+    if (!v) return 0;
+    if (owner != m) {
+        fail("the value belongs to another module");
+        return 0;
+    }
+    vt = LLVMTypeOf(v);
+    if (!type_is_integer(vt) || !type_is_integer(dt)) {
+        fail("%s needs two integers", what);
+        return 0;
+    }
+    vw = LLVMGetIntTypeWidth(vt);
+    dw = LLVMGetIntTypeWidth(dt);
+    if (wider ? (dw <= vw) : (dw >= vw)) {
+        fail("%s needs a destination %s than its source, and this one is i%u -> i%u",
+             what, wider ? "wider" : "narrower", vw, dw);
+        return 0;
+    }
+    if (check_builder(m) != VSHIM_OK) return 0;
+    r = op(m->builder, v, dt, "");
+    if (!r) {
+        fail("%s returned NULL", what);
+        return 0;
+    }
+    h = slot_add(m, r, SHIM_KIND_VALUE);
+    if (!h) return 0;
+    return h;
+}
+
+/* `sitofp` and `fptosi`, which are the two casts C spells `(double)x` and
+ * `(int64_t)x` -- the C back end's own spelling of `to_float` and `to_int`.  The
+ * direction is checked for the same reason the width relation is above: an
+ * `fptosi` whose destination is a float is not a diagnosis, it is an assertion. */
+static int64_t build_fp_cast(int64_t module, int64_t dest_type, int64_t value,
+                             LLVMValueRef (*op)(LLVMBuilderRef, LLVMValueRef, LLVMTypeRef, const char *),
+                             const char *what, int from_int)
+{
+    shim_module *m, *owner = NULL;
+    LLVMTypeRef dt, vt;
+    LLVMValueRef v, r;
+    int64_t h;
+
+    m = module_of(module);
+    if (!m) return 0;
+    dt = (LLVMTypeRef)lookup(dest_type, SHIM_KIND_TYPE, &owner);
+    if (!dt) return 0;
+    if (owner != m) {
+        fail("the destination type belongs to another module");
+        return 0;
+    }
+    v = (LLVMValueRef)lookup(value, SHIM_KIND_VALUE, &owner);
+    if (!v) return 0;
+    if (owner != m) {
+        fail("the value belongs to another module");
+        return 0;
+    }
+    vt = LLVMTypeOf(v);
+    if (from_int) {
+        if (!type_is_integer(vt) || !type_is_float(dt)) {
+            fail("%s needs an integer source and a floating-point destination", what);
+            return 0;
+        }
+    } else {
+        if (!type_is_float(vt) || !type_is_integer(dt)) {
+            fail("%s needs a floating-point source and an integer destination", what);
+            return 0;
+        }
+    }
+    if (check_builder(m) != VSHIM_OK) return 0;
+    r = op(m->builder, v, dt, "");
+    if (!r) {
+        fail("%s returned NULL", what);
+        return 0;
+    }
+    h = slot_add(m, r, SHIM_KIND_VALUE);
+    if (!h) return 0;
+    return h;
+}
+
+int64_t vshim_build_sitofp(int64_t module, int64_t dest_type, int64_t value)
+{
+    clear_error();
+    return build_fp_cast(module, dest_type, value, LLVMBuildSIToFP, "an integer-to-float conversion", 1);
+}
+
+int64_t vshim_build_fptosi(int64_t module, int64_t dest_type, int64_t value)
+{
+    clear_error();
+    return build_fp_cast(module, dest_type, value, LLVMBuildFPToSI, "a float-to-integer conversion", 0);
+}
+
+int64_t vshim_build_zext(int64_t module, int64_t dest_type, int64_t value)
+{
+    clear_error();
+    return build_int_cast(module, dest_type, value, LLVMBuildZExt, "a zero extension", 1);
+}
+
+int64_t vshim_build_sext(int64_t module, int64_t dest_type, int64_t value)
+{
+    clear_error();
+    return build_int_cast(module, dest_type, value, LLVMBuildSExt, "a sign extension", 1);
+}
+
+int64_t vshim_build_trunc(int64_t module, int64_t dest_type, int64_t value)
+{
+    clear_error();
+    return build_int_cast(module, dest_type, value, LLVMBuildTrunc, "a truncation", 0);
+}
+
 int64_t vshim_build_icmp(int64_t module, int32_t predicate, int64_t left, int64_t right)
 {
     shim_module *m, *owner = NULL;
@@ -1627,6 +1764,122 @@ int64_t vshim_build_icmp(int64_t module, int32_t predicate, int64_t left, int64_
     r = LLVMBuildICmp(m->builder, pred, a, b, "");
     if (!r) {
         fail("LLVMBuildICmp() returned NULL");
+        return 0;
+    }
+    h = slot_add(m, r, SHIM_KIND_VALUE);
+    if (!h) return 0;
+    return h;
+}
+
+/* The float sibling of the comparison above, and the mapping is the header's
+ * contract rather than a free choice: `EQ` is ordered and `NE` is **unordered**,
+ * because C's `!=` answers true when either operand is a NaN and LLVM's `one`
+ * answers false there.  Every other predicate is the ordered form, which is what
+ * C's `<`, `<=`, `>` and `>=` mean. */
+int64_t vshim_build_fcmp(int64_t module, int32_t predicate, int64_t left, int64_t right)
+{
+    shim_module *m, *owner = NULL;
+    LLVMValueRef a, b, r;
+    LLVMRealPredicate pred;
+    int64_t h;
+
+    clear_error();
+    m = module_of(module);
+    if (!m) return 0;
+
+    switch (predicate) {
+    case VSHIM_FCMP_EQ: pred = LLVMRealOEQ; break;
+    case VSHIM_FCMP_NE: pred = LLVMRealUNE; break;
+    case VSHIM_FCMP_LT: pred = LLVMRealOLT; break;
+    case VSHIM_FCMP_LE: pred = LLVMRealOLE; break;
+    case VSHIM_FCMP_GT: pred = LLVMRealOGT; break;
+    case VSHIM_FCMP_GE: pred = LLVMRealOGE; break;
+    default:
+        fail("comparison kind %d is not one of the VSHIM_FCMP_* values", (int)predicate);
+        return 0;
+    }
+
+    a = (LLVMValueRef)lookup(left, SHIM_KIND_VALUE, &owner);
+    if (!a) return 0;
+    if (owner != m) {
+        fail("the left operand belongs to another module");
+        return 0;
+    }
+    b = (LLVMValueRef)lookup(right, SHIM_KIND_VALUE, &owner);
+    if (!b) return 0;
+    if (owner != m) {
+        fail("the right operand belongs to another module");
+        return 0;
+    }
+    if (!type_is_float(LLVMTypeOf(a)) || LLVMTypeOf(a) != LLVMTypeOf(b)) {
+        fail("a float comparison needs two floats of the same type");
+        return 0;
+    }
+    if (check_builder(m) != VSHIM_OK) return 0;
+    r = LLVMBuildFCmp(m->builder, pred, a, b, "");
+    if (!r) {
+        fail("LLVMBuildFCmp() returned NULL");
+        return 0;
+    }
+    h = slot_add(m, r, SHIM_KIND_VALUE);
+    if (!h) return 0;
+    return h;
+}
+
+/* `condition ? if_true : if_false`, and the two checks are the two ways this
+ * instruction can be built wrong: a condition that is not an `i1` (an `i64`
+ * condition selects on its *low bit*, which is a wrong answer and not an error
+ * anywhere else), and arms of different types (`select` does not convert, so an
+ * `i64` and an `i32` arm is an invalid instruction, not a promotion). */
+int64_t vshim_build_select(int64_t module, int64_t condition, int64_t if_true,
+                           int64_t if_false)
+{
+    shim_module *m, *owner = NULL;
+    LLVMValueRef c, t, f, r;
+    int64_t h;
+
+    clear_error();
+    m = module_of(module);
+    if (!m) return 0;
+    c = (LLVMValueRef)lookup(condition, SHIM_KIND_VALUE, &owner);
+    if (!c) return 0;
+    if (owner != m) {
+        fail("the condition belongs to another module");
+        return 0;
+    }
+    if (!type_is_integer(LLVMTypeOf(c)) || LLVMGetIntTypeWidth(LLVMTypeOf(c)) != 1) {
+        fail("a select's condition must be a bool (i1)");
+        return 0;
+    }
+    t = (LLVMValueRef)lookup(if_true, SHIM_KIND_VALUE, &owner);
+    if (!t) return 0;
+    if (owner != m) {
+        fail("the true arm belongs to another module");
+        return 0;
+    }
+    f = (LLVMValueRef)lookup(if_false, SHIM_KIND_VALUE, &owner);
+    if (!f) return 0;
+    if (owner != m) {
+        fail("the false arm belongs to another module");
+        return 0;
+    }
+    if (LLVMGetTypeKind(LLVMTypeOf(t)) == LLVMVoidTypeKind) {
+        fail("a void value cannot be the arm of a select");
+        return 0;
+    }
+    if (LLVMTypeOf(t) != LLVMTypeOf(f)) {
+        char *pt = LLVMPrintTypeToString(LLVMTypeOf(t));
+        char *pf = LLVMPrintTypeToString(LLVMTypeOf(f));
+        fail("both arms of a select must have the same type, and these are %s and %s",
+             pt ? pt : "?", pf ? pf : "?");
+        if (pt) LLVMDisposeMessage(pt);
+        if (pf) LLVMDisposeMessage(pf);
+        return 0;
+    }
+    if (check_builder(m) != VSHIM_OK) return 0;
+    r = LLVMBuildSelect(m->builder, c, t, f, "");
+    if (!r) {
+        fail("LLVMBuildSelect() returned NULL");
         return 0;
     }
     h = slot_add(m, r, SHIM_KIND_VALUE);
@@ -1685,6 +1938,69 @@ int64_t vshim_build_gep(int64_t module, int64_t element_type, int64_t pointer,
     r = LLVMBuildGEP2(m->builder, ty, ptr, &idx, 1, "");
     if (!r) {
         fail("LLVMBuildGEP2() returned NULL");
+        return 0;
+    }
+    h = slot_add(m, r, SHIM_KIND_VALUE);
+    if (!h) return 0;
+    return h;
+}
+
+/* The field address, which is the *two*-index GEP.  The one-index form above is
+ * an array element (`p + index * sizeof(T)`); a field is
+ * `getelementptr T, ptr p, i32 0, i32 index`, and asking for the field with the
+ * one-index call would compute `p + index * sizeof(T)` and hand back a pointer to
+ * some other object with no complaint from anybody.  That is exactly the class of
+ * mistake this project keeps paying for, so the two live in two functions with
+ * two names rather than one function with a flag.
+ *
+ * The type must be a struct *this layer created a body for*: an opaque struct has
+ * no fields, and LLVM's own answer to an out-of-range index or a non-struct type
+ * is an assertion, which is not a diagnosis. */
+int64_t vshim_build_gep_field(int64_t module, int64_t struct_type, int64_t pointer,
+                              int64_t index)
+{
+    shim_module *m, *owner = NULL;
+    LLVMTypeRef ty;
+    LLVMValueRef ptr, r;
+    unsigned fields;
+    int64_t h;
+
+    clear_error();
+    m = module_of(module);
+    if (!m) return 0;
+    ty = (LLVMTypeRef)lookup(struct_type, SHIM_KIND_TYPE, &owner);
+    if (!ty) return 0;
+    if (owner != m) {
+        fail("the struct type belongs to another module");
+        return 0;
+    }
+    if (LLVMGetTypeKind(ty) != LLVMStructTypeKind) {
+        fail("a field address needs a struct type");
+        return 0;
+    }
+    if (LLVMIsOpaqueStruct(ty)) {
+        fail("this struct type has no body yet, so it has no fields to address");
+        return 0;
+    }
+    fields = LLVMCountStructElementTypes(ty);
+    if (index < 0 || (unsigned long long)index >= (unsigned long long)fields) {
+        fail("field index %lld is outside this struct's %u field(s)", (long long)index, fields);
+        return 0;
+    }
+    ptr = (LLVMValueRef)lookup(pointer, SHIM_KIND_VALUE, &owner);
+    if (!ptr) return 0;
+    if (owner != m) {
+        fail("the pointer belongs to another module");
+        return 0;
+    }
+    if (!type_is_pointer(LLVMTypeOf(ptr))) {
+        fail("a field address needs a pointer to the struct");
+        return 0;
+    }
+    if (check_builder(m) != VSHIM_OK) return 0;
+    r = LLVMBuildStructGEP2(m->builder, ty, ptr, (unsigned)index, "");
+    if (!r) {
+        fail("LLVMBuildStructGEP2() returned NULL");
         return 0;
     }
     h = slot_add(m, r, SHIM_KIND_VALUE);

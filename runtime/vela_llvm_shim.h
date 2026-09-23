@@ -186,6 +186,32 @@ enum {
     VSHIM_CMP_UGE = 9    /* a >= b, unsigned -- the bounds check */
 };
 
+/* ------------------------------------------------- float comparison kinds
+ *
+ * `vshim_build_fcmp`'s predicate, and the values are this shim's for the same
+ * reason as the integer ones.  These six are the ones C's relational operators
+ * mean, and that is the whole requirement: the differential test compares a
+ * program built by this layer with the same program built by the C back end,
+ * byte for byte, so a float comparison here has to answer what `a < b` answers
+ * in C for every input -- including a NaN.
+ *
+ * Which is why the two "obvious" LLVM spellings are not used for two of them.
+ * C's `!=` is **true** when either operand is a NaN, and LLVM's `one` ("ordered
+ * and not equal") is **false** there; C's `==` is false for a NaN, and `ueq`
+ * would be true.  So `NE` maps to `une` and `EQ` to `oeq`, and the four
+ * relational ones map to their ordered forms, which is what `olt`/`ole`/`ogt`/
+ * `oge` are.  Getting this wrong is invisible on every input a test is likely to
+ * carry, and wrong on exactly the input a checked language is supposed to get
+ * right. */
+enum {
+    VSHIM_FCMP_EQ = 0,   /* a == b, ordered   */
+    VSHIM_FCMP_NE = 1,   /* a != b, unordered: true when either side is a NaN, as in C */
+    VSHIM_FCMP_LT = 2,   /* a <  b, ordered   */
+    VSHIM_FCMP_LE = 3,   /* a <= b, ordered   */
+    VSHIM_FCMP_GT = 4,   /* a >  b, ordered   */
+    VSHIM_FCMP_GE = 5    /* a >= b, ordered   */
+};
+
 /* ============================================================== lifecycle ====
  *
  * `vshim_open` must be called before any module exists, and it is the step that
@@ -359,9 +385,68 @@ int64_t vshim_build_fsub(int64_t module, int64_t left, int64_t right);
 int64_t vshim_build_fmul(int64_t module, int64_t left, int64_t right);
 int64_t vshim_build_fdiv(int64_t module, int64_t left, int64_t right);
 
+/* -------------------------------------------------------- width conversions
+ *
+ * Vela has no cast syntax.  It has two things that change a value's width, and
+ * they are the only two this layer has to serve: the `to_float` / `to_int`
+ * builtins, and a binding whose declared kind is narrower than the arithmetic
+ * the language does with it (`u8` and `i32`, the two integer kinds
+ * `K_U8`/`K_I32`; `int` is `i64`).  The C back end spells both the same way, as
+ * C's implicit conversion -- `uint8_t vl_b = 200LL;` and `(double)vl_x` -- so a
+ * conversion here has to mean what C's means, including its truncation.
+ *
+ * The two directions are checked here rather than left to LLVM, and that is not
+ * tidiness: `LLVMBuildZExt` with a source as wide as its destination produces an
+ * instruction that fails the *verifier*, with a message about a type mismatch
+ * several steps away from the call that made it.  A `zext` that is not wider is
+ * the caller's mistake, and the caller is the emitter.
+ *
+ * `sitofp`/`fptosi` are the signed forms, because that is what the C back end's
+ * `(double)` and `(int64_t)` casts are (`fptosi` is C's float-to-integer cast:
+ * undefined for a value that does not fit, exactly as C's is).
+ */
+
+/* Integer -> floating point.  `value` must be an integer and `dest_type` a
+ * float; the result is the converted value. */
+int64_t vshim_build_sitofp(int64_t module, int64_t dest_type, int64_t value);
+
+/* Floating point -> integer, truncating toward zero, as C's cast does. */
+int64_t vshim_build_fptosi(int64_t module, int64_t dest_type, int64_t value);
+
+/* Zero- and sign-extension: the destination must be *wider* than the value's own
+ * type.  `zext` is what a `u8` read as a value is (200 stays 200, not -56);
+ * `sext` is what an `i32` read as a value is. */
+int64_t vshim_build_zext(int64_t module, int64_t dest_type, int64_t value);
+int64_t vshim_build_sext(int64_t module, int64_t dest_type, int64_t value);
+
+/* Truncation: the destination must be *narrower*.  This is what storing into a
+ * narrow binding is, and it is where `u8` wraps -- `200 + 55` fits, and
+ * `200 + 100` truncates to 44, which is what the C back end's `uint8_t vl_b +=
+ * 100LL` does with the same program. */
+int64_t vshim_build_trunc(int64_t module, int64_t dest_type, int64_t value);
+
 /* `predicate` is one of the `VSHIM_CMP_*` values; the result is `i1`, which is what
  * `vshim_build_cond_br` requires. */
 int64_t vshim_build_icmp(int64_t module, int32_t predicate, int64_t left, int64_t right);
+
+/* The same for two *floating-point* operands, with a `VSHIM_FCMP_*` predicate.
+ * `vshim_build_icmp` is integer-only on purpose: a float compared with an
+ * integer predicate would compare bit patterns, which is a wrong answer that
+ * looks like a working program on almost every input. */
+int64_t vshim_build_fcmp(int64_t module, int32_t predicate, int64_t left, int64_t right);
+
+/* `condition ? if_true : if_false`, with `condition` an `i1` and both arms the
+ * same type.  This is what `min_int(a, b)` is, and the shim exposes no `phi` on
+ * purpose -- a `select` needs no block and cannot get a block's edges wrong.
+ *
+ * One difference from the C back end is worth stating where it will be read:
+ * C's `?:` short-circuits, and the C back end's `min_int(a, b)` therefore
+ * evaluates *both* arms twice when the chosen one wins.  Both arms of a `select`
+ * are already-built values here, so each operand is evaluated once -- which is
+ * what the interpreter does with the same program, and observable only when an
+ * operand has a side effect (a call that prints), which no `min_int`/`max_int`
+ * operand in the corpus has. */
+int64_t vshim_build_select(int64_t module, int64_t condition, int64_t if_true, int64_t if_false);
 
 /* The address of element `index` of the array `pointer` points at, where every
  * element is `element_type`.  This is `LLVMBuildGEP2`, and it is the one thing the
@@ -374,6 +459,23 @@ int64_t vshim_build_icmp(int64_t module, int32_t predicate, int64_t left, int64_
  * what an out-of-range index means for both back ends.  A GEP with a bad index is
  * how a checked language silently loses the check. */
 int64_t vshim_build_gep(int64_t module, int64_t element_type, int64_t pointer, int64_t index);
+
+/* The address of field `index` of the struct `pointer` points at.  This is the
+ * second and last thing a pointer is needed for, and it is why `p.x` had no
+ * lowering until now: `vshim_build_gep` above builds a *single*-index GEP, which
+ * is an array element address (`p + index * sizeof(T)`), while a field address is
+ * the two-index form `getelementptr T, ptr p, i32 0, i32 index` -- the leading
+ * zero steps through the pointer, and the second index is the field.  Asking for
+ * the field with the one-index call would compute `p + index * sizeof(struct)`,
+ * i.e. a valid-looking pointer to another object entirely.
+ *
+ * `struct_type` must be a struct this layer created and gave a body to, and
+ * `index` must be one of its fields: LLVM's own answer to an out-of-range field
+ * index is an assertion, and this layer's answer is a status and a sentence.
+ *
+ * Like the array GEP, this is a pure address computation -- no bounds check, no
+ * load -- so the emitter decides what it reads and when. */
+int64_t vshim_build_gep_field(int64_t module, int64_t struct_type, int64_t pointer, int64_t index);
 
 /* A *named* struct type, created with no body and given one field at a time.
  *
