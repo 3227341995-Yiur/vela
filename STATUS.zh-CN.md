@@ -4,9 +4,9 @@
 
 <!--
 源文件 : STATUS.md
-源文件字节 : 34068
-源文件 SHA256 : 23e5d78fc3cc5988df7240011b5a0a689f716c2e584fc845276897aa717767ad
-翻译日期 : 2026-09-22
+源文件字节 : 34991
+源文件 SHA256 : 07deeaef154511c0a6796d842e2270ba88332e736569fc1ddb05b4cf023d4cd9
+翻译日期 : 2026-09-24
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -26,7 +26,7 @@
 | IDEA 插件 | `idea-plugin\build-offline.ps1` | **0.1.4**：`dist\vela-idea-plugin-0.1.4.zip` 324 186 B，`RESULT: PASS`（154 OK / 0 FAIL），98 个具体顶层类，**0 个死的**。能力清单是 `idea-plugin\FEATURE_PARITY.md`：27 行，**18 个 `implemented`、8 个 `partial`、1 个 `refused-deliberately`、0 个 missing**，而所有者报告的那个参数名缺陷已经关闭，前后对照证据在 `idea-plugin\evidence\` 里 |
 | 基准 | `tools\bench.ps1 -Reps 7` | 重新测量并记录在 `bench/RESULTS.md` 里它自己那个带日期的章节中：串行 matmul **慢 2.42×**，并行 **按 7 取最佳是 3.49× / 按中位数是 2.80×**，mandelbrot 是平手，sieve 慢 1.50×。**"比 C++ 快" 仍然没有被确立**，而 §4 的那些阶梯仍然是那个唯一可能改变这件事的杠杆的论据 |
 
-以上这些都没有改变下面这件事，而它仍然是这项工作的形状：`build` 把 C 送给 `cl.exe`，所以北极星 ① 只 **在** `build-llvm` 那条路径上成立；而这门语言还缺带载荷的枚举和 `match`、模块/`import`、`Result`/`?`、泛型、闭包、嵌套函数、字符串拼接、slice，以及迭代/traits —— 九个功能，**零** 行代码。这些各自需要什么，有一份带日期的清单在本次会话所对着的那个目标里。
+以上这些都没有改变下面这件事，而它仍然是这项工作的形状：`build` 把 C 送给 `cl.exe` 这件事**已经结束了**——`build` 就是 LLVM 路径，只起 `lld-link`；C 后端按名字叫 `build-c`。**带载荷的枚举和 `match` 已经不在「仍缺」那份清单里**（2026-09-24 落地）：解释器构造变体并执行分支，C 后端把一个枚举值降成 tagged union、把穷尽的 `match` 降成没有 `default` 的 `switch`，检查器判定穷尽性（**点名**缺的是哪个变体）、重复分支、`else` 不在最后、以及主语不是枚举，而 LLVM 后端把整个构造**按名字拒绝**——`tests\llvm-refusals.txt` 里的五行，那是双侧账本。`enum` 和 `match` 现在是保留字（`SPEC.md` 1.3），这是语言决定而不是词法细节，因为 `match = 1` 和 `match(x)` 都是合法程序，没有猜的余地。编译器在抬高自己的池子之前根本解析不了用到它们的源码——节点 65,536 → 131,072、token 131,072 → 262,144——而那次抬高必须是独立的一个提交，因为旧的种子编译器解析不了需要超过 65,536 个节点的源码。仍缺的是模块/`import`、`Result`/`?`、泛型、闭包、嵌套函数、字符串拼接、slice、迭代/traits —— 八个功能，其中字符串拼接正在树里做。
 
 ## 0. 这次会话把代码树留在了哪里（2026-09-20，02:1x）
 

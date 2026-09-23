@@ -35,11 +35,21 @@ work when it is not disarmed.  The C back end is not gone: it is the reference
 implementation and it is reached by name, `build-c`, which is how the seven
 `parallel for` rows are built and how the fixpoint's emitted C is produced.
 
-What the language is still missing is unchanged: enums with payloads and `match`,
-modules/`import`, `Result`/`?`, generics, closures, nested functions, string
-concatenation, slices and iteration/traits — nine features, and the enum branch is
-in progress.  A dated list of what each of those needs is in the goal this session
-is running against.
+What the language is still missing: modules/`import`, `Result`/`?`, generics,
+closures, nested functions, string concatenation, slices and iteration/traits — eight
+features, with string concatenation being worked on in the tree right now.  **Enums with
+payloads and `match` is no longer on that list** (landed 2026-09-24): the interpreter
+builds a variant and runs an arm, the C back end lowers a value to a tagged union and an
+exhaustive `match` to a `switch` with no `default`, the checker judges exhaustiveness
+(naming the variant that is missing), a duplicate arm, an `else` that is not last and a
+subject that is not an enum, and the LLVM back end refuses the whole construct **by name**
+— five rows of `tests\llvm-refusals.txt`, which is the two-sided ledger.  `enum` and
+`match` are reserved words now (`SPEC.md` 1.3), and that is a language decision rather than
+a lexer detail, because `match = 1` and `match(x)` are both legal programs and there is no
+way to guess between them.  The compiler could not parse a source that uses them until its
+own pools were raised — nodes 65,536 → 131,072 and tokens 131,072 → 262,144 — and that
+raise had to be its own commit, because the old seed compiler cannot parse a source that
+needs more than 65,536 nodes.
 
 ## 0. Where this session left the tree (2026-09-20, 02:1x)
 

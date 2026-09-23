@@ -87,11 +87,16 @@ Ordered, each step verifiable on its own.
 The order is chosen so each feature makes the *next* one cheaper for a compiler
 written in Vela.
 
-1. **Enums with payloads + `match`.** First because the compiler itself needs it:
-   its node kinds are integers (`k == 31` appears throughout `check.vel`), and an
-   exhaustive `match` over a real enum removes a whole class of silent bug.
-   Acceptance: the AST node-kind dispatch in `parts/*.vel` is rewritten as enums
-   and the fixpoint still passes.
+1. **Enums with payloads + `match`.** *Landed 2026-09-24*: the interpreter, the checker
+   and the C back end have it, the LLVM back end refuses it by name (five rows of
+   `tests\llvm-refusals.txt`), and `enum`/`match` are reserved words (`SPEC.md` 1.3).
+   **The acceptance criterion this item set for itself is not met**: the AST node-kind
+   dispatch in `parts/*.vel` was *not* rewritten as enums, so the compiler still dispatches
+   on integers (`k == 31` appears throughout `check.vel`).  The feature exists and the
+   compiler does not use it yet, and that self-use is what would have paid the ergonomics
+   dividend this item promised.  It had to come after a pool raise (nodes 65,536 →
+   131,072, tokens 131,072 → 262,144) that the linked compiler had outgrown — the raise is
+   why a source using the feature could be parsed at all.
 2. **Modules and imports.** Today a multi-file program is a build-time
    concatenation (`tools/link_selfhost.vel`). Real modules unlock libraries,
    incremental builds and cross-file IDE navigation, and they let the compiler's
