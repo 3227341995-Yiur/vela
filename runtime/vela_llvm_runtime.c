@@ -112,6 +112,86 @@ int64_t vela_llvm_add_range(int64_t a, int64_t b, int64_t lo, int64_t hi,
     return vela_add_range(a, b, lo, hi, file, line);
 }
 
+/* The narrow-store check, under names the emitted IR can call: the same
+ * `vela_fit_u8`/`vela_fit_i32` the C back end writes into its own output, so a
+ * store that cannot represent its value stops all three paths with one sentence
+ * and one exit status (SAFETY.md §3, `hole_narrowing_binding_i32`). */
+int64_t vela_llvm_fit_u8(int64_t value, const char *file, int line)
+{
+    return vela_fit_u8(value, file, line);
+}
+
+int64_t vela_llvm_fit_i32(int64_t value, const char *file, int line)
+{
+    return vela_fit_i32(value, file, line);
+}
+
+/* The two integer helpers the emitted IR had no symbol for, because the header
+ * declares them `static inline` and IR cannot call a static.  They are the *same*
+ * functions the C back end's output calls (`vela_pow_int`, `vela_abs_int`), so
+ * `x ** y` and `abs(x)` mean one thing on both paths -- including the overflow
+ * checks they carry, which is the reason a raw `mul`/`neg` instruction was not an
+ * acceptable substitute (measured: `abs(-INT64_MIN)` panics "integer overflow
+ * (negation)" in the C back end, and `emit_llvm.vel` used to refuse the builtin
+ * rather than emit an unchecked instruction). */
+int64_t vela_llvm_pow_int(int64_t base, int64_t exp, const char *file, int line)
+{
+    return vela_pow_int(base, exp, file, line);
+}
+
+int64_t vela_llvm_abs_int(int64_t a, const char *file, int line)
+{
+    return vela_abs_int(a, file, line);
+}
+
+/* `<<` and `>>`: the header's own checked shifts (`vela_shl_int` refuses a count outside
+ * 0..63, which is why the raw instruction was not an acceptable substitute). */
+int64_t vela_llvm_shl_int(int64_t a, int64_t b, const char *file, int line)
+{
+    return vela_shl_int(a, b, file, line);
+}
+
+int64_t vela_llvm_shr_int(int64_t a, int64_t b, const char *file, int line)
+{
+    return vela_shr_int(a, b, file, line);
+}
+
+/* --------------------------------------------------------------- the host surface
+ *
+ * The builtins a *compiler* cannot do without, and the reason the LLVM path could not
+ * build `selfhost/vm.vel` any further: the C back end writes `vela_emit_str(...)`,
+ * `vela_warn_str(...)`, `vela_intern(...)` and friends into its output, and those are
+ * `static` in `runtime/vela_runtime.h`, so an IR call needs a name.  Each is the
+ * header's own function under a `vela_llvm_` name -- the same wrapper rule as every
+ * other function in this file, and the reason the numbers a program prints are the
+ * same whichever back end built it.
+ *
+ * A `vela_str` parameter is written *by value* here and passed by the IR as a pointer,
+ * which is not a mismatch: a 16-byte struct crosses the Microsoft ABI by reference, so
+ * this file's `vela_str s` and the IR's `ptr %s` are the same argument (see
+ * `vela_llvm_concat` above, where the header's comment says so at length). */
+void vela_llvm_emit_str(vela_str s)  { vela_emit_str(s); }
+void vela_llvm_emit_int(int64_t v)   { vela_emit_int(v); }
+void vela_llvm_emit_float(double v)  { vela_emit_float(v); }
+void vela_llvm_emit_nl(void)         { vela_emit_nl(); }
+
+void vela_llvm_warn_str(vela_str s)  { vela_warn_str(s); }
+void vela_llvm_warn_int(int64_t v)   { vela_warn_int(v); }
+void vela_llvm_warn_nl(void)         { vela_warn_nl(); }
+
+int64_t vela_llvm_intern(vela_str s) { return vela_intern(s); }
+
+vela_str vela_llvm_interned(int64_t h, const char *file, int line)
+{
+    return vela_interned(h, file, line);
+}
+
+vela_str vela_llvm_unescape(vela_str s) { return vela_unescape(s); }
+
+double vela_llvm_now(void) { return vela_now(); }
+
+vela_str vela_llvm_env(vela_str name) { return vela_env(name); }
+
 int64_t vela_llvm_sub_range(int64_t a, int64_t b, int64_t lo, int64_t hi,
                             const char *file, int line)
 {

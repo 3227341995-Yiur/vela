@@ -1,0 +1,10 @@
+struct P {
+    x: i32
+}
+
+def main() -> None {
+    mut p: P = P(0)
+    mut big: int = 5000000000
+    p.x = big
+    print(p.x)
+}

@@ -1519,6 +1519,30 @@ int64_t vshim_build_mul(int64_t module, int64_t left, int64_t right)
     return build_int_binop(module, left, right, LLVMBuildMul, "an integer multiply");
 }
 
+/* The three *unchecked* integer operators the language has (`&`, `|`, `^`).  They are
+ * instructions rather than runtime calls on purpose: unlike `+`, `-`, `*` and `/` there
+ * is no overflow to check, so the C back end emits the C operator itself and this is the
+ * same instruction.  They were missing here, which is why `emit_llvm.vel` refused them
+ * ("the runtime exports no symbol for it") -- and the compiler's own source is full of
+ * `(flags & 2) == 2`, so refusing them is where `build-llvm selfhost/vm.vel` stopped. */
+int64_t vshim_build_and(int64_t module, int64_t left, int64_t right)
+{
+    clear_error();
+    return build_int_binop(module, left, right, LLVMBuildAnd, "an integer and");
+}
+
+int64_t vshim_build_or(int64_t module, int64_t left, int64_t right)
+{
+    clear_error();
+    return build_int_binop(module, left, right, LLVMBuildOr, "an integer or");
+}
+
+int64_t vshim_build_xor(int64_t module, int64_t left, int64_t right)
+{
+    clear_error();
+    return build_int_binop(module, left, right, LLVMBuildXor, "an integer xor");
+}
+
 static int64_t build_float_binop(int64_t module, int64_t left, int64_t right,
                                  LLVMValueRef (*op)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *),
                                  const char *what)

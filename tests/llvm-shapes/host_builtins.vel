@@ -1,0 +1,12 @@
+def main() -> None {
+    emit_str("a")
+    emit_int(7)
+    emit_nl()
+    warn_str("w")
+    warn_int(3)
+    warn_nl()
+    print(len(interned(intern("k"))))
+    print(len(unescape("\x41")))
+    print(argc())
+    print(to_int(floor(2.5)) + to_int(pow(2.0, 3.0)))
+}

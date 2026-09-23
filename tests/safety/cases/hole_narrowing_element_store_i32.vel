@@ -1,0 +1,6 @@
+def main() -> None {
+    mut xs: Array[i32, 2] = [0, 0]
+    mut big: int = 5000000000
+    xs[0] = big
+    print(xs[0])
+}

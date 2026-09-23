@@ -398,6 +398,37 @@ static inline int64_t vela_shr_int(int64_t a, int64_t b, const char *f, int l)
     return a >> (int)b;
 }
 
+/* A value going into a slot narrower than the arithmetic that produced it (SPEC
+ * 3.1: a binding is deliberately not type-checked, so `mut x: i32 = big` with a
+ * `big` wider than an `i32` is a legal program).  What it must not be is *two*
+ * programs: unchecked, C's implicit conversion kept 705032704 and the interpreter
+ * kept 5000000000 for the same source, which SAFETY.md §3 recorded as
+ * `hole_narrowing_binding_i32`.  So the store is checked, at run time, with the
+ * message the checker uses for the case it can see (`ck_narrow_store`), and the
+ * language's answer is the refusal rather than a guess at the widening.
+ *
+ * The value that fits is untouched: this is not a conversion, it is the refusal
+ * to pretend one happened.  `int64_t` in and out so the caller's own narrowing
+ * store still does the truncation C already did for the in-range case. */
+static void vela_narrow_fail(int64_t v, const char *what, const char *f, int l)
+{
+    char buf[160];
+    snprintf(buf, sizeof buf, "%lld does not fit in %s", (long long)v, what);
+    vela_panic(buf, f, l);
+}
+
+static inline int64_t vela_fit_u8(int64_t v, const char *f, int l)
+{
+    if (v < 0 || v > 255) vela_narrow_fail(v, "u8", f, l);
+    return v;
+}
+
+static inline int64_t vela_fit_i32(int64_t v, const char *f, int l)
+{
+    if (v < -2147483648LL || v > 2147483647LL) vela_narrow_fail(v, "i32", f, l);
+    return v;
+}
+
 /* "Fast" mode: still defined behaviour, still two's-complement, just not
  * checked.  This is NOT an escape hatch to undefined behaviour the way Rust's
  * `unsafe` or C's signed overflow are. */

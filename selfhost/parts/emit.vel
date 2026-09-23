@@ -1097,6 +1097,38 @@ def emit_print(nd: Array[int, 655360], ty: Array[int, 262144],
     emit_str("vela_print_nl();\n")
 }
 
+# The C back end's half of the narrow-store rule.  C converts implicitly on
+# assignment, and for a value that fits that conversion *is* the language's
+# (SPEC 3.1 keeps the implicit width conversion); for one that does not, the
+# implicit conversion was a silently different answer — `uint8_t vl_x = 300` is 44
+# while the interpreter kept 300 — so the value goes through the runtime's check
+# first.  It is the same `vela_fit_u8`/`vela_fit_i32` the other two paths call, so
+# the sentence and the exit status are the runtime's and cannot drift.
+def emit_store_value(nd: Array[int, 655360], ty: Array[int, 262144],
+                     flt: Array[float, 65536], src: str, path: str,
+                     mem: Array[int, 3741696], mut vm: VM, dstp: int, v: int,
+                     line: int) -> None {
+    k: int = unpack_kind(dstp)
+    sk: int = expr_kind(nd, ty, mem, vm, v)
+    mut fn: str = ""
+    if k == K_U8() {
+        fn = "vela_fit_u8("
+    } else if k == K_I32() {
+        fn = "vela_fit_i32("
+    }
+    if fn == "" or not (sk == K_INT() or sk == K_U8() or sk == K_I32()) {
+        # a destination that is not narrow, or a value that is not an integer
+        # (a float, a bool, a `str`, a struct): either no conversion happens or the
+        # checker has already refused it, and neither is this rule's business
+        emit_expr(nd, ty, flt, src, path, mem, vm, v)
+        return
+    }
+    emit_str(fn)
+    emit_expr(nd, ty, flt, src, path, mem, vm, v)
+    emit_location(path, line)
+    emit_str(")")
+}
+
 def emit_assign(nd: Array[int, 655360], ty: Array[int, 262144],
                 flt: Array[float, 65536], src: str, path: str,
                 mem: Array[int, 3741696], mut vm: VM, s: int,
@@ -1109,7 +1141,8 @@ def emit_assign(nd: Array[int, 655360], ty: Array[int, 262144],
             trap(path, nd_line(nd, s), "this declaration needs an initialiser")
         }
         emit_str(" = ")
-        emit_expr(nd, ty, flt, src, path, mem, vm, v)
+        emit_store_value(nd, ty, flt, src, path, mem, vm,
+                         nt_get(mem, s, NT_LIT()), v, nd_line(nd, s))
         emit_str(";\n")
         return
     }
@@ -1122,7 +1155,8 @@ def emit_assign(nd: Array[int, 655360], ty: Array[int, 262144],
     }
     emit_lvalue(nd, ty, flt, src, path, mem, vm, tgt)
     emit_str(" = ")
-    emit_expr(nd, ty, flt, src, path, mem, vm, v)
+    emit_store_value(nd, ty, flt, src, path, mem, vm,
+                     expr_packed(nd, ty, mem, vm, tgt), v, nd_line(nd, s))
     emit_str(";\n")
 }
 
@@ -1199,6 +1233,15 @@ def emit_augassign(nd: Array[int, 655360], ty: Array[int, 262144],
     }
     emit_lvalue(nd, ty, flt, src, path, mem, vm, tgt)
     emit_str(" = ")
+    # `b += 100` with `b: u8` is the case this rule was measured on: the checked
+    # sum is 300, and nothing above this line can hold it in a byte
+    mut fit: str = ""
+    if unpack_kind(expr_packed(nd, ty, mem, vm, tgt)) == K_U8() {
+        fit = "vela_fit_u8("
+    } else if unpack_kind(expr_packed(nd, ty, mem, vm, tgt)) == K_I32() {
+        fit = "vela_fit_i32("
+    }
+    emit_str(fit)
     if op == 1 {
         emit_str("vela_add_range(")
     } else if op == 2 {
@@ -1227,6 +1270,9 @@ def emit_augassign(nd: Array[int, 655360], ty: Array[int, 262144],
         emit_str(", INT64_MIN, INT64_MAX")
     }
     emit_location(path, line)
+    if fit != "" {
+        emit_str(")")
+    }
     emit_str(");\n")
 }
 

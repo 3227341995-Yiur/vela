@@ -379,6 +379,12 @@ int32_t vshim_build_store(int64_t module, int64_t value, int64_t pointer);
 int64_t vshim_build_add(int64_t module, int64_t left, int64_t right);
 int64_t vshim_build_sub(int64_t module, int64_t left, int64_t right);
 int64_t vshim_build_mul(int64_t module, int64_t left, int64_t right);
+/* the three unchecked integer operators: `&`, `|`, `^` -- instructions, not calls: the
+ * language checks overflow for `+ - * /` and has nothing to check here, which is why the
+ * C back end emits the C operator itself */
+int64_t vshim_build_and(int64_t module, int64_t left, int64_t right);
+int64_t vshim_build_or(int64_t module, int64_t left, int64_t right);
+int64_t vshim_build_xor(int64_t module, int64_t left, int64_t right);
 
 int64_t vshim_build_fadd(int64_t module, int64_t left, int64_t right);
 int64_t vshim_build_fsub(int64_t module, int64_t left, int64_t right);

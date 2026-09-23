@@ -502,6 +502,22 @@ def declare_local(nd: Array[int, 655360], ty: Array[int, 262144],
     }
     nt_put(mem, decl, NT_SLOT(), slot)
     t: int = nd[decl * 10 + 3]
+    if t < 0 {
+        # `mut a = 1` -- a binding with an initialiser and no annotation.  Nothing
+        # in this compiler infers a binding's kind from its value, and the two
+        # lines below would have answered with the type pool read at index -1:
+        # `type_kind` returns early for a negative index, but `ty_len(ty, -1)` is
+        # `ty[-1]` and the garbage that came back became the binding's packed kind
+        # -- which is not a refusal but a *hang*.  `vm.exe check` never returned on
+        # a four-line program, because the garbage kind reached a length-driven
+        # loop downstream (measured 2026-09-24; the hang is in the 2026-09-20
+        # binary too, so it predates every change in this tree's recent work).
+        # A refusal is the honest answer: the language has no inference to do this
+        # with yet, and it is a decision for SPEC, not for a repair here.
+        fail(path, nd_line(nd, decl),
+             ck_quoted("binding '", name,
+                       "' has no type annotation: write the type after the name, as in `mut a: int = 1`"))
+    }
     kind: int = type_kind(ty, t, mem, vm)
     mut ck: int = pack_kind(kind, ty_len(ty, t))
     mut sid: int = -1

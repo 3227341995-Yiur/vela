@@ -1407,9 +1407,89 @@ def ck_store_name(nd: Array[int, 655360], mut mem: Array[int, 3741696],
     }
 }
 
+# ------------------------------------------------- a store into a narrow binding
+#
+# `u8` and `i32` hold a value the language can represent in an `int` but not in the
+# slot: `mut x: u8 = 300` has no byte that means 300.  Before this rule the answer
+# depended on which front end ran the program — the interpreter kept 300 and the
+# compiled binary kept 44 (C's `uint8_t vl_x = 300`) — which is one program with
+# two answers, and SAFETY.md §3 carried it as `hole_narrowing_binding_u8` under
+# SPEC 3.1's "state that refusal rather than guessing at the widening".
+#
+# The rule is one rule with two halves, because the language can only see half of
+# it: **a value the checker can compute is refused here**, and a value only the run
+# can see is refused by the runtime with the same message (`vela_fit_u8` /
+# `vela_fit_i32` in runtime/vela_runtime.h, called by both back ends, so the
+# interpreter and a compiled binary print the same sentence and exit the same way).
+# A value that fits is untouched: this is not a new conversion, it is the refusal to
+# pretend one happened.
+def ck_narrow_value(nd: Array[int, 655360], v: int) -> int {
+    if v <= 0 {
+        return ck_no_const()
+    }
+    if nd_kind(nd, v) == 20 {
+        # a literal, at its own width: `ck_foldable` bounds the *folded* case, and
+        # 3000000000 into an `i32` is exactly the value that bound would hide
+        return nd[v * 10 + 1]
+    }
+    return ck_const_int(nd, v)
+}
+
+# The destination's packed kind, for the store rules below: a declared name, an
+# array element or a struct field.
+def ck_dst_packed(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+                  s: int, tgt: int) -> int {
+    if nd_kind(nd, tgt) == 25 {
+        if (nd[s * 10 + 6] & 2) == 2 {
+            return nt_get(mem, s, NT_LIT())
+        }
+        return nt_get(mem, tgt, NT_LIT())
+    }
+    if nd_kind(nd, tgt) == 31 {
+        base: int = nd[tgt * 10 + 1]
+        return pack_kind(elem_kind_of(unpack_kind(nt_get(mem, base, NT_LIT()))), 0)
+    }
+    if nd_kind(nd, tgt) == 32 {
+        base2: int = nd[tgt * 10 + 1]
+        if nd_kind(nd, base2) == 25 {
+            sid: int = unpack_len(nt_get(mem, base2, NT_LIT()))
+            idx: int = find_field(mem, sid, nd[tgt * 10 + 2])
+            if idx >= 0 {
+                return sfl_get(mem, stb_get(mem, sid, STB_FOFF()) + idx * 2 + 1)
+            }
+        }
+    }
+    return K_BAD()
+}
+
+def ck_narrow_store(nd: Array[int, 655360], mem: Array[int, 3741696],
+                    path: str, vm: VM, s: int, dstp: int, v: int) -> None {
+    k: int = unpack_kind(dstp)
+    if k != K_U8() and k != K_I32() {
+        return
+    }
+    val: int = ck_narrow_value(nd, v)
+    if val == ck_no_const() {
+        return
+    }
+    if ck_fits_kind(val, k) {
+        return
+    }
+    ck_type(path, nd_line(nd, s),
+            concat(concat(ck_int_text(val), " does not fit in "),
+                   ck_kind_name(k)))
+}
+
 def ck_store(nd: Array[int, 655360], mut mem: Array[int, 3741696],
              path: str, mut vm: VM, s: int) -> None {
     tgt: int = nd[s * 10 + 1]
+    if nd_kind(nd, s) == 6 {
+        # `x = 300` stores what it names; `x += 300` stores `x + 300`, and the sum
+        # is not a value any front end knows before it runs, so the compound form
+        # is the runtime half's business and this half leaves it alone
+        ck_narrow_store(nd, mem, path, vm, s, ck_dst_packed(nd, mem, vm, s, tgt),
+                        nd[s * 10 + 2])
+    }
     k: int = nd_kind(nd, tgt)
     if k == 25 {
         ck_store_name(nd, mem, path, vm, s, tgt)
@@ -2879,6 +2959,7 @@ def ck_stmt(nd: Array[int, 655360], mut mem: Array[int, 3741696],
                 }
             }
             # the binding joins the scope so the rest of the block sees it
+            ck_narrow_store(nd, mem, path, vm, s, nt_get(mem, s, NT_LIT()), v)
             ck_push(mem, vm, name, nt_get(mem, s, NT_LIT()),
                     (nd[s * 10 + 6] & 1) == 1)
         } else {

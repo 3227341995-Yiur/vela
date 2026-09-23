@@ -14,7 +14,7 @@
 # int64_t -> int, int32_t -> i32, uint8_t -> u8, double -> float,
 # bool -> bool, vela_str -> str, void -> None.
 #
-# 75 declarations, in the header's order.
+# 78 declarations, in the header's order.
 # ============================================================================
 
 # Handles (modules, types, functions, blocks, values) are `int` here because
@@ -61,6 +61,9 @@ extern c def vshim_build_store(module: int, value: int, pointer: int) -> i32
 extern c def vshim_build_add(module: int, left: int, right: int) -> int
 extern c def vshim_build_sub(module: int, left: int, right: int) -> int
 extern c def vshim_build_mul(module: int, left: int, right: int) -> int
+extern c def vshim_build_and(module: int, left: int, right: int) -> int
+extern c def vshim_build_or(module: int, left: int, right: int) -> int
+extern c def vshim_build_xor(module: int, left: int, right: int) -> int
 extern c def vshim_build_fadd(module: int, left: int, right: int) -> int
 extern c def vshim_build_fsub(module: int, left: int, right: int) -> int
 extern c def vshim_build_fmul(module: int, left: int, right: int) -> int

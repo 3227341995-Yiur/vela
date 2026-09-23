@@ -1,0 +1,14 @@
+struct Counter {
+    n: int
+
+    def bump(mut self: Counter, by: int) -> None {
+        self.n += by
+    }
+}
+
+def main() -> None {
+    mut c: Counter = Counter(1)
+    c.n += 2
+    c.bump(4)
+    print(c.n)
+}

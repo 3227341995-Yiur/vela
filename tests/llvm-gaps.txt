@@ -35,29 +35,26 @@
 # deliberately: that ABI is somebody else's (`escape_extern_str_parameter_refused`,
 # `escape_extern_str_return_refused` hold the C back end to the same refusal).
 
-# Arrays are passed as a pointer plus a length in the C back end.  The LLVM back end
-# has no spelling for an array value, only for an element read and for `len(a)`.
-array_param         | an array name is not a value the LLVM back end can read on its own
-
-
-# ---------------------------------------------------------------- later additions
-# Found by walking emit_llvm.vel's own trap sites (22 of them, 20 distinct reasons of the
-# form "X is not compiled by the LLVM back end yet") and then writing a program that
-# reaches each one, which is how a trap site becomes a measured gap rather than a
-# possibility.  `a[0] += 1` is the one worth staring at: it is not an exotic construct.
-
-# A struct returned by value is the Microsoft ABI's other direction; `str` is the same
-# mechanism, listed above.
-
-# Operators and builtins whose runtime helper is `static` in runtime/vela_runtime.h, so
-# there is no exported symbol for the emitted IR to call -- and emitting the raw
-# instruction instead would drop the overflow check the language promises.
-
-# Arrays whose element kind has no IR spelling in this back end yet.
-array_of_str            | an array of this element kind is not compiled by the LLVM back end yet
-
-# Updating an element in place through the array.  The back end handles a local scalar
-# and stops there.
-inplace_element_update  | only a local variable can be updated in place by the LLVM back end so far
-
-# CLOSED 2026-09-24, by the LLVM back end work: abs_builtin, pow_operator and struct_return
+# CLOSED 2026-09-24, by the LLVM back end work: abs_builtin, pow_operator and
+# struct_return (a `struct` result went out through the same hidden pointer a `str`
+# result uses, and `**`/`abs` got the runtime's own exported helpers).
+#
+# CLOSED 2026-09-24, the last three: `array_param`, `array_of_str`,
+# `inplace_element_update`.  **This file is now empty of open gaps** -- every shape in
+# `tests\llvm-shapes\` compiles, and the tally reads `open gaps 0/0`.
+#   * `array_param`: an array *argument* is the array's address (`ll_array_ptr`), which
+#     is what the C back end's `int64_t* a` parameter already was -- and passing a
+#     parameter array on to another function works, because a parameter is a local
+#     binding with the array kind.
+#   * `array_of_str`: `ll_esize` gives a `str` 16 bytes (the C back end's
+#     `sizeof(vela_str)`), a `str` *element* reads as its address rather than a 16-byte
+#     load (a `str` value here *is* that address), and an element store is the same
+#     16-byte copy a `str` field gets (`ll_store_into`, which is what the old
+#     `ll_field_store` is now called, because a field and an element are one problem).
+#   * `inplace_element_update`: `a[i] += v` takes its destination address from
+#     `ll_index_addr`, so the bounds check is in front of it exactly as the C back
+#     end's hoisted check is, and the rest of the augmented-assignment path (load,
+#     checked arithmetic, narrow store) is shared with the local case.
+# An empty ledger is not the end of the list: `build-llvm selfhost/vm.vel` still stops
+# at a *builtin* (`warn_str` is the first, by link order), and shapes for that work will
+# be added here so it is recorded the same way rather than until the compiler builds.

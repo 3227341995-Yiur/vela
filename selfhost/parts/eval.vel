@@ -774,15 +774,15 @@ def combine(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
             set_int(mem, fmem, dst, pow_int(path, vm, a, b))
             return
         }
-        if op == 18 {
+        if op == 17 {
             set_int(mem, fmem, dst, a & b)
             return
         }
-        if op == 19 {
+        if op == 18 {
             set_int(mem, fmem, dst, a | b)
             return
         }
-        if op == 17 {
+        if op == 19 {
             set_int(mem, fmem, dst, a ^ b)
             return
         }
@@ -1628,6 +1628,35 @@ def enter_call(nd: Array[int, 655360], ty: Array[int, 262144],
 
 # ------------------------------------------------------------- statements
 
+# The runtime half of the narrow-store rule.  `check.vel`'s `ck_narrow_store`
+# refuses a value the *compiler* can compute that does not fit the destination's
+# width; this is for the one only the run can see (`mut big: int = 5000000000` then
+# `mut x: i32 = big`), and the two have to agree or the interpreter and a compiled
+# binary print two answers for one program — which is the hole
+# `hole_narrowing_binding_i32` was recorded as.  The message and the exit status
+# are the runtime's (`vela_fit_u8` in runtime/vela_runtime.h, which both back ends
+# call), so all three paths say the same sentence and stop the same way.
+def narrow_check(mem: Array[int, 3741696], path: str, vm: VM, dstp: int,
+                 c: int) -> None {
+    k: int = unpack_kind(dstp)
+    if k != K_U8() and k != K_I32() {
+        return
+    }
+    t: int = mem[c * 4 + 0]
+    if t != K_INT() and t != K_U8() and t != K_I32() {
+        # a float, a bool, a `str`, a struct, `None`: either not an integer value
+        # at all (and the checker has already refused the conversion), or a value
+        # of a narrow kind that by construction fits its own width
+        return
+    }
+    v: int = mem[c * 4 + 1]
+    if ck_fits_kind(v, k) {
+        return
+    }
+    trap(path, vm.line,
+         concat(concat(ck_int_text(v), " does not fit in "), ck_kind_name(k)))
+}
+
 def store_name(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                path: str, mut vm: VM, nd: Array[int, 655360], tgt: int,
                src: int) -> None {
@@ -1639,12 +1668,37 @@ def store_name(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
     if sk != SYM_LOCAL() {
         trap(path, vm.line, "this assignment target is not a local variable")
     }
+    narrow_check(mem, path, vm, nt_get(mem, tgt, NT_LIT()), src)
     assign_value(mem, fmem, path, vm, vm.fp + sv, src)
 }
 
 # A store target is a name or an indexed element.  Both are handled here so that
 # a statement never has to know which it has — and so that the evaluation of the
 # target's own subexpressions happens in one place, once.
+# The declared width of what an *element* or a *field* store writes into.  Both are
+# compile-time facts of the destination's *type* even when the value is not: an
+# element takes its array's element kind, a field its own declared kind.  (A target
+# that is not one of the two shapes, or a base whose kind this cannot read, answers
+# `K_BAD` and the check then leaves it alone rather than guessing.)
+def dst_packed_of(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+                  tgt: int) -> int {
+    if nd_kind(nd, tgt) == 31 {
+        base: int = nd[tgt * 10 + 1]
+        return pack_kind(elem_kind_of(unpack_kind(nt_get(mem, base, NT_LIT()))), 0)
+    }
+    if nd_kind(nd, tgt) == 32 {
+        base2: int = nd[tgt * 10 + 1]
+        if nd_kind(nd, base2) == 25 {
+            sid: int = unpack_len(nt_get(mem, base2, NT_LIT()))
+            idx: int = find_field(mem, sid, nd[tgt * 10 + 2])
+            if idx >= 0 {
+                return sfl_get(mem, stb_get(mem, sid, STB_FOFF()) + idx * 2 + 1)
+            }
+        }
+    }
+    return K_BAD()
+}
+
 def store_place(nd: Array[int, 655360], ty: Array[int, 262144],
                 mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                 flt: Array[float, 65536], mut ipool: Array[int, 2097152],
@@ -1669,6 +1723,10 @@ def store_place(nd: Array[int, 655360], ty: Array[int, 262144],
         if mem[ic * 4 + 0] != K_INT() {
             trap(path, vm.line, "an index must be an int")
         }
+        # an element of a narrow array is a narrow slot like any other: the wide
+        # value the interpreter used to keep there was one of the two answers this
+        # rule exists to remove (`xs[0] = big` with `big: int`)
+        narrow_check(mem, path, vm, dst_packed_of(nd, mem, vm, tgt), value)
         elem_store(mem, fmem, ipool, fpool, bpool, path, vm, ac,
                    mem[ic * 4 + 1], value)
         vm.sp = mark
@@ -1682,6 +1740,9 @@ def store_place(nd: Array[int, 655360], ty: Array[int, 262144],
         eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
                   nd[tgt * 10 + 1])
         vm.dst = keep
+        # ... and so is a field (`p.x = big` with `x: i32`), whose width is the
+        # struct table's, not the value's
+        narrow_check(mem, path, vm, dst_packed_of(nd, mem, vm, tgt), value)
         assign_value(mem, fmem, path, vm,
                      field_cell(mem, path, vm, rc, nd[tgt * 10 + 2]), value)
         vm.sp = mark
@@ -1844,6 +1905,10 @@ def exec_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
             vm.dst = dstc
             eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
                       v)
+            # a declaration writes the local's own cell, so it does not pass
+            # through `store_name` and the narrow-store check has to be made here
+            # as well -- `mut x: i32 = big` is this line, not an assignment
+            narrow_check(mem, path, vm, nt_get(mem, s, NT_LIT()), dstc)
             return C_NEXT()
         }
         if v <= 0 {

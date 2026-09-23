@@ -269,10 +269,24 @@ probe_mut_array_parameter | probe_mut_array_parameter.vel | run-ok | 0 | | 0 | |
 # FAIL-as-expected instead of quietly passing.
 hole_extern_conflicting_prototypes | hole_extern_conflicting_prototypes.vel | violation | 2 | conflicting declarations of 'host_add' | 2 | conflicting declarations of 'host_add' | 2 | conflicting declarations of 'host_add' | | | | yes | SPEC 12:512-514 ("the declaration is the prototype") | nothing refused the second declaration; whichever landed last decided the call site |
 # SPEC.md §3.1: "A binding is not type-checked, and that is where the width question
-# stops" — a documented gap rather than a broken promise, but a silent one: the
-# compiled program narrows and the interpreter keeps the wide value.
-hole_narrowing_binding_i32 | hole_narrowing_binding_i32.vel | diverge | 0 | | 0 | | 0 | | 705032704 | 5000000000 | | | SPEC 3.1 | `mut x: i32 = big` truncates in C (705032704); the interpreter keeps 5000000000 |
-hole_narrowing_binding_u8 | hole_narrowing_binding_u8.vel | diverge | 0 | | 0 | | 0 | | 44 | 300 | | | SPEC 3.1 | `mut x: u8 = 300` wraps to 44 under the compiled front end; the interpreter keeps 300 |
+# stops" — and the question it stops at is *representability*, which used to be
+# answered two different ways: the compiled program narrowed and the interpreter
+# kept the wide value, so one program had two answers.  CLOSED 2026-09-24 by one
+# rule with two halves, because the compiler can only see one of them:
+#   * a value the CHECKER can compute is refused at check time (the `u8` row below:
+#     `mut x: u8 = 300` is a literal, so the value is a compile-time fact);
+#   * any other narrowing store is refused by the RUNTIME, through the same
+#     `vela_fit_u8`/`vela_fit_i32` the two compiled back ends call, so the sentence
+#     and the exit status are identical on all three paths (the `i32` row).
+# The `u8` row keeps `violation` because that mode fails in *both* directions -- if
+# the checker ever accepts it again the row goes back to FAIL-as-expected instead of
+# passing quietly.  The `i32` row is `native` and not `violation` on purpose: `check`
+# must ACCEPT it (the value is only known at run time, which is exactly what SPEC 3.1
+# leaves unchecked), and the promise is that both front ends then stop, with one
+# message.  A value that fits is untouched: `int_width_literals` (`200 + 55` into a
+# `u8`) is byte-identical across all three paths before and after this rule.
+hole_narrowing_binding_i32 | hole_narrowing_binding_i32.vel | native | 0 | | 2 | 5000000000 does not fit in i32 | 2 | 5000000000 does not fit in i32 | | | | | SPEC 3.1 | `check` accepts (the value is a run-time one), and the narrowing store refuses it at run time; the message is the runtime's, so `vm.exe run` and the compiled program print the same sentence with the same location.  Was `diverge` with `705032704 | 5000000000` until 2026-09-24 |
+hole_narrowing_binding_u8 | hole_narrowing_binding_u8.vel | violation | 2 | 300 does not fit in u8 | 2 | 300 does not fit in u8 | 2 | 300 does not fit in u8 | | | | yes | SPEC 3.1 | `mut x: u8 = 300` is a literal the checker can compute, so `check` refuses it and `run`/`build`/`build-llvm` refuse it at the same stage with the same sentence.  Was `diverge` with `44 | 300` until 2026-09-24 |
 # ------------------------------------------------- 8. strictness the corpus lacked
 # SPEC.md §4.1: "Chained comparison `0 < x < 10` is refused".
 # SPEC.md §4 statement table: "`break`/`continue` only inside a loop".
@@ -347,3 +361,42 @@ strict_string_concat_builtin_ok | strict_string_concat_builtin_ok.vel | ok | 0 |
 # program prints from inside the parallel body, so there is no stable stdout line
 # to record.  Treat those columns as NOT MEASURED, not as a pass.
 hole_parallel_impure_method_nested_receiver | hole_parallel_impure_method_nested_receiver.vel | violation | 2 | call to impure function 'bump' inside 'parallel for' | 0 | | | | | | | yes | SPEC 7 / DESIGN 7.5 | the plain-name receiver is refused (concurrency_impure_method_refused); this shape is not |
+
+# -------------------------- 13. the narrow store, at the two destinations a local is not
+# §3.1's width rule reaches three destinations, not one: a binding, an array element and
+# a struct field.  The rows above (`hole_narrowing_binding_u8`/`_i32`) cover the binding;
+# these two are the destinations that were still giving two answers on 2026-09-24, when
+# the leader measured `xs[0] = big` printing 705032704 and `p.x = big` printing
+# 5000000000 in the interpreter while the *compiled* paths panicked.  The width of an
+# element and of a field is a compile-time fact of the destination's type even when the
+# value is not, so both are `native` for the same reason `hole_narrowing_binding_i32` is:
+# `check` must ACCEPT (the value is a run-time one, which is exactly what SPEC 3.1
+# leaves unchecked) and the promise is that all three paths then stop with one sentence.
+# A constant source is refused earlier and statically -- `xs[0] = 300` is
+# `vela: type error: 300 does not fit in u8`, exit 2, on every verb -- which is the
+# checker half of the same rule and is covered by the two rows above.
+hole_narrowing_element_store_i32 | hole_narrowing_element_store_i32.vel | native | 0 | | 2 | 5000000000 does not fit in i32 | 2 | 5000000000 does not fit in i32 | | | | | SPEC 3.1 | `xs[0] = big` with `big: int` and `xs: Array[i32, 2]`; the interpreter used to keep the wide value and the compiled paths truncated it, so the two disagreed |
+hole_narrowing_field_store_i32 | hole_narrowing_field_store_i32.vel | native | 0 | | 2 | 5000000000 does not fit in i32 | 2 | 5000000000 does not fit in i32 | | | | | SPEC 3.1 | `p.x = big` with `x: i32`; the interpreter used to keep 5000000000 with no narrowing at all, while the compiled paths truncated it |
+
+# ------------------------------------------------- 14. a binding with no annotation
+# The parser accepts `mut a = 1` (an initialiser with no type annotation -- `mut` is the
+# keyword, so the second form of declaration is the only one that can be un-annotated).
+# Nothing in this compiler infers a binding's kind from its value, and `declare_local`
+# read the type pool at index -1 to find that out: `type_kind` answers early for a
+# negative index, but `ty_len(ty, -1)` is `ty[-1]`, and the garbage that came back
+# became the binding's packed kind and reached a length-driven loop downstream.
+# **The promise here is that the program is REFUSED, and the defect it guards against is
+# not a wrong answer but a HANG**: `vm.exe check` never returned on this four-line file
+# (measured 2026-09-24 with a 120 s timeout, killed; the 2026-09-20 binary hangs too, so
+# it predates the struct and narrowing work).  A refusal is a verdict a test can hold; a
+# hang takes the suite, the IDE and the user down with it.  `check` refuses it, and the
+# promise for the row is `check_exit` 2 with that message -- which is also the only way
+# this corpus *can* fail on a hang, since a timing-out case reports no verdict at all.
+# WIRED 2026-09-24, once `selfhost\build\vm.exe` was the fix-bearing binary again.
+# It was held for one build on purpose, and the reason is worth keeping: wired against
+# the stale binary this row does not *fail*, it HANGS the whole corpus (the harness runs
+# `check` with no timeout, and `safety.ps1` never returned; 15 `vm` processes were left
+# behind).  A gate that hangs is worse than a gate that fails, so a row whose subject is
+# a hang has to be wired only after the binary that fixes it is promoted -- which is what
+# `tools\check-coherence.ps1` now asserts.
+strict_no_inferred_binding_type | strict_no_inferred_binding_type.vel | check | 2 | binding 'a' has no type annotation | | | | | | | | | SPEC 3.1 | `mut a = 1`; no inference exists, so the honest answer is a refusal naming the type, not a read of the type pool at -1 |

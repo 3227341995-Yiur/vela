@@ -1013,13 +1013,25 @@ def find_llvm_rt(rt: str) -> str {    want: str = env("VELA_LLVM_RT")
 # the program it links calls `printf`.  No C compiler is started by that, and
 # no `.c` file exists anywhere on this path.
 def link_llvm(vcv: str, lld: str, obj: str, rtobj: str, exe: str,
-              tag: str) -> int {
+              tag: str, shimobj: str, lvmlib: str) -> int {
     mut c: str = concat(quoted(lld), " /nologo /subsystem:console /out:")
     c = concat(c, quoted(exe))
     c = concat(c, " ")
     c = concat(c, quoted(obj))
     c = concat(c, " ")
     c = concat(c, quoted(rtobj))
+    # The two inputs a program that calls the shim needs and nobody else does.  Empty
+    # strings mean "this program does not call the shim", and then the command is
+    # character for character what it always was -- which matters: a program that does
+    # not need the shim must not pay for it, and that is a claim about this line.
+    if len(shimobj) > 0 {
+        c = concat(c, " ")
+        c = concat(c, quoted(shimobj))
+    }
+    if len(lvmlib) > 0 {
+        c = concat(c, " ")
+        c = concat(c, quoted(lvmlib))
+    }
     log: str = concat(tag, "_lld_cmd.txt")
     warn_str("vela: link: ")
     warn_str(c)
@@ -1077,7 +1089,37 @@ def do_build_llvm(self: str, path: str, rt: str, nd: Array[int, 655360],
     if len(rtobj) == 0 {
         panic("build-llvm: no vela_llvm_runtime.obj beside this compiler (tools\\build.ps1 writes it there)")
     }
-    mut rc: int = link_llvm(find_vcvars(), lld, obj, rtobj, exe, obj)
+    # Does this program call the *shim* -- the compiler's own code generator?  It is
+    # asked of the artifact, not of a flag, and it is the same question the C path asks
+    # of the emitted C (`needs_shim` above, and `msvc_build` below): the module is text
+    # by the time this runs, because `write_ll` wrote it a line ago.
+    #
+    # The two answers are the whole of the rule, and the reason it is a rule rather than
+    # an extra argument: `vm.exe build-llvm x.vel` is supposed to be one command whose
+    # only external tool is a linker, so an ordinary program must not have to know that a
+    # shim exists -- it gets the runtime and nothing else, exactly as before.  A program
+    # that *is* a code generator (the compiler) calls `vshim_*`, and then the shim object
+    # and `LLVM-C.lib` go on the link line, because without them the link fails with a
+    # page of `undefined symbol: vshim_...` that says nothing about what to do.
+    #
+    # The 5th word of `vm.exe build` stays where it is: that mechanism exists for
+    # *bootstrapping* (build.ps1 drives the compiler building itself, and `msvc_build`
+    # receives the extra input from the script), and putting it on this path instead
+    # would make every user of `build-llvm` carry the compiler's problem.
+    mut shim_obj: str = ""
+    mut llvm_lib: str = ""
+    if needs_shim(ir) {
+        shim_obj = find_shim_obj()
+        if len(shim_obj) == 0 {
+            panic("build-llvm: this program calls the compiler's LLVM shim, and vela_llvm_shim.obj was not found beside the compiler (tools\\build.ps1 writes it there; VELA_LLVM_SHIM names one)")
+        }
+        llvm_lib = find_llvm_lib(lld)
+        if len(llvm_lib) == 0 {
+            panic("build-llvm: this program calls the compiler's LLVM shim, so it must link LLVM-C.lib, and none was found beside lld-link.exe (set VELA_LLVM to an unpacked LLVM 23.x tree, or run tools\\get-llvm.ps1)")
+        }
+    }
+    mut rc: int = link_llvm(find_vcvars(), lld, obj, rtobj, exe, obj, shim_obj,
+                            llvm_lib)
     if rc != 0 {
         warn_str("vela: build-llvm: lld-link exited ")
         warn_int(rc)
