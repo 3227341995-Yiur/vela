@@ -346,12 +346,22 @@ public final class HintDiff {
         return out;
     }
 
-    /** `substr(s: str, from: int, to: int) -> str` -> `[s, from, to]`, or null. */
+    /** `substr(s: str, a: int, b: int) -> str` -> `[s, a, b]`, or null. */
     private static List<String> builtinParams(String name) {
         for (Object o : VelaModel.INSTANCE.getBUILTINS()) {
-            String n = (String) invoke(o, "getFirst");
-            String description = (String) invoke(o, "getSecond");
-            if (!name.equals(n)) continue;
+            // The table holds `name`, `signature` and `prose` as three fields, and this
+            // reads the *signature* -- the declaration.  It used to be `name to
+            // "signature — prose"` in one string and this found the parameter list with
+            // `indexOf('(')` over the whole of it, which is the reading the plugin did
+            // too: an oracle that shares the accused's reading cannot fail.  The old
+            // accessors are still accepted so this harness runs against both builds.
+            String n = (String) invoke(o, "getName");
+            String description = (String) invoke(o, "getSignature");
+            if (n == null) {
+                n = (String) invoke(o, "getFirst");
+                description = (String) invoke(o, "getSecond");
+            }
+            if (!name.equals(n) || description == null) continue;
             int open = description.indexOf('(');
             if (open < 0) return new ArrayList<>();
             int depth = 0;

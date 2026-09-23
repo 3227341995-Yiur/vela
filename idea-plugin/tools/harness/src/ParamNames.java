@@ -64,6 +64,9 @@ public final class ParamNames {
     private long judged;
     private long wrong;
     private long unavailable;
+    private long invariantDeclared;
+    private long invariantNotCheckable;
+    private long detailNotSignature;
     private final Map<String, Long> skipped = new LinkedHashMap<>();
     private final List<String> findings = new ArrayList<>();
     private final List<String> specFindings = new ArrayList<>();
@@ -141,6 +144,9 @@ public final class ParamNames {
                 + " (completion writes `()`, which is honest; not a defect");
         System.out.println("                                           but the number a reader needs)");
         System.out.println("  name lists the oracle does not give     : " + wrong);
+        System.out.println("  symbols whose *display* detail is not a signature, and which answer"
+                + " no name from it : " + detailNotSignature + " (reported, not a defect: these are"
+                + " half-typed declarations)");
         System.out.println("  SPEC.md / plugin disagreements          : " + specMismatches);
 
         Coverage cov = new Coverage()
@@ -161,6 +167,15 @@ public final class ParamNames {
                         skipped.getOrDefault("builtin-arity-only-SPEC-md-names-none", 0L))
                 .wrong(wrong + invariantFailures + specMismatches);
         cov.print();
+        // THE SECOND AXIS, SAID OUT LOUD.  `COVERAGE: ran 2 / skipped 0 / wrong 2` was
+        // true and still misled: the numbers count callables, while 35 `[skip]` lines
+        // above were invariant checks that this build could not make, and a reader who
+        // reads only the summary line concludes everything was checked.  So the summary
+        // names the axis it counts and reports the other one beside it.
+        System.out.println();
+        System.out.println("  ^ the line above counts CALLABLES.  The invariant checks are a second axis:");
+        System.out.println("INVARIANTS: declared " + invariantDeclared + " / broken " + invariantFailures
+                + " / not checkable in this build " + invariantNotCheckable);
         System.out.println();
         long bad = wrong + invariantFailures + specMismatches;
         System.out.println(bad == 0
@@ -230,10 +245,25 @@ public final class ParamNames {
                         + "   from " + source);
             }
             if (!sym.getDetail().startsWith(sym.getName() + "(")) {
-                // The structural invariant `HintDupes` already asserts for the model: a
-                // detail that does not begin with its own name cannot be a signature.
-                finding(where(rel, cutAt) + ": `" + sym.getName() + "` detail does not begin with"
-                        + " its own name: `" + sym.getDetail() + "`");
+                // A `detail` that does not begin with its own name cannot be a signature.
+                // WHICH SIDE OF THE AXIS IT LANDS ON DEPENDS ON THE NAMES: if this symbol
+                // also answers names, then those names were taken from text that is not a
+                // declaration, which is the reported defect and counts as wrong.  If it
+                // answers none, the detail is display text the user reads in the structure
+                // view -- a half-typed `def f(a: int` renders as `f -> None` -- and the
+                // honest report is its own count, not a defect.
+                if (names.isEmpty()) {
+                    detailNotSignature++;
+                    if (detailNotSignature <= 5) {
+                        System.out.println("  [informational] " + where(rel, cutAt) + ": `"
+                                + sym.getName() + "` detail is `" + sym.getDetail() + "` (not a"
+                                + " signature; no name is taken from it)");
+                    }
+                } else {
+                    finding(where(rel, cutAt) + ": `" + sym.getName() + "` answers the names " + names
+                            + " from a detail that does not begin with its own name: `"
+                            + sym.getDetail() + "`");
+                }
             }
             if (oracle == null) {
                 if (!names.isEmpty()) {
@@ -316,6 +346,7 @@ public final class ParamNames {
             System.out.println("  [skip] cannot build a symbol by hand: " + t);
         }
         if (hostile != null) {
+            invariantDeclared++;
             List<String> names = VelaHints.INSTANCE.parameterNames(hostile);
             VelaCallTemplate template = VelaHints.INSTANCE.callTemplate(hostile, false, false);
             boolean ok = names.isEmpty() && (template == null || "()".equals(template.getText()));
@@ -349,9 +380,9 @@ public final class ParamNames {
             List<String> reported = VelaTargets.INSTANCE.builtinParameterNames(name);
             if (signature == null) {
                 withoutSignature++;
-            } else {
-                structured = true;
+            } else {                structured = true;
                 withSignature++;
+                invariantDeclared += 2;   // the prose must answer none; the signature must agree
                 Probe fromProse = signatureNames(name, prose == null ? "" : prose);
                 if (fromProse.present && fromProse.names != null) {
                     descriptionsThatLookLikeSignatures++;
@@ -400,6 +431,7 @@ public final class ParamNames {
             System.out.println("      (checked " + withSignature + " builtin(s) with a signature field)");
         }
         failures += withoutSignature;
+        invariantNotCheckable = withoutSignature * 2L + (hostile == null ? 1L : 0L);
         return failures;
     }
 

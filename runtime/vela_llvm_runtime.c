@@ -254,6 +254,40 @@ void *vela_llvm_arena_alloc(int64_t n)
     return vela_arena_alloc((size_t)n);
 }
 
+/* ------------------------------------------------------------ the host surface
+ *
+ * `write_text`, `read_text` and `run_command` are the three builtins a test
+ * runner written in Vela cannot do without, and this is the same wrapper as every
+ * other function here: the header's own, under a name the emitted IR can call.
+ * They were the last three names missing from this file, and the reason is worth
+ * one sentence, because it is *not* that they are hard: they were listed under
+ * "what is still open" here, which was true when the first program that needed
+ * them (`tests/probes/host_roundtrip.vel`) had no emitter support at all.
+ *
+ * The two shapes are the ABI's, not a choice: a function that returns a `str`
+ * returns a 16-byte struct through a hidden pointer, and a function that takes one
+ * takes it by reference.  `vela_llvm_str_lit` above is the same shape, and the
+ * emitter declares all three the same way.
+ *
+ * `vela_write_text` answers an `int` in the header and a `bool` in the language
+ * (`builtin_kind`, emit.vel:724), which is why the cast is here rather than at a
+ * call site: the conversion from "the header's answer" to "the language's answer"
+ * belongs in exactly one place. */
+vela_str vela_llvm_read_text(vela_str path)
+{
+    return vela_read_text(path);
+}
+
+bool vela_llvm_write_text(vela_str path, vela_str body)
+{
+    return (bool)vela_write_text(path, body);
+}
+
+int64_t vela_llvm_run_command(vela_str cmd)
+{
+    return vela_run_command(cmd);
+}
+
 /* ------------------------------------------------------------ what is still open
  *
  * The real work of phase 1 is the emitter, not this file.  What this file cannot
@@ -266,8 +300,6 @@ void *vela_llvm_arena_alloc(int64_t n)
  *     fixed-size integer array and names them with `intern`/`interned`; the native
  *     backend needs those too, and the table is a static array inside the header,
  *     so a wrapper is needed before any program uses them.
- *   * **`run_command` and the file calls** (`read_text`, `write_text`, `env`), for
- *     the same reason: the compiler itself is built out of them.
  *   * **the entry symbol.**  The C backend emits `int main(int argc, char **argv)`;
  *     IR needs `i32 @main(i32, i8**)`, unmangled, and the three startup calls in the
  *     order shown at the top of this file.

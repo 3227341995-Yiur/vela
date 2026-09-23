@@ -153,7 +153,7 @@ $javac = Join-Path $best 'jbr\bin\javac.exe'
 foreach ($t in @($java, $javac)) { if (-not (Test-Path -LiteralPath $t)) { Die "missing: $t" } }
 
 $TOOLS = @('GotoOracle', 'HintDiff', 'HintNames', 'HintShapes', 'HintDupes', 'SymbolDiff', 'FoldDiff',
-           'FeatureProbe')
+           'FeatureProbe', 'ParamNames', 'HintTruth')
 if ($Tool -eq 'All') { $run = $TOOLS }
 else {
     if ($TOOLS -notcontains $Tool) { Die "-Tool must be one of: $($TOOLS -join ', '), All" }
@@ -280,6 +280,20 @@ foreach ($t in $run) {
         'HintShapes' {
             if ($Shapes) { $a = @($t, '--shapes') }
             elseif ($Truncate -gt 0) { $a += @('--truncate', "$Truncate") }
+        }
+        'ParamNames' {
+            # The completion-side half of a parameter list: `VelaHints.parameterNames`
+            # and `callTemplate`.  Takes the repo root; --single and --truncate as the
+            # others do, and always runs the two structural invariants (a symbol whose
+            # parameter list was never read from a tree answers no names; a builtin's
+            # prose is not a signature).
+            if ($Truncate -gt 0) { $a += @('--truncate', "$Truncate") }
+            if ($Single)         { $a += @('--single', $Single) }
+        }
+        'HintTruth' {
+            # The hint labels against an oracle that is not the hint's own model.
+            if ($Truncate -gt 0) { $a += @('--truncate', "$Truncate") }
+            if ($Single)         { $a += @('--single', $Single) }
         }
         default {
             if ($Truncate -gt 0) { $a += @('--truncate', "$Truncate") }

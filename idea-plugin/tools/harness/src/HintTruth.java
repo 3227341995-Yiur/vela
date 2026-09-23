@@ -194,20 +194,19 @@ public final class HintTruth {
                 continue;
             }
             List<Range> args = argumentRanges(text, call);
-            // The labels drawn, per argument, in argument order.
+            // The labels drawn, per argument, in argument order.  A label inside a
+            // *nested* call belongs to that call, not to this one: `g(h(1, 2), 3)` draws
+            // `a: ` at the `1`, which is inside this call's first argument and is not an
+            // argument start here.  Counting it against the outer call reported 808
+            // findings that were this tool's own mistake, on the first run.
             List<String> drawn = new ArrayList<>();
             boolean anyLoose = false;
             for (Range r : args) {
                 List<String> here = new ArrayList<>();
                 for (Hint h : hints) {
-                    if (h.offset >= call.open && h.offset < call.close) {
-                        if (h.offset == start(text, r)) here.add(h.label);
-                    }
-                }
-                for (Hint h : hints) {
-                    if (h.offset >= call.open && h.offset < call.close && h.offset != start(text, r)
-                            && !isArgumentStart(text, args, h.offset)) {
-                        anyLoose = true;
+                    if (h.offset >= call.open && h.offset < call.close && !nested(h, call, calls)
+                            && h.offset == start(text, r)) {
+                        here.add(h.label);
                     }
                 }
                 if (here.size() > 1) {
@@ -216,6 +215,12 @@ public final class HintTruth {
                             + "\n      call text: `" + snippet(text, call.open, call.close) + "`");
                 }
                 drawn.add(here.isEmpty() ? null : here.get(0));
+            }
+            for (Hint h : hints) {
+                if (h.offset >= call.open && h.offset < call.close && !nested(h, call, calls)
+                        && !isArgumentStart(text, args, h.offset)) {
+                    anyLoose = true;
+                }
             }
 
             // ---- the oracle: which declaration does this call name?
@@ -331,6 +336,17 @@ public final class HintTruth {
 
     private static boolean isArgumentStart(String text, List<Range> args, int offset) {
         for (Range r : args) if (start(text, r) == offset) return true;
+        return false;
+    }
+
+    /** Is this label inside a call nested in [call]?  Then it is not [call]'s label. */
+    private static boolean nested(Hint h, Call call, List<Call> calls) {
+        for (Call c : calls) {
+            if (c.open > call.open && c.close <= call.close
+                    && h.offset >= c.open && h.offset < c.close) {
+                return true;
+            }
+        }
         return false;
     }
 

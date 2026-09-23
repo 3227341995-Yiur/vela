@@ -382,6 +382,18 @@ private fun endOfQuoted(text: CharSequence, start: Int): Int {
  * nested list, and one inside a string is text.  A range may be empty — a hole
  * between two commas — which the caller reads as "nothing written here" rather
  * than as an argument named by the empty string.
+ *
+ * A NEWLINE DOES NOT END THE LIST, and treating it as if it did was a measured
+ * defect: SPEC.md §2 says newlines are insignificant inside `(` and `[`, so a long
+ * call is written over several lines — `perr(tk, kind, " has no type annotation"),
+ * pline)` — and this scan used to stop at the first `\n` and drop every argument
+ * after it.  `HintDiff` reports the consequence: 30 arguments of that shape drew no
+ * hint at all (three of them in `selfhost/parts/parser.vel` alone).  `matchingParen`,
+ * which is what decided [closeParen], never stopped at a newline, so the two
+ * readers disagreed about where the list ended.
+ *
+ * A comment still ends at its line, and a `,` written inside one is text: `f(a, # b,\n
+ * c)` has two arguments, and the comment's own comma is not a separator.
  */
 private fun argumentRanges(text: CharSequence, openParen: Int, closeParen: Int): List<IntRange> {
     val out = ArrayList<IntRange>(4)
@@ -391,7 +403,7 @@ private fun argumentRanges(text: CharSequence, openParen: Int, closeParen: Int):
     while (i < closeParen) {
         when (text[i]) {
             '\'', '"' -> i = endOfQuoted(text, i) - 1
-            '#', '\n' -> i = closeParen // the statement ended; nothing more here
+            '#' -> while (i < closeParen && text[i] != '\n') i++
             '(', '[' -> depth++
             ')', ']' -> if (depth > 0) depth--
             ',' -> if (depth == 0) {

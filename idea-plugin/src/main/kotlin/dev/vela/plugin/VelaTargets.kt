@@ -131,60 +131,14 @@ object VelaTargets {
         fileFunction(tree, name)
             ?: findDecl(tree.root) { it.kind == VelaNodeKind.DEF && it.name == name }
 
-    /**
-     * How many top-level, comma-separated entries the text between two offsets
-     * holds.  Blank is zero; `a: Array[int, 4], b: int` is two.
+    /*
+     * `topLevelEntries`, `openParenTokenOf` and `closeParenToken` moved to
+     * [VelaSignatures] with the rule they implement: the tree's `param` nodes are the
+     * answer when the declaration's parentheses hold exactly as many entries, and the
+     * model's own symbol list now asks that same question from the same place.  One
+     * reader, so the symbol completion inserts from and the name the hint draws cannot
+     * come from different readings of one declaration.
      */
-    private fun topLevelEntries(src: String, from: Int, to: Int): Int {
-        var count = 0
-        var depth = 0
-        var seenAny = false
-        var i = from
-        while (i < to && i < src.length) {
-            val c = src[i]
-            when {
-                c == '[' || c == '(' -> depth++
-                c == ']' || c == ')' -> depth--
-                c == ',' && depth == 0 -> count++
-                !c.isWhitespace() -> seenAny = true
-            }
-            i++
-        }
-        if (!seenAny) return 0
-        return count + 1
-    }
-
-    /** The token index of the `(` that opens a declaration's parameter list, or -1. */
-    private fun openParenTokenOf(tree: VelaSyntaxTree, n: VelaSyntaxNode): Int {
-        val from = if (n.startTok >= 0) n.startTok else 0
-        val to = if (n.endTok >= 0) n.endTok else tree.toks.size - 1
-        var i = from
-        while (i <= to && i < tree.toks.size) {
-            val t = tree.toks[i]
-            if (t.kind == VelaTokKind.OP && t.code == VelaOps.LPAREN) return i
-            i++
-        }
-        return -1
-    }
-
-    /** The token index of the `)` that closes a declaration's parameter list, or -1. */
-    private fun closeParenToken(tree: VelaSyntaxTree, n: VelaSyntaxNode): Int {
-        val open = openParenTokenOf(tree, n)
-        if (open < 0) return -1
-        val to = if (n.endTok >= 0) n.endTok else tree.toks.size - 1
-        var depth = 0
-        var i = open
-        while (i <= to && i < tree.toks.size) {
-            val t = tree.toks[i]
-            if (t.kind == VelaTokKind.OP && t.code == VelaOps.LPAREN) depth++
-            if (t.kind == VelaTokKind.OP && t.code == VelaOps.RPAREN) {
-                depth--
-                if (depth == 0) return i
-            }
-            i++
-        }
-        return -1
-    }
 
     /**
      * The parameter names of one of the language's own names, or null.
