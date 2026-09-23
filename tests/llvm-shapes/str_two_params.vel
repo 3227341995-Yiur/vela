@@ -1,0 +1,7 @@
+def f(a: str, b: str) -> None {
+    print(a)
+    print(b)
+}
+def main() -> None {
+    f("x", "y")
+}

@@ -1,0 +1,34 @@
+# Shapes the LLVM back end cannot compile yet.  These are GAPS, not designs.
+#
+# Read by `tools\llvm-column.ps1`, which judges the programs in `tests\llvm-shapes\`.
+# Do not confuse this file with `tests\llvm-refusals.txt`:
+#
+#   * `tests\llvm-refusals.txt` records refusals that are PERMANENT AND INTENDED
+#     (`parallel for`: LLVM IR has no OpenMP, and Vela will not ship a loop that says
+#     it is parallel while running serially).  Those entries are supposed to stay.
+#
+#   * this file records refusals that are GAPS -- ordinary programs the other two
+#     paths compile today.  Every entry here is work owed, and an entry that stops
+#     being refused FAILS the run so that the progress gets recorded instead of
+#     quietly becoming a hole in the ledger.
+#
+# `build-llvm` cannot replace `build` while anything is listed here: flipping the
+# default would take programs that compile today and refuse them, which is the one
+# outcome worse than still needing a C compiler.
+#
+# Format, one per line:
+#
+#     <file name without .vel> | <substring the refusal must contain>
+
+# The string ABI.  A `str` is a 16-byte value that the Microsoft ABI passes by
+# reference and returns through a hidden first argument; the back end has not modelled
+# either yet.  The string milestone owns this.
+str_param           | a `str` parameter is not compiled by the LLVM back end yet
+str_two_params      | a `str` parameter is not compiled by the LLVM back end yet
+mut_str_param       | a `str` parameter is not compiled by the LLVM back end yet
+str_return          | a function that returns `str` is not compiled by the LLVM back end yet
+recursive_str       | a function that returns `str` is not compiled by the LLVM back end yet
+
+# Arrays are passed as a pointer plus a length in the C back end.  The LLVM back end
+# has no spelling for an array value, only for an element read and for `len(a)`.
+array_param         | an array name is not a value the LLVM back end can read on its own

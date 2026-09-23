@@ -1,0 +1,6 @@
+def f(mut s: str) -> None {
+    print(s)
+}
+def main() -> None {
+    f("m")
+}

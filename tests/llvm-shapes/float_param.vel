@@ -1,0 +1,6 @@
+def f(x: float) -> float {
+    return x * 2.0
+}
+def main() -> None {
+    print(f(1.5))
+}

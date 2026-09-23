@@ -1,0 +1,12 @@
+struct P {
+    x: int
+    y: int
+}
+def f(p: P) -> int {
+    return p.x + p.y
+}
+def main() -> None {
+    a: P = P(1, 2)
+    b: P = a
+    print(f(b))
+}

@@ -1,0 +1,6 @@
+def f() -> str {
+    return "hi"
+}
+def main() -> None {
+    print(f())
+}

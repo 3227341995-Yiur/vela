@@ -1,0 +1,8 @@
+struct P {
+    name: str
+    n: int
+}
+def main() -> None {
+    p: P = P("z", 3)
+    print(p.n)
+}

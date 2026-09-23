@@ -1,0 +1,7 @@
+def f(a: Array[int, 3]) -> int {
+    return a[0] + a[1]
+}
+def main() -> None {
+    mut a: Array[int, 3] = [1, 2, 3]
+    print(f(a))
+}
