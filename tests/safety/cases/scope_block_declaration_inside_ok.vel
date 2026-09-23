@@ -1,0 +1,9 @@
+# SPEC.md §6.2: a block's declarations are visible inside the block that made
+# them.  Legal twin of scope_block_declaration_invisible.vel: the only difference
+# is that the read is inside the block.
+def main() -> None {
+    if True {
+        y: int = 7
+        print(y)
+    }
+}

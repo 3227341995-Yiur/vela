@@ -1,0 +1,8 @@
+# SPEC.md §4.1: "Slices do not exist in 0.1."  SPEC.md §1.5: "There is no string
+# concatenation operator in 0.1, and no slicing."
+# Legal twin: strict_array_index_ok.vel, a single checked index.
+def main() -> None {
+    mut a: Array[int, 4]
+    a[0] = 1
+    print(a[0:2])
+}

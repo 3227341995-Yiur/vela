@@ -1,0 +1,8 @@
+# SPEC.md §6 rule 4: "`a[i]` panics with file, line and reason if `i` is out of
+# range" -- the single index is the supported form.  Legal twin of
+# strict_no_array_slice.vel: the only difference is `a[0]` instead of `a[0:2]`.
+def main() -> None {
+    mut a: Array[int, 4]
+    a[0] = 1
+    print(a[0])
+}

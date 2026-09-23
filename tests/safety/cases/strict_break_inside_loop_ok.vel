@@ -1,0 +1,12 @@
+# SPEC.md §4: `break` inside a loop is the legal form.  Legal twin of
+# strict_break_outside_loop.vel: the `break` is moved inside a `while`.
+def main() -> None {
+    mut i: int = 0
+    while i < 10 {
+        if i == 3 {
+            break
+        }
+        i = i + 1
+    }
+    print(i)
+}

@@ -1,0 +1,11 @@
+# SPEC.md §6.2, quoting the message it names: "rebinding an array name" ->
+# "cannot rebind array 'a'".  A rebind is a wrong *place*, so §6.2 refuses it.
+# Legal twin: scope_array_element_write_ok.vel.
+def main() -> None {
+    mut a: Array[int, 4]
+    mut b: Array[int, 4]
+    a[0] = 1
+    b[0] = 2
+    a = b
+    print(a[0])
+}

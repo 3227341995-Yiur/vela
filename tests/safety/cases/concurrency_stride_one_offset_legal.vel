@@ -1,0 +1,12 @@
+# SPEC.md §7: the other half of the injectivity rule -- "`c * i + rest` with
+# `|c|` larger than the range of `rest`".  Here `c` is 1 and `rest` is the
+# constant 1, whose range is empty, so 1 > 0 holds and the index is injective.
+# Legal twin of concurrency_non_injective_index_refused.vel: the only difference
+# is `a[i + 1]` instead of `a[0]`.
+def main() -> None {
+    mut a: Array[int, 16]
+    parallel for i in range(0, 8) {
+        a[i + 1] = i
+    }
+    print(a[8])
+}

@@ -1,0 +1,9 @@
+# SPEC.md §12: "An argument crosses only as the kind the parameter declares,
+# checked at the line of the call."  A float literal where an `i32` is declared
+# is refused here rather than converted silently by the C compiler.
+# Legal twin: escape_extern_int_constant_ok.vel.
+extern c def host_abs(x: i32) -> i32
+
+def main() -> None {
+    print(host_abs(1.5))
+}

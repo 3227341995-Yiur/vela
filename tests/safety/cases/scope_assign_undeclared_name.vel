@@ -1,0 +1,6 @@
+# SPEC.md §6.2: "assignment to a name that is not declared in the current function
+# is an error".  Legal twin: scope_declare_then_assign_ok.vel.
+def main() -> None {
+    z = 3
+    print(z)
+}

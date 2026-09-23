@@ -1,0 +1,12 @@
+# SPEC.md §7: the written index "must be provably **injective** over the
+# iteration space -- either `c * i + rest` ... or the row-major form".  A
+# constant index is the same element for every iteration.  The rows already in
+# the corpus cover the nested row-major shape only; this is the constant shape.
+# Legal twin: concurrency_stride_one_offset_legal.vel.
+def main() -> None {
+    mut a: Array[int, 16]
+    parallel for i in range(0, 8) {
+        a[0] = i
+    }
+    print(a[0])
+}

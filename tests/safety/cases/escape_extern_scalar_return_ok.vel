@@ -1,0 +1,8 @@
+# SPEC.md §12: a scalar result is what an `extern c` declaration may promise.
+# Legal twin of escape_extern_str_return_refused.vel: the only difference is
+# `i32` instead of `str`.
+extern c def host_name() -> i32
+
+def main() -> None {
+    print(host_name())
+}

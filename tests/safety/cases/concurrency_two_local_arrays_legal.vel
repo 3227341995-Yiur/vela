@@ -1,0 +1,13 @@
+# SPEC.md §7: the one-index-expression rule is per array; each of two arrays
+# written through its own injective index is the legal form.  Legal twin of
+# concurrency_two_write_expressions_refused.vel: the only difference is that the
+# two writes have two different arrays as targets.
+def main() -> None {
+    mut a: Array[int, 8]
+    mut b: Array[int, 8]
+    parallel for i in range(0, 8) {
+        a[i] = i
+        b[i] = i * 2
+    }
+    print(a[7] + b[7])
+}

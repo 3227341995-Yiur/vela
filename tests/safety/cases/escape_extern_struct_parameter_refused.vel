@@ -1,0 +1,12 @@
+# SPEC.md §12: a struct is refused at the line of the declaration.
+# Legal twin: escape_extern_float_parameter_ok.vel.
+struct P {
+    x: int
+}
+
+extern c def host_x(p: P) -> int
+
+def main() -> None {
+    mut p: P = P(1)
+    print(host_x(p))
+}

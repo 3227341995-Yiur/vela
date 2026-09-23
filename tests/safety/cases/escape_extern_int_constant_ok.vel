@@ -1,0 +1,9 @@
+# SPEC.md §12: the one exception to "an argument crosses only as the kind the
+# parameter declares" -- "an int *constant* whose value fits (`abs(-7)` is
+# legal)".  Legal twin of escape_extern_argument_kind_refused.vel: the only
+# difference is `-7` instead of `1.5`.
+extern c def host_abs(x: i32) -> i32
+
+def main() -> None {
+    print(host_abs(-7))
+}

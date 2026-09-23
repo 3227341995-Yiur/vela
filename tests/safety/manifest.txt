@@ -273,3 +273,77 @@ hole_extern_conflicting_prototypes | hole_extern_conflicting_prototypes.vel | vi
 # compiled program narrows and the interpreter keeps the wide value.
 hole_narrowing_binding_i32 | hole_narrowing_binding_i32.vel | diverge | 0 | | 0 | | 0 | | 705032704 | 5000000000 | | | SPEC 3.1 | `mut x: i32 = big` truncates in C (705032704); the interpreter keeps 5000000000 |
 hole_narrowing_binding_u8 | hole_narrowing_binding_u8.vel | diverge | 0 | | 0 | | 0 | | 44 | 300 | | | SPEC 3.1 | `mut x: u8 = 300` wraps to 44 under the compiled front end; the interpreter keeps 300 |
+# ------------------------------------------------- 8. strictness the corpus lacked
+# SPEC.md §4.1: "Chained comparison `0 < x < 10` is refused".
+# SPEC.md §4 statement table: "`break`/`continue` only inside a loop".
+# SPEC.md §4.1: "Slices do not exist in 0.1."
+# SPEC.md §6.2: duplicate declaration, array rebind, block visibility, undeclared
+# name.  Every row's twin is `ok`: the same program with only the offending shape
+# changed, accepted, which is what proves the rule is what refused its twin.
+strict_no_chained_comparison | strict_no_chained_comparison.vel | check | 2 | chained comparison is not allowed | | | | | | | | | SPEC 4.1 | |
+strict_chained_comparison_split_ok | strict_chained_comparison_split_ok.vel | ok | 0 | | | | | | | | | | SPEC 4.1 | twin: `0 < x and x < 10` |
+strict_no_array_slice | strict_no_array_slice.vel | check | 2 | slices are not implemented in Vela 0.1 | | | | | | | | | SPEC 4.1 / 1.5 | |
+strict_array_index_ok | strict_array_index_ok.vel | ok | 0 | | | | | | | | | | SPEC 6.4 | twin: `a[0]` instead of `a[0:2]` |
+strict_break_outside_loop | strict_break_outside_loop.vel | check | 2 | 'break' outside a loop | | | | | | | | | SPEC 4 | |
+strict_break_inside_loop_ok | strict_break_inside_loop_ok.vel | ok | 0 | | | | | | | | | | SPEC 4 | twin: the `break` moved inside a `while` |
+strict_continue_outside_loop | strict_continue_outside_loop.vel | check | 2 | 'continue' outside a loop | | | | | | | | | SPEC 4 | |
+strict_continue_inside_loop_ok | strict_continue_inside_loop_ok.vel | ok | 0 | | | | | | | | | | SPEC 4 | twin: the `continue` moved inside a `for` |
+scope_duplicate_declaration | scope_duplicate_declaration.vel | check | 2 | 'x' is already declared in this scope | | | | | | | | | SPEC 6.2 | |
+scope_shadow_across_blocks_ok | scope_shadow_across_blocks_ok.vel | ok | 0 | | | | | | | | | | SPEC 6.2 | twin: the same name, but in an inner block (shadowing stays legal) |
+scope_array_rebind_refused | scope_array_rebind_refused.vel | check | 2 | cannot rebind array 'a' | | | | | | | | | SPEC 6.2 | |
+scope_array_element_write_ok | scope_array_element_write_ok.vel | ok | 0 | | | | | | | | | | SPEC 4 / 6.2 | twin: `a[0] = b[0]` instead of `a = b` |
+scope_block_declaration_invisible | scope_block_declaration_invisible.vel | check | 2 | undeclared name 'y' | | | | | | | | | SPEC 6.2 / 4.1 | |
+scope_block_declaration_inside_ok | scope_block_declaration_inside_ok.vel | ok | 0 | | | | | | | | | | SPEC 6.2 | twin: the read moved inside the block |
+scope_assign_undeclared_name | scope_assign_undeclared_name.vel | check | 2 | undeclared name 'z' | | | | | | | | | SPEC 6.2 | |
+scope_declare_then_assign_ok | scope_declare_then_assign_ok.vel | ok | 0 | | | | | | | | | | SPEC 6.2 / 4 | twin: the binding is declared before it is assigned |
+
+# --------------------------------------------- 9. parallel for shapes §7 names
+# SPEC.md §7's five remaining bullets, each with its legal twin.
+concurrency_write_parameter_array_refused | concurrency_write_parameter_array_refused.vel | check | 2 | 'parallel for' writes to 'a', which is not a mutable array local to this function | | | | | | | | | SPEC 7 | |
+concurrency_parameter_array_read_legal | concurrency_parameter_array_read_legal.vel | ok | 0 | | | | | | | | | | SPEC 7 | twin: the same parameter, only read; the array written is local |
+concurrency_shared_scalar_refused | concurrency_shared_scalar_refused.vel | check | 2 | 'parallel for' assigns to 'total', which is shared across every iteration | | | | | | | | | SPEC 7 | |
+concurrency_body_local_scalar_legal | concurrency_body_local_scalar_legal.vel | ok | 0 | | | | | | | | | | SPEC 7 | twin: the written scalar is declared inside the body |
+concurrency_impure_call_refused | concurrency_impure_call_refused.vel | check | 2 | 'print' inside a 'parallel for' would interleave output unpredictably | | | | | | | | | SPEC 7 / 8 | |
+concurrency_pure_call_legal | concurrency_pure_call_legal.vel | ok | 0 | | | | | | | | | | SPEC 7 / 4 | twin: the call is to a `pure def` |
+concurrency_impure_method_refused | concurrency_impure_method_refused.vel | check | 2 | call to impure function 'bump' inside 'parallel for' | | | | | | | | | SPEC 7 | |
+concurrency_pure_method_legal | concurrency_pure_method_legal.vel | ok | 0 | | | | | | | | | | SPEC 7 | twin: a `pure def` method instead of an impure one |
+concurrency_two_write_expressions_refused | concurrency_two_write_expressions_refused.vel | check | 2 | 'parallel for' writes to 'a' at 2 different index expressions, so two iterations could land on the same element | | | | | | | | | SPEC 7 | |
+concurrency_two_local_arrays_legal | concurrency_two_local_arrays_legal.vel | ok | 0 | | | | | | | | | | SPEC 7 | twin: the two writes target two different arrays |
+concurrency_non_injective_index_refused | concurrency_non_injective_index_refused.vel | check | 2 | cannot prove that 'parallel for' writes 'a' to distinct elements | | | | | | | | | SPEC 7 | the constant-index shape of injectivity; the corpus had the row-major shape only |
+concurrency_stride_one_offset_legal | concurrency_stride_one_offset_legal.vel | ok | 0 | | | | | | | | | | SPEC 7 | twin: `a[i + 1]`, where |c| = 1 exceeds the empty range of `rest` |
+concurrency_non_range_loop_refused | concurrency_non_range_loop_refused.vel | check | 2 | this front end iterates range(...) only | | | | | | | | | SPEC 7 / 4 | |
+concurrency_range_loop_legal | concurrency_range_loop_legal.vel | ok | 0 | | | | | | | | | | SPEC 7 | twin: `range(0, 4)` as the iterable |
+
+# ------------------------------------------- 10. the C boundary (SPEC §6 rule 1)
+# SPEC.md §12: "A `str`, an array and a struct are refused where they are
+# written, at the line of the declaration"; "An argument crosses only as the kind
+# the parameter declares, checked at the line of the call."
+escape_extern_str_parameter_refused | escape_extern_str_parameter_refused.vel | check | 2 | 'extern c' parameter 's' has type str | | | | | | | | | SPEC 12 / 6 | |
+escape_extern_int_parameter_ok | escape_extern_int_parameter_ok.vel | ok | 0 | | | | | | | | | | SPEC 12 | twin: `int` instead of `str`.  `ok` and not `run-ok`: SPEC 12 says the interpreter has no foreign call |
+escape_extern_array_parameter_refused | escape_extern_array_parameter_refused.vel | check | 2 | 'extern c' parameter 'a' has type Array[int, 4] | | | | | | | | | SPEC 12 / 6 | |
+escape_extern_i32_parameter_ok | escape_extern_i32_parameter_ok.vel | ok | 0 | | | | | | | | | | SPEC 12 | twin: `i32` instead of the array |
+escape_extern_struct_parameter_refused | escape_extern_struct_parameter_refused.vel | check | 2 | 'extern c' parameter 'p' has type struct | | | | | | | | | SPEC 12 / 6 | |
+escape_extern_float_parameter_ok | escape_extern_float_parameter_ok.vel | ok | 0 | | | | | | | | | | SPEC 12 | twin: `float` instead of the struct |
+escape_extern_argument_kind_refused | escape_extern_argument_kind_refused.vel | check | 2 | 'extern c' argument to 'host_abs' has type float, but parameter 'x' has type i32 | | | | | | | | | SPEC 12 | |
+escape_extern_int_constant_ok | escape_extern_int_constant_ok.vel | ok | 0 | | | | | | | | | | SPEC 12 | twin: `host_abs(-7)`, the int constant §12 allows |
+escape_extern_str_return_refused | escape_extern_str_return_refused.vel | check | 2 | 'extern c' function 'host_name' may not return str | | | | | | | | | SPEC 12 / 6 | the rule reaches the result type too |
+escape_extern_scalar_return_ok | escape_extern_scalar_return_ok.vel | ok | 0 | | | | | | | | | | SPEC 12 | twin: `-> i32` instead of `-> str` |
+
+# ------------------------------------------------- 11. literals (SPEC §1.5)
+strict_no_adjacent_string_literals | strict_no_adjacent_string_literals.vel | check | 2 | adjacent string literals are not allowed | | | | | | | | | SPEC 1.5 | |
+strict_single_string_literal_ok | strict_single_string_literal_ok.vel | ok | 0 | | | | | | | | | | SPEC 1.5 | twin: one literal instead of two |
+strict_no_string_concatenation | strict_no_string_concatenation.vel | check | 2 | string concatenation is not implemented in Vela 0.1 | | | | | | | | | SPEC 1.5 / 8 | |
+strict_string_concat_builtin_ok | strict_string_concat_builtin_ok.vel | ok | 0 | | | | | | | | | | SPEC 8 | twin: the named `concat(a, b)` instead of `+` |
+
+# --------------------------------------------- 12. an open violation, in SPEC §7
+# SPEC.md §7: "calls inside the body must be `pure`".  DESIGN.md §7.5 admits the
+# narrowing: "an impure *method* is only recognised when the receiver is a plain
+# name".  With the receiver `o.inner` the impure call is admitted: `check` exits 0,
+# `run` prints from inside the body, and `emit-c` emits a real `#pragma omp
+# parallel for` around it.  Re-measured by the leader on 2026-09-24 against the
+# current compiler: `check` exit 0, while the twin that differs only in the
+# receiver's shape is refused with the message promised here.
+# The native columns are deliberately empty rather than passed: the compiled
+# program prints from inside the parallel body, so there is no stable stdout line
+# to record.  Treat those columns as NOT MEASURED, not as a pass.
+hole_parallel_impure_method_nested_receiver | hole_parallel_impure_method_nested_receiver.vel | violation | 2 | call to impure function 'bump' inside 'parallel for' | 0 | | | | | | | yes | SPEC 7 / DESIGN 7.5 | the plain-name receiver is refused (concurrency_impure_method_refused); this shape is not |

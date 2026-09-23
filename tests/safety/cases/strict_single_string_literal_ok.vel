@@ -1,0 +1,7 @@
+# SPEC.md §1.5: one literal is the legal form; `concat(a, b)` is the named
+# builtin that joining takes.  Legal twin of
+# strict_no_adjacent_string_literals.vel: the only difference is one literal
+# instead of two.
+def main() -> None {
+    print("ab")
+}

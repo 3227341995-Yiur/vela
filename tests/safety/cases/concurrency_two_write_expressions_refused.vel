@@ -1,0 +1,11 @@
+# SPEC.md §7: "an array is written through **one** index expression".  Here one
+# array is written through two, which the rule cannot place.
+# Legal twin: concurrency_two_local_arrays_legal.vel.
+def main() -> None {
+    mut a: Array[int, 16]
+    parallel for i in range(0, 8) {
+        a[i * 2] = 1
+        a[i * 2 + 1] = 2
+    }
+    print(a[15])
+}

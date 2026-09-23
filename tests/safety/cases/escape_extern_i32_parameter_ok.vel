@@ -1,0 +1,8 @@
+# SPEC.md §12: "`i32` C's `int`" is one of the scalar kinds that may cross.
+# Legal twin of escape_extern_array_parameter_refused.vel: the only difference is
+# `i32` instead of `Array[int, 4]`.
+extern c def host_sum(a: i32) -> int
+
+def main() -> None {
+    print(host_sum(1))
+}

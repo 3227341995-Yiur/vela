@@ -1,0 +1,9 @@
+# SPEC.md §12: "The types are scalars" -- `int` is C's `long long`, so this
+# declaration is exactly what an `extern c` may carry.  Legal twin of
+# escape_extern_str_parameter_refused.vel: the only difference is `int` instead
+# of `str`.
+extern c def host_len(s: int) -> int
+
+def main() -> None {
+    print(host_len(1))
+}

@@ -1,0 +1,9 @@
+# SPEC.md §7: "the loop must be a `range(...)` loop, so the iteration space is
+# known".  SPEC.md §4: `range(a, b)` is "the only iterable form in 0.1".
+# Legal twin: concurrency_range_loop_legal.vel.
+def main() -> None {
+    mut a: Array[int, 4]
+    parallel for i in a {
+        print(1)
+    }
+}

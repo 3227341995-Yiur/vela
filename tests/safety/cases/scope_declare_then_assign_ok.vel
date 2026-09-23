@@ -1,0 +1,8 @@
+# SPEC.md §4: "`mut x: T = e` / `x = e`" -- assignment to a declared `mut`
+# binding is the legal form.  Legal twin of scope_assign_undeclared_name.vel:
+# the only difference is that the binding exists before the assignment.
+def main() -> None {
+    mut z: int = 0
+    z = 3
+    print(z)
+}

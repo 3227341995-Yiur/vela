@@ -1,0 +1,20 @@
+# SPEC.md §7: "Reads of an array the body does **not** write are free, at any
+# index" -- so a parameter array may be read, and the array written must still be
+# a local `mut` array.  Legal twin of
+# concurrency_write_parameter_array_refused.vel: the only differences are that
+# the written array is declared inside and the parameter is only read.
+def fill(a: Array[int, 8]) -> None {
+    mut out: Array[int, 8]
+    parallel for i in range(0, 8) {
+        out[i] = a[i] * 2
+    }
+    print(out[7])
+}
+
+def main() -> None {
+    mut a: Array[int, 8]
+    for i in range(0, 8) {
+        a[i] = i
+    }
+    fill(a)
+}

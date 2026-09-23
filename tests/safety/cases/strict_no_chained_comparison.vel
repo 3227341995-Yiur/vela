@@ -1,0 +1,9 @@
+# SPEC.md §4.1: "Chained comparison `0 < x < 10` is refused (in Python it means
+# something surprising, in C it means something else)."
+# Legal twin: strict_chained_comparison_split_ok.vel, the same test written out.
+def main() -> None {
+    mut x: int = 5
+    if 0 < x < 10 {
+        print(1)
+    }
+}

@@ -1,0 +1,11 @@
+# SPEC.md §7: "calls inside the body must be `pure`: `print`, `read_text` and
+# friends are refused."  SPEC.md §8 lists `print` as impure.
+# Legal twin: concurrency_pure_call_legal.vel.
+def main() -> None {
+    mut a: Array[int, 4]
+    parallel for i in range(0, 4) {
+        a[i] = i
+        print(i)
+    }
+    print(a[3])
+}

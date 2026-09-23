@@ -1,0 +1,28 @@
+# SPEC.md §7: "calls inside the body must be `pure`: `print`, `read_text` and
+# friends are refused."  DESIGN.md §7.5 admits the narrowing this case measures:
+# "an impure *method* is only recognised when the receiver is a plain name".
+# The receiver here is `o.inner`, so an impure method that prints is admitted,
+# `vm.exe run` prints from inside the body, and `emit-c` emits a real
+# `#pragma omp parallel for` around the call.
+# Contrast: concurrency_impure_method_refused.vel, same body, plain-name receiver.
+struct Inner {
+    mut v: int
+    def bump(self: Inner) -> None {
+        print(self.v)
+        self.v += 1
+    }
+}
+
+struct Outer {
+    mut inner: Inner
+}
+
+def main() -> None {
+    mut o: Outer = Outer(Inner(0))
+    mut out: Array[int, 4]
+    parallel for i in range(0, 4) {
+        out[i] = i
+        o.inner.bump()
+    }
+    print(out[3])
+}

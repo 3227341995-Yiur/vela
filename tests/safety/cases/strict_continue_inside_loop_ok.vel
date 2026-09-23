@@ -1,0 +1,12 @@
+# SPEC.md §4: `continue` inside a loop is the legal form.  Legal twin of
+# strict_continue_outside_loop.vel: the `continue` is moved inside a `for`.
+def main() -> None {
+    mut n: int = 0
+    for i in range(0, 5) {
+        if i == 2 {
+            continue
+        }
+        n = n + 1
+    }
+    print(n)
+}

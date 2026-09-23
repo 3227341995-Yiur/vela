@@ -1,0 +1,10 @@
+# SPEC.md §4.1: "Nested functions and closures do not exist; so a block's
+# declarations are visible only inside that block."  SPEC.md §6.2: "Declaration
+# inside a block is invisible outside".  Legal twin:
+# scope_block_declaration_inside_ok.vel.
+def main() -> None {
+    if True {
+        y: int = 7
+    }
+    print(y)
+}

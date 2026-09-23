@@ -1,0 +1,11 @@
+# SPEC.md §4: "`a[i] = e`, `s.field = e`" is the legal write to an array; §6.2
+# refuses rebinding the *name*.  Legal twin of scope_array_rebind_refused.vel:
+# the only difference is `a[0] = b[0]` instead of `a = b`.
+def main() -> None {
+    mut a: Array[int, 4]
+    mut b: Array[int, 4]
+    a[0] = 1
+    b[0] = 2
+    a[0] = b[0]
+    print(a[0])
+}

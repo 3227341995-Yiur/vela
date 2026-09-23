@@ -1,0 +1,9 @@
+# SPEC.md §4.1 refuses the chained form, so this two-test form is what a program
+# writes instead.  Legal twin of strict_no_chained_comparison.vel: the only
+# difference is `and x < 10`.
+def main() -> None {
+    mut x: int = 5
+    if 0 < x and x < 10 {
+        print(1)
+    }
+}

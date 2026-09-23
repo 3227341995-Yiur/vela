@@ -1,0 +1,14 @@
+# SPEC.md §7: "every array written must be a local `mut` array (never a parameter,
+# never shared state)".  The array written here belongs to the caller.
+# Legal twin: concurrency_parameter_array_read_legal.vel (same parameter, read).
+def fill(mut a: Array[int, 8]) -> None {
+    parallel for i in range(0, 8) {
+        a[i] = i
+    }
+}
+
+def main() -> None {
+    mut a: Array[int, 8]
+    fill(a)
+    print(a[7])
+}

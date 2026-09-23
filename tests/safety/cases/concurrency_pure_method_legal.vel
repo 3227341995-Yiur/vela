@@ -1,0 +1,18 @@
+# SPEC.md §7: a `pure` call is what the body may make.  Legal twin of
+# concurrency_impure_method_refused.vel: the only difference is `pure def get`
+# instead of an impure `def bump`.
+struct Box {
+    v: int
+    pure def get(self: Box) -> int {
+        return self.v
+    }
+}
+
+def main() -> None {
+    mut b: Box = Box(3)
+    mut out: Array[int, 4]
+    parallel for i in range(0, 4) {
+        out[i] = b.get()
+    }
+    print(out[3])
+}

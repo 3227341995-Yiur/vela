@@ -1,0 +1,9 @@
+# SPEC.md §12: an array is refused at the line of the declaration, because a
+# foreign signature cannot describe one.  Legal twin:
+# escape_extern_i32_parameter_ok.vel.
+extern c def host_sum(a: Array[int, 4]) -> int
+
+def main() -> None {
+    mut a: Array[int, 4]
+    print(host_sum(a))
+}

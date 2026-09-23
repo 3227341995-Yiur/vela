@@ -1,0 +1,13 @@
+# SPEC.md §7: "scalars written inside the body must be private to the iteration
+# (declared in the body), otherwise the write is shared state and the loop is
+# refused".  `total` is declared outside, so every iteration writes one cell.
+# Legal twin: concurrency_body_local_scalar_legal.vel.
+def main() -> None {
+    mut total: int = 0
+    mut out: Array[int, 8]
+    parallel for i in range(0, 8) {
+        out[i] = i
+        total = total + i
+    }
+    print(total)
+}

@@ -1,0 +1,10 @@
+# SPEC.md §7: a `range(...)` loop is the admitted iteration space.
+# Legal twin of concurrency_non_range_loop_refused.vel: the only difference is
+# `range(0, 4)` instead of an array as the iterable.
+def main() -> None {
+    mut a: Array[int, 4]
+    parallel for i in range(0, 4) {
+        a[i] = i
+    }
+    print(a[3])
+}

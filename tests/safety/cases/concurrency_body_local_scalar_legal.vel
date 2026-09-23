@@ -1,0 +1,12 @@
+# SPEC.md §7: "scalars written inside the body must be private to the iteration
+# (declared in the body)".  Legal twin of concurrency_shared_scalar_refused.vel:
+# the only difference is that the written scalar is declared inside the body.
+def main() -> None {
+    mut out: Array[int, 8]
+    parallel for i in range(0, 8) {
+        mut local: int = i
+        local = local + 1
+        out[i] = local
+    }
+    print(out[7])
+}

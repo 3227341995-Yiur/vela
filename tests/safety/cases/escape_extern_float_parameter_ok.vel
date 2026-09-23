@@ -1,0 +1,8 @@
+# SPEC.md §12: "`float` C's `double`" is a scalar and may cross.  Legal twin of
+# escape_extern_struct_parameter_refused.vel: the only difference is `float`
+# instead of the struct `P`.
+extern c def host_x(p: float) -> float
+
+def main() -> None {
+    print(host_x(1.0))
+}

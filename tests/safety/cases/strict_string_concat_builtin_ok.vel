@@ -1,0 +1,7 @@
+# SPEC.md §8: `concat(a, b)` "the two strings joined" is the only way to make a
+# string, and it is permanent memory like a literal.  Legal twin of
+# strict_no_string_concatenation.vel: the only difference is the named builtin
+# instead of `+`.
+def main() -> None {
+    print(concat("a", "b"))
+}

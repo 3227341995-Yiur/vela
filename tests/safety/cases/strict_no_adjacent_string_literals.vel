@@ -1,0 +1,7 @@
+# SPEC.md §1.5: "Adjacent literals are refused: `"a" "b"` is an error, because in
+# Python that is a silent concatenation and in C it is not."  DESIGN.md §1.3
+# lists it among the Python ambiguities the syntax removes.
+# Legal twin: strict_single_string_literal_ok.vel.
+def main() -> None {
+    print("a" "b")
+}

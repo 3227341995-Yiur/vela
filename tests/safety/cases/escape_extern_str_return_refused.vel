@@ -1,0 +1,8 @@
+# SPEC.md §12: "A `str`, an array and a struct are refused where they are
+# written" -- the rule reaches the result type as well as the parameters.
+# Legal twin: escape_extern_scalar_return_ok.vel.
+extern c def host_name() -> str
+
+def main() -> None {
+    print(host_name())
+}

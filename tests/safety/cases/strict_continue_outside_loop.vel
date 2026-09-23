@@ -1,0 +1,5 @@
+# SPEC.md §4 statement table: "`break`/`continue` only inside a loop".
+# Legal twin: strict_continue_inside_loop_ok.vel.
+def main() -> None {
+    continue
+}

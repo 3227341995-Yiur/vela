@@ -1,0 +1,9 @@
+# SPEC.md §12: "A `str`, an array and a struct are refused where they are
+# written, at the line of the declaration -- Vela would have to invent an ABI to
+# hand any of them over".  SPEC.md §6 rule 1 is the promise this makes.
+# Legal twin: escape_extern_int_parameter_ok.vel.
+extern c def host_len(s: str) -> int
+
+def main() -> None {
+    print(host_len("x"))
+}

@@ -1,0 +1,8 @@
+# SPEC.md §6.2, whose own words are the message: "the same name declared twice in
+# one scope" -> "'x' is already declared in this scope".
+# Legal twin: scope_shadow_across_blocks_ok.vel.
+def main() -> None {
+    x: int = 1
+    x: int = 2
+    print(x)
+}

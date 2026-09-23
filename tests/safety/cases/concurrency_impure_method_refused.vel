@@ -1,0 +1,22 @@
+# SPEC.md §7: "calls inside the body must be `pure`" -- a method call is a call,
+# and `bump` prints.  The receiver is a plain name, which is the shape the
+# checker recognises (DESIGN.md §7.5 names this narrowing).
+# Legal twin: concurrency_pure_method_legal.vel.  The shape it does NOT reach is
+# hole_parallel_impure_method_nested_receiver.vel.
+struct Counter {
+    mut v: int
+    def bump(self: Counter) -> None {
+        print(self.v)
+        self.v += 1
+    }
+}
+
+def main() -> None {
+    mut c: Counter = Counter(0)
+    mut out: Array[int, 4]
+    parallel for i in range(0, 4) {
+        out[i] = i
+        c.bump()
+    }
+    print(out[3])
+}
