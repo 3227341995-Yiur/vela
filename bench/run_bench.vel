@@ -352,8 +352,24 @@ def cli() -> str {
     return "selfhost\\build\\vm.exe"
 }
 
+# The Vela side is built by the **C back end**, and the mode is spelled out because it
+# is not the default any more.  `build` is the LLVM path since 2026-09-24, and half this
+# corpus is a `parallel for` -- `matmul`, `mandelbrot` and their variants -- which the
+# LLVM back end refuses **by name and by design** (LLVM IR has no OpenMP, and a loop that
+# says it is parallel while running serially is the one failure mode this project has
+# promised never to ship).  Measured on the merged tree: `build` here fails
+#
+#     build failed: mm_vela_omp!
+#     vela: panic: `parallel for` is refused by the LLVM back end, deliberately: ...
+#
+# so the harness would have reported a benchmark suite that cannot run at all.  The C back
+# end is also what makes the numbers comparable: every C++ twin on the other side is built
+# by MSVC with `/O2` and `/openmp`, and `#pragma omp parallel for` is what the Vela side
+# has to emit for the two parallel rows to be a measurement of the same thing.  The choice
+# is recorded here and not left to the default, because a default that moves would move
+# what these numbers mean.
 def build_vela(mut r: Run, name: str, src: str) -> bool {
-    mut rc: int = run_capture(r, concat(concat(q(cli()), " build "), q(src)), "vela")
+    mut rc: int = run_capture(r, concat(concat(q(cli()), " build-c "), q(src)), "vela")
     if rc != 0 {
         say(concat(concat("  build failed: ", name), captured_err(r, "vela")))
         return False

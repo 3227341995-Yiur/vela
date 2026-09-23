@@ -172,7 +172,7 @@ escape_nested_function_refused | escape_nested_function_refused.vel | check | 2 
 escape_no_closures | escape_no_closures.vel | run-ok | 0 | | 0 | | 0 | | 1 | 1 | | | SPEC 4.1 | |
 escape_no_free_builtin | escape_no_free_builtin.vel | check | 2 | undeclared name 'free' | | | | | | | | | SPEC 6.1 | |
 escape_array_struct_field_refused | escape_array_struct_field_refused.vel | check | 2 | field 'a' may not be an array | | | | | | | | | SPEC 4 / 3 | |
-escape_no_global_state | escape_no_global_state.vel | check | 2 | a top-level statement must be a function or a struct | | | | | | | | | SPEC 6.2 | |
+escape_no_global_state | escape_no_global_state.vel | check | 2 | a top-level statement must be a function, a struct or an enum | | | | | | | | | SPEC 6.2 | |
 
 # -------------------------------------------------------------------- 7. holes
 # Each row carries `xfail`, so the case must show its promise being broken and does

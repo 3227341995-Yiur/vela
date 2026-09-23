@@ -43,6 +43,17 @@
 # every case dies with exit -1073741515 (0xC0000135, "DLL not found") — measured,
 # and how this harness first failed after that rebuild.
 #
+# **Two harnesses must not run at once**, and that is measured rather than tidy advice: every
+# no-argument run copies `selfhost\build\vm.exe` over `%TEMP%\vela-safety\frozen\vm.exe`, so a
+# probe that starts hundreds of these runs races with itself and one of them prints
+#
+#     Copy-Item : The process cannot access the file '...\vela-safety\frozen\vm.exe'
+#     because it is being used by another process
+#
+# which aborts a mutation sweep mid-way and looks like the harness failing.  `-FrozenVm` is the
+# answer and it already exists: a pinned run uses the file in place and copies nothing, so
+# anything that starts more than one run passes it.  `tools\_safety-mutation.ps1` does.
+#
 # The hash this harness was written and last run against, for comparison:
 #
 #     SHA256  AD4A997B132728449D91D789E5CFC26A8A82CAAD466B41F78AC3C5041FBE73D0
@@ -296,7 +307,26 @@ function Invoke-Vm([string]$mode, [string]$file) {
     return Invoke-Captured $FrozenVm @($mode, $file) 'vm'
 }
 
-# `vm.exe build` writes the executable beside the source; the .vel is copied into
+# **Which back end produces the `native` column: the C one, by name.**  This function
+# used to say `build`, and that stopped meaning the same thing on 2026-09-24, when `build`
+# became the LLVM path and the C back end was named `build-c`.  The column's meaning did
+# not change with the default, so the mode had to be written down rather than inherited:
+#
+#   * the manifest's `native_exit`/`native_msg`/`native_out` were written when `build`
+#     was the C path, and they describe what *that* back end does with these programs;
+#   * and this corpus is full of `parallel for` -- `tests\safety\cases\concurrency_*.vel`
+#     and `hole_parallel_impure_method_nested_receiver.vel` -- which the LLVM back end
+#     refuses by name and by design.  With the default, those rows became
+#     `build exit=2` on a *refusal*, which is what the red tally was: 34 failed, and the
+#     quoted reason was `\`parallel for\` is refused by the LLVM back end`.
+#
+# Every row below therefore records its native column as the C back end's, and says so
+# where it is printed.  A row that wants the LLVM path would have to say so itself; none
+# does, because none of these cases is *about* which back end runs it -- they are about
+# the promise the program keeps, which both back ends share, and the C one is the
+# reference implementation the promises were written against.
+#
+# `vm.exe build-c` writes the executable beside the source; the .vel is copied into
 # the scratch first, so the repository never collects a compile product.
 $script:Built = @{}
 function Invoke-Build([string]$caseFile) {
@@ -306,7 +336,7 @@ function Invoke-Build([string]$caseFile) {
     Copy-Item $caseFile $scratchVel -Force
     $scratchExe = Join-Path $RunDir ($stem + '.exe')
     Remove-Item $scratchExe -ErrorAction SilentlyContinue
-    $r = Invoke-Captured $FrozenVm @('build', $scratchVel) 'build'
+    $r = Invoke-Captured $FrozenVm @('build-c', $scratchVel) 'build'
     $r['exe'] = $scratchExe
     $r['vel'] = $scratchVel
     $script:Built[$stem] = $r
@@ -465,7 +495,7 @@ foreach ($row in $rows) {
 
         'native' {
             $b = Invoke-Build $caseFile
-            $actual = ('build exit={0}' -f $b.code)
+            $actual = ('build-c exit={0} (the C back end)' -f $b.code)
             if ($b.code -ne 0) {
                 Add-Failure $problems ('the program must compile, but build exited {0}' -f $b.code)
                 $buildNote = (Get-FirstBlock $b.stderr)

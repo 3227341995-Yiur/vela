@@ -117,9 +117,16 @@ $interp = Invoke-ToFiles $vm @('run', $src) 'interp'
 if ($interp.code -ne 0) { throw "vm.exe run exited $($interp.code):`n$($interp.err)" }
 
 # ------------------------------------------------------------------ 2. the C backend
+#
+# `build-c`, not `build`, and the name is the whole point of this row: M1's claim is that
+# three *different* paths agree -- the interpreter, the C backend, and hand-written IR linked
+# by `clang-cl` -- so a "C backend" row that ran the LLVM back end would be comparing the LLVM
+# back end with itself and reporting it as a third opinion.  `build` is the LLVM path since
+# 2026-09-24; `build-c` is the C back end, and it is what the words "the reference
+# implementation" above this line have always meant.
 Write-Host '[2/3] the C backend (the reference implementation)'
-$build = Invoke-ToFiles $vm @('build', $src) 'cbuild'
-if ($build.code -ne 0) { throw "vm.exe build exited $($build.code):`n$($build.err)" }
+$build = Invoke-ToFiles $vm @('build-c', $src) 'cbuild'
+if ($build.code -ne 0) { throw "vm.exe build-c exited $($build.code):`n$($build.err)" }
 $cExe = Join-Path $repo 'selfhost\llvm\m1_probe.exe'
 if (-not (Test-Path -LiteralPath $cExe)) { throw "the C backend wrote no $cExe" }
 $cRun = Invoke-ToFiles $cExe @() 'crun'

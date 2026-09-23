@@ -288,6 +288,16 @@ Invoke-Step -Name 'llvm-column' -Script 'tools\llvm-column.ps1' -SuccessPattern 
 # feature lands is the day the program moves into `tests\cases.txt` with a golden.
 Invoke-Step -Name 'accept-status' -Script 'tools\accept-status.ps1' -SuccessPattern 'RESULT: ok'
 
+# `tools\safety.ps1` was not a step here, and that is how it stayed red for a round without
+# this command noticing: it drives `tests\safety\` (118 rows of promises from SPEC §3/§4/§6/§7
+# and DESIGN §1.2) and its `native` column is built by the **C** back end -- `build-c`, spelled
+# out in `Invoke-Build` there.  When `build` became the LLVM path, every row with a
+# `parallel for` in it started reporting the LLVM back end's *refusal* as a build failure, and
+# the tally read `67 passed, 34 failed`.  Nothing in this file ran it, so nothing said so.
+#
+# It is a step now, and it is cheap: the whole corpus against one frozen compiler.
+Invoke-Step -Name 'safety' -Script 'tools\safety.ps1' -SuccessPattern 'RESULT: PASS'
+
 # The north star's own test: build the compiler with the LLVM path -- no C compiler anywhere --
 # and require the result to be a compiler that works.
 #

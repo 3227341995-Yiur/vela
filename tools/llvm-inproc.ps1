@@ -277,15 +277,23 @@ function Test-Program([string] $tag, [string] $source, [byte[]] $expect,
     Say "                $((Bytelist $interp))"
 
     # --- 2. the C back end, the reference implementation ---------------------
+    #
+    # `build-c`, not `build`: this row exists to compare the C back end against the LLVM one,
+    # and `build` *is* the LLVM one since 2026-09-24.  With the default this was the LLVM path
+    # compared against itself, which still printed "interpreter and C back end are
+    # byte-identical" -- true, and about nothing.  Measured on the merged tree: the three-way
+    # differential had silently become a two-way one, and the only sign was that the middle
+    # column was no longer a third opinion.  This is the whole reason the mode is written out
+    # here instead of inherited from whatever `build` means today.
     $r = Invoke-Batch @(
-        "!`"$vm`" build `"$src`" > cbuild_$tag.out 2>&1",
+        "!`"$vm`" build-c `"$src`" > cbuild_$tag.out 2>&1",
         "!`"$exe`" > c_$tag.out 2> c_$tag.err"
     ) "cbuild_$tag"
     Reap-MsvcHelpers
     $cCode = $null
     $c = $null
     if ($r.codes[0] -ne 0) {
-        Say "  C back end  : vm.exe build failed (exit $($r.codes[0]))"
+        Say "  C back end  : vm.exe build-c failed (exit $($r.codes[0]))"
         Say (Get-Content -LiteralPath (Join-Path $Scratch "cbuild_$tag.out") -Raw)
     } else {
         $cCode = $r.codes[1]
