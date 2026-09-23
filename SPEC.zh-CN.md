@@ -4,8 +4,8 @@
 
 <!--
 源文件 : SPEC.md
-源文件字节 : 29353
-源文件 SHA256 : 3bbcd09a5f3a2515de93ad4f293be3be2e3726f601aa11ff9547aad620c4efdf
+源文件字节 : 30228
+源文件 SHA256 : efd360e1ebbab421005cf2ac7a7d7a54c41872828b8dfb5c3eaaaae91aed6741
 翻译日期 : 2026-09-24
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -176,6 +176,14 @@ mut buf: Array[float, 1024]    # zero-filled array; scalars need an initialiser
 * 绑定**默认不可变**。对非 `mut` 绑定赋值是*安全性错误*，而不是静默重绑定——这是 Vela
   删掉的最常见的一类 Python bug。
 * 标量不得没有初始化器就声明；数组可以，并被零填充（arena 内存总是先置零的）。
+* **绑定必须把类型写出来，不从初始化器推断。** `mut a = 1` 被拒绝——
+  `vela: type error: binding 'a' has no type annotation: write the type after the
+  name, as in `mut a: int = 1``——无注解这种写法不是一个推迟到以后版本的特性，而是
+  一条说「不」的规则。这条规则值得在这里占一句，是因为它原先所在的位置上是什么：按
+  2026-09-24 的实测，检查器为缺失的注解去读了类型池的 `-1` 下标，`type_kind` 对负下标会
+  提前返回而 `ty_len` 不会，取回来的那个值被当成绑定的 packed kind 并流进一个按长度驱动的
+  循环。`vm.exe check` 在那四行上**永远不返回**——是挂死，不是错答案，而且 2026-09-20 的
+  二进制同样挂，所以它早于结构与转换那一批工作。
 * 比声明长度短的数组字面量会被补零；`mut a: Array[float, 4] = [0.0]` 合法。
 * 结构体字段和参数声明为 `name: T`；参数前的 `mut` 意味着被调方可以通过它写入——
   **而本实现对标量并不守这个承诺。** 它实际做的是下面这些，2026-09-20 在

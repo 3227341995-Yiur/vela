@@ -1,0 +1,313 @@
+================================================================================
+BAD_CHARACTER in FeatureProbe section 1 -- a measurement defect, not a plugin defect
+================================================================================
+plugin version    : 0.1.5   (idea-plugin\src\main\resources\META-INF\plugin.xml: <version>0.1.5</version>)
+git HEAD          : 7826942 at the first baseline run, 0084e847 when this file was written
+                    (other agents commit concurrently -- the artifacts below are anchored by
+                     their sha256, not by the commit)
+runs made         : 2026-09-24 02:10 .. 02:32 (local)
+
+WHAT WAS ASKED
+    The task said FeatureProbe section 1 reported a user-visible defect: the lexer emits
+    BAD_CHARACTER and the plugin declares no colour key for it, so a character Vela does
+    not know would be drawn blank.  The acceptance test was "token types with no colour: 0"
+    plus a deleted-mapping control that must go red again.
+
+WHAT IS TRUE
+    The plugin was already correct.  `VelaHighlighting.kt` declares
+    `VelaColors.BAD = TextAttributesKey.createTextAttributesKey("VELA_BAD",
+    HighlighterColors.BAD_CHARACTER)` and maps the token
+    (`TokenType.BAD_CHARACTER -> arrayOf(VelaColors.BAD)`); `VelaColorSettingsPage.kt`
+    line 61 already shows it as "Bad character".  The red row came from the probe:
+
+      FeatureProbe.elementTypeNamed(name) filtered a hard-coded list of the 13
+      VelaTokenTypes constants.  An unknown character is returned by
+      VelaLexer.scanOperator as TokenType.BAD_CHARACTER -- the *platform's* type, which
+      is not one of those 13 -- so the lookup returned null, the token was recorded as
+      "no IElementType with that name", and getTokenHighlights() was NEVER CALLED.
+      Section 1 therefore could not go green no matter what the plugin did, and could
+      not go red either when the mapping was deleted: it was unfalsifiable for exactly
+      one token kind, and it reported a verdict about a call it never made.
+
+    Independent, source-level check of the plugin itself (throwaway probe in %TEMP%,
+    no repo file involved):
+
+      lexer token type for '@' : BAD_CHARACTER  class=com.intellij.psi.tree.IElementType
+                                 identity=TokenType.BAD_CHARACTER
+      getTokenHighlights(BAD_CHARACTER).length = 1
+         key      : VELA_BAD  sameObjectAsVelaColors.BAD=true
+      VelaColors.BAD external name = VELA_BAD
+
+THE FIX (approved by the leader; outside this agent's original whitelist on purpose)
+    idea-plugin\tools\harness\src\FeatureProbe.java, elementTypeNamed, one lookup:
+
+        if (TokenType.BAD_CHARACTER.toString().equals(name)) return TokenType.BAD_CHARACTER;
+
+    No plugin source file was changed by this work.  VelaColors.BAD was deliberately
+    NOT given a hard-coded red foreground: it inherits the user's "Bad character" colour
+    from their scheme, and a hard-coded value would override the settings row this
+    plugin ships -- making a hard-coded colour win over a user's choice, which is worse
+    than the state being reported.
+
+ARTIFACTS
+    FeatureProbe.java, UNPATCHED          9b95a97586ae611ba4528d10f37001ee09cd24d9b321ce7edaf29a051507320c
+      (this sha256 is what the in-tree harness hashed right before the BEFORE run: the
+       patch removed from the same file, nothing else touched)
+    FeatureProbe.java, PATCHED            b2953130b7761f0630e39aab84ef6b7b8ecdd52ec6c7ff84f39148b9c7447a8c  35797 B
+    VelaHighlighting.kt (unchanged)       8ba3fd2bb68292defb0ab37c0fc51ec5ad4e26d1c9c31f0947777217b55ba9e9  4066 B
+    VelaColorSettingsPage.kt (unchanged)  5b27e934c48551cd9bd106a418d30abc51e5068d394139d2f900e5796a38cbe3  4716 B
+    VelaColorsAndFontsPage.kt (untouched) 8963bf37e71c98429cceaebb871523c59d9aa7306950b06fed89374f3d1b326e  1573 B
+      (a comment-only tombstone file; it declares no key and needed no edit)
+    VelaSyntaxHighlighter.class           d188c84de336c4c9a49fb341518dd2a050ed0e1ee1994840b5a6d53c92077752
+      (kotlinc, private build of the repo source; build\classes held 5de3e0ab... -- the same
+       code compiled by build-offline.ps1.  Both map the token; the sha256s differ only
+       because they are different compilations of the same source.)
+    compiler (frozen)                     %TEMP%\vela-plugin-parse\vm.exe  867840 B
+                                          501b6cbb5701f3d5ef36396b9ddcaf4ce740e66d6ca325f482c2451e76810fdf
+    compiler (tree)                       selfhost\build\vm.exe  867840 B  same sha256 as the frozen copy
+                                          (tools\build.ps1 and tools\refreeze.ps1 were never run by this work)
+
+HOW EACH RUN WAS MADE
+    Every in-tree run:  powershell -ExecutionPolicy Bypass -File idea-plugin\harness.ps1 -Tool FeatureProbe
+    All of them under %TEMP%\vela-plugin-build.lock, held across the whole build+run.
+    Full stdout of each run is quoted verbatim below.
+
+    A  UNPATCHED probe, plugin source WITH the mapping     -> FAIL, exit 1
+    B  PATCHED   probe, same plugin source                 -> PASS, exit 0   (the same-code answer)
+    C  PATCHED   probe, mapping line DELETED (rebuilt)     -> FAIL, exit 1
+    D  PATCHED   probe, key renamed VELA_BAD_TYPO (rebuilt)-> PASS, exit 0   <-- what the probe does NOT cover
+    E  PATCHED   probe, restored source (rebuilt)          -> PASS, exit 0
+
+    A and B need no plugin rebuild: the plugin source is identical in both, only the
+    harness source differs.  C, D and E each rebuild the plugin FIRST
+    (build-offline.ps1 -SkipVerify, exit 0 in all three cases) because harness.ps1 does
+    NOT recompile Kotlin -- measured: after editing VelaHighlighting.kt,
+    build\classes\dev\vela\plugin\VelaSyntaxHighlighter.class still had its 02:14:49
+    mtime, so runs against stale classes reported "coloured" for a tree whose mapping had
+    been deleted.  Those void runs are recorded at the bottom of this file rather than
+    deleted, because they are the reason the controls were redone.
+
+================================================================================
+A. BASELINE: the in-tree harness, unpatched probe, plugin unmodified
+   (this is the "before" the task asked to reproduce; it is unchanged from the
+    first baseline run at 02:10, whose numbers are identical)
+================================================================================
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         NO COLOUR KEY
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 1 -> [BAD_CHARACTER (no IElementType with that name)]
+  VERDICT: 1 token type(s) would be drawn uncoloured
+
+== 2. brace matching: is every delimiter a declared pair? ==
+
+
+================================================================================
+B. AFTER THE PROBE PATCH: patched probe, identical plugin source
+================================================================================
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         coloured
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+
+== 2. brace matching: is every delimiter a declared pair? ==
+
+
+  Every verdict line of run B (all six sections):
+    VERDICT: every token type the lexer emits over this corpus gets a colour key
+    VERDICT: every delimiter in the corpus is a type getPairs() declares
+    VERDICT: the commenter's prefix is the lexer's comment character, over 4437 real comment token(s)
+    VERDICT: the two paths agree on every one of 17015 name use(s)
+    VERDICT: no gap with a line feed in it can be closed by this rule set, over 20656 real line break(s)
+    VERDICT: the file is in the artifact, declares 7 template(s), and every one is in the VELA context
+    VERDICT: [PASS] all six features answered as the invariant requires, over 1556 judged unit(s) (5 corpus-wide checks per readable file, plus one artifact-level check), wrong 0, no defect category tripped
+
+=================================================================================
+C. NEGATIVE CONTROL 1: mapping line deleted, plugin REBUILT, patched probe
+   VelaHighlighting.kt sha256 5d829b95dca7d08048d7b446138c33d9b9fe8945f49c1fd18eda9e4dd5530607
+   VelaSyntaxHighlighter.class sha256 5230458c3b0091951bf54ba8c5c3e6a7d6e935449198374cb64002a328611f29
+=================================================================================
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         NO COLOUR KEY
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 1 -> [BAD_CHARACTER]
+  VERDICT: 1 token type(s) would be drawn uncoloured
+
+== 2. brace matching: is every delimiter a declared pair? ==
+
+
+  The line that turned red:
+    VERDICT: [FAIL] 1 of 6 feature section(s) failed -- highlighting: 1 token type(s) the lexer emits over this corpus would be drawn with no colour key [BAD_CHARACTER]
+
+=================================================================================
+D. NEGATIVE CONTROL 2 -- THE DIMENSION THE PROBE DOES NOT COVER
+   key name VELA_BAD -> VELA_BAD_TYPO, mapping untouched, plugin REBUILT
+   VelaHighlighting.kt sha256 27eeb1046d99e5bc8a6fb251001588d151b8ec8467b9d8b876888cc9f3dcf87c
+=================================================================================
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         coloured
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+
+== 2. brace matching: is every delimiter a declared pair? ==
+
+
+  It PASSES -- see the section after the void controls.  Full verdict:
+    VERDICT: [PASS] all six features answered as the invariant requires, over 1556 judged unit(s) (5 corpus-wide checks per readable file, plus one artifact-level check), wrong 0, no defect category tripped
+
+=================================================================================
+E. RESTORED (mapping and key back, plugin REBUILT, patched probe)
+   VelaHighlighting.kt sha256 8ba3fd2bb68292defb0ab37c0fc51ec5ad4e26d1c9c31f0947777217b55ba9e9  = the original
+=================================================================================
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         coloured
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+
+== 2. brace matching: is every delimiter a declared pair? ==
+
+
+  Full verdict:
+    VERDICT: [PASS] all six features answered as the invariant requires, over 1556 judged unit(s) (5 corpus-wide checks per readable file, plus one artifact-level check), wrong 0, no defect category tripped
+================================================================================
+WHAT THE PATCHED PROBE STILL DOES NOT MEASURE  (control D, and it must be said plainly)
+================================================================================
+Section 1 asks one question: does `getTokenHighlights(t)` return at least one key for
+every token type the lexer emits over the corpus?  It does NOT ask whether that key is
+the one the colour settings page registers, and it cannot: a TextAttributesKey is
+looked up by object identity in a scheme, so the highlighter keeps working even if its
+key is renamed.
+
+Measured (run D): renaming the key's external name to "VELA_BAD_TYPO" in
+VelaHighlighting.kt -- while VelaColorSettingsPage.kt still lists `VelaColors.BAD` --
+still reads "BAD_CHARACTER 5 coloured" and section 1 still PASSES.  That tree has a
+settings row whose name is no longer the name of the key the editor resolves, so the
+row is a setting a user can change and that changes nothing.  Section 1 cannot see it.
+
+A criterion that CAN fail on that defect, executable today with the classes already on
+the harness classpath -- compare *names*, and only then ask about the keys:
+
+    VelaSyntaxHighlighter h = new VelaSyntaxHighlighter();
+    Set<String> drawn = new TreeSet<>();
+    for (IElementType t : /* every type the lexer emits over the corpus, by name */)
+        for (TextAttributesKey k : h.getTokenHighlights(t)) drawn.add(k.getExternalName());
+
+    Set<String> listed = new TreeSet<>();
+    for (AttributesDescriptor d : new VelaColorsAndFontsPage().getAttributeDescriptors())
+        listed.add(d.getKey().getExternalName());
+
+    require drawn.equals(listed);          // else: a row that changes nothing, or a key with no row
+
+Run D fails `drawn.equals(listed)` ("VELA_BAD_TYPO" vs "VELA_BAD") and every other run
+here passes it, so that is the assertion worth adding if this must be caught rather
+than described.  One more dimension neither the existing section nor that one covers:
+the resolved *effective* attributes.  A key can be mapped and still resolve to nothing
+(no foreground in the scheme and no fallback), and only
+`EditorColorsManager.getGlobalScheme().getAttributes(key).getForegroundColor() != null`
+says whether the character is actually visible -- it needs an Application instance,
+which the harnesses in this plugin deliberately do not start.
+
+================================================================================
+VOID CONTROL RUNS (kept because they explain why C/D/E rebuild the plugin)
+================================================================================
+These three runs edited VelaHighlighting.kt but did NOT rebuild, so the harness measured
+stale classes from build\classes.  All three reported "coloured", including the one
+whose mapping had been deleted -- which is itself a measurement, of build staleness:
+
+    C(no rebuild) mapping deleted : BAD_CHARACTER 5 coloured / token types with no colour: 0 / exit 0
+    D(no rebuild) key renamed     : BAD_CHARACTER 5 coloured / token types with no colour: 0 / exit 0
+    E(no rebuild) restored        : BAD_CHARACTER 5 coloured / token types with no colour: 0 / exit 0
+
+    idea-plugin\build\classes\dev\vela\plugin\VelaSyntaxHighlighter.class mtime 2026-09-24 02:14:49
+    idea-plugin\src\main\kotlin\dev\vela\plugin\VelaHighlighting.kt       mtime 2026-09-18 21:22:44
+
+================================================================================
+FILES CHANGED BY THIS WORK
+================================================================================
+    idea-plugin\tools\harness\src\FeatureProbe.java     (the one-line lookup + its reason)
+    idea-plugin\evidence\highlighting-badcharacter-0.1.5-20260924-0232.txt   (this file)
+    nothing else.  No .kt, no plugin.xml, no build file, no version, no other java,
+    no tools\**.  VelaHighlighting.kt and VelaColorSettingsPage.kt are byte-identical
+    to their state at the start (sha256s above).
+
+================================================================================
+WHAT WENT WRONG IN THE FIRST REPORT THIS WORK RECEIVED
+================================================================================
+"the plugin declares no colour key for BAD_CHARACTER, so the character is drawn blank"
+was false, and the tree it was read from was not defect-free either: the tool's own
+verdict was the only evidence, and the tool had not called the function it judged.
+Section 1 named the defect as "no IElementType with that name" -- i.e. it said out loud
+that it could not resolve the type, and still printed a verdict about the highlighter.
+That parenthetical is the piece of evidence that was in the output all along.

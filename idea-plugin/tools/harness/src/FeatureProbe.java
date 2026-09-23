@@ -286,6 +286,28 @@ public final class FeatureProbe {
     /**
      * The element type behind a name, taken from the plugin's own constants rather
      * than by parsing a string: a mismatch there would make this check vacuous.
+     *
+     * THE THIRTEEN CONSTANTS ARE NOT EVERY TOKEN THE LEXER CAN EMIT, AND THE FIRST
+     * VERSION OF THIS METHOD WAS WRONG FOR ASSUMING THEY WERE.  A character Vela does
+     * not know -- the third thing a user does, after a name and a space -- is returned
+     * by `VelaLexer.scanOperator` as `TokenType.BAD_CHARACTER`: the *platform's* type,
+     * which does not live in `VelaTokenTypes` and therefore could not be found here.
+     * This method returned null, and the caller recorded "no IElementType with that
+     * name" and moved on to the next token WITHOUT EVER ASKING THE HIGHLIGHTER.  So
+     * section 1 reported a red row for `BAD_CHARACTER` no matter what
+     * `VelaSyntaxHighlighter` did with it, and conversely went on reporting it even
+     * after the mapping was deleted: a check that cannot fail is not measuring
+     * anything, and this one was silently unfalsifiable for exactly one token kind.
+     *
+     * Measured, not reasoned (evidence/highlighting-badcharacter-0.1.5-*.txt): with
+     * this line absent, deleting `TokenType.BAD_CHARACTER -> arrayOf(VelaColors.BAD)`
+     * from VelaHighlighting.kt changed nothing -- section 1 said 1 uncoloured token
+     * either way.  With it present, the same deletion turns section 1 red, which is
+     * what a measurement of "is every token coloured" has to do.
+     *
+     * `TokenType.BAD_CHARACTER.toString()` is the name the lexer's own output carries
+     * (`IElementType.toString()` is its debug name), so this stays a name lookup like
+     * the loop below rather than a special case in the caller.
      */
     private static IElementType elementTypeNamed(String name) {
         IElementType[] all = {
@@ -298,6 +320,8 @@ public final class FeatureProbe {
         for (IElementType t : all) {
             if (t.toString().equals(name)) return t;
         }
+        // The lexer's fallback for a character the language does not know.
+        if (TokenType.BAD_CHARACTER.toString().equals(name)) return TokenType.BAD_CHARACTER;
         return null;
     }
 

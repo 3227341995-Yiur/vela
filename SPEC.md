@@ -197,6 +197,18 @@ mut buf: Array[float, 1024]    # zero-filled array; scalars need an initialiser
   bug class that Vela deletes.
 * A scalar may not be declared without an initialiser; an array may, and is
   zero-filled (arena memory is always zeroed).
+* **A binding needs its type written out; nothing is inferred from the
+  initialiser.** `mut a = 1` is refused —
+  `vela: type error: binding 'a' has no type annotation: write the type after the
+  name, as in `mut a: int = 1`` — and the un-annotated form is not a feature
+  deferred to a later version, it is a rule that says no. The rule is worth an
+  explicit sentence here because of what stood in its place: as measured on
+  2026-09-24, the checker read the type pool at index `-1` for the missing
+  annotation, `type_kind` answered early for a negative index while `ty_len` did
+  not, and the value that came back was taken as the binding's packed kind and
+  reached a length-driven loop. `vm.exe check` on those four lines **never
+  returned** — a hang, not a wrong answer, and it is in the 2026-09-20 binary too,
+  so it predates the struct and conversion work.
 * An array literal shorter than the declared length is zero-padded;
   `mut a: Array[float, 4] = [0.0]` is legal.
 * Struct fields and parameters are declared as `name: T`; `mut` before a
