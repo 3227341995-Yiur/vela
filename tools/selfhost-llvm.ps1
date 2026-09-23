@@ -147,7 +147,7 @@ if (-not (Test-Path -LiteralPath $built)) {
 
 # ---------------------------------------------------------------- 3. the built compiler
 Say ''
-Say '== 3. the compiler the LLVM path built (this is the north star, and it is RED today)'
+Say '== 3. the compiler the LLVM path built (this is the north star)'
 $bCheck = Invoke-Probe -Compiler $built -Verb 'check'
 Say ("  built compiler: check exit {0}" -f $bCheck.Code)
 if ($bCheck.Out -ne '') { Say ("    stdout: " + ($bCheck.Out -replace "`r?`n", ' | ')) }

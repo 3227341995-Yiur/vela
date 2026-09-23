@@ -418,12 +418,21 @@ fixpoint selfhost_fixpoint                   selfhost/vm.vel
 # second one against the first one's variants.  The second is the `else` arm that
 # runs -- the table only ever had the refusal for an `else` in the wrong place.
 
-run    enum_payload_bind                     tests/build/enum_payload_bind.vel
-run    enum_match_no_else                    tests/build/enum_match_no_else.vel
-run    enum_else_arm                         tests/build/enum_else_arm.vel
-run    enum_two_enums                        tests/build/enum_two_enums.vel
+# These five are `run-c`, and that is the merge of two facts rather than a preference.
+# `build` is the LLVM path now (see the mode table at the top of this file) and the LLVM
+# back end refuses an enum value **by name** -- "an enum value is a tagged union, and this
+# back end has no lowering for one" -- with the five enum rows of `tests\llvm-refusals.txt`
+# as the other side of that ledger.  The C back end lowers them (a tagged union, a
+# designated-initialiser constructor, a `switch` with no `default`), so the compiled answer
+# these rows compare against the interpreter's comes from `build-c`.  Written as `run` they
+# were recorded on the enum branch, where `build` was still the C path; the merge is what
+# made them fail, and nothing in git could see it because both sides had edited this file.
+run-c  enum_payload_bind                     tests/build/enum_payload_bind.vel
+run-c  enum_match_no_else                    tests/build/enum_match_no_else.vel
+run-c  enum_else_arm                         tests/build/enum_else_arm.vel
+run-c  enum_two_enums                        tests/build/enum_two_enums.vel
 ok     enum_in_array                         tests/build/enum_in_array.vel
-run    enum_exhaustive_switch                tests/build/enum_exhaustive_switch.vel
+run-c  enum_exhaustive_switch                tests/build/enum_exhaustive_switch.vel
 # The emitted C itself, for the one property of it that a program's output cannot
 # show: an exhaustive match becomes a `switch` with no `default`, so a variant
 # added to the enum without its arm is caught by the checker and by anyone reading
