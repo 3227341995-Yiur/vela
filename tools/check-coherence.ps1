@@ -104,6 +104,23 @@ if ($distinct.Count -eq 1) {
     Fail ("the compiler in the tree and the one the tests use are DIFFERENT PROGRAMS: " +
           (($sizes.GetEnumerator() | ForEach-Object { "$(Split-Path $_.Key -Leaf)=$($_.Value)" }) -join ', ') +
           " -- the promotion in build.ps1 step 4 did not run, so every gate and every benchmark is measuring the previous source")
+    # What this failure looked like the first time it was seen, so the next reader does not
+    # have to reconstruct it.  `build.ps1` report, 2026-09-24 02:22:23:
+    #
+    #   === 2/8  bootstrap vm.exe from selfhost\build\vm.c
+    #   LINK : fatal error LNK1104: 无法打开文件 "...\selfhost\build\vm.exe"
+    #   build FAILED at step 2
+    #
+    # Step 2 links the compiler back out of the seed C, and on Windows a RUNNING
+    # executable cannot be overwritten.  So a compiler process that never exits holds the
+    # file and the build dies two steps before the promotion it was supposed to reach.
+    # Anything that can hang `vm.exe` will therefore wedge the build: a probe with no
+    # timeout, a killed PowerShell job whose child was left alive, a corpus case that does
+    # not terminate.  The report file is at ..\vela-build-report.txt from the repository
+    # root, and its last step is the one that failed.
+    Say '        (if build.ps1 stopped at step 2 with LNK1104, the output file was held by a'
+    Say '         running vm.exe -- a hung probe leaves one behind.  Check `Get-Process vm`:'
+    Say '         the strays have no start time and 0 MB.  The report is ..\vela-build-report.txt)'
 }
 
 Say ''
