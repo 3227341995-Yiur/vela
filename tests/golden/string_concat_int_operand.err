@@ -1,0 +1,2 @@
+vela: type error: operator '+' mixes str and int
+  at tests/accept/string_concat_int_operand.vel:8

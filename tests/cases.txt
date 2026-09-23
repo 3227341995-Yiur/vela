@@ -163,6 +163,14 @@ refuse slice_not_implemented                 tests/build/check_cases/slice_not_i
 refuse nested_function                       tests/build/check_cases/nested_function.vel
 refuse tuple                                 tests/build/check_cases/tuple.vel
 refuse adjacent_string_literals              tests/build/check_cases/adjacent_string_literals.vel
+# Not like its neighbours above: this one is not about a feature the language does
+# not have yet, and it must NOT change when string concatenation lands.  It pins the
+# other half of the same rule -- `str + int` stays refused, because SPEC 3.1 compares
+# both operands and nothing in Vela converts a number to text.  A `+` that started
+# doing it would be a silent toString in the one place the language promised there is
+# none.  Recorded 2026-09-24 while the feature is still absent, deliberately before
+# it exists.
+refuse string_concat_int_operand              tests/accept/string_concat_int_operand.vel
 refuse missing_open_brace                    tests/build/check_cases/missing_open_brace.vel
 refuse missing_close_brace                   tests/build/check_cases/missing_close_brace.vel
 refuse statements_need_newlines              tests/build/check_cases/statements_need_newlines.vel
