@@ -156,14 +156,16 @@ if n < 2 {
     line, in the interpreter and in the compiled program. A program that means
     two different things depending on how it is run is the bug this rule exists
     to delete, so the three paths state one answer.
-  * **Open, and measured on 2026-09-24 — the rule does not yet reach a store
-    through an element or a field.** For `a[i] = big` and `p.x = big` the checker
-    accepts, the compiled program stops with the message above, and the
-    interpreter does not: it prints `705032704` for an `Array[i32]` element and
-    keeps `5000000000` in an `i32` field. Written down rather than left for
-    somebody to find, because the whole point of this rule is that the answer does
-    not depend on which front end you ask; the compiler and the corpus both carry
-    it as work owed, and this bullet comes out when the three paths agree.
+  * **The rule reaches a store through an element or a field too.** For
+    `a[i] = big` and `p.x = big` the checker accepts and both the interpreter and
+    the compiled program stop with the message above, at the same line — measured
+    on 2026-09-24, and the interpreter used to print `705032704` for the first and
+    keep `5000000000` for the second while the compiled program stopped. This
+    bullet used to be marked open; it is closed because the two paths now agree,
+    not because the text changed. One difference remains and is not part of this
+    rule: the interpreter adds its own `vela: panic: the interpreted program
+    stopped` line after any panic, so the two stderr streams are not byte-equal
+    even when the message and the line are.
   * **Widening is not a narrowing and gets no check.** `mut n: int = comp[i]` — a
     `u8` element read out of an `Array[u8, N]` — is accepted and compiles to the
     widening itself (`int64_t vl_n = ... vl_a[0LL]`).
