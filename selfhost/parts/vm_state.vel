@@ -8,8 +8,19 @@
 # DESIGN.md 7.1 describes for the parser:
 #
 #     mem    one int pool, cut into regions by the MEM_* offsets below:
-#              [MEM_CELLS, MEM_NT)     value cells, stride 4 (tag, a, b, c)
-#              [MEM_NT, MEM_FT)        node table, stride 4, one record per AST node
+#              [MEM_CELLS, CELL_HEAP_MAX)  value cells, stride 4 (tag, a, b, c)
+#              [HEAP0, CELL_HEAP_MAX)      ^ the heap half of the same region
+#              [SCOPE_BASE, +SCOPE_MAX*4)  the resolver's scope stack
+#              [SCOPE_SHAPE, +SCOPE_MAX)   one shape row per scope entry
+#              [MEM_ENB, MEM_VRB)          the enum table, stride 6
+#              [MEM_VRB, MEM_VFL)          the variant table, stride 6
+#              [MEM_VFL, MEM_NT)           payload field records, stride 2
+#              [MEM_NT, MEM_NT + 8 * 131072)  node table, stride 8, one record per
+#                                          AST node -- moved into this hole (it
+#                                          used to sit between MEM_CELLS' end and
+#                                          MEM_FT) when the node pool doubled to
+#                                          131072 nodes, because the region's size
+#                                          is the pool's size times eight
 #              [MEM_FT, MEM_STB)       function table, stride 8
 #              [MEM_STB, MEM_SFLD)     struct table, stride 6
 #              [MEM_SFLD, MEM_MET)     field name handles, per struct
@@ -51,6 +62,13 @@ def K_ST() -> int   { return 12 }   # struct value
 def K_I32() -> int  { return 13 }   # the element kind i32 (stored 32-bit wide)
 def K_A32() -> int  { return 14 }   # Array[i32]
 def K_U8() -> int   { return 15 }   # the element kind u8 (an array tag is K_AB)
+# `K_ENUM()` is 16 and deliberately *outside* the array range: `is_array` (eval.vel)
+# is an equality list, but the mind reading a kind as a number is the one this
+# numbering has already misled twice, so a new kind goes above every existing one
+# rather than into a gap.  An enum *value* is a `K_ST()` cell -- one layout, one
+# copier -- and K_ENUM is the kind of a *binding* whose type is an enum, which is
+# what `declare_local` and the C back end have to tell apart from a struct.
+def K_ENUM() -> int { return 16 }
 
 # ------------------------------------------------------------- mem cell words
 
@@ -68,7 +86,7 @@ def HEAP0() -> int { return 262144 }            # the heap starts at this cell
 def CELL_HEAP_MAX() -> int { return 786432 }
 
 def MEM_CELLS() -> int { return 0 }
-def MEM_NT() -> int { return 3145728 }
+def MEM_NT() -> int { return 1600000 }         # node table, stride 8
 def MEM_FT() -> int { return 3670016 }
 def MEM_STB() -> int { return 3702784 }
 def MEM_SFLD() -> int { return 3708928 }
@@ -77,6 +95,15 @@ def MEM_SIZE() -> int { return 3741696 }
 
 def SCOPE_BASE() -> int { return 800000 }       # words; the resolver's scratch
 def SCOPE_MAX() -> int { return 62000 }         # entries of stride 4
+# One word per scope entry, in a region of its own rather than a fifth word per
+# entry: `ck_seen` and the accessors read `SCOPE_BASE() + i * 4` directly, and
+# widening the stride would move every one of those read sites for a fact that
+# only an aggregate binding has.  The word is the *shape row* of the binding's
+# value -- the struct-table row that describes it, or its elements -- because
+# that is how a `match` finds an enum's variants and how an arm's binding finds
+# its payload field types.  It is written by `sc_push` itself, so no call site can
+# push a binding and forget it; a stale row here would be a *wrong* variant list.
+def SCOPE_SHAPE() -> int { return 1048576 }
 
 def POOL_INT() -> int { return 2097152 }        # Array[int, 2097152]
 def POOL_FLT() -> int { return 1048576 }
@@ -175,12 +202,30 @@ def NT_NEED() -> int { return 5 }   # which runtime checks this node needs
 def NT_LO() -> int { return 6 }     # interval low, for int expressions
 def NT_HI() -> int { return 7 }     # interval high
 
+# Word 5 is written by nobody in this tree -- `NT_NEED()` above is a reservation
+# that never acquired a caller -- and a `match` needs one node-table fact with no
+# other home: the shape row of a *name's* value.  For `match a[i]` the checker must
+# know which enum `a` holds, and the packed kind on the node cannot say: an array's
+# packed kind spends its payload on the array *length* (which the constant-index
+# rule needs), so an `Array[Slot, 4]` binding is `pack_kind(K_AX, 4)` and the
+# element's row is nowhere in it.  The scope stack's shape side-table is where the
+# row lives, and this is the word the resolver copies it into on each name node a
+# `match` (or an arm's binding) has to judge.  It is a second name for word 5 and
+# not a new word, deliberately: the table has eight and a claim nobody made is
+# worth more than a new meaning for a slot that has one.
+def NT_ROW() -> int { return 5 }    # shape row of a name's value, -1 for scalars
+
 
 # binding kinds, the same numbers as SYM_* on the scope stack
 def SYM_LOCAL() -> int  { return 1 }
 def SYM_FUNC() -> int   { return 2 }
 def SYM_STRUCT() -> int { return 3 }
 def SYM_BUILTIN() -> int { return 4 }
+# A variant name resolves to this, and its `NT_VAL()` word is the variant's
+# record index -- the same channel `SYM_STRUCT()` uses for a constructor, which is
+# why a variant is built by the *existing* call path (`eval_call`, `ck_expr`'s call
+# arm) rather than by a node kind of its own.
+def SYM_VARIANT() -> int { return 5 }
 
 # -------------------------------------------------------- function table words
 
@@ -208,6 +253,46 @@ def MET_STRUCT() -> int { return 0 }
 def MET_NAME() -> int { return 1 }
 def MET_FN() -> int { return 2 }
 def MET_MUTSELF() -> int { return 3 }   # 1 when the receiver is `mut self`
+
+# ------------------------------------------------------------- enum table words
+#
+# An enum is two things at once and the split is what keeps this feature small: a
+# *nominal type* with a variant list (the tables below, reached by name through
+# `find_enum`) and a *layout* (a struct-table entry, the way a struct has one, so
+# that `Array[E, N]`, `copy_value`, `elem_store` and `heap` all work on an enum
+# value without knowing what an enum is).
+#
+# The layout is a tagged block: `stride` cells, cell 0 the tag and cells 1.. the
+# payload of at most one variant, `stride` being 1 + the widest variant.  The tag
+# travels *inside the value*, which is what lets one variable hold any variant, and
+# it costs no new word in a value cell: the struct reader's word 3 is the number of
+# cells to copy, and for an enum that is exactly `stride`.  A payload-free variant's
+# block is one cell, the tag alone.
+#
+# Where the tables live: the resolver's scope region ends at 1 048 000 words and
+# the function table starts at 3 670 016, so two million words of the arena were
+# unallocated -- `mem` is `Array[int, 3741696]` in ~250 signatures and it is not
+# worth moving a constant anywhere else.  The node table lives here too now (see
+# the layout at the top of this file): its region is the node pool's size times
+# eight, so doubling the pool meant finding 524 288 words for it, and this hole is
+# where they were.
+
+def MEM_ENB() -> int { return 1150000 }   # enums, stride 6, 4096 of them
+def MEM_VRB() -> int { return 1190000 }   # variants, stride 6, 4096 of them
+def MEM_VFL() -> int { return 1250000 }   # payload fields, stride 2, 8192 of them
+
+def ENB_NAME() -> int   { return 0 }   # the enum's name handle
+def ENB_NVAR() -> int   { return 1 }   # how many variants it has
+def ENB_VOFF() -> int   { return 2 }   # first variant record, in the variant table
+def ENB_SID() -> int    { return 3 }   # the id of its layout in the struct table
+def ENB_STRIDE() -> int { return 4 }   # cells one value occupies, 1 + widest payload
+def ENB_NMAX() -> int   { return 5 }   # widest payload, for the arity message
+
+def VRB_NAME() -> int   { return 0 }   # the variant's name handle
+def VRB_ENUM() -> int   { return 1 }   # the enum it belongs to
+def VRB_TAG() -> int    { return 2 }   # 0, 1, 2 ... in declaration order
+def VRB_NFIELD() -> int { return 3 }   # how many payload fields it carries
+def VRB_FOFF() -> int   { return 4 }   # start of its payload field records in vfl
 
 # ---------------------------------------------------------------- builtin ids
 #
@@ -266,6 +351,13 @@ def arr_kind_of(ek: int) -> int {
     if ek == K_BOOL() { return K_AA() }
     if ek == K_STR() { return K_AS() }
     if ek == K_ST() { return K_AX() }
+    # An array of enums is an array of *aggregates*, which is exactly what `K_AX`
+    # already is: `nfield`-cell blocks, row-major, with the struct-table row of
+    # whatever they hold in the array's word c.  An enum registers such a row for
+    # its own values, so nothing in the interpreter's array path needs to learn
+    # what an enum is -- `alloc_array`, `elem_load` and `elem_store` copy `stride`
+    # cells per element and the tag travels inside the first one.
+    if ek == K_ENUM() { return K_AX() }
     return K_BAD()
 }
 
@@ -339,6 +431,16 @@ struct VM {
     dbg_nbp: int     # debug: how many breakpoints are set
     dbg_cur: int     # debug: the highest command file number read
     dbg_dir: str     # debug: the command directory, "" when not a session
+    # --- the enum tables (ENUMS_PLAN.md) -------------------------------------
+    #
+    # These three cursors are at the *end* on purpose.  `vm_new` builds a VM with a
+    # positional constructor, so a field spliced in beside `nstruct` would move
+    # every word after it and the next reader of that line -- or the next edit --
+    # would have to count twenty-five zeros again to be sure.  Appending three
+    # costs three zeros at the end of one line and moves nothing.
+    nenum: int       # enums registered by the resolver
+    nvr: int         # variants registered by the resolver
+    vfln: int        # payload-field cursor into the vfl region
 }
 
 def vm_new() -> VM {
@@ -349,8 +451,10 @@ def vm_new() -> VM {
     # vdepth is the 25th field, after_main the 26th, and the directory the last
     # of 35.  An empty string is the honest "no session" directory — paths in
     # this project's own tooling are ASCII, and `dbg_on` is what decides whether
-    # the field is read at all.
-    return VM(0, 0, 0, 0, 0, 0, 0, 0, HEAP0(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "")
+    # the field is read at all.  The three enum-table cursors (nenum, nvr, vfln)
+    # are the 36th, 37th and 38th, which is why they were appended rather than
+    # grouped with the other cursors: this list does not have to be recounted.
+    return VM(0, 0, 0, 0, 0, 0, 0, 0, HEAP0(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, 0, 0)
 }
 
 # ------------------------------------------------------------- small accessors
@@ -410,25 +514,49 @@ def met_put(mut mem: Array[int, 3741696], m: int, k: int, v: int) -> None {
     mem[MEM_MET() + m * 4 + k] = v
 }
 
+def enb_get(mem: Array[int, 3741696], e: int, k: int) -> int {
+    return mem[MEM_ENB() + e * 6 + k]
+}
+
+def enb_put(mut mem: Array[int, 3741696], e: int, k: int, v: int) -> None {
+    mem[MEM_ENB() + e * 6 + k] = v
+}
+
+def vrb_get(mem: Array[int, 3741696], v: int, k: int) -> int {
+    return mem[MEM_VRB() + v * 6 + k]
+}
+
+def vrb_put(mut mem: Array[int, 3741696], v: int, k: int, val: int) -> None {
+    mem[MEM_VRB() + v * 6 + k] = val
+}
+
+def vfl_get(mem: Array[int, 3741696], i: int) -> int {
+    return mem[MEM_VFL() + i]
+}
+
+def vfl_put(mut mem: Array[int, 3741696], i: int, v: int) -> None {
+    mem[MEM_VFL() + i] = v
+}
+
 # ------------------------------------------------------------- node accessors
 #
 # Stride 10, as selfhost/AST.md documents: kind, a, b, c, (d), line, flags, nx,
 # e, f.  Word 4 (`d`) is dead in the parser and is the for-loop's step for a
 # `for` node, so nothing here reads it.
 
-def nd_kind(nd: Array[int, 655360], n: int) -> int {
+def nd_kind(nd: Array[int, 1310720], n: int) -> int {
     return nd[n * 10 + 0]
 }
 
-def nd_w(nd: Array[int, 655360], n: int, k: int) -> int {
+def nd_w(nd: Array[int, 1310720], n: int, k: int) -> int {
     return nd[n * 10 + k]
 }
 
-def nd_line(nd: Array[int, 655360], n: int) -> int {
+def nd_line(nd: Array[int, 1310720], n: int) -> int {
     return nd[n * 10 + 5]
 }
 
-def nd_nx(nd: Array[int, 655360], n: int) -> int {
+def nd_nx(nd: Array[int, 1310720], n: int) -> int {
     return nd[n * 10 + 7]
 }
 

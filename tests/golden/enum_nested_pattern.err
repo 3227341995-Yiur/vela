@@ -1,0 +1,2 @@
+vela: syntax error: nested patterns are not supported in Vela 0.1; a pattern binds plain names, and '(' is where one would start
+  at line 18

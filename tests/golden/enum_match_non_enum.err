@@ -1,0 +1,2 @@
+vela: type error: the subject of a match must be an enum value, and this one is not
+  at tests/build/enum_match_non_enum.vel:11

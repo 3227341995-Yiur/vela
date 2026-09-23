@@ -1,0 +1,29 @@
+# A struct field whose type is an enum.  The C back end refuses it by name, and
+# the reason is an ordering fact rather than an omission: structs are defined
+# before enums, because an enum's payload union needs its struct members to be
+# complete types; a by-value struct field that *is* an enum needs the other order,
+# and C has no order in which both hold.  The interpreter runs it.
+#
+# No corpus mode can state "the interpreter runs it and the C back end refuses
+# it", which is why this is a probe: `run` needs both paths to work.
+
+enum E {
+    A
+    B(n: int)
+}
+
+struct S {
+    e: E
+}
+
+def main() -> None {
+    mut s: S = S(A)
+    match s.e {
+        A {
+            print(1)
+        }
+        B(n) {
+            print(n)
+        }
+    }
+}

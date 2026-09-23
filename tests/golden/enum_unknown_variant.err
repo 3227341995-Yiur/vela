@@ -1,0 +1,2 @@
+vela: type error: no variant named 'Square' in this program
+  at tests/build/enum_unknown_variant.vel:18

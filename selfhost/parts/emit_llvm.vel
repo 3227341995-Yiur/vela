@@ -504,7 +504,7 @@ def ll_type_of(lg: LG, k: int) -> int {
 #
 # `lit` here is the struct-type cache (`ll_sty_of`), which is the upper half of
 # the string-literal table.
-def ll_field_addr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_field_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
                   slotkind: Array[int, 4096], mut lit: Array[int, 69632],
                   path: str, e: int) -> int {
@@ -553,7 +553,7 @@ def ll_field_kind_at(mem: Array[int, 3741696], sid: int, i: int) -> int {
 # end) and its value otherwise.  Each of the three is C's own assignment spelled out:
 # `f = (struct vl_X){...}` copies the struct, `f = s` copies the 16 bytes of a string,
 # and `f = 3` converts and stores (through the narrow-store check, `ll_fit`).
-def ll_store_into(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_store_into(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   flt: Array[float, 65536], src: str, path: str,
                   mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
                   slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -594,7 +594,7 @@ def ll_store_into(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
 # end's compound literal `(struct vl_P){ 1, 2 }` -- and what the expression is
 # worth is the *address* of the slot the reservation pass allocated for this very
 # node (`ll_reserve_expr`), which is this back end's spelling of a struct value.
-def ll_construct(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_construct(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                  flt: Array[float, 65536], src: str, path: str,
                  mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
                  slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -1224,7 +1224,7 @@ def ll_path_global(mut lg: LG, path: str) -> int {
 # which is the C back end's own spelling (`emit_fn_name`, emit.vel:58) and not a
 # second convention: two back ends that invent two names for one method would
 # drift the day a method is called across the boundary.
-def ll_fn_name(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+def ll_fn_name(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
                path: str, f: int) -> str {
     d: int = ft_get(mem, f, FT_DEF())
     if ft_get(mem, f, FT_BODY()) < 0 {
@@ -1258,7 +1258,7 @@ def ll_fn_name(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
 # The struct case needs the type cache (`lit`, whose upper half is the struct-type
 # table; see `ll_sty_of`), which is why this takes it: the pointee type *is* the
 # named `%vl_X`, and building it twice would produce two types with one name.
-def ll_sret_of(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_sret_of(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                mem: Array[int, 3741696], vm: VM, mut lit: Array[int, 69632],
                path: str, f: int) -> int {
     if ft_get(mem, f, FT_BODY()) < 0 {
@@ -1280,7 +1280,7 @@ def ll_sret_of(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     return 0
 }
 
-def ll_fn_ret_type(lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_fn_ret_type(lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                    mem: Array[int, 3741696], vm: VM, path: str, f: int,
                    sret: int) -> int {
     k: int = unpack_kind(type_packed(ty, ft_get(mem, f, FT_RETTY()), mem, vm))
@@ -1314,6 +1314,10 @@ def ll_fn_ret_type(lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     if is_array(k) {
         trap(path, nd_line(nd, d), "a function that returns an array is not compiled by the LLVM back end yet")
     }
+    if k == K_ENUM() {
+        trap(path, nd_line(nd, d),
+             "a function that returns an enum is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+    }
     t: int = ll_type_of(lg, k)
     if t == 0 {
         trap(path, nd_line(nd, d), "this function's return type has no IR spelling")
@@ -1321,7 +1325,7 @@ def ll_fn_ret_type(lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     return t
 }
 
-def ll_param_type(lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_param_type(lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   mem: Array[int, 3741696], vm: VM, path: str, p: int) -> int {
     pk: int = param_packed(nd, ty, mem, vm, p)
     k: int = unpack_kind(pk)
@@ -1360,6 +1364,10 @@ def ll_param_type(lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
         # at an index site still knows it
         return lg.t_ptr
     }
+    if k == K_ENUM() {
+        trap(path, nd_line(nd, p),
+             "an enum-valued parameter is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+    }
     t: int = ll_type_of(lg, k)
     if t == 0 {
         trap(path, nd_line(nd, p), "this parameter's type has no IR spelling")
@@ -1367,7 +1375,7 @@ def ll_param_type(lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     return t
 }
 
-def ll_declare_fn(lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_declare_fn(lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   mem: Array[int, 3741696], vm: VM, mut lit: Array[int, 69632],
                   path: str, f: int) -> int {
     sr: int = ll_sret_of(lg, nd, ty, mem, vm, lit, path, f)
@@ -1431,7 +1439,7 @@ def ll_declare_fn(lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
 # every string literal.  See the header: an alloca placed where a variable is
 # declared is re-executed by every iteration of an enclosing loop.
 
-def ll_reserve_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_reserve_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                     flt: Array[float, 65536], src: str, path: str,
                     mut mem: Array[int, 3741696], vm: VM,
                     mut slots: Array[int, 4096], mut lit: Array[int, 69632],
@@ -1545,16 +1553,35 @@ def ll_reserve_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
         }
         return
     }
+    if k == 25 {
+        if nt_get(mem, e, NT_SYM()) == SYM_VARIANT() {
+            trap(path, nd_line(nd, e),
+                 "an enum value is not compiled by the LLVM back end yet: it is a tagged union, and this back end has no lowering for one")
+        }
+    }
+    if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        if nd_kind(nd, callee) == 25 {
+            if nt_get(mem, callee, NT_SYM()) == SYM_VARIANT() {
+                trap(path, nd_line(nd, e),
+                     "constructing a variant is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+            }
+        }
+    }
     # literals, booleans, `None` and names hold nothing that needs storage
 }
 
-def ll_reserve_decl(mut lg: LG, nd: Array[int, 655360],
+def ll_reserve_decl(mut lg: LG, nd: Array[int, 1310720],
                     mut mem: Array[int, 3741696],
                     mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
                     mut lit: Array[int, 69632], path: str, s: int) -> None {
     k: int = unpack_kind(nt_get(mem, s, NT_LIT()))
     line: int = nd_line(nd, s)
     slot: int = nt_get(mem, s, NT_SLOT())
+    if k == K_ENUM() {
+        trap(path, line,
+             "an enum binding is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+    }
     if is_array(k) {
         # an array *binding* is an address (the C back end emits `int64_t*`), so
         # its slot holds a pointer and the arena owns the elements.  The kind
@@ -1582,7 +1609,7 @@ def ll_reserve_decl(mut lg: LG, nd: Array[int, 655360],
     ll_note(lg, slots, slotkind, slot, k, ll_alloca(lg, k, path, line), path, line)
 }
 
-def ll_reserve_body(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_reserve_body(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                     flt: Array[float, 65536], src: str, path: str,
                     mut mem: Array[int, 3741696], vm: VM,
                     mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
@@ -1595,7 +1622,7 @@ def ll_reserve_body(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     }
 }
 
-def ll_reserve_stmt(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_reserve_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                     flt: Array[float, 65536], src: str, path: str,
                     mut mem: Array[int, 3741696], vm: VM,
                     mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
@@ -1671,6 +1698,15 @@ def ll_reserve_stmt(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
                         lit, nd[s * 10 + 8])
         return
     }
+    if k == 37 {
+        # The refusal lives in this pass as well as in `ll_stmt`, and it is the same
+        # sentence: a reserve pass that fell through a `match` silently would leave
+        # its arm bodies' locals and literals unreserved, and the failure a reader
+        # would then see is "this local was never reserved a slot in the entry
+        # block" -- a confusing trap for a decision this compiler made on purpose.
+        trap(path, nd_line(nd, s),
+             "`match` is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+    }
     # break, continue and pass hold no expressions and no storage
 }
 
@@ -1710,7 +1746,7 @@ def ll_esize_of(ek: int, path: str, line: int) -> int {
 }
 
 # The array's address, out of the slot its binding was given.
-def ll_array_ptr(mut lg: LG, nd: Array[int, 655360],
+def ll_array_ptr(mut lg: LG, nd: Array[int, 1310720],
                  mem: Array[int, 3741696], slots: Array[int, 4096],
                  slotkind: Array[int, 4096], path: str, base: int) -> int {
     if nd_kind(nd, base) != 25 {
@@ -1741,7 +1777,7 @@ def ll_bounds(mut lg: LG, index: int, len: int, path: str, line: int) -> None {
 
 # The address of `a[i]`, with the check made first: one place decides what an
 # out-of-range index means, and it is the runtime's, shared with the C back end.
-def ll_index_addr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_index_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   flt: Array[float, 65536], src: str, path: str,
                   mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
                   slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -1770,7 +1806,7 @@ def ll_index_addr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
 # binding's slot, and the written elements stored one by one.  The elements the
 # literal does not mention are zeroed by the arena, which is what the C back end
 # relies on too.
-def ll_array_decl(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_array_decl(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   flt: Array[float, 65536], src: str, path: str,
                   mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
                   slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -1822,7 +1858,7 @@ def ll_array_decl(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
 
 # ------------------------------------------------------------ expressions
 
-def ll_slot_name(lg: LG, nd: Array[int, 655360], mem: Array[int, 3741696],
+def ll_slot_name(lg: LG, nd: Array[int, 1310720], mem: Array[int, 3741696],
                  slots: Array[int, 4096], slotkind: Array[int, 4096],
                  path: str, e: int) -> int {
     if nt_get(mem, e, NT_SYM()) != SYM_LOCAL() {
@@ -1848,7 +1884,7 @@ def ll_slot_name(lg: LG, nd: Array[int, 655360], mem: Array[int, 3741696],
 # where the struct lives, a `mut` one's slot *holds a pointer* to it
 # (`ll_addr`, which is the C back end's `->`/`.` rule).  Everything else is
 # loaded out of its slot.
-def ll_name(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_name(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
             slotkind: Array[int, 4096], path: str, e: int) -> int {
     h: int = ll_slot_name(lg, nd, mem, slots, slotkind, path, e)
@@ -1867,7 +1903,7 @@ def ll_name(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
 # The literal's *value*, not the text that was written: `"\n"` is one newline
 # byte and the count that goes with it is the count of the decoded text.  The C
 # back end learned this the hard way (see emit_expr) and this is the same rule.
-def ll_lit_into(mut lg: LG, dst: int, nd: Array[int, 655360],
+def ll_lit_into(mut lg: LG, dst: int, nd: Array[int, 1310720],
                 src: str, path: str, e: int) -> None {
     mut s: str = substr(src, nd[e * 10 + 1], nd[e * 10 + 1] + nd[e * 10 + 2])
     if (nd[e * 10 + 6] & 1) == 1 {
@@ -1882,7 +1918,7 @@ def ll_lit_into(mut lg: LG, dst: int, nd: Array[int, 655360],
     ll_call3(lg, lg.f_strlit, dst, g, a)
 }
 
-def ll_binop(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_binop(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
              slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -2002,7 +2038,7 @@ def ll_call4(lg: LG, fn: int, x0: int, x1: int, x2: int, x3: int) -> int {
     return ll_call_n(lg, fn, a, 4)
 }
 
-def ll_cmp(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_cmp(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
            flt: Array[float, 65536], src: str, path: str,
            mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
            slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -2077,7 +2113,7 @@ def ll_cmp(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     return 0
 }
 
-def ll_unary(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_unary(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
              slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -2141,7 +2177,7 @@ def ll_unary(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     return 0
 }
 
-def ll_logic(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_logic(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
              slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -2234,7 +2270,7 @@ def ll_builtin_name(b: int) -> str {
     return "unnamed"
 }
 
-def ll_call_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                  flt: Array[float, 65536], src: str, path: str,
                  mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
                  slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -2696,7 +2732,7 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     return v
 }
 
-def ll_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             flt: Array[float, 65536], src: str, path: str,
             mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
             slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -2724,9 +2760,23 @@ def ll_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
                      vshim_const_bool(lg.m, nd[e * 10 + 1] == 1))
     }
     if k == 25 {
+        if nt_get(mem, e, NT_SYM()) == SYM_VARIANT() {
+            # a bare variant name is a value (`Red`, `Empty`), and an enum value is
+            # a tagged union: refused by name rather than lowered into something
+            # that is not one
+            trap(path, nd_line(nd, e),
+                 "an enum value is not compiled by the LLVM back end yet: it is a tagged union, and this back end has no lowering for one")
+        }
         return ll_name(lg, nd, ty, mem, vm, slots, slotkind, path, e)
     }
     if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        if nd_kind(nd, callee) == 25 {
+            if nt_get(mem, callee, NT_SYM()) == SYM_VARIANT() {
+                trap(path, nd_line(nd, e),
+                     "constructing a variant is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+            }
+        }
         return ll_call_expr(lg, nd, ty, flt, src, path, mem, vm, slots,
                             slotkind, lit, fns, e)
     }
@@ -2799,7 +2849,7 @@ def ll_expr(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
 
 # -------------------------------------------------------------------- print
 
-def ll_print(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_print(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
              slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -2843,7 +2893,7 @@ def ll_print(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
 
 # ---------------------------------------------------------------- statements
 
-def ll_assign(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_assign(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
               flt: Array[float, 65536], src: str, path: str,
               mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
               slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -2951,7 +3001,7 @@ def ll_assign(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
                               h))
 }
 
-def ll_aug(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_aug(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
            flt: Array[float, 65536], src: str, path: str,
            mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
            slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -3045,7 +3095,7 @@ def ll_aug(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
                               ll_fit(lg, k, K_INT(), r, path, line), h))
 }
 
-def ll_return_stmt(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                    flt: Array[float, 65536], src: str, path: str,
                    mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
                    slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -3104,7 +3154,7 @@ def ll_return_stmt(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     ll_br(lg, lg.exitb)
 }
 
-def ll_if(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_if(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
           flt: Array[float, 65536], src: str, path: str,
           mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
           slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -3145,7 +3195,7 @@ def ll_if(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     ll_at(lg, join, "positioning the builder at the join block")
 }
 
-def ll_while(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_while(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
              slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -3188,7 +3238,7 @@ def ll_while(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
 #
 # The increment is the *checked* add, because that is what the compiled program
 # does: a range that runs off the end of int64 must panic, not wrap.
-def ll_for(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_for(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
            flt: Array[float, 65536], src: str, path: str,
            mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
            slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -3262,7 +3312,7 @@ def ll_for(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     ll_at(lg, exitb, "positioning the builder after the loop")
 }
 
-def ll_stmt(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             flt: Array[float, 65536], src: str, path: str,
             mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
             slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -3330,10 +3380,19 @@ def ll_stmt(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     if k == 15 {
         return
     }
+    if k == 37 {
+        # Refused by name, deliberately, in this back end's own voice: an enum value
+        # is a tagged union, which is a shape this file has no lowering for (it
+        # lowers a struct by splatting its fields, and a tag plus a union is not
+        # that).  The ledger records it: tests/llvm-refusals.txt, one line per
+        # corpus program this refuses.
+        trap(path, nd_line(nd, s),
+             "`match` is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+    }
     trap(path, nd_line(nd, s), "the LLVM back end has no lowering for this statement yet")
 }
 
-def ll_body(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_body(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             flt: Array[float, 65536], src: str, path: str,
             mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
             slotkind: Array[int, 4096], lit: Array[int, 69632],
@@ -3347,7 +3406,7 @@ def ll_body(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
 
 # ------------------------------------------------------------ one whole function
 
-def ll_function(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_function(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                 flt: Array[float, 65536], src: str, path: str,
                 mut mem: Array[int, 3741696], vm: VM,
                 mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
@@ -3494,7 +3553,7 @@ def ll_function(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
 # performs the same three startup steps the C back end's `main` does, in the
 # same order, because `vela_runtime_init` is the one that reserves the arena
 # and the persistent string region.
-def ll_entry(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_entry(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              mem: Array[int, 3741696], vm: VM, fns: Array[int, 8192],
              midx: int) -> None {
     mut ps: Array[int, 16]
@@ -3516,7 +3575,7 @@ def ll_entry(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
 
 # ------------------------------------------------------------- the whole module
 
-def ll_program(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_program(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                flt: Array[float, 65536], src: str, path: str,
                mut mem: Array[int, 3741696], mut vm: VM,
                mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
@@ -3551,7 +3610,7 @@ def ll_program(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
     ll_entry(lg, nd, ty, mem, vm, fns, midx)
 }
 
-def ll_build(nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_build(nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mut mem: Array[int, 3741696], mut vm: VM) -> LG {
     mut lg: LG = ll_zero()
@@ -3567,7 +3626,7 @@ def ll_build(nd: Array[int, 655360], ty: Array[int, 262144],
 # `vm.exe emit-llvm FILE` -- the module's IR text on stdout, exactly the way
 # `emit-c` prints C on stdout (and for the same use: reading and diffing what
 # the back end built).  Nothing is written beside the source.
-def ll_emit_ir(nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_emit_ir(nd: Array[int, 1310720], ty: Array[int, 262144],
                flt: Array[float, 65536], src: str, path: str,
                mut mem: Array[int, 3741696], mut vm: VM) -> None {
     lg: LG = ll_build(nd, ty, flt, src, path, mem, vm)
@@ -3591,7 +3650,7 @@ def ll_emit_ir(nd: Array[int, 655360], ty: Array[int, 262144],
 # shim, verified, and written as a COFF object at `objpath`.  The object is the
 # caller's decision and the caller's scratch directory: this layer never picks
 # a name beside somebody's source (that is `build_scratch` in vm_main.vel).
-def ll_emit_object(nd: Array[int, 655360], ty: Array[int, 262144],
+def ll_emit_object(nd: Array[int, 1310720], ty: Array[int, 262144],
                    flt: Array[float, 65536], src: str, path: str,
                    mut mem: Array[int, 3741696], mut vm: VM,
                    objpath: str) -> None {

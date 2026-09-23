@@ -86,6 +86,10 @@ def ck_kind_name(k: int) -> str {
     if k == K_U8() { return "u8" }
     if k == K_I32() { return "i32" }
     if k == K_ST() { return "struct" }
+    # an enum cannot be spelled by *name* here (this helper is given a kind, not a
+    # row), but "?" in a diagnostic is worse than a phrase: it reads as a compiler
+    # that does not know what it is looking at
+    if k == K_ENUM() { return "an enum value" }
     return "?"
 }
 
@@ -164,24 +168,24 @@ def ck_seen(mem: Array[int, 3741696], vm: VM, name: int, mark: int) -> bool {
 }
 
 def ck_push(mut mem: Array[int, 3741696], mut vm: VM, name: int,
-            ck: int, is_mut: bool) -> None {
+            ck: int, is_mut: bool, shape: int) -> None {
     mut packed: int = ck
     if is_mut {
         packed = pack_mut(ck)
     }
-    sc_push(mem, vm, name, SYM_LOCAL(), 0, packed)
+    sc_push(mem, vm, name, SYM_LOCAL(), 0, packed, shape)
 }
 
 # The same push, for a parameter: identical in every respect but the bit that
 # says "this one arrived from the caller, so it may be an alias of something
 # else".
 def ck_push_par(mut mem: Array[int, 3741696], mut vm: VM, name: int,
-                ck: int, is_mut: bool) -> None {
+                ck: int, is_mut: bool, shape: int) -> None {
     mut packed: int = ck
     if is_mut {
         packed = pack_mut(ck)
     }
-    sc_push(mem, vm, name, SYM_LOCAL(), 0, pack_param(packed))
+    sc_push(mem, vm, name, SYM_LOCAL(), 0, pack_param(packed), shape)
 }
 
 def ck_bound(mut mem: Array[int, 3741696], vm: VM, name: int) -> int {
@@ -197,7 +201,7 @@ def ck_bound(mut mem: Array[int, 3741696], vm: VM, name: int) -> int {
 
 # ------------------------------------------------------------------- entries
 
-def ck_find_main(nd: Array[int, 655360], mem: Array[int, 3741696],
+def ck_find_main(nd: Array[int, 1310720], mem: Array[int, 3741696],
                  vm: VM) -> int {
     mut i: int = 0
     while i < vm.nfn {
@@ -211,7 +215,7 @@ def ck_find_main(nd: Array[int, 655360], mem: Array[int, 3741696],
     return -1
 }
 
-def ck_check_main(nd: Array[int, 655360], ty: Array[int, 262144],
+def ck_check_main(nd: Array[int, 1310720], ty: Array[int, 262144],
                   mem: Array[int, 3741696], path: str, vm: VM) -> None {
     f: int = ck_find_main(nd, mem, vm)
     if f < 0 {
@@ -269,7 +273,7 @@ def ck_foldable(v: int) -> bool {
     return True
 }
 
-def ck_const_int(nd: Array[int, 655360], e: int) -> int {
+def ck_const_int(nd: Array[int, 1310720], e: int) -> int {
     if nd_kind(nd, e) == 20 {
         v: int = nd[e * 10 + 1]
         if ck_foldable(v) {
@@ -417,7 +421,7 @@ def ck_fits_kind(v: int, k: int) -> bool {
     return True
 }
 
-def ck_adapt_pair(nd: Array[int, 655360], e: int, lt: int, rt: int) -> bool {
+def ck_adapt_pair(nd: Array[int, 1310720], e: int, lt: int, rt: int) -> bool {
     if lt == rt {
         return True
     }
@@ -532,7 +536,7 @@ def ck_op_quoted(op: int) -> str {
 # `_arith_result` (checker.py:1308-1356), the table that makes "no implicit
 # conversion" a rule rather than a slogan.  Both kinds are known when this is
 # called, so every branch here is a statement about the program.
-def ck_arith(nd: Array[int, 655360], path: str, line: int, e: int, op: int,
+def ck_arith(nd: Array[int, 1310720], path: str, line: int, e: int, op: int,
              lt: int, rt: int) -> None {
     if op == 1 {
         if lt == K_STR() and rt == K_STR() {
@@ -612,7 +616,7 @@ def ck_arith(nd: Array[int, 655360], path: str, line: int, e: int, op: int,
             ck_op_msg(ck_op_pre(op), " is not defined for ", lt, rt))
 }
 
-def ck_etype(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+def ck_etype(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
              e: int) -> int {
     if e <= 0 {
         return K_BAD()
@@ -721,7 +725,7 @@ def ck_etype(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
     return K_BAD()
 }
 
-def ck_binop(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_binop(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
              path: str, vm: VM, e: int) -> None {
     op: int = nd[e * 10 + 1]
     lhs: int = nd[e * 10 + 2]
@@ -811,7 +815,7 @@ def ck_unop_msg(op: int, t: int) -> str {
 # Kind 28.  `not` (keyword 15) takes a bool, `~` (32) takes an integer, and `-`/`+`
 # take a number, which is what `ck_etype` already assumed when it typed these
 # nodes -- it was the *check* that was missing, not the type.
-def ck_unary(nd: Array[int, 655360], mem: Array[int, 3741696], path: str,
+def ck_unary(nd: Array[int, 1310720], mem: Array[int, 3741696], path: str,
              vm: VM, e: int) -> None {
     op: int = nd[e * 10 + 1]
     t: int = ck_etype(nd, mem, vm, nd[e * 10 + 2])
@@ -847,7 +851,7 @@ def ck_unary(nd: Array[int, 655360], mem: Array[int, 3741696], path: str,
 # `ck_adapt_pair` is consulted first for a mismatch, so the one implicit
 # conversion Vela has still works here: `b == 3` for a `u8 b` is a comparison
 # against a literal that fits, not a mixture of kinds.
-def ck_compare(nd: Array[int, 655360], mem: Array[int, 3741696], path: str,
+def ck_compare(nd: Array[int, 1310720], mem: Array[int, 3741696], path: str,
                vm: VM, e: int) -> None {
     op: int = nd[e * 10 + 1]
     line: int = nd_line(nd, e)
@@ -931,7 +935,7 @@ def ck_compare(nd: Array[int, 655360], mem: Array[int, 3741696], path: str,
 # (`eval.vel:1425`, `FT_NPARAM() != nargs + 1`): the receiver is parameter 0, so a
 # method declared with N parameters takes N - 1 arguments at the call site.
 
-def ck_recv_ck(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+def ck_recv_ck(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
                recv: int) -> int {
     # The receiver's packed kind, or 0 for "cannot tell".  0 is a safe sentinel:
     # `pack_kind` returns 0 only for `K_BAD`, which no binding ever carries.
@@ -1002,7 +1006,7 @@ def ck_member_arity_msg(mem: Array[int, 3741696], sid: int, name: int,
 # `p.f`, and `p.f` where `f` is a method: the second is not refused here, because a
 # method name used as a value is a different (and equally real) gap, and refusing
 # it would be a rule nobody asked for.
-def ck_member_read(nd: Array[int, 655360], mem: Array[int, 3741696],
+def ck_member_read(nd: Array[int, 1310720], mem: Array[int, 3741696],
                    path: str, vm: VM, e: int) -> None {
     rc: int = ck_recv_ck(nd, mem, vm, nd[e * 10 + 1])
     if rc == 0 {
@@ -1034,7 +1038,7 @@ def ck_member_read(nd: Array[int, 655360], mem: Array[int, 3741696],
 # `e` is the *call* node and `callee` its `attr`: the arguments hang off the call,
 # and the receiver off the attribute, so a rule that counts one and looks up the
 # other needs both.
-def ck_member_call(nd: Array[int, 655360], mem: Array[int, 3741696],
+def ck_member_call(nd: Array[int, 1310720], mem: Array[int, 3741696],
                    path: str, vm: VM, e: int, callee: int) -> None {
     rc: int = ck_recv_ck(nd, mem, vm, nd[callee * 10 + 1])
     if rc == 0 {
@@ -1069,7 +1073,7 @@ def ck_member_call(nd: Array[int, 655360], mem: Array[int, 3741696],
     }
 }
 
-def ck_shift_count(nd: Array[int, 655360], path: str, line: int,
+def ck_shift_count(nd: Array[int, 1310720], path: str, line: int,
                    rhs: int) -> None {
     v: int = ck_const_int(nd, rhs)
     if v == ck_no_const() {
@@ -1096,7 +1100,7 @@ def ck_shift_count(nd: Array[int, 655360], path: str, line: int,
 # only with an `else` whose both arms return, and `while True` counts only if its
 # body cannot `break` out.
 
-def ck_has_break(nd: Array[int, 655360], head: int) -> bool {
+def ck_has_break(nd: Array[int, 1310720], head: int) -> bool {
     mut s: int = head
     while s > 0 {
         k: int = nd_kind(nd, s)
@@ -1116,7 +1120,8 @@ def ck_has_break(nd: Array[int, 655360], head: int) -> bool {
     return False
 }
 
-def ck_always_returns(nd: Array[int, 655360], head: int) -> bool {
+def ck_always_returns(nd: Array[int, 1310720], mem: Array[int, 3741696],
+                      vm: VM, head: int) -> bool {
     mut s: int = head
     while s > 0 {
         k: int = nd_kind(nd, s)
@@ -1126,8 +1131,8 @@ def ck_always_returns(nd: Array[int, 655360], head: int) -> bool {
         if k == 10 {
             e: int = nd[s * 10 + 4]
             if e > 0 {
-                if ck_always_returns(nd, nd[s * 10 + 2]) {
-                    if ck_always_returns(nd, e) {
+                if ck_always_returns(nd, mem, vm, nd[s * 10 + 2]) {
+                    if ck_always_returns(nd, mem, vm, e) {
                         return True
                     }
                 }
@@ -1142,12 +1147,198 @@ def ck_always_returns(nd: Array[int, 655360], head: int) -> bool {
                 }
             }
         }
+        if k == 37 {
+            # A match is a return path twice over: every arm has to return, *and*
+            # the arms have to cover the enum -- an arm set that misses a variant
+            # is not exhaustive, so there is a value that falls out of the bottom.
+            # The second half is `ck_match`'s own rule, asked again here because
+            # this walk is the one that decides what a function may do.
+            if ck_arms_return(nd, mem, vm, nd[s * 10 + 2]) {
+                if ck_match_complete(nd, mem, vm, s) {
+                    return True
+                }
+            }
+        }
         s = nd_nx(nd, s)
     }
     return False
 }
 
-def ck_callee_impure(nd: Array[int, 655360], mem: Array[int, 3741696],
+def ck_arms_return(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
+                   head: int) -> bool {
+    if head <= 0 {
+        return False
+    }
+    mut a: int = head
+    while a > 0 {
+        if not ck_always_returns(nd, mem, vm, nd[a * 10 + 4]) {
+            return False
+        }
+        a = nd_nx(nd, a)
+    }
+    return True
+}
+
+# ------------------------------------------------------------------ match
+#
+# `match` is the one rule in this file that needs to know *which* enum a value
+# belongs to, and the answer is the shape row the resolver wrote: a name node
+# carries the row of its binding (`NT_ROW`), and an index carries its base's row,
+# because an array's row is already the row of its elements.
+def ck_row_of(nd: Array[int, 1310720], mem: Array[int, 3741696], e: int) -> int {
+    if e <= 0 {
+        return -1
+    }
+    k: int = nd_kind(nd, e)
+    if k == 25 {
+        return nt_get(mem, e, NT_ROW())
+    }
+    if k == 31 {
+        return ck_row_of(nd, mem, nd[e * 10 + 1])
+    }
+    if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        if nd_kind(nd, callee) == 25 {
+            if nt_get(mem, callee, NT_SYM()) == SYM_VARIANT() {
+                vi: int = nt_get(mem, callee, NT_VAL())
+                return enb_get(mem, vrb_get(mem, vi, VRB_ENUM()), ENB_SID())
+            }
+        }
+    }
+    return -1
+}
+
+# Does this match cover the enum it is over?  An `else` arm always does; without
+# one, every variant must have an arm, and since `ck_match` has already refused a
+# duplicate arm and an arm naming a variant of some *other* enum, counting is
+# enough.
+def ck_match_complete(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
+                      s: int) -> bool {
+    eid: int = enum_of_row(mem, vm, ck_row_of(nd, mem, nd[s * 10 + 1]))
+    if eid < 0 {
+        return False
+    }
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        if nd[a * 10 + 1] < 0 {
+            return True
+        }
+        a = nd_nx(nd, a)
+    }
+    return nd[s * 10 + 3] >= enb_get(mem, eid, ENB_NVAR())
+}
+
+def ck_arm_covers(nd: Array[int, 1310720], s: int, name: int) -> bool {
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        if nd[a * 10 + 1] == name {
+            return True
+        }
+        a = nd_nx(nd, a)
+    }
+    return False
+}
+
+# One arm's binding node becomes a checker-scope local for the arm's body, the
+# same way a declaration does; the resolver has already given it a frame slot, a
+# packed kind and a shape, because it had to -- the interpreter reads the slot and
+# the back ends read the kind.
+def ck_match_arms(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
+                  path: str, mut vm: VM, s: int) -> None {
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        mark: int = vm.scn
+        mut b: int = nd[a * 10 + 2]
+        while b > 0 {
+            ck_push(mem, vm, nd[b * 10 + 1], nt_get(mem, b, NT_LIT()), False,
+                    nt_get(mem, b, NT_ROW()))
+            b = nd_nx(nd, b)
+        }
+        ck_block(nd, mem, path, vm, nd[a * 10 + 4])
+        vm.scn = mark
+        a = nd_nx(nd, a)
+    }
+}
+
+def ck_match(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
+             path: str, mut vm: VM, s: int) -> None {
+    subj: int = nd[s * 10 + 1]
+    ck_expr(nd, mem, path, vm, subj)
+    eid: int = enum_of_row(mem, vm, ck_row_of(nd, mem, subj))
+    if eid < 0 {
+        ck_type(path, nd_line(nd, s),
+                "the subject of a match must be an enum value, and this one is not")
+        return
+    }
+    mut has_else: int = 0
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        pat: int = nd[a * 10 + 1]
+        nxt: int = nd_nx(nd, a)
+        if pat < 0 {
+            if has_else == 1 {
+                ck_type(path, nd_line(nd, a),
+                        "this match already has an else arm")
+                return
+            }
+            if nxt > 0 {
+                ck_type(path, nd_line(nd, a),
+                        "an else arm must be the last arm of a match")
+                return
+            }
+            has_else = 1
+        } else {
+            vi: int = find_variant(mem, vm, pat)
+            if vi < 0 {
+                ck_type(path, nd_line(nd, a),
+                        ck_quoted("no variant named '", pat, "'"))
+                return
+            }
+            if vrb_get(mem, vi, VRB_ENUM()) != eid {
+                ck_type(path, nd_line(nd, a),
+                        concat(concat(concat(concat(concat(
+                                   "variant '", interned(pat)),
+                                   "' belongs to enum '"),
+                                   interned(enb_get(mem, vrb_get(mem, vi, VRB_ENUM()),
+                                                    ENB_NAME()))),
+                                   "', and the subject of this match is '"),
+                               concat(interned(enb_get(mem, eid, ENB_NAME())), "'")))
+                return
+            }
+            mut p2: int = nd[s * 10 + 2]
+            while p2 != a {
+                if nd[p2 * 10 + 1] == pat {
+                    ck_type(path, nd_line(nd, a),
+                            concat(concat("variant '", interned(pat)),
+                                   "' already has an arm in this match"))
+                    return
+                }
+                p2 = nd_nx(nd, p2)
+            }
+        }
+        a = nxt
+    }
+    if has_else == 0 {
+        mut i: int = 0
+        while i < enb_get(mem, eid, ENB_NVAR()) {
+            vi2: int = enb_get(mem, eid, ENB_VOFF()) + i
+            if not ck_arm_covers(nd, s, vrb_get(mem, vi2, VRB_NAME())) {
+                ck_type(path, nd_line(nd, s),
+                        concat(concat(concat(concat(
+                                   "this match does not handle variant '",
+                                   interned(vrb_get(mem, vi2, VRB_NAME()))),
+                                   "' of enum '"),
+                                   interned(enb_get(mem, eid, ENB_NAME()))),
+                               "': name it, or add an else arm"))
+                return
+            }
+            i += 1
+        }
+    }
+    ck_match_arms(nd, mem, path, vm, s)
+}
+
+def ck_callee_impure(nd: Array[int, 1310720], mem: Array[int, 3741696],
                      e: int) -> bool {
     callee: int = nd[e * 10 + 1]
     if nd_kind(nd, callee) != 25 {
@@ -1166,7 +1357,7 @@ def ck_callee_impure(nd: Array[int, 655360], mem: Array[int, 3741696],
 # written; anything else (a call, a field, an element) answers "unknown" and is
 # left alone.  A checker that guesses here would refuse correct programs, and a
 # false refusal is worse than a missing one.
-def ck_cond_kind(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_cond_kind(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                  vm: VM, e: int) -> int {
     k: int = nd_kind(nd, e)
     if k == 23 {
@@ -1215,7 +1406,7 @@ def ck_cond_kind(nd: Array[int, 655360], mut mem: Array[int, 3741696],
     return K_BAD()
 }
 
-def ck_condition(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_condition(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                  path: str, vm: VM, s: int, word: str) -> None {
     e: int = nd[s * 10 + 1]
     k: int = ck_cond_kind(nd, mem, vm, e)
@@ -1230,7 +1421,7 @@ def ck_condition(nd: Array[int, 655360], mut mem: Array[int, 3741696],
                           ck_kind_name(k)), ""))
 }
 
-def ck_index(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_index(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
              path: str, vm: VM, e: int) -> None {
     # `a[4]` where the length of `a` is a compile-time fact: a constant index
     # outside it is wrong in every run, so stage 0 refuses the program instead of
@@ -1278,7 +1469,7 @@ def ck_index(nd: Array[int, 655360], mut mem: Array[int, 3741696],
     }
 }
 
-def ck_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_expr(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
             path: str, vm: VM, e: int) -> None {
     # The rules that need a static type of their own still come later; what this
     # walk does is reach every subexpression, so that the rules which need only
@@ -1373,10 +1564,29 @@ def ck_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696],
         ck_expr(nd, mem, path, vm, nd[e * 10 + 3])
         return
     }
-    # 20 int, 21 float, 22 str, 23 bool, 24 none, 25 name are leaves
+    # 20 int, 21 float, 22 str, 23 bool, 24 none are leaves, and so is a name --
+    # except for the one name case the resolver cannot judge: a bare variant name
+    # is a value only when the variant carries nothing.  `Circle` on its own is a
+    # construction that lost its payload, and a wrong answer is what it would
+    # otherwise become, so it is refused here by name.
+    if k == 25 {
+        if nt_get(mem, e, NT_SYM()) == SYM_VARIANT() {
+            vi: int = nt_get(mem, e, NT_VAL())
+            if vrb_get(mem, vi, VRB_NFIELD()) != 0 {
+                ck_type(path, nd_line(nd, e),
+                        concat(concat(concat(concat(concat(
+                                   "variant '", interned(nd[e * 10 + 1])),
+                                   "' carries "),
+                                   ck_int_text(vrb_get(mem, vi, VRB_NFIELD()))),
+                                   " payload value(s)"),
+                               ", so naming it without them is not a value"))
+            }
+        }
+        return
+    }
 }
 
-def ck_store_name(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_store_name(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                   path: str, mut vm: VM, s: int, tgt: int) -> None {
     name: int = nd[tgt * 10 + 1]
     i: int = ck_bound(mem, vm, name)
@@ -1423,7 +1633,7 @@ def ck_store_name(nd: Array[int, 655360], mut mem: Array[int, 3741696],
 # interpreter and a compiled binary print the same sentence and exit the same way).
 # A value that fits is untouched: this is not a new conversion, it is the refusal to
 # pretend one happened.
-def ck_narrow_value(nd: Array[int, 655360], v: int) -> int {
+def ck_narrow_value(nd: Array[int, 1310720], v: int) -> int {
     if v <= 0 {
         return ck_no_const()
     }
@@ -1437,7 +1647,7 @@ def ck_narrow_value(nd: Array[int, 655360], v: int) -> int {
 
 # The destination's packed kind, for the store rules below: a declared name, an
 # array element or a struct field.
-def ck_dst_packed(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+def ck_dst_packed(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
                   s: int, tgt: int) -> int {
     if nd_kind(nd, tgt) == 25 {
         if (nd[s * 10 + 6] & 2) == 2 {
@@ -1462,7 +1672,7 @@ def ck_dst_packed(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
     return K_BAD()
 }
 
-def ck_narrow_store(nd: Array[int, 655360], mem: Array[int, 3741696],
+def ck_narrow_store(nd: Array[int, 1310720], mem: Array[int, 3741696],
                     path: str, vm: VM, s: int, dstp: int, v: int) -> None {
     k: int = unpack_kind(dstp)
     if k != K_U8() and k != K_I32() {
@@ -1480,7 +1690,7 @@ def ck_narrow_store(nd: Array[int, 655360], mem: Array[int, 3741696],
                    ck_kind_name(k)))
 }
 
-def ck_store(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_store(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
              path: str, mut vm: VM, s: int) -> None {
     tgt: int = nd[s * 10 + 1]
     if nd_kind(nd, s) == 6 {
@@ -1539,7 +1749,7 @@ def ck_store(nd: Array[int, 655360], mut mem: Array[int, 3741696],
 # (`Rule 87: {bt.name} has no field '{attr}'`), reported at the line of the
 # assignment.  Unlike a read, a *method* name does not count: a write needs a
 # field's storage, and a method has none, so `a.dot = 5` is the same mistake.
-def ck_member_write(nd: Array[int, 655360], mem: Array[int, 3741696],
+def ck_member_write(nd: Array[int, 1310720], mem: Array[int, 3741696],
                     path: str, vm: VM, tgt: int) -> None {
     rc: int = ck_recv_ck(nd, mem, vm, nd[tgt * 10 + 1])
     if rc == 0 {
@@ -1866,7 +2076,7 @@ def ck_lb_push(mut lb: Array[int, 64], mut p: Par, name: int, start: int,
 # name, `+ - ~`, the binary table, and `len(array)`, whose value is a
 # compile-time fact the same way it is for stage 0 (`const_value` there, the
 # binding's packed kind here).
-def ck_iv_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+def ck_iv_expr(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
                iv: Array[int, 64], ni: int, e: int, mut out: Iv) -> None {
     if e <= 0 {
         ck_iv_unknown(out)
@@ -2000,7 +2210,7 @@ def ck_iv_expr(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
 # "not linear in `var`".  An absent remainder is the exact interval [0, 0],
 # which is what stage 0's `width = 0` means — a constant index really is the
 # same element every iteration, so it must not be reported as provable.
-def ck_linear(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+def ck_linear(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
               iv: Array[int, 64], ni: int, e: int, var: int,
               mut rest: Iv) -> int {
     k: int = nd_kind(nd, e)
@@ -2112,7 +2322,7 @@ def ck_linear(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
 # *value* — `1.0` and `1.00` are one value and two receipts, and a difference
 # there can only make this pass see two keys where stage 0 sees one, which is
 # the refusal it already makes when it sees two.
-def ck_same_expr(nd: Array[int, 655360], a: int, b: int) -> bool {
+def ck_same_expr(nd: Array[int, 1310720], a: int, b: int) -> bool {
     if a == b {
         return True
     }
@@ -2222,7 +2432,7 @@ def ck_same_expr(nd: Array[int, 655360], a: int, b: int) -> bool {
 # `(var * K) + rest`, and then `K` is checked against the inner loop's own bound.
 # Stage 0 builds `K`'s expected spelling as a new node (`BinOp("*", stop, step)`)
 # and compares keys; comparing the parts structurally is the same question.
-def ck_rowmajor(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+def ck_rowmajor(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
                 expr: int, var: int, lb: Array[int, 64], nlb: int) -> bool {
     mut kn: int = -1
     mut rn: int = -1
@@ -2295,7 +2505,7 @@ def ck_rowmajor(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
 
 # `verify_parallel`'s `_match_linear`, in full: the row-major case first, then
 # the coefficient-and-width case.
-def ck_match_linear(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_match_linear(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                     vm: VM, iv: Array[int, 64], ni: int,
                     lb: Array[int, 64], nlb: int, expr: int, var: int) -> bool {
     if ck_rowmajor(nd, mem, vm, expr, var, lb, nlb) {
@@ -2322,7 +2532,7 @@ def ck_match_linear(nd: Array[int, 655360], mut mem: Array[int, 3741696],
 # `range(a, b)` / `range(a, b, s)` as an interval, from `range_interval`.  A step
 # of zero is left alone here: stage 0 refuses that at the statement, and
 # re-refusing it inside the proof would print a different line for it.
-def ck_range_iv(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+def ck_range_iv(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
                 iv: Array[int, 64], ni: int, start: int, stop: int,
                 step: int, mut out: Iv) -> None {
     mut a: Iv = Iv(0, 0, 0, 0)
@@ -2422,7 +2632,7 @@ def TW_KCAP() -> int { return 8 }
 # `idx` is the `a[i]` node itself — the thing stage 0 names `items[0]` and points
 # its refusal at — and the expression the proof is about is the node *inside* it,
 # `a[i]`'s second word.  Two different questions, two different words.
-def ck_pwrite(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+def ck_pwrite(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
               iv: Array[int, 64], ni: int, lb: Array[int, 64], nlb: int,
               mut tb: Array[int, 448], bn: int, idx: int, var: int) -> None {
     n: int = tb[TW_NB()]
@@ -2469,7 +2679,7 @@ def ck_pwrite(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
 # An assignment to a name the body did not declare is an assignment to something
 # every iteration shares — which is a race, and the two spellings of it are told
 # apart because stage 0 tells them apart.
-def ck_pname(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+def ck_pname(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
              vm: VM, s: int, aug: int) -> None {
     nm: int = nd[nd[s * 10 + 1] * 10 + 1]
     if ck_bound(mem, vm, nm) < 0 {
@@ -2488,7 +2698,7 @@ def ck_pname(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
 
 # `analysis`-free purity: an impure method is only caught when the receiver is a
 # plain name, because anything else needs the type of an arbitrary expression.
-def ck_pure_method(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_pure_method(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                    path: str, vm: VM, e: int, callee: int) -> None {
     recv: int = nd[callee * 10 + 1]
     if nd_kind(nd, recv) != 25 {
@@ -2524,7 +2734,7 @@ def ck_pure_method(nd: Array[int, 655360], mut mem: Array[int, 3741696],
 # `_parallel_rhs_ok`: everything a parallel body calls must be provably pure,
 # and `print` is refused before purity is even asked about, because its whole
 # purpose is a side effect on a shared stream.
-def ck_pure(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+def ck_pure(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
             vm: VM, e: int) -> None {
     if e <= 0 {
         return
@@ -2605,7 +2815,7 @@ def ck_pure(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
 # `while` *condition* is never checked for purity, and neither is the index inside
 # a write's target.  Both are stage 0's behaviour, and a port that quietly
 # improved on them would be a port that refuses programs stage 0 accepts.
-def ck_pcol(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+def ck_pcol(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
             vm: VM, head: int, var: int,
             mut iv: Array[int, 64], mut lb: Array[int, 64], mut p: Par,
             mut tb: Array[int, 448]) -> None {
@@ -2750,7 +2960,7 @@ def ck_pread_msg(name: int, wline: int, rline: int) -> str {
 # `ck_same_expr` — the same notion of "the identical index expression" the write
 # rule already uses — so `a[i] = a[i] + 1` and `a[i] += 1` stay legal: each
 # iteration reads exactly the element it writes.
-def ck_pread_expr(nd: Array[int, 655360], path: str, tb: Array[int, 448],
+def ck_pread_expr(nd: Array[int, 1310720], path: str, tb: Array[int, 448],
                   e: int) -> None {
     if e <= 0 {
         return
@@ -2817,7 +3027,7 @@ def ck_pread_expr(nd: Array[int, 655360], path: str, tb: Array[int, 448],
 # conditions it deliberately leaves alone — a condition is an expression and a
 # read in one is a read (stage 0 never looked for purity in a condition; it never
 # looked for a race in one either, because this rule did not exist).
-def ck_pread(nd: Array[int, 655360], path: str, tb: Array[int, 448],
+def ck_pread(nd: Array[int, 1310720], path: str, tb: Array[int, 448],
              head: int) -> None {
     mut s: int = head
     while s > 0 {
@@ -2847,7 +3057,7 @@ def ck_pread(nd: Array[int, 655360], path: str, tb: Array[int, 448],
 # The verdict.  Stage 0's order is the order here: no writes at all first, then
 # for each array in first-write order — is it a local `mut` array, does it have
 # one index expression, and is that expression injective.
-def ck_parallel(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_parallel(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                 path: str, vm: VM, s: int) -> None {
     mut iv: Array[int, 64]
     mut lb: Array[int, 64]
@@ -2910,7 +3120,7 @@ def ck_parallel(nd: Array[int, 655360], mut mem: Array[int, 3741696],
 
 # ------------------------------------------------------------------- bodies
 
-def ck_body(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_body(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
             path: str, mut vm: VM, head: int) -> None {
     mark: int = vm.scn
     mut s: int = head
@@ -2921,7 +3131,7 @@ def ck_body(nd: Array[int, 655360], mut mem: Array[int, 3741696],
     vm.scn = mark
 }
 
-def ck_block(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_block(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
              path: str, mut vm: VM, head: int) -> None {
     if head <= 0 {
         return
@@ -2929,7 +3139,7 @@ def ck_block(nd: Array[int, 655360], mut mem: Array[int, 3741696],
     ck_body(nd, mem, path, vm, head)
 }
 
-def ck_stmt(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_stmt(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
             path: str, mut vm: VM, s: int, mark: int) -> None {
     k: int = nd_kind(nd, s)
     if k == 6 {
@@ -2961,7 +3171,7 @@ def ck_stmt(nd: Array[int, 655360], mut mem: Array[int, 3741696],
             # the binding joins the scope so the rest of the block sees it
             ck_narrow_store(nd, mem, path, vm, s, nt_get(mem, s, NT_LIT()), v)
             ck_push(mem, vm, name, nt_get(mem, s, NT_LIT()),
-                    (nd[s * 10 + 6] & 1) == 1)
+                    (nd[s * 10 + 6] & 1) == 1, nt_get(mem, s, NT_VAL()))
         } else {
             ck_store(nd, mem, path, vm, s)
         }
@@ -3027,7 +3237,7 @@ def ck_stmt(nd: Array[int, 655360], mut mem: Array[int, 3741696],
                               "' is already declared in this scope"))
         }
         m2: int = vm.scn
-        ck_push(mem, vm, name, K_INT(), False)
+        ck_push(mem, vm, name, K_INT(), False, -1)
         ck_block(nd, mem, path, vm, nd[s * 10 + 8])
         # The proof runs here, and *here* is the point: the body's own bindings
         # have just gone out of scope again, while the loop variable has not.  A
@@ -3039,6 +3249,15 @@ def ck_stmt(nd: Array[int, 655360], mut mem: Array[int, 3741696],
             ck_parallel(nd, mem, path, vm, s)
         }
         vm.scn = m2
+        return
+    }
+    if k == 37 {
+        ck_match(nd, mem, path, vm, s)
+        return
+    }
+    if k == 35 {
+        ck_type(path, nd_line(nd, s),
+                "an enum is declared at the top level, not inside a block")
         return
     }
     # 13 break, 14 continue, 15 pass: nothing to say about them yet
@@ -3099,7 +3318,7 @@ def ck_extern_ok(pk: int) -> bool {
 # What stays unknown — a field read, an array literal, a method call — is
 # `K_BAD`, and a rule that reads this stays quiet about it, which is the same
 # honesty as everywhere else in this pass.
-def ck_arg_kind(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
+def ck_arg_kind(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
                 e: int) -> int {
     k: int = ck_etype(nd, mem, vm, e)
     if k != K_BAD() {
@@ -3134,7 +3353,7 @@ def ck_arg_kind(nd: Array[int, 655360], mut mem: Array[int, 3741696], vm: VM,
 # node's static type and until now nothing wrote it — and a struct cannot hold a
 # pool, so a slot next to the node is the only place a call site can be told what
 # the *callee* declared.
-def ck_record_decls(nd: Array[int, 655360], ty: Array[int, 262144],
+def ck_record_decls(nd: Array[int, 1310720], ty: Array[int, 262144],
                     mut mem: Array[int, 3741696], vm: VM, f: int) -> None {
     d: int = ft_get(mem, f, FT_DEF())
     nt_put(mem, d, NT_TY(), type_packed(ty, ft_get(mem, f, FT_RETTY()), mem, vm))
@@ -3172,7 +3391,7 @@ def ck_extern_too_big(fn: int, v: int, pk: int) -> str {
 }
 
 # One argument against the parameter it is going to.
-def ck_extern_arg(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_extern_arg(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                   path: str, vm: VM, e: int, callee: int, p: int,
                   a: int) -> None {
     pk: int = nt_get(mem, p, NT_TY())
@@ -3205,7 +3424,7 @@ def ck_extern_arg(nd: Array[int, 655360], mut mem: Array[int, 3741696],
 # `abs(...)` where `abs` is `extern c`.  The number of arguments is already the
 # resolver's verdict ("wrong number of arguments", with the line of the call), so
 # what is left for this rule is the type of each one.
-def ck_extern_call(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def ck_extern_call(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                    path: str, vm: VM, e: int) -> None {
     callee: int = nd[e * 10 + 1]
     if nd_kind(nd, callee) != 25 {
@@ -3236,7 +3455,7 @@ def ck_extern_call(nd: Array[int, 655360], mut mem: Array[int, 3741696],
     }
 }
 
-def ck_function(nd: Array[int, 655360], ty: Array[int, 262144],
+def ck_function(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mut mem: Array[int, 3741696],
                 path: str, mut vm: VM, f: int) -> None {
     d: int = ft_get(mem, f, FT_DEF())
@@ -3290,7 +3509,8 @@ def ck_function(nd: Array[int, 655360], ty: Array[int, 262144],
         }
         # a parameter's type is not in the node table: the emitter asks the type
         # pool for it (`param_packed`), and so does this, so that the two agree
-        ck_push_par(mem, vm, name, pk, (nd[p * 10 + 6] & 1) == 1)
+        ck_push_par(mem, vm, name, pk, (nd[p * 10 + 6] & 1) == 1,
+                    shape_of_type(ty, nd[p * 10 + 2], mem, vm))
         p = nd_nx(nd, p)
     }
     body: int = ft_get(mem, f, FT_BODY())
@@ -3298,7 +3518,7 @@ def ck_function(nd: Array[int, 655360], ty: Array[int, 262144],
         ck_block(nd, mem, path, vm, body)
     }
     if unpack_kind(retp) != K_NONE() and not ext {
-        if not ck_always_returns(nd, body) {
+        if not ck_always_returns(nd, mem, vm, body) {
             ck_type(path, nd_line(nd, d),
                     ck_quoted("function '", nd[d * 10 + 1],
                               concat("' may finish without returning ",
@@ -3347,7 +3567,7 @@ def ck_conflict_msg(name: int, first: int, second: int) -> str {
 # Only *declarations* are compared: a `def` with a body is a different question
 # (shadowing, overriding) and `resolve` already owns it, while the foreign boundary
 # is the one place where nothing else will ever look at the prototype again.
-def ck_proto_same(nd: Array[int, 655360], ty: Array[int, 262144],
+def ck_proto_same(nd: Array[int, 1310720], ty: Array[int, 262144],
                   mem: Array[int, 3741696], vm: VM, a: int, b: int) -> bool {
     ra: int = type_packed(ty, ft_get(mem, a, FT_RETTY()), mem, vm)
     rb: int = type_packed(ty, ft_get(mem, b, FT_RETTY()), mem, vm)
@@ -3374,7 +3594,7 @@ def ck_proto_same(nd: Array[int, 655360], ty: Array[int, 262144],
     return True
 }
 
-def ck_extern_conflicts(nd: Array[int, 655360], ty: Array[int, 262144],
+def ck_extern_conflicts(nd: Array[int, 1310720], ty: Array[int, 262144],
                         mem: Array[int, 3741696], path: str, vm: VM) -> None {
     mut i: int = 0
     while i < vm.nfn {
@@ -3400,7 +3620,7 @@ def ck_extern_conflicts(nd: Array[int, 655360], ty: Array[int, 262144],
     }
 }
 
-def ck_module(nd: Array[int, 655360], ty: Array[int, 262144],
+def ck_module(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], path: str, mut vm: VM) -> None {
     mut sid: int = 0
     while sid < vm.nstruct {

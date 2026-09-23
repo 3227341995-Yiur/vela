@@ -1,0 +1,11 @@
+# Refuse-case.  `enum` and `match` are keywords now (SPEC.md 1.3), and this pins
+# the decision rather than leaving it to be discovered: before the change both
+# spellings lexed as ordinary NAMEs, so `mut match: int = 1` was a legal program.
+# The diagnostic names the reserved word, and the reason the keyword was the right
+# call is that the alternative -- recognising a statement-position NAME as a
+# `match` -- has to guess between `match = 1`, `match(x)` and `match x { ... }`.
+
+def main() -> None {
+    mut match: int = 1
+    print(match)
+}

@@ -1,0 +1,2 @@
+vela: type error: an else arm must be the last arm of a match
+  at tests/build/enum_else_not_last.vel:12

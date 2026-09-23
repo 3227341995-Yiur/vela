@@ -62,7 +62,7 @@ def fail_name(path: str, line: int, msg: str, name: str) -> None {
 # wins, which is exactly Vela's shadowing rule.
 
 def sc_push(mut mem: Array[int, 3741696], mut vm: VM, name: int, kind: int,
-            val: int, ckind: int) -> None {
+            val: int, ckind: int, shape: int) -> None {
     if vm.scn >= SCOPE_MAX() {
         panic("vela: compiler: the resolver ran out of scope entries")
     }
@@ -73,7 +73,17 @@ def sc_push(mut mem: Array[int, 3741696], mut vm: VM, name: int, kind: int,
     # in C, and this is where it learns whether it is an int, a double or a
     # pointer into the arena
     mem[SCOPE_BASE() + vm.scn * 4 + 3] = ckind
+    # and so does the *shape*: which struct-table row describes the value (or, for
+    # an array, its elements).  It is a parameter of the push rather than a call a
+    # caller may forget, because a binding whose row is stale would hand a `match`
+    # the wrong variant list -- a wrong answer, which is the one outcome this
+    # project refuses.  `-1` is the honest answer for a scalar and for a function.
+    mem[SCOPE_SHAPE() + vm.scn] = shape
     vm.scn += 1
+}
+
+def sc_shape(mem: Array[int, 3741696], i: int) -> int {
+    return mem[SCOPE_SHAPE() + i]
 }
 
 def sc_ckind(mem: Array[int, 3741696], i: int) -> int {
@@ -179,6 +189,83 @@ def find_struct(mem: Array[int, 3741696], vm: VM, name: int) -> int {
     return -1
 }
 
+# --------------------------------------------------------------- enum lookup
+#
+# `find_enum` is the nominal name lookup, `find_variant` the one a bare variant
+# name goes through, and `enum_of_type` the one a declared type goes through --
+# the same three shapes `find_struct`/`struct_of_type` already have, because an
+# enum is registered as a type *and* as a layout (see `add_enum_names`).
+
+def find_enum(mem: Array[int, 3741696], vm: VM, name: int) -> int {
+    mut i: int = 0
+    while i < vm.nenum {
+        if enb_get(mem, i, ENB_NAME()) == name {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+def find_variant(mem: Array[int, 3741696], vm: VM, name: int) -> int {
+    mut i: int = 0
+    while i < vm.nvr {
+        if vrb_get(mem, i, VRB_NAME()) == name {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+# The enum whose layout row this is, or -1: the inverse of `ENB_SID`, and the only
+# way a runtime value's struct-table row becomes a variant list.
+def enum_of_row(mem: Array[int, 3741696], vm: VM, row: int) -> int {
+    if row < 0 {
+        return -1
+    }
+    mut i: int = 0
+    while i < vm.nenum {
+        if enb_get(mem, i, ENB_SID()) == row {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+def enum_of_type(ty: Array[int, 262144], t: int,
+                 mem: Array[int, 3741696], vm: VM) -> int {
+    if t < 0 {
+        return -1
+    }
+    if ty_elem(ty, t) >= 0 {
+        # an array of enums is an enum for the purposes of what it *is*: the
+        # subject of `match a[i]` is an enum value, not an array
+        return enum_of_type(ty, ty_elem(ty, t), mem, vm)
+    }
+    return find_enum(mem, vm, ty_base(ty, t))
+}
+
+# The struct-table row that describes a value of this type -- for an enum, the
+# row its values actually use; for an array, the row of its elements (an array of
+# enums is an array of *that* enum's values).  This is what rides in the scope
+# stack's shape word and in `NT_ROW()` on a name node.
+def shape_of_type(ty: Array[int, 262144], t: int,
+                  mem: Array[int, 3741696], vm: VM) -> int {
+    if t < 0 {
+        return -1
+    }
+    if ty_elem(ty, t) >= 0 {
+        return shape_of_type(ty, ty_elem(ty, t), mem, vm)
+    }
+    e: int = find_enum(mem, vm, ty_base(ty, t))
+    if e >= 0 {
+        return enb_get(mem, e, ENB_SID())
+    }
+    return find_struct(mem, vm, ty_base(ty, t))
+}
+
 # The kind of a declared type, as one of the K_* codes.  Only declarations need
 # this: an expression's type is the value's tag at run time, which is why this
 # interpreter has no type inference pass at all.
@@ -226,6 +313,13 @@ def type_kind(ty: Array[int, 262144], t: int, mem: Array[int, 3741696],
     if s == "u8" { return K_U8() }
     if s == "i32" { return K_I32() }
     if s == "None" { return K_NONE() }
+    # the enum lookup is a separate table from the struct one and is asked
+    # *first*, on purpose: an enum registers a layout row of its own (under its
+    # own name) so that so many other things keep working, and `find_struct`
+    # would find it and answer `K_ST()` -- a struct -- for a type that is not one.
+    if find_enum(mem, vm, base) >= 0 {
+        return K_ENUM()
+    }
     if find_struct(mem, vm, base) >= 0 {
         return K_ST()
     }
@@ -245,18 +339,26 @@ def struct_of_type(ty: Array[int, 262144], t: int,
 # ride in the same word (pack_kind), and until this existed a struct binding
 # claimed struct 0 -- right for a program with one struct, wrong for the compiler
 # itself, which has a dozen.
+#
+# An enum binding needs the same word for a third reason: the row its *values*
+# use, so that `Array[E, 4]` has a stride (`STB_SIZE`) and `copy_value` has a
+# count.  It is the enum's layout row, the same number a struct binding carries,
+# which is why `K_ENUM` and `K_ST` differ in the kind byte and agree in the rest.
 def type_packed(ty: Array[int, 262144], t: int,
                 mem: Array[int, 3741696], vm: VM) -> int {
     k: int = type_kind(ty, t, mem, vm)
     if k == K_ST() {
         return pack_kind(K_ST(), struct_of_type(ty, t, mem, vm))
     }
+    if k == K_ENUM() {
+        return pack_kind(K_ENUM(), shape_of_type(ty, t, mem, vm))
+    }
     return pack_kind(k, ty_len(ty, t))
 }
 
 # ---------------------------------------------------------- registering shapes
 
-def add_field(nd: Array[int, 655360], ty: Array[int, 262144],
+def add_field(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], path: str,
               mut vm: VM, sid: int, f: int) -> None {
     mut h: int = 0
@@ -281,7 +383,7 @@ def add_field(nd: Array[int, 655360], ty: Array[int, 262144],
     stb_put(mem, sid, STB_SIZE(), n + 1)
 }
 
-def add_function(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+def add_function(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
                  mut vm: VM, d: int, owner: int) -> int {
     if vm.nfn >= 4096 {
         fail(path, nd_line(nd, d), "too many functions")
@@ -299,12 +401,12 @@ def add_function(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str
         ft_put(mem, fn, FT_PURE(), 1)
     }
     if owner < 0 {
-        sc_push(mem, vm, nd[d * 10 + 1], SYM_FUNC(), fn, 0)
+        sc_push(mem, vm, nd[d * 10 + 1], SYM_FUNC(), fn, 0, -1)
     }
     return fn
 }
 
-def add_struct(nd: Array[int, 655360], ty: Array[int, 262144],
+def add_struct(nd: Array[int, 1310720], ty: Array[int, 262144],
                mut mem: Array[int, 3741696], path: str, mut vm: VM,
                s: int) -> None {
     if vm.nstruct >= 1024 {
@@ -318,7 +420,7 @@ def add_struct(nd: Array[int, 655360], ty: Array[int, 262144],
     stb_put(mem, sid, STB_NMETH(), 0)
     stb_put(mem, sid, STB_MOFF(), vm.metn)
     stb_put(mem, sid, STB_SIZE(), 0)
-    sc_push(mem, vm, nd[s * 10 + 1], SYM_STRUCT(), sid, 0)
+    sc_push(mem, vm, nd[s * 10 + 1], SYM_STRUCT(), sid, 0, sid)
 
     mut m: int = nd[s * 10 + 2]
     while m > 0 {
@@ -353,9 +455,194 @@ def add_struct(nd: Array[int, 655360], ty: Array[int, 262144],
     }
 }
 
+# -------------------------------------------------------- registering enums
+#
+# `enum Shape { Circle(radius: float) Rect(w: float, h: float) Empty }` is three
+# registrations, and the split is the whole design:
+#
+#   1. a *layout row* in the struct table, under the enum's own name, whose size
+#      is `1 + the widest payload`.  That single row is what makes `mut c: Shape`,
+#      `Array[Shape, 4]`, `copy_value`, `elem_store` and the C back end's existing
+#      aggregate paths work on an enum value with no new machinery: an enum value
+#      is a struct value whose cell reads (K_ST, payload base, this row, stride).
+#      The block itself is `[tag, payload...]` -- cell 0 is the tag, cells 1.. are
+#      the payload of whichever variant the tag names -- so the tag needs no word
+#      of its own, and the "field count" the struct copier reads is exactly the
+#      number of cells to copy.
+#   2. a *nominal* row in the enum table, because a type name must resolve to
+#      `K_ENUM` (not to the layout row it shares a name with) and because a
+#      variant list has to be reachable from a `match`.
+#   3. one *variant* record per variant: name, tag, field count, and a run of
+#      payload field records (name + packed kind) in the vfl region.
+#
+# Two passes, because a payload field may name an enum declared *below* the one
+# holding it (`enum Outer { Wrap(inner: Inner) }` before `enum Inner`).  The first
+# pass registers every name in the file, so the second pass resolves field types
+# against a table that is already complete.  A stride needs no types at all --
+# every payload field is one cell, whatever it holds -- which is why the layout
+# row can be finished in the first pass.
+
+def add_enum_names(nd: Array[int, 1310720],
+                   mut mem: Array[int, 3741696], path: str, mut vm: VM,
+                   s: int) -> None {
+    name: int = nd[s * 10 + 1]
+    if vm.nenum >= 4096 {
+        fail(path, nd_line(nd, s), "too many enums")
+    }
+    if find_enum(mem, vm, name) >= 0 {
+        fail_name(path, nd_line(nd, s), "duplicate enum", interned(name))
+    }
+    if find_struct(mem, vm, name) >= 0 {
+        fail_name(path, nd_line(nd, s),
+                  "this name is already a struct", interned(name))
+    }
+    if builtin_id(name) > 0 {
+        fail_name(path, nd_line(nd, s),
+                  "this name is already a builtin", interned(name))
+    }
+    if vm.nstruct >= 1024 {
+        fail(path, nd_line(nd, s), "too many structs and enums together")
+    }
+    mut widest: int = 0
+    mut v: int = nd[s * 10 + 2]
+    while v > 0 {
+        if nd[v * 10 + 3] > widest {
+            widest = nd[v * 10 + 3]
+        }
+        v = nd_nx(nd, v)
+    }
+    eid: int = vm.nenum
+    vm.nenum += 1
+    sid: int = vm.nstruct
+    vm.nstruct += 1
+    stb_put(mem, sid, STB_NAME(), name)
+    # the enum's own row has no fields: a payload belongs to a *variant*, and
+    # which variant a value holds is the tag inside the block, not a field list
+    stb_put(mem, sid, STB_NFIELD(), 0)
+    stb_put(mem, sid, STB_FOFF(), vm.sfln)
+    stb_put(mem, sid, STB_NMETH(), 0)
+    stb_put(mem, sid, STB_MOFF(), vm.metn)
+    stb_put(mem, sid, STB_SIZE(), widest + 1)
+    enb_put(mem, eid, ENB_NAME(), name)
+    enb_put(mem, eid, ENB_NVAR(), nd[s * 10 + 3])
+    # -1, because the variants are pass 1b's work and `vm.nvr` here is the cursor
+    # from *before* any of them exists.  Writing it in this pass is a mistake this
+    # file has already made once, and a two-enum probe caught it: every enum after
+    # the first then pointed at variant record 0 -- some *other* enum's variant --
+    # so the exhaustiveness rule judged the wrong variant list and refused a
+    # program that names every variant it has.  Pass (a2) writes the real cursor.
+    enb_put(mem, eid, ENB_VOFF(), -1)
+    enb_put(mem, eid, ENB_SID(), sid)
+    enb_put(mem, eid, ENB_STRIDE(), widest + 1)
+    enb_put(mem, eid, ENB_NMAX(), widest)
+}
+
+def add_enum_variants(nd: Array[int, 1310720], ty: Array[int, 262144],
+                      mut mem: Array[int, 3741696], path: str, mut vm: VM,
+                      s: int) -> None {
+    eid: int = find_enum(mem, vm, nd[s * 10 + 1])
+    if eid < 0 {
+        # add_enum_names already refused this, and a -1 here would write variant
+        # records for an enum that is not in the table
+        panic("vela: compiler: an enum went missing between its two passes")
+    }
+    # where this enum's variants begin: the cursor as it stands *now*, which is what
+    # lets two enums in one file describe their own variants and not each other's
+    enb_put(mem, eid, ENB_VOFF(), vm.nvr)
+    mut tag: int = 0
+    mut v: int = nd[s * 10 + 2]
+    while v > 0 {
+        add_variant(nd, ty, mem, path, vm, eid, v, tag)
+        tag += 1
+        v = nd_nx(nd, v)
+    }
+}
+
+def add_variant(nd: Array[int, 1310720], ty: Array[int, 262144],
+                mut mem: Array[int, 3741696], path: str, mut vm: VM,
+                eid: int, v: int, tag: int) -> None {
+    name: int = nd[v * 10 + 1]
+    if vm.nvr >= 4096 {
+        fail(path, nd_line(nd, v), "too many variants")
+    }
+    # A variant name is how a value is *built*, and v1 resolves it by spelling
+    # alone: there is no expected-type machinery to make `Empty` mean
+    # `Shape.Empty` in one position and `Tree.Empty` in another.  So one spelling
+    # has to mean one enum, and a second enum asking for the same name is refused
+    # here, naming both of them, rather than leaving the second one unreachable.
+    prev: int = find_variant(mem, vm, name)
+    if prev >= 0 {
+        fail_kind(path, nd_line(nd, v), "type error",
+                  concat(concat(concat(concat("variant '", interned(name)),
+                                       "' is already declared by enum '"),
+                                interned(enb_get(mem, vrb_get(mem, prev, VRB_ENUM()),
+                                                 ENB_NAME()))),
+                         "': a variant name must be unique in a file"))
+    }
+    if builtin_id(name) > 0 {
+        fail_name(path, nd_line(nd, v),
+                  "a builtin already has this name", interned(name))
+    }
+    vi: int = vm.nvr
+    vm.nvr += 1
+    vrb_put(mem, vi, VRB_NAME(), name)
+    vrb_put(mem, vi, VRB_ENUM(), eid)
+    vrb_put(mem, vi, VRB_TAG(), tag)
+    vrb_put(mem, vi, VRB_NFIELD(), nd[v * 10 + 3])
+    vrb_put(mem, vi, VRB_FOFF(), vm.vfln)
+    mut f: int = nd[v * 10 + 2]
+    while f > 0 {
+        if vm.vfln + 2 > 16384 {
+            fail(path, nd_line(nd, f), "too many payload fields")
+        }
+        fh: int = nd[f * 10 + 1]
+        ft: int = nd[f * 10 + 2]
+        fk: int = type_kind(ty, ft, mem, vm)
+        if fk == K_BAD() {
+            fail_kind(path, nd_line(nd, f), "type error",
+                      concat(concat(concat(concat("payload field '",
+                                                  interned(fh)),
+                                           "' has type '"),
+                                    interned(ty_base(ty, ft))),
+                             "', which is not a type"))
+        }
+        if enum_of_type(ty, ft, mem, vm) == eid {
+            fail_kind(path, nd_line(nd, v), "type error",
+                      concat(concat(concat(concat("enum '",
+                                                  interned(enb_get(mem, eid,
+                                                                   ENB_NAME()))),
+                                           "' cannot carry itself in a payload: variant '"),
+                                    interned(name)),
+                             "' has a field of that same enum type, and a value type cannot contain itself"))
+        }
+        vfl_put(mem, vm.vfln, fh)
+        vfl_put(mem, vm.vfln + 1, type_packed(ty, ft, mem, vm))
+        vm.vfln += 2
+        f = nd_nx(nd, f)
+    }
+}
+
+# After the whole top level is registered: a variant whose spelling is also a
+# global name would be *unreachable*, because `bind_name` finds a local, a
+# function, a struct or a builtin before it finds a variant.  Order in the file
+# decides which of the two got there first, and a variant that silently means
+# something else is a wrong answer, so this is refused by name instead.
+def check_variants_visible(mem: Array[int, 3741696], path: str, vm: VM) -> None {
+    mut i: int = 0
+    while i < vm.nvr {
+        h: int = vrb_get(mem, i, VRB_NAME())
+        if sc_find(mem, vm, h) >= 0 {
+            fail_kind(path, 1, "type error",
+                      concat(concat("the variant name '", interned(h)),
+                             "' is also a function or a struct, which would make the variant unreachable"))
+        }
+        i += 1
+    }
+}
+
 # -------------------------------------------------------- binding expressions
 
-def count_chain(nd: Array[int, 655360], head: int) -> int {
+def count_chain(nd: Array[int, 1310720], head: int) -> int {
     mut n: int = 0
     mut a: int = head
     while a > 0 {
@@ -365,7 +652,7 @@ def count_chain(nd: Array[int, 655360], head: int) -> int {
     return n
 }
 
-def check_call(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+def check_call(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
                vm: VM, e: int, callee: int) -> None {
     nargs: int = count_chain(nd, nd[e * 10 + 2])
     if nd_kind(nd, callee) != 25 {
@@ -386,6 +673,25 @@ def check_call(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
         }
         return
     }
+    if sk == SYM_VARIANT() {
+        # A variant construction *is* the call shape -- `Circle(1.0)` is an
+        # ordinary call whose callee names a variant -- so its arity is checked
+        # here, beside the struct's, and for the same reason: a call with the
+        # wrong number of values has to be a refusal with a line number, not a
+        # surprise inside the interpreter or a wrong answer out of the back end.
+        nf: int = vrb_get(mem, sv, VRB_NFIELD())
+        if nf != nargs {
+            fail_kind(path, nd_line(nd, e), "type error",
+                      concat(concat(concat(concat(concat("variant '",
+                                                        interned(vrb_get(mem, sv,
+                                                                         VRB_NAME()))),
+                                               "' carries "),
+                                        ck_int_text(nf)),
+                                 concat(" payload value(s), so it takes ", ck_int_text(nf))),
+                              concat(", not ", ck_int_text(nargs))))
+        }
+        return
+    }
     if sk == SYM_BUILTIN() {
         want: int = builtin_arity(sv)
         if want >= 0 {
@@ -398,7 +704,7 @@ def check_call(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
     fail(path, nd_line(nd, e), "this is not something that can be called")
 }
 
-def bind_name(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+def bind_name(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
               mut vm: VM, e: int) -> None {
     h: int = nd[e * 10 + 1]
     i: int = sc_find(mem, vm, h)
@@ -408,6 +714,8 @@ def bind_name(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
         # a name carries its own kind, so the back end can print its C type
         # without a second symbol table
         nt_put(mem, e, NT_LIT(), sc_ckind(mem, i))
+        # and its shape row, which is what a `match` reads to find its variants
+        nt_put(mem, e, NT_ROW(), sc_shape(mem, i))
         return
     }
     b: int = builtin_id(h)
@@ -416,10 +724,32 @@ def bind_name(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
         nt_put(mem, e, NT_VAL(), b)
         return
     }
+    # a bare variant name is a value: the one spelling that builds a payload-free
+    # value, and the callee of a construction.  Both go through this arm, and
+    # `SYM_VARIANT()` plus the variant record is everything the checker, the
+    # interpreter and both back ends need to finish the job.
+    vi: int = find_variant(mem, vm, h)
+    if vi >= 0 {
+        nt_put(mem, e, NT_SYM(), SYM_VARIANT())
+        nt_put(mem, e, NT_VAL(), vi)
+        nt_put(mem, e, NT_LIT(),
+               pack_kind(K_ENUM(), enb_get(mem, vrb_get(mem, vi, VRB_ENUM()),
+                                           ENB_SID())))
+        nt_put(mem, e, NT_ROW(),
+               enb_get(mem, vrb_get(mem, vi, VRB_ENUM()), ENB_SID()))
+        return
+    }
+    if find_enum(mem, vm, h) >= 0 {
+        # `Shape` alone is not a value, and "undeclared name 'Shape'" would send
+        # the reader looking for a typo in a name the compiler knows perfectly well
+        fail_kind(path, nd_line(nd, e), "type error",
+                  concat(concat("enum '", interned(h)),
+                         "' is a type, not a value: name one of its variants"))
+    }
     fail_name(path, nd_line(nd, e), "undeclared name", interned(h))
 }
 
-def walk_expr(nd: Array[int, 655360], ty: Array[int, 262144],
+def walk_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], path: str, mut vm: VM,
               e: int) -> None {
     if e <= 0 {
@@ -488,7 +818,7 @@ def walk_expr(nd: Array[int, 655360], ty: Array[int, 262144],
 
 # -------------------------------------------------------- binding statements
 
-def declare_local(nd: Array[int, 655360], ty: Array[int, 262144],
+def declare_local(nd: Array[int, 1310720], ty: Array[int, 262144],
                   mut mem: Array[int, 3741696], path: str, mut vm: VM,
                   decl: int, tgt: int) -> None {
     if nd_kind(nd, tgt) != 25 {
@@ -528,18 +858,30 @@ def declare_local(nd: Array[int, 655360], ty: Array[int, 262144],
         }
         ck = pack_kind(K_ST(), sid)
     }
+    if kind == K_ENUM() {
+        # An enum binding is packed exactly like a struct one: the kind byte says
+        # `K_ENUM` (so a `match` can tell the two apart, and the C back end can
+        # spell the value) and the payload carries the row its values use (so
+        # `Array[E, N]` has a stride and the interpreter has a cell count).
+        sid = shape_of_type(ty, t, mem, vm)
+        e: int = enum_of_type(ty, t, mem, vm)
+        if sid < 0 or e < 0 {
+            fail(path, nd_line(nd, decl), "unknown enum type")
+        }
+        ck = pack_kind(K_ENUM(), sid)
+    }
     if kind == K_AX() {
         sid = struct_of_type(ty, ty_elem(ty, t), mem, vm)
         if sid < 0 {
             fail(path, nd_line(nd, decl), "unknown struct type")
         }
     }
-    sc_push(mem, vm, name, SYM_LOCAL(), slot, ck)
+    sc_push(mem, vm, name, SYM_LOCAL(), slot, ck, sid)
     nt_put(mem, decl, NT_LIT(), ck)
     nt_put(mem, decl, NT_VAL(), sid)
 }
 
-def walk_body(nd: Array[int, 655360], ty: Array[int, 262144],
+def walk_body(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], path: str, mut vm: VM,
               head: int) -> None {
     mut s: int = head
@@ -549,7 +891,77 @@ def walk_body(nd: Array[int, 655360], ty: Array[int, 262144],
     }
 }
 
-def walk_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
+# The shape row a packed kind names, or -1.  `K_ST` and `K_ENUM` both spend the
+# packed payload word on that row; `K_AX` spends it on the array *length*, which
+# the constant-index rule needs, so an array of enums used as a payload field
+# reports no row rather than the wrong one.
+def row_of_packed(packed: int) -> int {
+    k: int = unpack_kind(packed)
+    if k == K_ST() {
+        return unpack_len(packed)
+    }
+    if k == K_ENUM() {
+        return unpack_len(packed)
+    }
+    return -1
+}
+
+# One arm: `Circle(r) { ... }`, or `else { ... }` with no pattern at all.
+#
+# The bindings are the *variant's* payload fields, positionally, and each one
+# becomes an ordinary local of the arm's block: the same frame slot a declaration
+# gets, so neither the interpreter nor either back end needs a new notion of
+# "bound".  Which variant a pattern names, and how many names it must bind, is
+# decided here because this is the first pass that has the variant table; whether
+# that variant belongs to the *subject's* enum is the checker's question, since
+# only a type can answer it.
+def walk_arm(nd: Array[int, 1310720], ty: Array[int, 262144],
+             mut mem: Array[int, 3741696], path: str, mut vm: VM,
+             a: int) -> None {
+    pat: int = nd[a * 10 + 1]
+    mut vi: int = -1
+    if pat >= 0 {
+        vi = find_variant(mem, vm, pat)
+        if vi < 0 {
+            fail_kind(path, nd_line(nd, a), "type error",
+                      concat(concat("no variant named '", interned(pat)),
+                             "' in this program"))
+        }
+        nf: int = vrb_get(mem, vi, VRB_NFIELD())
+        nb: int = nd[a * 10 + 3]
+        if nf != nb {
+            fail_kind(path, nd_line(nd, a), "type error",
+                      concat(concat(concat(concat(concat("variant '",
+                                                        interned(pat)),
+                                               "' carries "), ck_int_text(nf)),
+                                    concat(" payload value(s), so its pattern binds ",
+                                           ck_int_text(nf))),
+                             concat(" name(s), not ", ck_int_text(nb))))
+        }
+    }
+    mark: int = vm.scn
+    mut b: int = nd[a * 10 + 2]
+    mut i: int = 0
+    while b > 0 {
+        fck: int = vfl_get(mem, vrb_get(mem, vi, VRB_FOFF()) + i * 2 + 1)
+        frow: int = row_of_packed(fck)
+        if vm.nlocal >= CELL_STACK_MAX() {
+            fail(path, nd_line(nd, a), "a function has too many local variables")
+        }
+        slot: int = vm.nlocal
+        vm.nlocal += 1
+        sc_push(mem, vm, nd[b * 10 + 1], SYM_LOCAL(), slot, fck, frow)
+        nt_put(mem, b, NT_SLOT(), slot)
+        nt_put(mem, b, NT_LIT(), fck)
+        nt_put(mem, b, NT_ROW(), frow)
+        i += 1
+        b = nd_nx(nd, b)
+    }
+    walk_body(nd, ty, mem, path, vm, nd[a * 10 + 4])
+    vm.scn = mark
+}
+
+def walk_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], path: str, mut vm: VM,
               s: int) -> None {
     k: int = nd_kind(nd, s)
@@ -616,10 +1028,29 @@ def walk_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
         slot: int = vm.nlocal
         vm.nlocal += 1
         nt_put(mem, s, NT_SLOT(), slot)
-        sc_push(mem, vm, name, SYM_LOCAL(), slot, K_INT())
+        sc_push(mem, vm, name, SYM_LOCAL(), slot, K_INT(), -1)
         walk_body(nd, ty, mem, path, vm, nd[s * 10 + 8])
         vm.scn = mark
         return
+    }
+    if k == 37 {
+        walk_expr(nd, ty, mem, path, vm, nd[s * 10 + 1])
+        mut a: int = nd[s * 10 + 2]
+        while a > 0 {
+            walk_arm(nd, ty, mem, path, vm, a)
+            a = nd_nx(nd, a)
+        }
+        return
+    }
+    if k == 35 {
+        fail_kind(path, nd_line(nd, s), "type error",
+                  "an enum is declared at the top level, not inside a block")
+    }
+    if k == 38 {
+        # an arm chain is walked by the `match` that owns it; one reaching this
+        # dispatcher would be a parser bug, and saying so beats binding nothing
+        fail_kind(path, nd_line(nd, s), "type error",
+                  "a match arm is legal inside a match only")
     }
     if k == 2 {
         # A `def` inside a body is neither a closure nor a forward declaration:
@@ -642,7 +1073,7 @@ def walk_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
 # defined below it — and a language where the order of definitions decides
 # which ones are visible is a language with a trap in it.
 
-def resolve_function(nd: Array[int, 655360], ty: Array[int, 262144],
+def resolve_function(nd: Array[int, 1310720], ty: Array[int, 262144],
                      mut mem: Array[int, 3741696], path: str, mut vm: VM,
                      fn: int) -> None {
     vm.scn = vm.nglob
@@ -653,7 +1084,8 @@ def resolve_function(nd: Array[int, 655360], ty: Array[int, 262144],
             fail(path, nd_line(nd, p), "too many parameters")
         }
         sc_push(mem, vm, nd[p * 10 + 1], SYM_LOCAL(), vm.nlocal,
-                param_packed(nd, ty, mem, vm, p))
+                param_packed(nd, ty, mem, vm, p),
+                shape_of_type(ty, nd[p * 10 + 2], mem, vm))
         vm.nlocal += 1
         p = nd_nx(nd, p)
     }
@@ -666,9 +1098,14 @@ def resolve_function(nd: Array[int, 655360], ty: Array[int, 262144],
     ft_put(mem, fn, FT_NLOCAL(), vm.nlocal)
 }
 
-def resolve_module(nd: Array[int, 655360], ty: Array[int, 262144],
+def resolve_module(nd: Array[int, 1310720], ty: Array[int, 262144],
                    mut mem: Array[int, 3741696], path: str,
                    mut vm: VM) -> None {
+    # Pass 1: every top-level *name*.  An enum registers its own name and the
+    # layout row its values use, but not its variants -- a payload field may name
+    # an enum that is declared below this one, and a table that is complete before
+    # any field type is resolved is what makes that ordering legal.  The stride
+    # needs no types (every payload field is one cell) so it can be finished here.
     mut s: int = nd[1]
     while s > 0 {
         k: int = nd_kind(nd, s)
@@ -676,13 +1113,25 @@ def resolve_module(nd: Array[int, 655360], ty: Array[int, 262144],
             add_function(nd, mem, path, vm, s, -1)
         } else if k == 4 {
             add_struct(nd, ty, mem, path, vm, s)
+        } else if k == 35 {
+            add_enum_names(nd, mem, path, vm, s)
         } else {
             fail(path, nd_line(nd, s),
-                 "a top-level statement must be a function or a struct")
+                 "a top-level statement must be a function, a struct or an enum")
+        }
+        s = nd_nx(nd, s)
+    }
+    # Pass 1b: now that the names are in, the variants -- names, tags, and payload
+    # field types.
+    s = nd[1]
+    while s > 0 {
+        if nd_kind(nd, s) == 35 {
+            add_enum_variants(nd, ty, mem, path, vm, s)
         }
         s = nd_nx(nd, s)
     }
     vm.nglob = vm.scn
+    check_variants_visible(mem, path, vm)
     mut f: int = 0
     while f < vm.nfn {
         resolve_function(nd, ty, mem, path, vm, f)

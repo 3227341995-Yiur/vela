@@ -349,6 +349,9 @@ def print_cell(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
         emit_str("None")
         return
     }
+    # a struct or an enum value has no `print` spelling in Vela 0.1 (the plan
+    # lists printing an enum among what is out of scope for v1), and the trap
+    # below is where the interpreter says so
     trap(path, line, "this value cannot be printed")
 }
 
@@ -554,7 +557,7 @@ def elem_store(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
 # The literal that initialises a declaration: element i is stored into element i,
 # and anything the literal does not mention stays zero-filled, exactly as an
 # `Array[float, 4] = [0.0]` literal is zero-padded by the compiler.
-def fill_literal(nd: Array[int, 655360], ty: Array[int, 262144],
+def fill_literal(nd: Array[int, 1310720], ty: Array[int, 262144],
                  mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                  flt: Array[float, 65536], mut ipool: Array[int, 2097152],
                  mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -578,7 +581,7 @@ def fill_literal(nd: Array[int, 655360], ty: Array[int, 262144],
     vm.sp = mark
 }
 
-def exec_array_decl(nd: Array[int, 655360], ty: Array[int, 262144],
+def exec_array_decl(nd: Array[int, 1310720], ty: Array[int, 262144],
                     mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                     flt: Array[float, 65536], mut ipool: Array[int, 2097152],
                     mut fpool: Array[float, 1048576],
@@ -607,7 +610,7 @@ def exec_array_decl(nd: Array[int, 655360], ty: Array[int, 262144],
 # ------------------------------------------------------------ expressions
 
 def eval_str_lit(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-                 src: str, nd: Array[int, 655360], e: int, dst: int) -> None {
+                 src: str, nd: Array[int, 1310720], e: int, dst: int) -> None {
     off: int = nd[e * 10 + 1]
     ln: int = nd[e * 10 + 2]
     mut raw: str = substr(src, off, off + ln)
@@ -628,6 +631,14 @@ def eval_name(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
     sv: int = nt_get(mem, e, NT_VAL())
     if sk == SYM_LOCAL() {
         copy_cell(mem, fmem, vm.dst, vm.fp + sv)
+        return
+    }
+    if sk == SYM_VARIANT() {
+        # A bare variant name is a value: `Empty`, `Red`.  Only a variant with no
+        # payload can be written this way -- the checker refuses the other case,
+        # naming the payload -- so this is a construction with no arguments and
+        # nothing to copy: the tagged block and nothing else.
+        set_variant(mem, fmem, path, vm, sv, vm.dst)
         return
     }
     if sk == SYM_FUNC() {
@@ -827,7 +838,7 @@ def check_kinds(path: str, mut vm: VM, mut mem: Array[int, 3741696], c: int,
     }
 }
 
-def eval_expr(nd: Array[int, 655360], ty: Array[int, 262144],
+def eval_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
               flt: Array[float, 65536], mut ipool: Array[int, 2097152],
               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -1054,7 +1065,7 @@ def do_len(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
     trap(path, vm.line, "len needs a string or an array")
 }
 
-def do_builtin(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+def do_builtin(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                mut fmem: Array[float, 786432], mut ipool: Array[int, 2097152],
                mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
                path: str, mut vm: VM, b: int, argbase: int, nargs: int,
@@ -1297,7 +1308,7 @@ def do_builtin(nd: Array[int, 655360], mut mem: Array[int, 3741696],
 # cell `2` lands in is no longer beside the first argument, while the callee
 # copies its parameters from `base + i`.  An argument list is a list, so it is
 # laid out as one.
-def reserve_args(nd: Array[int, 655360], mut vm: VM, args: int) -> int {
+def reserve_args(nd: Array[int, 1310720], mut vm: VM, args: int) -> int {
     n: int = count_chain(nd, args)
     mut i: int = 0
     while i < n {
@@ -1354,7 +1365,7 @@ def field_cell(mem: Array[int, 3741696], path: str, mut vm: VM, recv: int,
     return mem[recv * 4 + 1] + idx
 }
 
-def exec_construct(nd: Array[int, 655360], ty: Array[int, 262144],
+def exec_construct(nd: Array[int, 1310720], ty: Array[int, 262144],
                    mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                    flt: Array[float, 65536], mut ipool: Array[int, 2097152],
                    mut fpool: Array[float, 1048576],
@@ -1395,7 +1406,153 @@ def exec_construct(nd: Array[int, 655360], ty: Array[int, 262144],
     vm.sp = mark
 }
 
-def call_method(nd: Array[int, 655360], ty: Array[int, 262144],
+# ------------------------------------------------------------------- enums
+#
+# An enum value *is* a struct value with a tag inside it: `stride` heap cells, cell
+# 0 the tag and cells 1.. the payload of whichever variant the tag names, where
+# `stride` is 1 + the widest variant (the enum's layout row, `ENB_SID()`).  The
+# value cell itself is an ordinary `K_ST` cell, so `copy_value`, `assign_value`,
+# `elem_load`/`elem_store` for `Array[E, N]` and the frame-escape rule in
+# `enter_call` all work unchanged.  The tag rides in the first *payload* cell
+# instead of a word of its own, which is exactly why they can.
+#
+# The tag is the variant's record index **plus one**.  Zero is what a zero-filled
+# array element holds, so "no variant was ever written here" stays distinguishable
+# from "variant 0", and a `match` on an element nobody wrote is refused instead of
+# answered with the first variant.  (`enum_in_array` writes every element before
+# reading it and says so; this is what makes that a requirement rather than a hope.)
+
+def variant_stride(mem: Array[int, 3741696], vi: int) -> int {
+    return enb_get(mem, vrb_get(mem, vi, VRB_ENUM()), ENB_STRIDE())
+}
+
+# The block, allocated and tagged, with `dst` pointing at it.  The payload is the
+# caller's job: it has the values.
+def set_variant(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                path: str, mut vm: VM, vi: int, dst: int) -> int {
+    stride: int = variant_stride(mem, vi)
+    if vm.hp + stride >= CELL_HEAP_MAX() {
+        selflimit("the interpreter ran out of heap cells")
+    }
+    base: int = vm.hp
+    vm.hp += stride
+    set_int(mem, fmem, base, vi + 1)
+    mem[dst * 4 + 0] = K_ST()
+    mem[dst * 4 + 1] = base
+    mem[dst * 4 + 2] = enb_get(mem, vrb_get(mem, vi, VRB_ENUM()), ENB_SID())
+    mem[dst * 4 + 3] = stride
+    fmem[dst] = 0.0
+    return base
+}
+
+def exec_make_variant(nd: Array[int, 1310720], ty: Array[int, 262144],
+                      mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+                      flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                      mut fpool: Array[float, 1048576],
+                      mut bpool: Array[u8, 33554432], src: str, path: str,
+                      mut vm: VM, vi: int, args: int, dst: int) -> None {
+    nf: int = vrb_get(mem, vi, VRB_NFIELD())
+    n: int = count_chain(nd, args)
+    if n != nf {
+        # the resolver refuses a construction with the wrong number of values, so
+        # this is the backstop for a path that reached the interpreter without it
+        trap(path, vm.line, "this variant takes a different number of values")
+    }
+    mark: int = vm.sp
+    argbase: int = vm.sp
+    reserve_args(nd, vm, args)
+    mut a: int = args
+    mut i: int = 0
+    while a > 0 {
+        keep: int = vm.dst
+        vm.dst = argbase + i
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, a)
+        vm.dst = keep
+        a = nd_nx(nd, a)
+        i += 1
+    }
+    base: int = set_variant(mem, fmem, path, vm, vi, dst)
+    mut f: int = 0
+    while f < nf {
+        copy_value(mem, fmem, path, vm, base + 1 + f, argbase + f)
+        f += 1
+    }
+    vm.sp = mark
+}
+
+# The payload of the arm's variant, into the frame slots the resolver gave the
+# binding names.  `copy_value`, not `copy_cell`: a payload field may itself be a
+# struct or an enum, and the arm's local must own its cells.
+def bind_arm(nd: Array[int, 1310720], mem: Array[int, 3741696],
+             mut fmem: Array[float, 786432], path: str, vm: VM, a: int,
+             subj: int) -> None {
+    base: int = mem[subj * 4 + 1]
+    mut b: int = nd[a * 10 + 2]
+    mut i: int = 0
+    while b > 0 {
+        copy_value(mem, fmem, path, vm, vm.fp + nt_get(mem, b, NT_SLOT()),
+                   base + 1 + i)
+        i += 1
+        b = nd_nx(nd, b)
+    }
+}
+
+# `match v { ... }` as a statement.  The subject is evaluated **once** into a temp
+# cell, because an arm body may call something that would change what the subject
+# expression reads the second time; then the tag picks the arm, one arm runs, and
+# its control code is this statement's control code (so `return` inside an arm
+# returns from the function, exactly as it would from anywhere else in the block).
+def exec_match(nd: Array[int, 1310720], ty: Array[int, 262144],
+               mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+               flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
+               src: str, path: str, mut vm: VM, s: int) -> int {
+    mark: int = vm.sp
+    subj: int = cell_alloc(vm)
+    keep: int = vm.dst
+    vm.dst = subj
+    eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+              nd[s * 10 + 1])
+    vm.dst = keep
+    if mem[subj * 4 + 0] != K_ST() {
+        trap(path, vm.line, "the subject of a match must be an enum value")
+    }
+    tag: int = mem[mem[subj * 4 + 1] * 4 + 1]
+    if tag == 0 {
+        vm.sp = mark
+        trap(path, vm.line, "this enum value was never given a variant (an array element nobody wrote, or a zero-filled struct field)")
+    }
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        pat: int = nd[a * 10 + 1]
+        mut hit: int = 0
+        if pat < 0 {
+            # `else`: the escape hatch, and the checker has already required it to
+            # be last, so reaching it means no pattern arm matched
+            hit = 1
+        } else {
+            vi: int = find_variant(mem, vm, pat)
+            if vi >= 0 {
+                if vi + 1 == tag {
+                    hit = 1
+                }
+            }
+        }
+        if hit == 1 {
+            bind_arm(nd, mem, fmem, path, vm, a, subj)
+            c: int = run_body(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src,
+                              path, vm, nd[a * 10 + 4])
+            vm.sp = mark
+            return c
+        }
+        a = nd_nx(nd, a)
+    }
+    vm.sp = mark
+    trap(path, vm.line, "this value holds a variant that no arm of this match handles")
+    return C_STOP()
+}
+
+def call_method(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                 flt: Array[float, 65536], mut ipool: Array[int, 2097152],
                 mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -1450,7 +1607,7 @@ def call_method(nd: Array[int, 655360], ty: Array[int, 262144],
     vm.sp = mark
 }
 
-def call_builtin(nd: Array[int, 655360], ty: Array[int, 262144],
+def call_builtin(nd: Array[int, 1310720], ty: Array[int, 262144],
                  mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                  flt: Array[float, 65536], mut ipool: Array[int, 2097152],
                  mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -1475,7 +1632,7 @@ def call_builtin(nd: Array[int, 655360], ty: Array[int, 262144],
     vm.sp = mark
 }
 
-def eval_call(nd: Array[int, 655360], ty: Array[int, 262144],
+def eval_call(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
               flt: Array[float, 65536], mut ipool: Array[int, 2097152],
               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -1504,12 +1661,17 @@ def eval_call(nd: Array[int, 655360], ty: Array[int, 262144],
                        sv, args, vm.dst)
         return
     }
+    if sk == SYM_VARIANT() {
+        exec_make_variant(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path,
+                          vm, sv, args, vm.dst)
+        return
+    }
     trap(path, vm.line, "this is not something that can be called")
 }
 
 # ---------------------------------------------------------------- calls
 
-def call_user(nd: Array[int, 655360], ty: Array[int, 262144],
+def call_user(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
               flt: Array[float, 65536], mut ipool: Array[int, 2097152],
               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -1545,7 +1707,7 @@ def call_user(nd: Array[int, 655360], ty: Array[int, 262144],
 # the body, and give the frame's storage back.  A free function call and a method
 # call differ only in how they filled argbase — which is how `self` costs nothing
 # special.
-def enter_call(nd: Array[int, 655360], ty: Array[int, 262144],
+def enter_call(nd: Array[int, 1310720], ty: Array[int, 262144],
                mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                flt: Array[float, 65536], mut ipool: Array[int, 2097152],
                mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -1658,7 +1820,7 @@ def narrow_check(mem: Array[int, 3741696], path: str, vm: VM, dstp: int,
 }
 
 def store_name(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-               path: str, mut vm: VM, nd: Array[int, 655360], tgt: int,
+               path: str, mut vm: VM, nd: Array[int, 1310720], tgt: int,
                src: int) -> None {
     if nd_kind(nd, tgt) != 25 {
         selflimit("this assignment target is not a name yet")
@@ -1680,7 +1842,7 @@ def store_name(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
 # element takes its array's element kind, a field its own declared kind.  (A target
 # that is not one of the two shapes, or a base whose kind this cannot read, answers
 # `K_BAD` and the check then leaves it alone rather than guessing.)
-def dst_packed_of(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+def dst_packed_of(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
                   tgt: int) -> int {
     if nd_kind(nd, tgt) == 31 {
         base: int = nd[tgt * 10 + 1]
@@ -1699,7 +1861,7 @@ def dst_packed_of(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
     return K_BAD()
 }
 
-def store_place(nd: Array[int, 655360], ty: Array[int, 262144],
+def store_place(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                 flt: Array[float, 65536], mut ipool: Array[int, 2097152],
                 mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -1751,7 +1913,7 @@ def store_place(nd: Array[int, 655360], ty: Array[int, 262144],
     selflimit("this assignment target is not supported yet")
 }
 
-def run_body(nd: Array[int, 655360], ty: Array[int, 262144],
+def run_body(nd: Array[int, 1310720], ty: Array[int, 262144],
              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -1774,7 +1936,7 @@ def run_body(nd: Array[int, 655360], ty: Array[int, 262144],
     return C_NEXT()
 }
 
-def exec_for(nd: Array[int, 655360], ty: Array[int, 262144],
+def exec_for(nd: Array[int, 1310720], ty: Array[int, 262144],
              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -1848,7 +2010,7 @@ def exec_for(nd: Array[int, 655360], ty: Array[int, 262144],
     return C_NEXT()
 }
 
-def exec_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
+def exec_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
               flt: Array[float, 65536], mut ipool: Array[int, 2097152],
               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -2021,6 +2183,10 @@ def exec_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
     }
     if k == 15 {
         return C_NEXT()
+    }
+    if k == 37 {
+        return exec_match(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path,
+                          vm, s)
     }
     warn_str("vela: interpreter: no case for statement kind ")
     warn_int(k)
@@ -2353,7 +2519,7 @@ def dbg_bp_hit(mut mem: Array[int, 3741696], vm: VM, line: int) -> bool {
 #   next  a different line at this depth or shallower — an inner frame's
 #         statements are skipped over, which is what `next` means
 #   out   a depth shallower than the frame we asked to leave
-def dbg_step_stop(nd: Array[int, 655360], vm: VM, s: int) -> int {
+def dbg_step_stop(nd: Array[int, 1310720], vm: VM, s: int) -> int {
     if vm.dbg_on == 0 {
         return 0
     }
@@ -2392,7 +2558,7 @@ def dbg_arm_run(mut vm: VM, mode: int) -> None {
 }
 
 def dbg_gate(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-             nd: Array[int, 655360], path: str, mut vm: VM, s: int) -> None {
+             nd: Array[int, 1310720], path: str, mut vm: VM, s: int) -> None {
     if vm.dbg_on == 0 {
         return
     }
@@ -2493,7 +2659,7 @@ def dbg_cell_scalar(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432]
 # `str` is a handle into a fixed table; that is what lets the debugger show a
 # name without asking the table for anything new.
 def dbg_mark(mut recs: Array[int, 8192], mut n: int, decl: int, slot: int,
-             mem: Array[int, 3741696], nd: Array[int, 655360]) -> None {
+             mem: Array[int, 3741696], nd: Array[int, 1310720]) -> None {
     if slot < 0 {
         return
     }
@@ -2516,7 +2682,7 @@ def dbg_mark(mut recs: Array[int, 8192], mut n: int, decl: int, slot: int,
 }
 
 def dbg_walk_body(mut recs: Array[int, 8192], mut n: int,
-                  mem: Array[int, 3741696], nd: Array[int, 655360], head: int,
+                  mem: Array[int, 3741696], nd: Array[int, 1310720], head: int,
                   upto: int) -> None {
     mut s: int = head
     while s > 0 {
@@ -2542,12 +2708,30 @@ def dbg_walk_body(mut recs: Array[int, 8192], mut n: int,
         if k == 11 {
             dbg_walk_body(recs, n, mem, nd, nd[s * 10 + 2], upto)
         }
+        if k == 37 {
+            # A match's binding names are locals of their arm's block, and a walk
+            # that stopped at the `match` node would leave them out of `vars`
+            # silently: the debugger would report a frame missing the only names
+            # that arm can see.  Each arm's block is walked, and the binding nodes
+            # are marked the way a declaration is, because the resolver gave them a
+            # frame slot exactly as it gives a declaration one.
+            mut a: int = nd[s * 10 + 2]
+            while a > 0 {
+                mut b: int = nd[a * 10 + 2]
+                while b > 0 {
+                    dbg_mark(recs, n, b, nt_get(mem, b, NT_SLOT()), mem, nd)
+                    b = nd_nx(nd, b)
+                }
+                dbg_walk_body(recs, n, mem, nd, nd[a * 10 + 4], upto)
+                a = nd_nx(nd, a)
+            }
+        }
         s = nd_nx(nd, s)
     }
 }
 
 def dbg_walk_decls(mut recs: Array[int, 8192], mut n: int,
-                   mem: Array[int, 3741696], nd: Array[int, 655360], f: int,
+                   mem: Array[int, 3741696], nd: Array[int, 1310720], f: int,
                    upto: int) -> None {
     mut p: int = ft_get(mem, f, FT_PARAM())
     while p > 0 {
@@ -2569,7 +2753,7 @@ def dbg_walk_decls(mut recs: Array[int, 8192], mut n: int,
 # parameter list": the resolver lays parameters down from 0 in the order the
 # source declares them, so the p-th parameter is slot p and needs no lookup.
 def dbg_dump_vars(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-                  nd: Array[int, 655360], path: str, mut vm: VM) -> None {
+                  nd: Array[int, 1310720], path: str, mut vm: VM) -> None {
     if vm.vdepth > vm.dbg_depth {
         # an inner frame's storage is real, but its binding names belong to a
         # body this debugger is not walking; inventing them would be the one lie
@@ -2613,7 +2797,7 @@ def dbg_dump_vars(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
 
 # Frame 0 is `main`: `run_main` calls it directly, so there is no call site to
 # record a line for and no function number in the trace to look up.
-def dbg_fn_name(mem: Array[int, 3741696], nd: Array[int, 655360], f: int) -> str {
+def dbg_fn_name(mem: Array[int, 3741696], nd: Array[int, 1310720], f: int) -> str {
     if f < 0 {
         return "<main>"
     }
@@ -2627,7 +2811,7 @@ def dbg_fn_name(mem: Array[int, 3741696], nd: Array[int, 655360], f: int) -> str
     return interned(nd[d * 10 + 1])
 }
 
-def dbg_dump_stack(mem: Array[int, 3741696], nd: Array[int, 655360],
+def dbg_dump_stack(mem: Array[int, 3741696], nd: Array[int, 1310720],
                    vm: VM) -> None {
     warn_str("stack ")
     warn_int(vm.vdepth - vm.dbg_depth + 1)
@@ -2659,7 +2843,7 @@ def dbg_dump_stack(mem: Array[int, 3741696], nd: Array[int, 655360],
 # running again", which is the whole of the state machine: `pause` loops while
 # commands keep saying 1, and returns to the interpreter the moment one says 0.
 def dbg_cmd(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-            nd: Array[int, 655360], path: str, mut vm: VM, line: str) -> int {
+            nd: Array[int, 1310720], path: str, mut vm: VM, line: str) -> int {
     w: str = dbg_word(line)
     if w == "break" {
         if len(line) > 5 {
@@ -2744,7 +2928,7 @@ def dbg_cmd(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
 # ----------------------------------------------------------------- the pause
 
 def dbg_pause(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-              nd: Array[int, 655360], path: str, mut vm: VM,
+              nd: Array[int, 1310720], path: str, mut vm: VM,
               reason: int) -> None {
     warn_str("stopped ")
     warn_int(vm.line)
@@ -2787,7 +2971,7 @@ def dbg_reason(reason: int) -> None {
 }
 
 def dbg_lines(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-              nd: Array[int, 655360], path: str, mut vm: VM, text: str) -> int {
+              nd: Array[int, 1310720], path: str, mut vm: VM, text: str) -> int {
     mut pos: int = 0
     mut i: int = 0
     while i < len(text) {
@@ -2847,7 +3031,7 @@ def dbg_session(mut vm: VM, dir: str) -> None {
 # One command from the driver before the program has run at all, so that a
 # breakpoint can be set before line 1 instead of only at the first stop.
 def dbg_start(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-              nd: Array[int, 655360], path: str, mut vm: VM) -> None {
+              nd: Array[int, 1310720], path: str, mut vm: VM) -> None {
     mut go: int = 1
     while go == 1 {
         dbg_say("ready")
@@ -2862,7 +3046,7 @@ def dbg_start(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
 # and looks it up in the table it already has.  The five parameters are the
 # interpreter's own calling convention and none of them is read here — the event
 # is a constant, and the run's own exit status is the process's, not this line's.
-def dbg_exit(nd: Array[int, 655360], ty: Array[int, 262144],
+def dbg_exit(nd: Array[int, 1310720], ty: Array[int, 262144],
              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -2873,7 +3057,7 @@ def dbg_exit(nd: Array[int, 655360], ty: Array[int, 262144],
 # ---------------------------------------------------------------- entry point
 
 def find_main(mut mem: Array[int, 3741696], mut vm: VM,
-              nd: Array[int, 655360]) -> int {
+              nd: Array[int, 1310720]) -> int {
     m: int = intern("main")
     mut f: int = 0
     while f < vm.nfn {
@@ -2888,7 +3072,7 @@ def find_main(mut mem: Array[int, 3741696], mut vm: VM,
     return -1
 }
 
-def run_main(nd: Array[int, 655360], ty: Array[int, 262144],
+def run_main(nd: Array[int, 1310720], ty: Array[int, 262144],
              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
@@ -2931,7 +3115,7 @@ def run_main(nd: Array[int, 655360], ty: Array[int, 262144],
 # Calling a function by the number the driver filed, with no arguments: the
 # debugger's own exit event is the only use, and the interpreter has no other
 # way to reach one — this is what `vm.after_main` buys.
-def dbg_call_name(nd: Array[int, 655360], ty: Array[int, 262144],
+def dbg_call_name(nd: Array[int, 1310720], ty: Array[int, 262144],
                   mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                   flt: Array[float, 65536], mut ipool: Array[int, 2097152],
                   mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],

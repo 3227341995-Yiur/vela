@@ -1,0 +1,31 @@
+# A `break` inside a match arm.  In Vela the word leaves the enclosing *loop*; in
+# C the same word inside a `switch` leaves the *switch* -- so the C back end
+# refuses this shape by name instead of compiling a program that breaks the wrong
+# way, which would be a wrong answer rather than a refusal.
+#
+# The interpreter runs it (it prints 0: the first iteration breaks out), and this
+# lives in tests/probes rather than in tests/cases.txt because no corpus mode can
+# state "the interpreter runs it and one back end refuses it": `run` needs both
+# paths, `native` needs a successful build, and `refuse` is about `check`.
+
+enum E {
+    A
+    B(n: int)
+}
+
+def main() -> None {
+    mut i: int = 0
+    while i < 3 {
+        e: E = A
+        match e {
+            A {
+                break
+            }
+            B(n) {
+                print(n)
+            }
+        }
+        i += 1
+    }
+    print(i)
+}

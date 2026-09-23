@@ -1,0 +1,19 @@
+# `print` of an enum value.  Out of scope in Vela 0.1, and *refused* rather than
+# answered: the interpreter traps with "this value cannot be printed", and the C
+# back end refuses by name at build time.  Before that refusal existed the emitter
+# fell through to `vela_print_i64` and handed `cl` a C file it could not compile
+# ("cannot convert vl_E to int64_t") -- loud, but a C error standing in for a
+# decision this compiler had already made.
+#
+# A probe, not a corpus case: `refuse` is about `check`, which accepts this
+# program, and `run` needs the compiled path to work.
+
+enum E {
+    A
+    B(n: int)
+}
+
+def main() -> None {
+    e: E = A
+    print(e)
+}

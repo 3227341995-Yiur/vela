@@ -26,3 +26,21 @@ parallel_alias_read_only         | is refused by the LLVM back end, deliberately
 parallel_alias_read_any_index    | is refused by the LLVM back end, deliberately
 parallel_alias_same_index        | is refused by the LLVM back end, deliberately
 parallel_alias_nested_rowmajor   | is refused by the LLVM back end, deliberately
+
+# Enums with payloads and `match`.  This is a *gap* and not a design decision --
+# the C back end compiles every one of these -- but it cannot be recorded in
+# `llvm-gaps.txt`, which is judged over `tests/llvm-shapes/` and never consulted
+# for a corpus row.  An enum value is a tagged union; the LLVM back end lowers a
+# struct by splatting its fields into registers, and a tag plus a union is not
+# that shape.  The day it learns one, each of these lines goes red (NO-LONGER-
+# REFUSED) and gets deleted, which is exactly the two-sided rule this file's
+# header describes.
+#
+# The substring is the sentence every one of those refusals carries, in
+# `emit_llvm.vel`: an enum-valued parameter, return type and binding refuse in
+# their own words, and `match`, a bare variant and a construction each add theirs.
+enum_payload_bind                | is not compiled by the LLVM back end yet: an enum value is a tagged union
+enum_match_no_else               | is not compiled by the LLVM back end yet: an enum value is a tagged union
+enum_else_arm                    | is not compiled by the LLVM back end yet: an enum value is a tagged union
+enum_two_enums                   | is not compiled by the LLVM back end yet: an enum value is a tagged union
+enum_exhaustive_switch           | is not compiled by the LLVM back end yet: an enum value is a tagged union

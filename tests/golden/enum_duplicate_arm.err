@@ -1,0 +1,2 @@
+vela: type error: variant 'Red' already has an arm in this match
+  at tests/build/enum_duplicate_arm.vel:15

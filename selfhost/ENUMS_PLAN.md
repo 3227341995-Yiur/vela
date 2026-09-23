@@ -2,11 +2,22 @@
 
 **English** | [简体中文](ENUMS_PLAN.zh-CN.md)
 
-Status: **not started.** This is the specification for stream 2, item 1 of
-`ROADMAP.md` ("enums with payloads + `match`"), written first because the feature
-is going into a compiler that is written in Vela and must keep compiling itself.
-A change of this size without a written contract and an acceptance test is how a
-self-hosted compiler acquires a regression nobody can bisect.
+Status: **implemented** (branch `enums`), and this document is kept as the design
+record rather than rewritten into a description of what was built. Steps 1–5 all
+landed: the parser and the two new keywords, the resolver and checker, the
+interpreter, the C back end, and the LLVM back end's **named refusal** (that file's
+own convention: it refuses rather than guesses). The acceptance cases moved out of
+`tests/accept/` into `tests/cases.txt` with goldens, which is what that
+directory's header says happens on the day a feature lands.
+
+**A plan is a hypothesis until it has been run, and six of this one's claims did
+not survive.** They are recorded in "What the plan got wrong, measured" at the
+end, together with what the corpus could not have caught. Two of them are worth
+knowing before reading the rest: the front end had to be given a *bigger node
+pool* before any of this could compile (the linked compiler needs ~66 600 nodes
+against the 65 536 it had), and the C representation here is a tagged `struct`,
+not the `typedef` step 4 sketches.
+
 
 **This plan cites function names, not line numbers.** Line numbers in
 `selfhost/parts/*.vel` drift while several agents edit the tree at once, and they
@@ -257,3 +268,63 @@ It does not make Vela faster. It does not add generics (a payload cannot be a ty
 parameter in v1), collections, or error handling — it is the thing those three are
 built out of. And it does not remove a single check from the back end; the
 performance lever is stream ⑤, which is independent of this.
+
+## What the plan got wrong, measured
+
+Each of these is a claim in the text above that did not survive contact with the
+tree. They are kept here rather than edited out, because the next plan that cites
+`parser.vel` by line number should know how this one's did.
+
+1. **"The *statement* forms can be recognised without touching the lexer at all,
+   and the keyword is a later, separate change" (§Order of work, item 1) —
+   refused.** `match` at the head of a statement is ambiguous with two legal
+   programs: `match = 1` is an assignment, and `match(x)` is a call. The parser
+   would have had to guess. `enum` and `match` are keywords (24 and 25 in
+   `keyword_id`, `selfhost/vela.vel`), SPEC.md §1.3 was updated, and a corpus case
+   (`enum_keyword_reserved`) pins the day `mut match: int = 1` stopped being
+   accepted.
+2. **The C representation is not the sketch in step 4.** There is no `typedef` in
+   the C back end at all — `grep typedef emit.vel` finds none — so the emitted type
+   is `struct vl_Shape`, spelled like every other named type. The union's members
+   are `v_<Variant>` and the fields inside them keep the `f_` prefix, because the
+   emitter's field naming is not bypassed for one construct.
+3. **"The switch is emitted without a `default` … so a variant added to the enum
+   without its arm produces a compiler warning from `cl`" (step 4) — false, and
+   measured.** The tag is an `int64_t`, not a C `enum`, so C cannot know a case is
+   missing: `cl /W3 /std:c11` compiles a hand-written switch with an unhandled tag
+   value and prints nothing. The absence of `default` is still worth emitting, and
+   a `dumps` case pins it, but the net that fires is the **checker's**
+   exhaustiveness rule. Two nets were claimed; there is one, plus a digest.
+4. **Nothing in the plan mentions the node pool, and the feature does not fit in
+   it.** Measured: with the enum work in the tree, `vm.exe parse selfhost/vm.vel`
+   refused with `this file has too many syntax nodes` at line 18 663 of 18 966 —
+   ~66 600 nodes against a pool of 65 536 — while the token pool stood at 128 608
+   of 131 072 (98% full). Both ceilings were raised (nodes 65536 → 131072, tokens
+   131072 → 262144), and the node *table* moved into the arena's unallocated middle
+   because its size is the pool's size times eight (`MEM_NT` 3145728 → 1600000).
+   That had to be a separate commit **before** the feature: the seed compiler at
+   the previous revision cannot parse a source that needs more than 65536 nodes, so
+   the pool has to be raised by a build whose own source is still small enough.
+5. **The accept corpus cannot catch an enum-table bug, and one got through.** Every
+   program in `tests/accept/` declares exactly one enum, so a table whose variant
+   lists all began at record 0 looks correct. With two enums it does not: the
+   variant offset was written in the pass that runs *before* any variant exists, so
+   the second enum's exhaustiveness was judged against the first enum's variants —
+   which refused a match naming every variant it has, and could as easily have
+   accepted a match missing one. `tests/build/enum_two_enums.vel` is that
+   regression case, and it is new: the plan's table does not list it.
+6. **Two smaller ones.** `enum_nested_pattern.vel` used `None` — a Vela keyword —
+   as a variant name, so the keyword collision fired before the nesting rule could
+   and the case never tested nesting; the corpus copy renames the variant. And
+   `enum_in_array` cannot be a `run` case as the table says: the C back end does
+   not lower an array of aggregates (it refuses them for structs too), so the row
+   is `ok` and the interpreter's output was checked against the bytes in the file's
+   header by hand.
+
+One thing the plan got right in a way worth naming: the **tag inside the payload
+block** — cell 0 of the variant's cells, with the struct reader's "field count"
+being its stride — is what let `copy_value`, `assign_value`, `Array[E, N]` and the
+frame-escape rule work unchanged. The one correction made to it is that the tag is
+the variant's record index **plus one**, so that zero can mean "no variant was ever
+written" (a zero-filled array element) instead of naming the first variant.
+

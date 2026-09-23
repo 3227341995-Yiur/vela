@@ -43,7 +43,7 @@
 # refusals and its output to `tests/golden/`.  The Python front end this driver
 # used to be held against 鈥?and the differential suites that did the holding 鈥?# were deleted with it in stage 4 (`DESIGN.md` 搂7).
 
-def dump_tokens(tk: Array[int, 786432], cx: Ctx) -> None {
+def dump_tokens(tk: Array[int, 1572864], cx: Ctx) -> None {
     mut i: int = 0
     while i < cx.ntok {
         emit_int(tk_kind(tk, i))
@@ -100,7 +100,7 @@ def usage() -> None {
 # The raw pool, one line per node, in index order.  The canonical dump shows the
 # tree as it should be read; this shows the ten words it is actually made of 鈥?# two words per number, which is what a disagreement about a chain or a
 # terminator has to be debugged against.
-def dump_nodes(nd: Array[int, 655360], n: int) -> None {
+def dump_nodes(nd: Array[int, 1310720], n: int) -> None {
     mut i: int = 0
     while i < n {
         emit_int(i)
@@ -415,7 +415,7 @@ def shell(c: str) -> str {
 # asks the same question of the name `main`; this asks it of a name given here,
 # because the debug driver's exit event has to be reached by the number the
 # resolver handed out 鈥?Vela 0.1 has no function values to pass instead.
-def find_function(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+def find_function(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
                   name: str) -> int {
     h: int = intern(name)
     mut f: int = 0
@@ -1105,7 +1105,7 @@ def link_llvm(vcv: str, lld: str, obj: str, rtobj: str, exe: str,
     return rc
 }
 
-def do_build_llvm(self: str, path: str, rt: str, nd: Array[int, 655360],
+def do_build_llvm(self: str, path: str, rt: str, nd: Array[int, 1310720],
                   ty: Array[int, 262144], flt: Array[float, 65536], src: str,
                   mut mem: Array[int, 3741696], mut vm: VM) -> None {
     exe: str = concat(strip_vel(path), ".exe")
@@ -1201,9 +1201,9 @@ def main() -> None {
         panic("the front end could not read the file")
     }
 
-    mut tk: Array[int, 786432]
+    mut tk: Array[int, 1572864]
     mut tkf: Array[float, 65536]
-    mut nd: Array[int, 655360]
+    mut nd: Array[int, 1310720]
     mut ty: Array[int, 262144]
     mut flt: Array[float, 65536]
     mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0)
