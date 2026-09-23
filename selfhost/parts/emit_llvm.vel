@@ -1314,6 +1314,10 @@ def ll_fn_ret_type(lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     if is_array(k) {
         trap(path, nd_line(nd, d), "a function that returns an array is not compiled by the LLVM back end yet")
     }
+    if k == K_ENUM() {
+        trap(path, nd_line(nd, d),
+             "a function that returns an enum is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+    }
     t: int = ll_type_of(lg, k)
     if t == 0 {
         trap(path, nd_line(nd, d), "this function's return type has no IR spelling")
@@ -1359,6 +1363,10 @@ def ll_param_type(lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         # `int64_t* a`; the length travels in the packed kind, so the bounds check
         # at an index site still knows it
         return lg.t_ptr
+    }
+    if k == K_ENUM() {
+        trap(path, nd_line(nd, p),
+             "an enum-valued parameter is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
     }
     t: int = ll_type_of(lg, k)
     if t == 0 {
@@ -1545,6 +1553,21 @@ def ll_reserve_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         }
         return
     }
+    if k == 25 {
+        if nt_get(mem, e, NT_SYM()) == SYM_VARIANT() {
+            trap(path, nd_line(nd, e),
+                 "an enum value is not compiled by the LLVM back end yet: it is a tagged union, and this back end has no lowering for one")
+        }
+    }
+    if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        if nd_kind(nd, callee) == 25 {
+            if nt_get(mem, callee, NT_SYM()) == SYM_VARIANT() {
+                trap(path, nd_line(nd, e),
+                     "constructing a variant is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+            }
+        }
+    }
     # literals, booleans, `None` and names hold nothing that needs storage
 }
 
@@ -1555,6 +1578,10 @@ def ll_reserve_decl(mut lg: LG, nd: Array[int, 1310720],
     k: int = unpack_kind(nt_get(mem, s, NT_LIT()))
     line: int = nd_line(nd, s)
     slot: int = nt_get(mem, s, NT_SLOT())
+    if k == K_ENUM() {
+        trap(path, line,
+             "an enum binding is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+    }
     if is_array(k) {
         # an array *binding* is an address (the C back end emits `int64_t*`), so
         # its slot holds a pointer and the arena owns the elements.  The kind
@@ -1670,6 +1697,15 @@ def ll_reserve_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         ll_reserve_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
                         lit, nd[s * 10 + 8])
         return
+    }
+    if k == 37 {
+        # The refusal lives in this pass as well as in `ll_stmt`, and it is the same
+        # sentence: a reserve pass that fell through a `match` silently would leave
+        # its arm bodies' locals and literals unreserved, and the failure a reader
+        # would then see is "this local was never reserved a slot in the entry
+        # block" -- a confusing trap for a decision this compiler made on purpose.
+        trap(path, nd_line(nd, s),
+             "`match` is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
     }
     # break, continue and pass hold no expressions and no storage
 }
@@ -2714,9 +2750,23 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                      vshim_const_bool(lg.m, nd[e * 10 + 1] == 1))
     }
     if k == 25 {
+        if nt_get(mem, e, NT_SYM()) == SYM_VARIANT() {
+            # a bare variant name is a value (`Red`, `Empty`), and an enum value is
+            # a tagged union: refused by name rather than lowered into something
+            # that is not one
+            trap(path, nd_line(nd, e),
+                 "an enum value is not compiled by the LLVM back end yet: it is a tagged union, and this back end has no lowering for one")
+        }
         return ll_name(lg, nd, ty, mem, vm, slots, slotkind, path, e)
     }
     if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        if nd_kind(nd, callee) == 25 {
+            if nt_get(mem, callee, NT_SYM()) == SYM_VARIANT() {
+                trap(path, nd_line(nd, e),
+                     "constructing a variant is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+            }
+        }
         return ll_call_expr(lg, nd, ty, flt, src, path, mem, vm, slots,
                             slotkind, lit, fns, e)
     }
@@ -3316,6 +3366,15 @@ def ll_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     if k == 15 {
         return
+    }
+    if k == 37 {
+        # Refused by name, deliberately, in this back end's own voice: an enum value
+        # is a tagged union, which is a shape this file has no lowering for (it
+        # lowers a struct by splatting its fields, and a tag plus a union is not
+        # that).  The ledger records it: tests/llvm-refusals.txt, one line per
+        # corpus program this refuses.
+        trap(path, nd_line(nd, s),
+             "`match` is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
     }
     trap(path, nd_line(nd, s), "the LLVM back end has no lowering for this statement yet")
 }

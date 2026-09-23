@@ -263,6 +263,80 @@ def d_node(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
         d_field(nd, ty, n, depth)
         return
     }
+    if k == 35 {
+        # `enum Shape { Circle(radius: float) Empty }`.  The variants are the chain
+        # at word b, and each one's payload fields are the chain at *its* word b --
+        # kind-3 nodes, which the `param` arm below dumps as `param name=… type=…`.
+        # They are dumped as `field` instead: a payload field is not a parameter,
+        # and a reader comparing two dumps should not have to know that the parser
+        # reuses the node.
+        d_indent(depth)
+        emit_str("enum name=")
+        d_name(nd, n)
+        emit_nl()
+        mut v: int = nd[n * 10 + 2]
+        while v >= 0 {
+            d_node(src, nd, ty, flt, v, depth + 1)
+            v = nd[v * 10 + 7]
+        }
+        return
+    }
+    if k == 36 {
+        d_indent(depth)
+        emit_str("variant name=")
+        d_name(nd, n)
+        emit_str(" fields=")
+        emit_int(nd[n * 10 + 3])
+        emit_nl()
+        mut f: int = nd[n * 10 + 2]
+        while f >= 0 {
+            d_indent(depth + 1)
+            emit_str("field name=")
+            d_name(nd, f)
+            emit_str(" type=")
+            d_type(ty, nd[f * 10 + 2])
+            emit_nl()
+            f = nd[f * 10 + 7]
+        }
+        return
+    }
+    if k == 37 {
+        d_indent(depth)
+        emit_str("match")
+        emit_nl()
+        d_indent(depth + 1)
+        emit_str("subject")
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 1], depth + 2)
+        mut a: int = nd[n * 10 + 2]
+        while a >= 0 {
+            d_node(src, nd, ty, flt, a, depth + 1)
+            a = nd[a * 10 + 7]
+        }
+        return
+    }
+    if k == 38 {
+        d_indent(depth)
+        emit_str("arm pattern=")
+        if nd[n * 10 + 1] < 0 {
+            emit_str("else")
+        } else {
+            emit_str(interned(nd[n * 10 + 1]))
+        }
+        emit_str(" binds=")
+        emit_int(nd[n * 10 + 3])
+        emit_nl()
+        mut b: int = nd[n * 10 + 2]
+        while b >= 0 {
+            d_indent(depth + 1)
+            emit_str("binding name=")
+            d_name(nd, b)
+            emit_nl()
+            b = nd[b * 10 + 7]
+        }
+        d_body(src, nd, ty, flt, nd[n * 10 + 4], depth + 1)
+        return
+    }
     if k == 6 {
         if (nd[n * 10 + 6] & 2) != 0 {
             d_indent(depth)
