@@ -12,9 +12,12 @@
 #     being refused FAILS the run so that the progress gets recorded instead of
 #     quietly becoming a hole in the ledger.
 #
-# `build-llvm` cannot replace `build` while anything is listed here: flipping the
-# default would take programs that compile today and refuse them, which is the one
-# outcome worse than still needing a C compiler.
+# `build` and `build-llvm` are the LLVM back end now, and `build-c` is the C one.
+# While anything was listed in this file, the flip could not happen: it would have
+# taken programs that compiled and refused them.  The file is empty, the flip is
+# done, and the programs the LLVM back end still refuses are the seven
+# `parallel for` rows -- refused *by design*, recorded in `llvm-refusals.txt`, and
+# compiled by `build-c` from rows that say so in `tests\cases.txt`.
 #
 # Format, one per line:
 #
@@ -55,6 +58,16 @@
 #     `ll_index_addr`, so the bounds check is in front of it exactly as the C back
 #     end's hoisted check is, and the rest of the augmented-assignment path (load,
 #     checked arithmetic, narrow store) is shared with the local case.
-# An empty ledger is not the end of the list: `build-llvm selfhost/vm.vel` still stops
-# at a *builtin* (`warn_str` is the first, by link order), and shapes for that work will
-# be added here so it is recorded the same way rather than until the compiler builds.
+# A ledger that is empty is not a claim that the back end is finished, and the
+# paragraph that used to stand here said so with an example that has since been
+# closed: `build-llvm selfhost/vm.vel` used to stop at a builtin (`warn_str` was
+# the first, by link order).  Measured 2026-09-24: it builds the compiler, and the
+# compiler it built compiles a program -- `tools\selfhost-llvm.ps1`, which is the
+# gate for exactly that, is green.
+#
+# What that gate and `tools\llvm-column.ps1` do *not* cover is still the honest
+# shape of the remaining work: they compare the interpreter against the LLVM
+# product for programs that both accept, so a construct the LLVM back end refuses
+# is invisible unless a shape here names it.  That is what this file is for, and
+# the next refusal found belongs here -- not in a sentence claiming the back end
+# is complete because the list is empty.

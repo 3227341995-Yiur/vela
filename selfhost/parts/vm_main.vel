@@ -10,14 +10,28 @@
 #   nodes  the raw node pool, ten words per node
 #   check  resolve and judge, and refuse the program if it is not allowed to exist
 #   emit-c write the C11 the program compiles to
-#   build  emit the C and hand it to the host's C compiler
+#   build  build it in process through libLLVM and link it with lld-link: the
+#          product is a native executable and the only external program is a
+#          linker.  **This is the default, and it starts no C compiler**
+#   build-c  the C back end's own driver: emit the C and hand it to the host's C
+#          compiler.  Explicitly named, never reached by a fallback: an LLVM
+#          refusal is a refusal, and a user cannot see a fallback
 #   emit-llvm  print the LLVM IR the program compiles to (built by libLLVM
 #          inside this process, through runtime/vela_llvm_shim.h)
-#   build-llvm build the module in process, write the object into the build
-#          scratch, and link it with lld-link - no C compiler anywhere
+#   build-llvm a synonym for `build`, kept because it is the name every gate and
+#          every document in this tree used while it was the second path
 #   run    resolve, check and then *execute* the program, with no C compiler
 #          and no Python anywhere in the loop
 #   debug  the same interpreter, stopped, with commands read from a file
+#
+# `build` and `build-llvm` are the same path, and which one a caller says is a
+# matter of how much it wants to say: `build-llvm` names the back end, `build`
+# names the job.  `build-c` is the only way to reach the C back end, and it is
+# spelled out on purpose.  The C back end stays in the tree and stays verified:
+# it is the reference implementation, `emit-c`'s digest is still checked by the
+# corpus, and seven programs (`parallel for`) can only be built by it, because
+# LLVM IR has no OpenMP and this project will not ship a loop that says it is
+# parallel while running serially.  What is gone is the *silent* use of it.
 #
 # `check` is not an extra service the front end offers 鈥?the same line this file
 # has always taken: a back end that emitted C for a program the checker would
@@ -47,7 +61,7 @@ def dump_tokens(tk: Array[int, 786432], cx: Ctx) -> None {
 }
 
 def usage() -> None {
-    warn_str("usage: vela <lex|count|parse|nodes|emit-c|run|check|debug|build|emit-llvm|build-llvm> <file.vel>")
+    warn_str("usage: vela <lex|count|parse|nodes|emit-c|run|check|debug|build|build-c|emit-llvm|build-llvm> <file.vel>")
     warn_nl()
     warn_str("  lex    dump the token stream")
     warn_nl()
@@ -69,11 +83,17 @@ def usage() -> None {
     warn_nl()
     warn_str("         events on stdout, commands in <cmddir>/cmd.NNN (DESIGN.md 10)")
     warn_nl()
-    warn_str("  build  emit the C and hand it to the host's C compiler")
+    warn_str("  build  build it in process through libLLVM and link it with lld-link")
+    warn_nl()
+    warn_str("         (no C compiler is started; this is the default)")
+    warn_nl()
+    warn_str("  build-c  emit the C and hand it to the host's C compiler (the C back")
+    warn_nl()
+    warn_str("         end, named on purpose: it is how a `parallel for` is built)")
     warn_nl()
     warn_str("  emit-llvm  print the LLVM IR this program compiles to, through libLLVM")
     warn_nl()
-    warn_str("  build-llvm build it in process and link it with lld-link (no C compiler)")
+    warn_str("  build-llvm the same path as `build`, under the name the gates use")
     warn_nl()
 }
 
@@ -95,15 +115,22 @@ def dump_nodes(nd: Array[int, 655360], n: int) -> None {
     }
 }
 
-# ---------------------------------------------------------------------- build
+# -------------------------------------------------------------------- build-c
 #
-# `vm.exe build file.vel` is the self-hosted compiler's own driver: the C comes
-# from this same compiler re-entered in `emit-c` mode (so the back end keeps one
-# output target 鈥?stdout 鈥?and the shell does the redirecting), and the host's C
-# compiler does the rest.  Three host calls make that possible and no more:
-# `concat` to name a file, `run_command` to start a compiler, `env` to ask which
-# host this is and which C compiler the user wants.  None of the three hands back
-# a pointer, a handle, or a capability that outlives the call.
+# `vm.exe build-c file.vel` is the C back end's driver, and nothing else reaches
+# it: the C comes from this same compiler re-entered in `emit-c` mode (so the back
+# end keeps one output target -- stdout -- and the shell does the redirecting),
+# and the host's C compiler does the rest.  Three host calls make that possible
+# and no more: `concat` to name a file, `run_command` to start a compiler, `env`
+# to ask which host this is and which C compiler the user wants.  None of the
+# three hands back a pointer, a handle, or a capability that outlives the call.
+#
+# It was called `build` until the LLVM back end was promoted, and it keeps every
+# behaviour it had under that name: the same emitted C, the same command line, the
+# same 5th extra-link word.  What changed is who says its name -- the corpus says
+# `build-c` on the seven rows the LLVM back end refuses by design, on the rows the
+# `fixpoint` case needs the emitted C of, and in `tools\build.ps1` step 4 -- so no
+# program is compiled by this path without a line that says so.
 
 def quoted(s: str) -> str {
     return concat(concat("\"", s), "\"")
@@ -867,12 +894,15 @@ def do_build(self: str, path: str, rt: str, extra: str) -> None {
 
 # ------------------------------------------------- the LLVM back end's driver
 #
-# `vm.exe emit-llvm FILE` and `vm.exe build-llvm FILE [rtdir]` are the plan's
-# steps 3 and 4.  The difference between them and `emit-c`/`build` is the whole
-# point of the work: `build-llvm` runs *no C compiler at all*.  The module is
-# built inside this process through the shim (libLLVM is linked into this
-# binary), the object file is written by this process, and the only external
-# program on the path is `lld-link`.
+# `vm.exe build FILE` and `vm.exe build-llvm FILE [rtdir]` are the plan's steps 4
+# and 7 (promotion), and they are the default now: the module is built inside this
+# process through the shim (libLLVM is linked into this binary), the object file is
+# written by this process, and the only external program on the path is `lld-link`.
+# *No C compiler is started*, and there is no fallback to one -- which is the whole
+# point of the north star, and the reason `build-c` has to be spelled out.
+#
+# `vm.exe emit-llvm FILE` is the same emitter's text: the module as a reader sees
+# it, which is also what `write_ll` below leaves in the scratch for the same reason.
 #
 # The `.ll` is written for a reader, and it is written the way the C back end
 # writes its C: this compiler re-entered in `emit-llvm` mode with the shell
@@ -888,10 +918,10 @@ def write_ll(self: str, path: str, irfile: str) -> None {
     c = concat(c, " > ")
     c = concat(c, quoted(irfile))
     if run_command(shell(c)) != 0 {
-        panic("build-llvm: the LLVM back end refused this program (its reason is above)")
+        panic("build: the LLVM back end refused this program (its reason is above)")
     }
     if not exists(irfile) {
-        panic("build-llvm: no .ll was written")
+        panic("build: no .ll was written")
     }
 }
 
@@ -1083,11 +1113,11 @@ def do_build_llvm(self: str, path: str, rt: str, nd: Array[int, 655360],
     # 3. and the link.  From here on the only external program is lld-link.
     lld: str = find_lld()
     if len(lld) == 0 {
-        panic("build-llvm: no lld-link.exe found (set VELA_LLD, or run tools\\get-llvm.ps1)")
+        panic("build: no lld-link.exe found (set VELA_LLD, or run tools\\get-llvm.ps1)")
     }
     rtobj: str = find_llvm_rt(rt)
     if len(rtobj) == 0 {
-        panic("build-llvm: no vela_llvm_runtime.obj beside this compiler (tools\\build.ps1 writes it there)")
+        panic("build: no vela_llvm_runtime.obj beside this compiler (tools\\build.ps1 writes it there)")
     }
     # Does this program call the *shim* -- the compiler's own code generator?  It is
     # asked of the artifact, not of a flag, and it is the same question the C path asks
@@ -1095,41 +1125,42 @@ def do_build_llvm(self: str, path: str, rt: str, nd: Array[int, 655360],
     # by the time this runs, because `write_ll` wrote it a line ago.
     #
     # The two answers are the whole of the rule, and the reason it is a rule rather than
-    # an extra argument: `vm.exe build-llvm x.vel` is supposed to be one command whose
+    # an extra argument: `vm.exe build x.vel` is supposed to be one command whose
     # only external tool is a linker, so an ordinary program must not have to know that a
     # shim exists -- it gets the runtime and nothing else, exactly as before.  A program
     # that *is* a code generator (the compiler) calls `vshim_*`, and then the shim object
     # and `LLVM-C.lib` go on the link line, because without them the link fails with a
     # page of `undefined symbol: vshim_...` that says nothing about what to do.
     #
-    # The 5th word of `vm.exe build` stays where it is: that mechanism exists for
+    # The 5th word belongs to `build-c` and is not read here: that mechanism exists for
     # *bootstrapping* (build.ps1 drives the compiler building itself, and `msvc_build`
-    # receives the extra input from the script), and putting it on this path instead
-    # would make every user of `build-llvm` carry the compiler's problem.
+    # receives the extra input from the script), and taking it on this path instead would
+    # put the compiler's problem on every user of `build` -- the answer to "does this
+    # program need the shim" is in the module, which is text on disk by this point.
     mut shim_obj: str = ""
     mut llvm_lib: str = ""
     if needs_shim(ir) {
         shim_obj = find_shim_obj()
         if len(shim_obj) == 0 {
-            panic("build-llvm: this program calls the compiler's LLVM shim, and vela_llvm_shim.obj was not found beside the compiler (tools\\build.ps1 writes it there; VELA_LLVM_SHIM names one)")
+            panic("build: this program calls the compiler's LLVM shim, and vela_llvm_shim.obj was not found beside the compiler (tools\\build.ps1 writes it there; VELA_LLVM_SHIM names one)")
         }
         llvm_lib = find_llvm_lib(lld)
         if len(llvm_lib) == 0 {
-            panic("build-llvm: this program calls the compiler's LLVM shim, so it must link LLVM-C.lib, and none was found beside lld-link.exe (set VELA_LLVM to an unpacked LLVM 23.x tree, or run tools\\get-llvm.ps1)")
+            panic("build: this program calls the compiler's LLVM shim, so it must link LLVM-C.lib, and none was found beside lld-link.exe (set VELA_LLVM to an unpacked LLVM 23.x tree, or run tools\\get-llvm.ps1)")
         }
     }
     mut rc: int = link_llvm(find_vcvars(), lld, obj, rtobj, exe, obj, shim_obj,
                             llvm_lib)
     if rc != 0 {
-        warn_str("vela: build-llvm: lld-link exited ")
+        warn_str("vela: build: lld-link exited ")
         warn_int(rc)
         warn_nl()
     }
     if not exists(exe) {
         if rc != 0 {
-            panic("build-llvm: lld-link could not link the object it was given")
+            panic("build: lld-link could not link the object it was given")
         }
-        panic("build-llvm: lld-link reported success but wrote no executable")
+        panic("build: lld-link reported success but wrote no executable")
     }
     emit_str("built ")
     emit_str(exe)
@@ -1303,12 +1334,58 @@ def main() -> None {
         ll_emit_ir(nd, ty, flt, src, path, memL, vmL)
         return
     }
-    if mode == "build-llvm" {
-        # the 4th argument is the runtime directory, exactly as `build` takes
-        # it: an empty one means "work it out from the compiler's own location"
+    if mode == "build" {
+        # **`build` is the LLVM path**, and it is one command with one product:
+        # the module is built in process through libLLVM, the object is written by
+        # this process, and `lld-link` links it.  No C compiler is started, no `.c`
+        # or `.ll` is left where the user is, and there is no fallback -- an LLVM
+        # refusal is a refusal.  `build-llvm` below is the same path under the name
+        # the gates and the documents used while it was the second one.
+        #
+        # The 4th argument is the runtime directory, exactly as `build-c` takes it:
+        # empty means "work it out from the compiler's own location".
+        #
+        # The 5th argument is *not* read here, and that is a decision rather than an
+        # omission: it is `build-c`'s extra-link string (`msvc_build` says what it
+        # is for), and the LLVM path does not need one -- it asks the emitted module
+        # whether the program calls the shim and links `vela_llvm_shim.obj` and
+        # `LLVM-C.lib` when it does (`do_build_llvm`).  A caller that passes one
+        # anyway is not silently obeyed: see the sentence below.
         mut rtL: str = ""
         if argc() >= 4 {
             rtL = arg(3)
+        }
+        if argc() >= 5 {
+            warn_str("vela: build: the extra-link argument is `build-c`'s and this is")
+            warn_str(" the LLVM path, which finds what a program needs from the module")
+            warn_nl()
+            warn_str(" itself; ignoring `")
+            warn_str(arg(4))
+            warn_str("` (use `build-c` if that is the path you meant)")
+            warn_nl()
+        }
+        cx.ti = 0
+        parse_module(src, tk, tkf, nd, ty, flt, cx)
+        if cx.err == 1 {
+            panic("the front end stopped after an error")
+        }
+        mut memD: Array[int, 3741696]
+        mut vmD: VM = vm_new()
+        resolve_module(nd, ty, memD, path, vmD)
+        ck_module(nd, ty, memD, path, vmD)
+        do_build_llvm(arg(0), path, rtL, nd, ty, flt, src, memD, vmD)
+        return
+    }
+    if mode == "build-llvm" {
+        # the same path as `build`, and deliberately the same code: a second
+        # implementation of one back end's driver is a second thing to keep in
+        # step.  The name is kept because `tools\llvm-column.ps1`,
+        # `tools\llvm-inproc.ps1`, `tools\selfhost-llvm.ps1` and `LLVM_PLAN.md`
+        # all say it, and because a caller that wants the back end named rather
+        # than the job should be able to say so.
+        mut rtL2: str = ""
+        if argc() >= 4 {
+            rtL2 = arg(3)
         }
         cx.ti = 0
         parse_module(src, tk, tkf, nd, ty, flt, cx)
@@ -1319,13 +1396,17 @@ def main() -> None {
         mut vmB: VM = vm_new()
         resolve_module(nd, ty, memB, path, vmB)
         ck_module(nd, ty, memB, path, vmB)
-        do_build_llvm(arg(0), path, rtL, nd, ty, flt, src, memB, vmB)
+        do_build_llvm(arg(0), path, rtL2, nd, ty, flt, src, memB, vmB)
         return
     }
-    if mode == "build" {
+    if mode == "build-c" {
+        # The C back end's own driver, and the *only* way to reach it.  It used to
+        # be called `build`, which is why the next paragraph is still written in
+        # the present tense about a name that is now this one.
+        #
         # The 4th argument is the runtime directory, and an *empty* one means
         # "work it out": `find_runtime` then resolves it from the compiler's own
-        # location, so `vm.exe build C:\anywhere\x.vel` works from any directory.
+        # location, so `vm.exe build-c C:\anywhere\x.vel` works from any directory.
         # A caller who passes a directory still gets exactly that directory, which
         # is why the old behaviour is unchanged for them.
         #

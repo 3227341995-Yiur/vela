@@ -4,8 +4,7 @@
 # What has to exist for Vela to exist: a C compiler, one C file
 # (selfhost/build/vm.c), and runtime/vela_runtime.h.  Not a Python program.
 # Everything below the first step is done by the Vela compiler itself, including
-# its own rebuild: `vm.exe build selfhost/vm.vel` compiles the compiler with the
-# compiler, driving cl.exe through its own build driver.
+# its own rebuild.
 #
 #     .\tools\build.ps1                                   # bootstrap + rebuild everything
 #     .\tools\build.ps1 -Suites                           # ... and run tests/run_tests.vel
@@ -14,13 +13,34 @@
 #
 # Steps: 1 the LLVM objects (the compiler's own code generator) · 2 vm.exe from
 # the seed C, linked against them · 3 link the parts (Vela linker) · 4 the
-# compiler compiles itself · 5 the standalone lexer · 6 the fixpoint: the
-# compiler it built writes the same C again · 7 the Vela test suite (only with
-# -Suites or -Record) · 8 `LLVM-C.dll` and the runtime object beside every
-# `vm.exe` the build wrote, because from step 2 on the compiler is linked
-# against libLLVM and will not load without that DLL.  (The detached
-# `vctip.exe`/`mspdbsrv.exe` reaping happens at the very end of the script and
-# in the compiler's own driver; `VSCMD_SKIP_SENDTELEMETRY=1` does not stop them.)
+# compiler compiles itself, through its own LLVM back end · 5 the standalone lexer
+# · 6 the fixpoint: three generations of the emitted C, asked for rather than
+# picked up · 7 the Vela test suite (only with -Suites or -Record) · 8
+# `LLVM-C.dll` and the runtime object beside every `vm.exe` the build wrote,
+# because from step 2 on the compiler is linked against libLLVM and will not load
+# without that DLL.  (The detached `vctip.exe`/`mspdbsrv.exe` reaping happens at
+# the very end of the script and in the compiler's own driver;
+# `VSCMD_SKIP_SENDTELEMETRY=1` does not stop them.)
+#
+# **Which mode each step drives, and why it is written down here.**  `vm.exe
+# build` is the LLVM path since the LLVM back end was promoted: it builds the
+# module in process through libLLVM, writes the object itself, and calls only
+# `lld-link`.  `vm.exe build-c` is the C back end's driver, and the C back end
+# stays in the tree as the reference implementation.
+#
+#   step 3  `build`     the linker is an ordinary Vela program
+#   step 4  `build`     the compiler, built the way a user's program is: LLVM in
+#                       process, `lld-link` outside, no C compiler anywhere
+#   step 5  `build`     the standalone lexer, likewise
+#   step 6  `emit-c`    both generations are asked for the C, because no build
+#                       mode leaves it as a side effect any more
+#   step 7  `build`     the test suite is an ordinary Vela program
+#
+# So the chain is Rust-shaped: the seed C is stage 0 and the one thing a C
+# compiler is asked for, and everything a person builds with `build` leaves a
+# native executable and no other language's file.  `tools\selfhost-llvm.ps1` is
+# the gate that holds this end of it, by doing step 4 with `PATH` stripped of every
+# C compiler.
 #
 # Steps 1 and 2 are the plan's step 5 (`selfhost/LLVM_PLAN.md`): from here on
 # `vm.exe` carries its own code generator, the way `rustc` carries LLVM.
@@ -28,9 +48,9 @@
 # `selfhost\parts\llvm_shim.vel` declares, and `runtime\vela_llvm_runtime.c`
 # re-exports the runtime the *emitted* program links against.  Both are built
 # here and nowhere else: `vm.exe` links the shim into itself through the
-# extra-link argument (`vm.exe build FILE RTDIR EXTRA`, see `msvc_build` in
-# parts/vm_main.vel, which only this script ever passes), and `vm.exe
-# build-llvm` links the runtime object into every program it builds.
+# extra-link argument (`vm.exe build-c FILE RTDIR EXTRA`, see `msvc_build` in
+# parts/vm_main.vel, which only this script ever passes), and `vm.exe build`
+# links the runtime object into every program it builds.
 #
 # No Python anywhere in this file, or in anything it runs.  Stage 0 was deleted
 # once the goldens in tests/golden/ had been certified against it, and this
@@ -159,7 +179,7 @@ $rtC      = Join-Path $runtime 'vela_llvm_runtime.c'
 $shimObj  = Join-Path $buildDir 'vela_llvm_shim.obj'
 $rtObj    = Join-Path $buildDir 'vela_llvm_runtime.obj'
 
-# The extra-link argument, handed to `vm.exe build` as its 5th word.  The 4th
+# The extra-link argument, handed to `vm.exe build-c` as its 5th word.  The 4th
 # word is the runtime directory, and it has to be passed *because* PowerShell
 # 5.1 drops an empty argument entirely: measured, `& pwsh -File t.ps1 a '' b`
 # gives the child `a b` -- two arguments -- so an empty 4th word cannot reach
@@ -168,10 +188,10 @@ $rtObj    = Join-Path $buildDir 'vela_llvm_runtime.obj'
 $extraLink  = '"' + $shimObj + '" "' + $llvmLib + '"'
 $runtimeArg = $runtime
 
-# Every step below starts `vm.exe`, and `vm.exe build-llvm` has to look for the
+# Every step below starts `vm.exe`, and the LLVM path (`build`/`build-llvm`) has to look for the
 # *same* LLVM package this script found.  `find_lld` in parts/vm_main.vel walks
 # up from the compiler's own directory and finds `<checkout>\..\llvm\...` on its
-# own (measured: with `VELA_LLD` unset, `build-llvm` links and the program runs),
+# own (measured: with `VELA_LLD` unset, the LLVM path links and the program runs),
 # so this is not what makes it work -- it is what makes every step agree.  A
 # build that finds LLVM one way and a compiler that finds it another way is two
 # answers to one question, and the second one is always the one that is wrong.
@@ -193,46 +213,94 @@ function Invoke-Cl([string[]] $lines) {
     return $LASTEXITCODE
 }
 
-# Does the compiler that is about to do the building know the extra-link
-# argument?
+# The mode this step builds through, and the reason it is asked rather than
+# assumed.
 #
-# The 5th word of `vm.exe build` arrives in *this* generation, and the compiler
-# that performs the first self-build after that change is the previous
-# generation, which has never heard of a 5th word.  It therefore compiles C that
-# calls `vshim_*` and links nothing, and the C compiler says so:
+# **`build` — the LLVM path — is what builds the compiler here**, and that is the
+# point of the promotion: the seed C is stage 0, stage 1 is built out of that
+# seed by a C compiler at step 2, and everything a person builds from here on is
+# pure.  Step 4 hands the compiler to its own LLVM back end, which writes the
+# object itself and calls only `lld-link`; **no C compiler runs in this step at
+# all**, and `tools\selfhost-llvm.ps1` is the gate that holds this end of the
+# chain by doing the same thing with `PATH` stripped of every C compiler.
 #
-#     selfhost_vm.vel.obj : error LNK2019: unresolved external symbol vshim_open
-#                           referenced in function vl_ll_open_module
+# What is *not* on this path any more is the emitted C.  `build-c` runs the C back
+# end and writes `selfhost\vm.vel.c`, which is where the seeds in earlier
+# revisions of this file came from; `build` writes an object and no C, and the
+# fixpoint at step 6 therefore asks generation 2 for the C explicitly (`emit-c`)
+# instead of picking up a side effect.  Step 4 leaves one file behind, the
+# executable, and the fixpoint's C is generated where it is compared — which is
+# strictly better than reading a file whose writer has moved.
 #
-# The question is asked of the binary rather than assumed.  `build` prints the
-# command line it is about to run -- to stderr -- so a build whose 5th word is a
-# marker says exactly one thing: whether the marker reached that command line.
-# The build itself fails (the marker is not a file), and nothing is being built
-# here, only asked.
+# The extra-link argument belongs to `build-c` and is not passed on the LLVM path:
+# it asks the emitted module whether the program calls the shim and links
+# `vela_llvm_shim.obj` and `LLVM-C.lib` when it does (`needs_shim` in
+# parts/vm_main.vel).
 #
-# It goes through a batch file with the output redirected into a file, and that
-# is not tidiness: with `2>&1 | Out-String` PowerShell wraps the compiler's
-# stderr in a `NativeCommandError` record that *echoes the offending source
-# line*, so the marker string came back out of the probe whether the driver had
-# passed it along or not.  Measured on the first run of this script: the probe
-# answered "yes" against a compiler that ignores the argument entirely.  cmd
-# does the redirecting inside the batch and PowerShell never sees that stream.
-function Test-ExtraLinkArg([string] $vm) {
+# HOW THE QUESTION IS PUT.  Not "does `build` exit 0" -- it did, for six
+# generations, while `build` was the C path, and a probe that cannot tell those two
+# compilers apart answers 'llvm' for both.  The discriminator is `build-c` itself,
+# because **only a compiler that has the flip knows the name at all**: a mode it
+# does not recognise is `unknown mode`, printed by `usage()`, exit non-zero.  So a
+# clean `build-c` is the whole answer, and it costs one small build.
+#
+#   'llvm'       the compiler knows `build-c`, so its `build` is the LLVM path:
+#                step 4 is one word
+#   'build+arg'  it predates the flip but knows the extra link, so its `build` *is*
+#                the C path and takes the 5th word.  Reached exactly once, on the
+#                first build after the flip
+#   'build+CL'   older still: the same inputs go through `CL`, which the C compiler
+#                reads as extra arguments, so a driver that ignores a 5th word
+#                still gets them
+function Get-CompilerBuildMode([string] $vm) {
     $probe = Join-Path $buildDir '_extra_probe.vel'
     [System.IO.File]::WriteAllText($probe,
         "def main() -> None {`r`n    print(`"probe`")`r`n}`r`n")
     $bat = Join-Path $buildDir '_extra_probe.bat'
     $out = Join-Path $buildDir '_extra_probe.txt'
+
     $body = @('@echo off')
     $vcv5 = Find-Vcvars
     if ($vcv5) { $body += "call `"$vcv5`" >nul 2>&1" }
     $body += 'set VSCMD_SKIP_SENDTELEMETRY=1'
+    $body += "`"$vm`" build-c `"$probe`" > `"$out`" 2>&1"
+    [System.IO.File]::WriteAllText($bat, ($body -join "`r`n") + "`r`n")
+    Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
+    & cmd.exe /c $bat | Out-Null
+    $rc = $LASTEXITCODE
+    if (Test-Path -LiteralPath $out) {
+        Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
+    }
+    if ($rc -eq 0) { return 'llvm' }
+
+    # Not the flipped compiler.  Which of the two C-era shapes is it?  The 5th word
+    # is the question, and it is put the way it always was: `build` prints the
+    # command line it is about to run -- to stderr -- so a build whose 5th word is a
+    # marker says exactly one thing: whether the marker reached that command line.
+    # The build itself fails (the marker is not a file), and nothing is being built
+    # here, only asked.
+    #
+    # It goes through a batch file with the output redirected into a file, and that
+    # is not tidiness: with `2>&1 | Out-String` PowerShell wraps the compiler's
+    # stderr in a `NativeCommandError` record that *echoes the offending source
+    # line*, so the marker string came back out of the probe whether the driver had
+    # passed it along or not.  Measured on the first run of this script: the probe
+    # answered "yes" against a compiler that ignores the argument entirely.  cmd
+    # does the redirecting inside the batch and PowerShell never sees that stream.
+    $body = @('@echo off')
+    if ($vcv5) { $body += "call `"$vcv5`" >nul 2>&1" }
+    $body += 'set VSCMD_SKIP_SENDTELEMETRY=1'
     $body += "`"$vm`" build `"$probe`" `"$runtimeArg`" VELA_EXTRA_LINK_PROBE > `"$out`" 2>&1"
     [System.IO.File]::WriteAllText($bat, ($body -join "`r`n") + "`r`n")
+    Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
     & cmd.exe /c $bat | Out-Null
     $text = ''
-    if (Test-Path -LiteralPath $out) { $text = [string](Get-Content -LiteralPath $out -Raw) }
-    return $text.Contains('VELA_EXTRA_LINK_PROBE')
+    if (Test-Path -LiteralPath $out) {
+        $text = [System.IO.File]::ReadAllText($out)
+        Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
+    }
+    if ($text.Contains('VELA_EXTRA_LINK_PROBE')) { return 'build+arg' }
+    return 'build+CL'
 }
 
 function Build-SeedCompiler {
@@ -242,7 +310,7 @@ function Build-SeedCompiler {
     #
     # `$extraLink` is here from the first generation on, and it has to be: the
     # seed C this script promotes at step 4 *calls the shim* (the driver's
-    # `build-llvm` mode does), so the next bootstrap has to link it.  On the
+    # `build` mode does), so the next bootstrap has to link it.  On the
     # very first run the checked-in seed C does not call anything in it yet, and
     # the object is simply unused.
     if (-not (Test-Path -LiteralPath $seedC)) {
@@ -275,11 +343,11 @@ Say "  vcvars64   : $(if ($vcv) { $vcv } else { 'NOT FOUND' })"
 #                          its own code generator; it is passed through the
 #                          extra-link argument at steps 2 and 4.
 #   vela_llvm_runtime.obj  the runtime the *emitted program* calls.  `vm.exe
-#                          build-llvm` links it into every program it builds,
+#                          build links it into every program it builds,
 #                          and it is copied beside every vm.exe at step 8.
 #
 # Neither is ever built by a user's build: `vm.exe build x.vel` compiles C, and
-# `vm.exe build-llvm x.vel` writes an object itself and calls a linker.  This
+# `vm.exe build x.vel` writes an object itself and calls a linker.  This
 # script is the only thing here that compiles a C file other than the seed.
 $llvmMissing = @()
 foreach ($p in @($llvmLib, $llvmDll, $llvmLld, (Join-Path $llvmInc 'llvm-c\Core.h'), $shimC, $rtC)) {
@@ -473,14 +541,13 @@ if ($failed) { Say ''; Say 'build FAILED at step 3'; Write-Report; exit 1 }
 # ---------------------------------------------------------------- 4. compiler
 #
 # `vm.exe build selfhost/vm.vel` is the compiler compiling the compiler, through
-# its own build driver: emit the C, hand it to cl.exe, keep the binary.
+# its own LLVM back end: the module is built in process through libLLVM, the object
+# is written by the compiler, and `lld-link` links it.  **No C compiler runs in
+# this step.**  What comes out is then promoted, and all three promotions matter:
 #
-# What comes out is then promoted, and all three promotions matter:
-#
-#   selfhost/vm.c   -> selfhost\build\vm.c            the seed: the one C file a
-#                                                     machine with no Vela at all
-#                                                     needs, kept as the compiler
-#                                                     own output rather than a fossil
+#   (nothing)       -> selfhost\vm.c                  no longer written here; see
+#                                                     step 6, where the fixpoint
+#                                                     is asked for the C instead
 #   selfhost/vm.exe -> selfhost\build\vm.exe          *the compiler in the tree*
 #   selfhost/vm.exe -> ...\vm_by_vela.exe             the same binary, under the
 #                                                     name that says how it was made
@@ -490,6 +557,14 @@ if ($failed) { Say ''; Say 'build FAILED at step 3'; Write-Report; exit 1 }
 # this it stayed the binary built from the *previous* source — one generation
 # behind the tree, quietly.  A build that leaves the compiler behind the source is
 # a build whose results are about the wrong program.
+#
+# The promoted compiler is an LLVM-built one, and that is the change this whole
+# workstream was for: the cl-built binary (stage 1, out of the seed C at step 2)
+# stops being the compiler the tests, the benchmarks and the IDE measure.  The
+# seed C is stage 0; `tools\selfhost-llvm.ps1` is the gate that holds the other end
+# of the chain, by building the same source through `build` with no C compiler on
+# `PATH` at all and requiring the result to work.
+#
 # The source the compiler is built from, named once and used by both this step and
 # the fixpoint below, because the *spelling* of this path is embedded in the emitted
 # C: every `vela_bounds_check(..., "selfhost/vm.vel", 14)` carries it, so two builds
@@ -498,70 +573,78 @@ if ($failed) { Say ''; Say 'build FAILED at step 3'; Write-Report; exit 1 }
 # 758641 — same line count, same program, different literals.
 $selfSource = 'selfhost/vm.vel'
 
-# Where the driver puts the emitted C, by its own rule: `build_scratch`/`flat_name`
-# in `parts/vm_main.vel` replace every `:`, `\` or `/` in the path **as given** with
-# `_` and append `.c`, so this source lands in `selfhost_vm.vel.c`.
+# Where a driver puts the intermediates, for the one step that needs to know:
+# `build_scratch`/`flat_name` in `parts/vm_main.vel` replace every `:`, `\` or `/`
+# in the path **as given** with `_`, so this source's scratch directory is
+# `%TEMP%\vela-build\selfhost_vm.vel`, and the `.ll` and the `.obj` of a `build`
+# land in it.
 #
-# This step used to look for `vm.vel.c`, which the driver stopped writing when the
-# scratch key became the whole path (it used to be the base name, which collided for
-# two same-named sources in different directories).  Measured: `vm.vel.c` was still on
-# disk from 03:05:47 — written by the older driver — while the current one was writing
-# `selfhost_vm.vel.c`, so the "fixpoint" compared generation 2 against an artefact of
-# an earlier generation, and the seed it promoted was that same stale file.  A check
-# that reads a file nothing writes is not a check.
+# Nothing here reads a file out of it any more, and that is deliberate.  This
+# block used to name `selfhost_vm.vel.c` inside it, which step 4 promoted into
+# `selfhost\vm.c` -- and it was written because a stale `vm.vel.c` left over from
+# an older driver made the "fixpoint" compare generation 2 against an artefact of
+# an earlier generation.  `build` writes no C, so the *whole* shape of that hazard
+# is gone: every C this step compares is generated by the compiler being measured,
+# inside this run (step 6).  `$scratchDir` survives only as a sentence in that
+# step's failure message, so the reader of a red fixpoint is told where to look for
+# what the driver did write.
 $scratchDir = Join-Path $env:TEMP 'vela-build'
-$scratchC = Join-Path $scratchDir (($selfSource -replace '[:\\/]', '_') + '.c')
-Remove-Item -LiteralPath $scratchC -Force -ErrorAction SilentlyContinue
 
-# The extra-link inputs, handed to whichever compiler is doing the building.
+# The extra-link inputs, handed to a compiler whose `build` is still the C path.
 #
-# Normally that is the 5th word of `vm.exe build` -- the mechanism this project
-# decided on, and the one `msvc_build` in parts/vm_main.vel documents.  For the
-# *first* self-build after that argument was added, the compiler in the tree is
-# the previous generation, which ignores it -- see `Test-ExtraLinkArg` -- and the
-# bridge is `CL`: the C compiler reads that variable and treats its contents as
-# extra arguments, so the older driver gets the same inputs without a change to
-# the command line it builds.  Measured: with `CL` set to a path that does not
-# exist, the build fails with
+# On the normal path step 4 passes nothing extra, because `build` is the LLVM path
+# and finds what the program needs from the module it emitted.  These two branches
+# exist for the *one* generation that straddles the flip: the compiler that
+# performs the first self-build after `build` became the LLVM path is the previous
+# generation, whose `build` is still the C one, and whose C for the compiler calls
+# `vshim_*` without linking anything:
+#
+#     selfhost_vm.vel.obj : error LNK2019: unresolved external symbol vshim_open
+#                           referenced in function vl_ll_open_module
+#
+# so it has to be told.  `build+arg` says it as the 5th word; `build+CL` says it
+# through `CL`, which the C compiler reads as extra arguments, for a driver older
+# than the 5th word.  Measured for the `CL` shape: with the variable set to a path
+# that does not exist the build fails with
 #
 #     LINK : fatal error LNK1181: cannot open input file 'Z:\...obj'
 #
-# which is cl reading the variable through the old driver's batch file.  One
-# generation later the probe answers "yes" and this branch is never taken again.
-if (Test-ExtraLinkArg $vmExe) {
-    Say '    the compiler knows the extra-link argument: passed as the 5th word'
+# which is cl reading it through the old driver's batch file.  One generation
+# later the probe answers 'llvm' and neither branch is taken again.
+$buildMode = Get-CompilerBuildMode $vmExe
+if ($buildMode -eq 'llvm') {
+    Say '    this compiler`s `build` is the LLVM path: step 4 starts no C compiler'
     Clear-LockedTarget (Join-Path $root 'selfhost\vm.exe')
-    Step '4/8  build the compiler with the compiler' { & $vmExe build $selfSource $runtimeArg $extraLink } | Out-Null
+    Step '4/8  build the compiler with the compiler (LLVM in process; lld-link, no C compiler)' { & $vmExe build $selfSource } | Out-Null
+} elseif ($buildMode -eq 'build+arg') {
+    Say '    this compiler predates the flip: its `build` *is* the C path, and it'
+    Say '    takes the extra-link argument, so that is what this step runs'
+    Clear-LockedTarget (Join-Path $root 'selfhost\vm.exe')
+    Step '4/8  build the compiler with the compiler (this generation`s `build` = the C back end)' { & $vmExe build $selfSource $runtimeArg $extraLink } | Out-Null
 } else {
-    Say '    this compiler predates the extra-link argument: the same inputs go'
-    Say '    through `CL`, which the C compiler reads as extra arguments'
+    Say '    this compiler predates both the flip and the extra-link argument: the same'
+    Say '    inputs go through `CL`, which the C compiler reads as extra arguments'
     $env:CL = $extraLink
     Clear-LockedTarget (Join-Path $root 'selfhost\vm.exe')
-    Step '4/8  build the compiler with the compiler' { & $vmExe build $selfSource $runtimeArg } | Out-Null
+    Step '4/8  build the compiler with the compiler (this generation`s `build` = the C back end)' { & $vmExe build $selfSource $runtimeArg } | Out-Null
     Remove-Item Env:\CL -ErrorAction SilentlyContinue
 }
 if (-not $failed) {
-    Head '      promote what the compiler wrote'
-    $gen2C = Join-Path $root 'selfhost\vm.c'
+    Head '      promote what the compiler built'
     $gen2Exe = Join-Path $root 'selfhost\vm.exe'
-    # `build` no longer writes the emitted C beside the source: the language's own
-    # rule is that a build must not leave another language's file in the directory
-    # holding the program, so the C and the object file go to the scratch.  The
-    # executable stays beside the source, which is why this step's binary was already
-    # correct while this file was not.
-    if (Test-Path -LiteralPath $scratchC) {
-        Copy-Item -LiteralPath $scratchC -Destination $gen2C -Force
-        Say "    selfhost\vm.c <- vela-build\$($scratchC | Split-Path -Leaf) ($((Get-Item -LiteralPath $gen2C).Length) bytes)"
-    } else {
-        Say "    !! the driver wrote no $scratchC, so the fixpoint has nothing fresh to compare"
-        Say "       the newest emitted files in $scratchDir are:"
-        Get-ChildItem -LiteralPath $scratchDir -Filter *.c -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 5 |
-            ForEach-Object { Say ("         " + $_.Name) }
-        $failed = $true
-    }
+    # Nothing is copied into `selfhost\vm.c` here any more, and the reason is
+    # worth one sentence: step 4 is a `build`, and no build mode leaves the
+    # emitted C anywhere -- the language's own rule is that a build must not leave
+    # another language's file in the directory holding the program, so the object
+    # and the IR go to the scratch and the executable is the only product.  The C
+    # the fixpoint needs is asked for at step 6, by the compiler that is being
+    # measured, and `selfhost\vm.c` becomes a *comparison* of that against the
+    # seed rather than a promoted copy of it.  This block used to copy
+    # `%TEMP%\vela-build\selfhost_vm.vel.c` here, and the failure it was written
+    # for -- "the driver wrote no ...c, so the fixpoint has nothing fresh to
+    # compare" -- is now the shape of the whole step, so it is stated at step 6
+    # instead of being a branch that can silently not be taken.
     $pairs = @(
-        @($gen2C, $seedC),
         @($gen2Exe, (Join-Path $root 'selfhost\build\vm.exe')),
         @($gen2Exe, (Join-Path $root 'selfhost\build\vm_by_vela.exe'))
     )
@@ -609,40 +692,95 @@ if (Test-Path -LiteralPath (Join-Path $root 'selfhost\vela.exe')) {
 
 # ---------------------------------------------------------------- 6. fixpoint
 #
-# The property stage 4 rests on, checked here as well as in the test suite: the
-# compiler must write the C it was built from, and the compiler it built must
-# write that same C again.  Nothing else in this script needs a test corpus, a
-# second front end or a Python interpreter — one C file, a C compiler, and the
-# compiler checking itself twice.
+# The property the whole chain rests on, checked here as well as in the test
+# suite: **the compiler must write the C it was built from**, and the compiler it
+# built must write that same C again.  Nothing else in this script needs a test
+# corpus, a second front end or a Python interpreter — one C file, a C compiler
+# for stage 1, and the compiler checking itself.
+#
+# WHAT CHANGED WITH THE FLIP, and why this step is longer than it was.  Every
+# generation here used to arrive with its C as a side effect: `build` wrote
+# `%TEMP%\vela-build\selfhost_vm.vel.c` because it *was* the C driver, and step 4
+# promoted that file into `selfhost\vm.c`.  `build` is the LLVM path now and
+# writes no C, so there is no side effect to pick up, and a check that reads a
+# file nothing writes is not a check — this file has already paid for that lesson
+# once (see `$scratchC`'s history: a "fixpoint" that compared generation 2 against
+# an artefact of an earlier generation).  So the C is **asked for**, by the
+# compiler under test, at the moment it is compared, and nothing is promoted:
+#
+#   selfhost\build\vm.c   the seed.  Tracked, and the floor of the bootstrap: it
+#                         is what a machine with no Vela at all compiles, and it
+#                         is the C that generation 1 emitted when it was last
+#                         regenerated.  Nothing in this build writes it any more
+#                         -- step 4 no longer has a C to promote -- so it stays
+#                         the record of the moment it was frozen, which is what a
+#                         seed is
+#   selfhost\vm.c         the C the *promoted* compiler emits now, written here
+#                         and diffed against the seed.  It is a comparison, not a
+#                         promotion: if it differs, the seed is stale and this
+#                         step says so instead of quietly overwriting it
+#   _fixpoint_gen2.c      the C generation 2 emits, which must equal the other
+#                         two: the compiler reproduces itself
+#
+# The seed is the one legitimate exception.  A change to the emitter that does not
+# change what it emits for the compiler's own source leaves it exactly as it was;
+# a change that does leaves `selfhost\vm.c` different, and the honest response is
+# to look at the difference and refreeze the seed deliberately (copy
+# `selfhost\vm.c` over `selfhost\build\vm.c`, which is what "the compiler's own
+# output rather than a fossil" means) rather than to have the build do it on the
+# way past.
 #
 # (Until stage 4 this step ran the Python differential suites: stage 0 was the
 # second opinion that certified the test goldens at the moment they were frozen.
 # Stage 0 is deleted, so that step is gone — the goldens and this fixpoint are
 # the whole of the evidence now, and `tests/golden/` records what they certify.)
 $gen2Exe = Join-Path $root 'selfhost\vm.exe'
-$gen2C   = Join-Path $root 'selfhost\vm.c'
+$gen1C   = Join-Path $root 'selfhost\vm.c'
 $gen2Out = Join-Path $root 'selfhost\build\_fixpoint_gen2.c'
+Remove-Item -LiteralPath $gen1C, $gen2Out -Force -ErrorAction SilentlyContinue
 
 if (-not (Test-Path -LiteralPath $gen2Exe)) {
     Head '6/8  fixpoint skipped: no generation 2 binary'
     $failed = $true
 } else {
-    Step '6/8  fixpoint: generation 2 re-emits the compiler' {
+    Step '6/8  fixpoint: generation 2 re-emits the compiler, both as C' {
         & cmd.exe /c "`"$gen2Exe`" emit-c $selfSource > `"$gen2Out`" 2> nul"
     } | Out-Null
     if (-not $failed) {
-        Head '      does generation 2 write what generation 1 wrote?'
-        $hSeed = (Get-FileHash -LiteralPath $seedC -Algorithm SHA256).Hash
-        $hGen1 = (Get-FileHash -LiteralPath $gen2C  -Algorithm SHA256).Hash
-        $hGen2 = (Get-FileHash -LiteralPath $gen2Out -Algorithm SHA256).Hash
-        Say "    seed  (selfhost\build\vm.c) : $($hSeed.Substring(0,16))  $((Get-Item -LiteralPath $seedC).Length) bytes"
-        Say "    gen 1 (selfhost\vm.c)       : $($hGen1.Substring(0,16))  $((Get-Item -LiteralPath $gen2C).Length) bytes"
-        Say "    gen 2 (emitted by itself)   : $($hGen2.Substring(0,16))  $((Get-Item -LiteralPath $gen2Out).Length) bytes"
-        if ($hSeed -ne $hGen1 -or $hGen1 -ne $hGen2) {
-            Say '    !! the C moved between generations: this compiler does not reproduce itself'
+        Step '      and the promoted compiler emits it too' {
+            & cmd.exe /c "`"$(Join-Path $root 'selfhost\build\vm.exe')`" emit-c $selfSource > `"$gen1C`" 2> nul"
+        } | Out-Null
+    }
+    if (-not $failed) {
+        Head '      does generation 2 write what the seed holds?'
+        if (-not (Test-Path -LiteralPath $gen1C) -or (Get-Item -LiteralPath $gen1C).Length -eq 0) {
+            Say "    !! the promoted compiler emitted no C, so the fixpoint has nothing"
+            Say "       fresh to compare.  The scratch with the last emitted files is"
+            Say "       $scratchDir; a fresh file there is NOT evidence that this step ran."
+            $failed = $true
+        } elseif (-not (Test-Path -LiteralPath $gen2Out) -or (Get-Item -LiteralPath $gen2Out).Length -eq 0) {
+            Say "    !! generation 2 emitted no C into $gen2Out"
             $failed = $true
         } else {
-            Say '    byte-identical: the compiler reproduces itself'
+            $hSeed = (Get-FileHash -LiteralPath $seedC -Algorithm SHA256).Hash
+            $hGen1 = (Get-FileHash -LiteralPath $gen1C  -Algorithm SHA256).Hash
+            $hGen2 = (Get-FileHash -LiteralPath $gen2Out -Algorithm SHA256).Hash
+            Say "    seed  (selfhost\build\vm.c) : $($hSeed.Substring(0,16))  $((Get-Item -LiteralPath $seedC).Length) bytes"
+            Say "    gen 1 (selfhost\vm.c)       : $($hGen1.Substring(0,16))  $((Get-Item -LiteralPath $gen1C).Length) bytes"
+            Say "    gen 2 (emitted by itself)   : $($hGen2.Substring(0,16))  $((Get-Item -LiteralPath $gen2Out).Length) bytes"
+            if ($hGen1 -ne $hGen2) {
+                Say '    !! generation 2 does not write the C the promoted compiler wrote:'
+                Say '       the compiler does not reproduce itself'
+                $failed = $true
+            } elseif ($hSeed -ne $hGen1) {
+                Say '    !! generation 2 reproduces itself, but neither writes the checked-in seed:'
+                Say '       the emitter changed, so selfhost\build\vm.c is stale.  Read the diff,'
+                Say '       then refreeze it deliberately:'
+                Say "           copy selfhost\vm.c selfhost\build\vm.c"
+                $failed = $true
+            } else {
+                Say '    byte-identical: the compiler reproduces itself, and it is the seed'
+            }
         }
     }
 }
@@ -677,7 +815,7 @@ if ($Suites -or $Record) {
 # listed here explicitly (they are `selfhost\build\vm.exe`, the promoted
 # `selfhost\vm.exe`, and `vm_by_vela.exe`), and a missing file is named.
 #
-# `vela_llvm_runtime.obj` is what `vm.exe build-llvm` links into every program
+# `vela_llvm_runtime.obj` is what the LLVM path links into every program
 # it builds, and it is looked for beside the compiler (`find_llvm_rt` in
 # parts/vm_main.vel), so it sits with the DLL.
 Head '8/8  the code generator is beside every vm.exe'

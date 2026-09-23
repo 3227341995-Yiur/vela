@@ -15267,12 +15267,12 @@ static void vl_dump_tokens(int64_t* vl_tk, struct vl_Ctx vl_cx) {
         (void)((vela_emit_str(vela_str_lit(" ", 1))));
         (void)((vela_emit_int(vl_tk_len(vl_tk, vl_i))));
         (void)((vela_emit_nl()));
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16154);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16168);
     }
 }
 
 static void vl_usage(void) {
-    (void)((vela_warn_str(vela_str_lit("usage: vela <lex|count|parse|nodes|emit-c|run|check|debug|build|emit-llvm|build-llvm> <file.vel>", 96))));
+    (void)((vela_warn_str(vela_str_lit("usage: vela <lex|count|parse|nodes|emit-c|run|check|debug|build|build-c|emit-llvm|build-llvm> <file.vel>", 104))));
     (void)((vela_warn_nl()));
     (void)((vela_warn_str(vela_str_lit("  lex    dump the token stream", 30))));
     (void)((vela_warn_nl()));
@@ -15294,11 +15294,17 @@ static void vl_usage(void) {
     (void)((vela_warn_nl()));
     (void)((vela_warn_str(vela_str_lit("         events on stdout, commands in <cmddir>/cmd.NNN (DESIGN.md 10)", 70))));
     (void)((vela_warn_nl()));
-    (void)((vela_warn_str(vela_str_lit("  build  emit the C and hand it to the host's C compiler", 56))));
+    (void)((vela_warn_str(vela_str_lit("  build  build it in process through libLLVM and link it with lld-link", 70))));
+    (void)((vela_warn_nl()));
+    (void)((vela_warn_str(vela_str_lit("         (no C compiler is started; this is the default)", 56))));
+    (void)((vela_warn_nl()));
+    (void)((vela_warn_str(vela_str_lit("  build-c  emit the C and hand it to the host's C compiler (the C back", 70))));
+    (void)((vela_warn_nl()));
+    (void)((vela_warn_str(vela_str_lit("         end, named on purpose: it is how a `parallel for` is built)", 68))));
     (void)((vela_warn_nl()));
     (void)((vela_warn_str(vela_str_lit("  emit-llvm  print the LLVM IR this program compiles to, through libLLVM", 72))));
     (void)((vela_warn_nl()));
-    (void)((vela_warn_str(vela_str_lit("  build-llvm build it in process and link it with lld-link (no C compiler)", 74))));
+    (void)((vela_warn_str(vela_str_lit("  build-llvm the same path as `build`, under the name the gates use", 67))));
     (void)((vela_warn_nl()));
 }
 
@@ -15309,12 +15315,12 @@ static void vl_dump_nodes(int64_t* vl_nd, int64_t vl_n) {
         int64_t vl_k = 0LL;
         while ((vl_k < 10LL)) {
             (void)((vela_emit_str(vela_str_lit(" ", 1))));
-            int64_t vl_ix_58361;
-            (void)((vela_emit_int((vela_bounds_check((vl_ix_58361 = vela_add_range((vela_mul_range((vl_i), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16199)), (vl_k), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16199)), 655360, "selfhost/vm.vel", 16199), vl_nd[vl_ix_58361]))));
-            vl_k = vela_add_range(vl_k, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16200);
+            int64_t vl_ix_58382;
+            (void)((vela_emit_int((vela_bounds_check((vl_ix_58382 = vela_add_range((vela_mul_range((vl_i), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16219)), (vl_k), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16219)), 655360, "selfhost/vm.vel", 16219), vl_nd[vl_ix_58382]))));
+            vl_k = vela_add_range(vl_k, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16220);
         }
         (void)((vela_emit_nl()));
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16203);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16223);
     }
 }
 
@@ -15328,13 +15334,13 @@ static int64_t vl_find_in(vela_str vl_s, vela_str vl_needle) {
         return 0LL;
     }
     int64_t vl_i = 0LL;
-    while ((vela_add_range((vl_i), (vl_n), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16227) <= (((int64_t)vl_s.len)))) {
-        if ((vela_str_eq((vela_substr(vl_s, vl_i, vela_add_range((vl_i), (vl_n), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16228))), vl_needle))) {
+    while ((vela_add_range((vl_i), (vl_n), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16254) <= (((int64_t)vl_s.len)))) {
+        if ((vela_str_eq((vela_substr(vl_s, vl_i, vela_add_range((vl_i), (vl_n), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16255))), vl_needle))) {
             return vl_i;
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16231);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16258);
     }
-    return vela_sub_range((0LL), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16233);
+    return vela_sub_range((0LL), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16260);
 }
 
 static bool vl_needs_openmp(vela_str vl_cfile) {
@@ -15348,8 +15354,8 @@ static bool vl_needs_shim(vela_str vl_cfile) {
 static vela_str vl_strip_vel(vela_str vl_path) {
     int64_t vl_n = (((int64_t)vl_path.len));
     if ((vl_n > 4LL)) {
-        if ((vela_str_eq((vela_substr(vl_path, vela_sub_range((vl_n), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16262), vl_n)), vela_str_lit(".vel", 4)))) {
-            return (vela_substr(vl_path, 0LL, vela_sub_range((vl_n), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16263)));
+        if ((vela_str_eq((vela_substr(vl_path, vela_sub_range((vl_n), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16289), vl_n)), vela_str_lit(".vel", 4)))) {
+            return (vela_substr(vl_path, 0LL, vela_sub_range((vl_n), (4LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16290)));
         }
     }
     return vl_path;
@@ -15365,16 +15371,16 @@ static bool vl_exists(vela_str vl_path) {
 static int64_t vl_last_sep(vela_str vl_s) {
     int64_t vl_n = (((int64_t)vl_s.len));
     while ((vl_n > 0LL)) {
-        int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16299), "selfhost/vm.vel", 16299));
+        int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16326), "selfhost/vm.vel", 16326));
         if ((vl_c == 47LL)) {
-            return vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16300);
+            return vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16327);
         }
         if ((vl_c == 92LL)) {
-            return vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16301);
+            return vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16328);
         }
-        vl_n = vela_sub_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16302);
+        vl_n = vela_sub_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16329);
     }
-    return vela_sub_range((0LL), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16304);
+    return vela_sub_range((0LL), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16331);
 }
 
 static vela_str vl_dir_of(vela_str vl_s) {
@@ -15390,12 +15396,12 @@ static vela_str vl_rstrip_sep(vela_str vl_s) {
     if ((vl_n == 0LL)) {
         return vl_s;
     }
-    int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16323), "selfhost/vm.vel", 16323));
+    int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16350), "selfhost/vm.vel", 16350));
     if ((vl_c == 47LL)) {
-        return (vela_substr(vl_s, 0LL, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16325)));
+        return (vela_substr(vl_s, 0LL, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16352)));
     }
     if ((vl_c == 92LL)) {
-        return (vela_substr(vl_s, 0LL, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16328)));
+        return (vela_substr(vl_s, 0LL, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16355)));
     }
     return vl_s;
 }
@@ -15407,14 +15413,14 @@ static vela_str vl_join(vela_str vl_a, vela_str vl_b) {
 static vela_str vl_sep_of(vela_str vl_s) {
     int64_t vl_n = (((int64_t)vl_s.len));
     while ((vl_n > 0LL)) {
-        int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16343), "selfhost/vm.vel", 16343));
+        int64_t vl_c = (vela_bytes_at(vl_s, vela_sub_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16370), "selfhost/vm.vel", 16370));
         if ((vl_c == 47LL)) {
             return vela_str_lit("/", 1);
         }
         if ((vl_c == 92LL)) {
             return vela_str_lit("\\", 1);
         }
-        vl_n = vela_sub_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16346);
+        vl_n = vela_sub_range(vl_n, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16373);
     }
     return vela_str_lit("/", 1);
 }
@@ -15426,7 +15432,7 @@ static vela_str vl_parent_of(vela_str vl_dir) {
         return vela_str_lit(".", 1);
     }
     if ((vl_n == 1LL)) {
-        if (((vela_bytes_at(vl_d, 0LL, "selfhost/vm.vel", 16364)) == 47LL)) {
+        if (((vela_bytes_at(vl_d, 0LL, "selfhost/vm.vel", 16391)) == 47LL)) {
             return vela_str_lit("/", 1);
         }
         return vl_d;
@@ -15442,7 +15448,7 @@ static vela_str vl_parent_of(vela_str vl_dir) {
         return (vela_substr(vl_d, 0LL, 1LL));
     }
     if ((vl_at == 2LL)) {
-        if (((vela_bytes_at(vl_d, 1LL, "selfhost/vm.vel", 16380)) == 58LL)) {
+        if (((vela_bytes_at(vl_d, 1LL, "selfhost/vm.vel", 16407)) == 58LL)) {
             if ((vela_str_eq((vela_substr(vl_d, 1LL, 2LL)), vela_str_lit(":\\", 2)))) {
                 return (vela_substr(vl_d, 0LL, 3LL));
             }
@@ -15459,7 +15465,7 @@ static vela_str vl_join_with(vela_str vl_a, vela_str vl_b) {
 }
 
 static vela_str vl_exe_dir(void) {
-    vela_str vl_me = (vela_arg(0LL, "selfhost/vm.vel", 16404));
+    vela_str vl_me = (vela_arg(0LL, "selfhost/vm.vel", 16431));
     if (((((int64_t)vl_me.len)) == 0LL)) {
         return vela_str_lit(".", 1);
     }
@@ -15495,7 +15501,7 @@ static vela_str vl_find_runtime(vela_str vl_exe) {
             return vl_base;
         }
         vl_base = vl_join(vl_base, vela_str_lit("..", 2));
-        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16479);
+        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16506);
     }
     return vela_str_lit("runtime", 7);
 }
@@ -15512,15 +15518,15 @@ static int64_t vl_find_function(int64_t* vl_nd, int64_t* vl_mem, struct vl_VM vl
     int64_t vl_f = 0LL;
     while ((vl_f < vl_vm.f_nfn)) {
         int64_t vl_d = vl_ft_get(vl_mem, vl_f, vl_FT_DEF());
-        int64_t vl_ix_58924;
-        if (((vela_bounds_check((vl_ix_58924 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16506)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16506)), 655360, "selfhost/vm.vel", 16506), vl_nd[vl_ix_58924]) == vl_h)) {
+        int64_t vl_ix_58945;
+        if (((vela_bounds_check((vl_ix_58945 = vela_add_range((vela_mul_range((vl_d), (10LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16533)), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16533)), 655360, "selfhost/vm.vel", 16533), vl_nd[vl_ix_58945]) == vl_h)) {
             if ((vl_ft_get(vl_mem, vl_f, vl_FT_OWNER()) < 0LL)) {
                 return vl_f;
             }
         }
-        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16511);
+        vl_f = vela_add_range(vl_f, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16538);
     }
-    return vela_neg_int(1LL, "selfhost/vm.vel", 16513);
+    return vela_neg_int(1LL, "selfhost/vm.vel", 16540);
 }
 
 static vela_str vl_find_vcvars(void) {
@@ -15654,20 +15660,20 @@ static vela_str vl_base_name(vela_str vl_path) {
     if ((vl_n < 0LL)) {
         return vl_path;
     }
-    return (vela_substr(vl_path, vela_add_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16771), (((int64_t)vl_path.len))));
+    return (vela_substr(vl_path, vela_add_range((vl_n), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16798), (((int64_t)vl_path.len))));
 }
 
 static vela_str vl_flat_name(vela_str vl_path) {
     vela_str vl_out = vela_str_lit("", 0);
     int64_t vl_i = 0LL;
     while ((vl_i < (((int64_t)vl_path.len)))) {
-        int64_t vl_c = (vela_bytes_at(vl_path, vl_i, "selfhost/vm.vel", 16792));
+        int64_t vl_c = (vela_bytes_at(vl_path, vl_i, "selfhost/vm.vel", 16819));
         if ((((vl_c == 92LL) || (vl_c == 47LL)) || (vl_c == 58LL))) {
             vl_out = (vela_concat(vl_out, vela_str_lit("_", 1)));
         } else {
-            vl_out = (vela_concat(vl_out, (vela_substr(vl_path, vl_i, vela_add_range((vl_i), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16796)))));
+            vl_out = (vela_concat(vl_out, (vela_substr(vl_path, vl_i, vela_add_range((vl_i), (1LL), INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16823)))));
         }
-        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16798);
+        vl_i = vela_add_range(vl_i, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 16825);
     }
     return vl_out;
 }
@@ -15774,10 +15780,10 @@ static void vl_write_ll(vela_str vl_self, vela_str vl_path, vela_str vl_irfile) 
     vl_c = (vela_concat(vl_c, vela_str_lit(" > ", 3)));
     vl_c = (vela_concat(vl_c, vl_quoted(vl_irfile)));
     if (((vela_run_command(vl_shell(vl_c))) != 0LL)) {
-        (void)((vela_panic_str(vela_str_lit("build-llvm: the LLVM back end refused this program (its reason is above)", 72))));
+        (void)((vela_panic_str(vela_str_lit("build: the LLVM back end refused this program (its reason is above)", 67))));
     }
     if ((!vl_exists(vl_irfile))) {
-        (void)((vela_panic_str(vela_str_lit("build-llvm: no .ll was written", 30))));
+        (void)((vela_panic_str(vela_str_lit("build: no .ll was written", 25))));
     }
 }
 
@@ -15802,7 +15808,7 @@ static vela_str vl_find_lld(void) {
             return vl_c3;
         }
         vl_base = vl_join(vl_base, vela_str_lit("..", 2));
-        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 17048);
+        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 17078);
     }
     return vela_str_lit("", 0);
 }
@@ -15856,7 +15862,7 @@ static vela_str vl_find_llvm_rt(vela_str vl_rt) {
             }
         }
         vl_base = vl_join(vl_base, vela_str_lit("..", 2));
-        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 17111);
+        vl_up = vela_add_range(vl_up, 1LL, INT64_MIN, INT64_MAX, "selfhost/vm.vel", 17141);
     }
     return vela_str_lit("", 0);
 }
@@ -15914,35 +15920,35 @@ static void vl_do_build_llvm(vela_str vl_self, vela_str vl_path, vela_str vl_rt,
     (void)(vl_write_ll(vl_self, vl_path, vl_ir));
     vela_str vl_lld = vl_find_lld();
     if (((((int64_t)vl_lld.len)) == 0LL)) {
-        (void)((vela_panic_str(vela_str_lit("build-llvm: no lld-link.exe found (set VELA_LLD, or run tools\\get-llvm.ps1)", 75))));
+        (void)((vela_panic_str(vela_str_lit("build: no lld-link.exe found (set VELA_LLD, or run tools\\get-llvm.ps1)", 70))));
     }
     vela_str vl_rtobj = vl_find_llvm_rt(vl_rt);
     if (((((int64_t)vl_rtobj.len)) == 0LL)) {
-        (void)((vela_panic_str(vela_str_lit("build-llvm: no vela_llvm_runtime.obj beside this compiler (tools\\build.ps1 writes it there)", 91))));
+        (void)((vela_panic_str(vela_str_lit("build: no vela_llvm_runtime.obj beside this compiler (tools\\build.ps1 writes it there)", 86))));
     }
     vela_str vl_shim_obj = vela_str_lit("", 0);
     vela_str vl_llvm_lib = vela_str_lit("", 0);
     if (vl_needs_shim(vl_ir)) {
         vl_shim_obj = vl_find_shim_obj();
         if (((((int64_t)vl_shim_obj.len)) == 0LL)) {
-            (void)((vela_panic_str(vela_str_lit("build-llvm: this program calls the compiler's LLVM shim, and vela_llvm_shim.obj was not found beside the compiler (tools\\build.ps1 writes it there; VELA_LLVM_SHIM names one)", 173))));
+            (void)((vela_panic_str(vela_str_lit("build: this program calls the compiler's LLVM shim, and vela_llvm_shim.obj was not found beside the compiler (tools\\build.ps1 writes it there; VELA_LLVM_SHIM names one)", 168))));
         }
         vl_llvm_lib = vl_find_llvm_lib(vl_lld);
         if (((((int64_t)vl_llvm_lib.len)) == 0LL)) {
-            (void)((vela_panic_str(vela_str_lit("build-llvm: this program calls the compiler's LLVM shim, so it must link LLVM-C.lib, and none was found beside lld-link.exe (set VELA_LLVM to an unpacked LLVM 23.x tree, or run tools\\get-llvm.ps1)", 196))));
+            (void)((vela_panic_str(vela_str_lit("build: this program calls the compiler's LLVM shim, so it must link LLVM-C.lib, and none was found beside lld-link.exe (set VELA_LLVM to an unpacked LLVM 23.x tree, or run tools\\get-llvm.ps1)", 191))));
         }
     }
     int64_t vl_rc = vl_link_llvm(vl_find_vcvars(), vl_lld, vl_obj, vl_rtobj, vl_exe, vl_obj, vl_shim_obj, vl_llvm_lib);
     if ((vl_rc != 0LL)) {
-        (void)((vela_warn_str(vela_str_lit("vela: build-llvm: lld-link exited ", 34))));
+        (void)((vela_warn_str(vela_str_lit("vela: build: lld-link exited ", 29))));
         (void)((vela_warn_int(vl_rc)));
         (void)((vela_warn_nl()));
     }
     if ((!vl_exists(vl_exe))) {
         if ((vl_rc != 0LL)) {
-            (void)((vela_panic_str(vela_str_lit("build-llvm: lld-link could not link the object it was given", 59))));
+            (void)((vela_panic_str(vela_str_lit("build: lld-link could not link the object it was given", 54))));
         }
-        (void)((vela_panic_str(vela_str_lit("build-llvm: lld-link reported success but wrote no executable", 61))));
+        (void)((vela_panic_str(vela_str_lit("build: lld-link reported success but wrote no executable", 56))));
     }
     (void)((vela_emit_str(vela_str_lit("built ", 6))));
     (void)((vela_emit_str(vl_exe)));
@@ -15955,8 +15961,8 @@ static void vl_main(void) {
         (void)(vl_usage());
         (void)((vela_panic_str(vela_str_lit("the front end needs a mode and a file", 37))));
     }
-    vela_str vl_mode = (vela_arg(1LL, "selfhost/vm.vel", 17254));
-    vela_str vl_path = (vela_arg(2LL, "selfhost/vm.vel", 17255));
+    vela_str vl_mode = (vela_arg(1LL, "selfhost/vm.vel", 17285));
+    vela_str vl_path = (vela_arg(2LL, "selfhost/vm.vel", 17286));
     vela_str vl_src = (vela_read_text(vl_path));
     if (((((int64_t)vl_src.len)) == 0LL)) {
         (void)((vela_warn_str(vela_str_lit("vela: cannot read ", 18))));
@@ -16052,7 +16058,7 @@ static void vl_main(void) {
         (void)(vl_ck_module(vl_nd, vl_ty, vl_mem4, vl_path, (&vl_vm4)));
         vl_vm4.f_after_main = vl_find_function(vl_nd, vl_mem4, vl_vm4, vela_str_lit("dbg_exit", 8));
         vl_vm4.f_dbg_on = 1LL;
-        (void)(vl_run_main(vl_nd, vl_ty, vl_mem4, vl_fmem4, vl_flt, vl_ipool4, vl_fpool4, vl_bpool4, vl_src, vl_path, (vela_arg(3LL, "selfhost/vm.vel", 17382)), (&vl_vm4)));
+        (void)(vl_run_main(vl_nd, vl_ty, vl_mem4, vl_fmem4, vl_flt, vl_ipool4, vl_fpool4, vl_bpool4, vl_src, vl_path, (vela_arg(3LL, "selfhost/vm.vel", 17413)), (&vl_vm4)));
         return;
     }
     if ((vela_str_eq(vl_mode, vela_str_lit("check", 5)))) {
@@ -16082,10 +16088,36 @@ static void vl_main(void) {
         (void)(vl_ll_emit_ir(vl_nd, vl_ty, vl_flt, vl_src, vl_path, vl_memL, (&vl_vmL)));
         return;
     }
-    if ((vela_str_eq(vl_mode, vela_str_lit("build-llvm", 10)))) {
+    if ((vela_str_eq(vl_mode, vela_str_lit("build", 5)))) {
         vela_str vl_rtL = vela_str_lit("", 0);
         if (((vela_argc()) >= 4LL)) {
-            vl_rtL = (vela_arg(3LL, "selfhost/vm.vel", 17420));
+            vl_rtL = (vela_arg(3LL, "selfhost/vm.vel", 17465));
+        }
+        if (((vela_argc()) >= 5LL)) {
+            (void)((vela_warn_str(vela_str_lit("vela: build: the extra-link argument is `build-c`'s and this is", 63))));
+            (void)((vela_warn_str(vela_str_lit(" the LLVM path, which finds what a program needs from the module", 64))));
+            (void)((vela_warn_nl()));
+            (void)((vela_warn_str(vela_str_lit(" itself; ignoring `", 19))));
+            (void)((vela_warn_str((vela_arg(4LL, "selfhost/vm.vel", 17472)))));
+            (void)((vela_warn_str(vela_str_lit("` (use `build-c` if that is the path you meant)", 47))));
+            (void)((vela_warn_nl()));
+        }
+        vl_cx.f_ti = 0LL;
+        (void)(vl_parse_module(vl_src, vl_tk, vl_tkf, vl_nd, vl_ty, vl_flt, (&vl_cx)));
+        if ((vl_cx.f_err == 1LL)) {
+            (void)((vela_panic_str(vela_str_lit("the front end stopped after an error", 36))));
+        }
+        int64_t* vl_memD = (int64_t*)vela_arena_alloc((size_t)3741696 * sizeof(int64_t));
+        struct vl_VM vl_vmD = vl_vm_new();
+        (void)(vl_resolve_module(vl_nd, vl_ty, vl_memD, vl_path, (&vl_vmD)));
+        (void)(vl_ck_module(vl_nd, vl_ty, vl_memD, vl_path, (&vl_vmD)));
+        (void)(vl_do_build_llvm((vela_arg(0LL, "selfhost/vm.vel", 17485)), vl_path, vl_rtL, vl_nd, vl_ty, vl_flt, vl_src, vl_memD, (&vl_vmD)));
+        return;
+    }
+    if ((vela_str_eq(vl_mode, vela_str_lit("build-llvm", 10)))) {
+        vela_str vl_rtL2 = vela_str_lit("", 0);
+        if (((vela_argc()) >= 4LL)) {
+            vl_rtL2 = (vela_arg(3LL, "selfhost/vm.vel", 17497));
         }
         vl_cx.f_ti = 0LL;
         (void)(vl_parse_module(vl_src, vl_tk, vl_tkf, vl_nd, vl_ty, vl_flt, (&vl_cx)));
@@ -16096,19 +16128,19 @@ static void vl_main(void) {
         struct vl_VM vl_vmB = vl_vm_new();
         (void)(vl_resolve_module(vl_nd, vl_ty, vl_memB, vl_path, (&vl_vmB)));
         (void)(vl_ck_module(vl_nd, vl_ty, vl_memB, vl_path, (&vl_vmB)));
-        (void)(vl_do_build_llvm((vela_arg(0LL, "selfhost/vm.vel", 17431)), vl_path, vl_rtL, vl_nd, vl_ty, vl_flt, vl_src, vl_memB, (&vl_vmB)));
+        (void)(vl_do_build_llvm((vela_arg(0LL, "selfhost/vm.vel", 17508)), vl_path, vl_rtL2, vl_nd, vl_ty, vl_flt, vl_src, vl_memB, (&vl_vmB)));
         return;
     }
-    if ((vela_str_eq(vl_mode, vela_str_lit("build", 5)))) {
+    if ((vela_str_eq(vl_mode, vela_str_lit("build-c", 7)))) {
         vela_str vl_rt = vela_str_lit("", 0);
         if (((vela_argc()) >= 4LL)) {
-            vl_rt = (vela_arg(3LL, "selfhost/vm.vel", 17448));
+            vl_rt = (vela_arg(3LL, "selfhost/vm.vel", 17529));
         }
         vela_str vl_extra = vela_str_lit("", 0);
         if (((vela_argc()) >= 5LL)) {
-            vl_extra = (vela_arg(4LL, "selfhost/vm.vel", 17452));
+            vl_extra = (vela_arg(4LL, "selfhost/vm.vel", 17533));
         }
-        (void)(vl_do_build((vela_arg(0LL, "selfhost/vm.vel", 17454)), vl_path, vl_rt, vl_extra));
+        (void)(vl_do_build((vela_arg(0LL, "selfhost/vm.vel", 17535)), vl_path, vl_rt, vl_extra));
         return;
     }
     (void)(vl_usage());

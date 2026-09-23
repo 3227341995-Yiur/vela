@@ -911,9 +911,76 @@ int32_t vshim_sig_abandon(int64_t signature)
 
 /* ================================================================ functions */
 
+/* Two LLVM function types meaning the same thing.  Compared structurally rather
+ * than by handle, because "the same type" is a property of the types and not of
+ * the allocator: `vshim_sig_finish` builds a fresh FunctionType every time, so a
+ * pointer comparison would call `double(double)` and `double(double)` different
+ * types.  Returns 1 when they agree, 0 when they do not, and only ever inspects
+ * function types -- the caller has established both are ones. */
+static int same_function_type(LLVMTypeRef a, LLVMTypeRef b)
+{
+    unsigned i, n;
+    if (a == b) return 1;
+    if (!a || !b) return 0;
+    if (LLVMGetTypeKind(a) != LLVMFunctionTypeKind) return 0;
+    if (LLVMGetTypeKind(b) != LLVMFunctionTypeKind) return 0;
+    if (LLVMIsFunctionVarArg(a) != LLVMIsFunctionVarArg(b)) return 0;
+    if (LLVMGetReturnType(a) != LLVMGetReturnType(b)) return 0;
+    n = LLVMCountParamTypes(a);
+    if (n != LLVMCountParamTypes(b)) return 0;
+    /* LLVM has no "the nth parameter type" call; the only way in is the array of
+     * all of them, and `VSHIM_MAX_PARAMS` is this layer's bound on how many there
+     * can be, so the array is on the stack and no allocation is needed. */
+    {
+        LLVMTypeRef pa[VSHIM_MAX_PARAMS];
+        LLVMTypeRef pb[VSHIM_MAX_PARAMS];
+        if (n > VSHIM_MAX_PARAMS) return 0;
+        LLVMGetParamTypes(a, pa);
+        LLVMGetParamTypes(b, pb);
+        for (i = 0; i < n; i++) {
+            if (pa[i] != pb[i]) return 0;
+        }
+    }
+    return 1;
+}
+
+/* One type, spelled for a diagnostic.  `LLVMPrintTypeToString` allocates, and a
+ * message that leaks on a failure path is not worth the sentence it carries, so
+ * this writes the interesting part by hand: the kind and the parameter count.
+ * The sentence it appears in is read by a person who wants to know *which* two
+ * signatures collided, and the kinds are what differ. */
+static const char *type_text(LLVMTypeRef t, char *buf, size_t cap)
+{
+    unsigned n = 0;
+    const char *k = "?";
+    if (!t) {
+        snprintf(buf, cap, "(null)");
+        return buf;
+    }
+    switch (LLVMGetTypeKind(t)) {
+    case LLVMVoidTypeKind:     k = "void"; break;
+    case LLVMIntegerTypeKind:  k = LLVMGetIntTypeWidth(t) == 1 ? "i1"
+                                 : (LLVMGetIntTypeWidth(t) == 8 ? "i8"
+                                 : (LLVMGetIntTypeWidth(t) == 32 ? "i32" : "i64"));
+                               break;
+    case LLVMDoubleTypeKind:   k = "double"; break;
+    case LLVMPointerTypeKind:  k = "ptr"; break;
+    case LLVMStructTypeKind:   k = "a struct"; break;
+    case LLVMFunctionTypeKind:
+        n = LLVMCountParamTypes(t);
+        snprintf(buf, cap, "%s with %u parameter(s)", "a function", n);
+        return buf;
+    default: break;
+    }
+    snprintf(buf, cap, "%s", k);
+    return buf;
+}
+
 static int64_t fn_add(int64_t module, vela_str name, int64_t signature_type)
 {
     char buf[VSHIM_NAME_CAP];
+    char tbuf[VSHIM_NAME_CAP];
+    char ubuf[VSHIM_NAME_CAP];
     shim_module *m, *owner = NULL;
     LLVMTypeRef ty;
     LLVMValueRef fn;
@@ -937,7 +1004,46 @@ static int64_t fn_add(int64_t module, vela_str name, int64_t signature_type)
         fail("a function needs a name");
         return 0;
     }
-    fn = LLVMAddFunction(m->mod, buf, ty);
+    /* A name that is already in the module.  This is not a corner: it is the
+     * ordinary case of a program declaring the C library function the *back end*
+     * already declares for an operator -- `extern c def sqrt(x: float) -> float`
+     * in a program that also writes `**` -- and `pow`, `floor` and `fabs` are the
+     * same four.
+     *
+     * `LLVMAddFunction` answers a taken name by *silently renaming* the new
+     * function, so the module ends up with both `@sqrt` and `@sqrt.1`, the call
+     * goes to `@sqrt.1`, and nothing defines it: the failure is
+     *     lld-link: error: undefined symbol: sqrt.1
+     * at link time, or a wrong answer at run time.  Measured 2026-09-24 on
+     * `tests/probes/extern_calls_as_declared.vel`, whose IR held
+     * `declare double @sqrt(double)` and `declare double @sqrt.1(double)` at once.
+     * (A module whose globals are all *definitions* -- the corpus's plain programs
+     * -- never sees it, which is why it survived every gate.)
+     *
+     * A collision that names the same function type is the same declaration twice,
+     * and reusing it is what keeps the *call* on the C library's symbol.  A
+     * collision with a *different* type is refused here rather than renamed: two
+     * shapes under one symbol is a call with the wrong ABI, and this project would
+     * rather say so than emit either of them.  */
+    {
+        LLVMValueRef existing = LLVMGetNamedFunction(m->mod, buf);
+        if (existing) {
+            LLVMTypeRef have = LLVMGlobalGetValueType(existing);
+            if (!same_function_type(have, ty)) {
+                fail("\"%s\" is already declared in this module with the type %s, "
+                     "and this declaration asks for %s: one name cannot carry two "
+                     "signatures, and a call through either one would be the wrong "
+                     "ABI (`extern c` here names a symbol this back end already "
+                     "declares)",
+                     buf, type_text(have, tbuf, sizeof tbuf),
+                     type_text(ty, ubuf, sizeof ubuf));
+                return 0;
+            }
+            fn = existing;
+        } else {
+            fn = LLVMAddFunction(m->mod, buf, ty);
+        }
+    }
     if (!fn) {
         fail("LLVMAddFunction(\"%s\") returned NULL", buf);
         return 0;

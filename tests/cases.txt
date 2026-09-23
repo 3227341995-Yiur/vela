@@ -4,21 +4,32 @@
 #
 # mode      what must be true
 # ------------------------------------------------------------------------------
-# run       built by the compiler under test (which drives the host's C
-#           compiler itself), executed, and *also* interpreted: both must print
-#           tests/golden/<name>.out exactly
+# run       built by the compiler under test and executed, and *also*
+#           interpreted: both must print tests/golden/<name>.out exactly.  The
+#           compiler's `build` is the LLVM back end now — the module is built in
+#           process through libLLVM and linked by `lld-link`, with no C compiler
+#           started — so this is the row that says "the default path compiles
+#           this program and its answer is the interpreter's"
+# run-c     the same case, with `build-c`: the C back end, which emits C and
+#           hands it to the host's C compiler.  Every row that says `run-c` is a
+#           program the LLVM back end refuses **by design** and is listed in
+#           tests\llvm-refusals.txt; the comment above each row says which
+#           construct it is.  There is no fallback inside `build`, so a program
+#           the LLVM back end cannot compile has to be named here, one row at a
+#           time, where a reader can see it
 # refuse    `check` must fail with the first bytes of stderr equal to
 #           tests/golden/<name>.err, and must write nothing to stdout
 # panic     it must compile, and the program must then stop at run time with
 #           tests/golden/<name>.err as the head of stderr; the interpreter must
-#           stop too
+#           stop too.  `panic-c` is the same case built by the C back end
 # ok        `check` must accept it and report ok
 # dumps     the digests of `lex`, `parse` and `emit-c` must all match
 #           tests/golden/digests.txt — three checks, three digests, so a change
 #           in the back end cannot hide behind an unchanged parser
 # lex       one of those three on its own, for a file that cannot be parsed
-# fixpoint  the compiler must build itself through its own driver, and the
-#           compiler it built must write the C it wrote — byte for byte
+# fixpoint  the compiler must build itself through its own driver (the LLVM path,
+#           the default), and the compiler it built must emit the C the compiler
+#           emits — byte for byte, and the same C as the checked-in seed
 #
 # Every refusal here is a program Python or C++ would accept and misbehave on,
 # and every `ok` is a program a conservative compiler would be wrong to refuse.
@@ -67,8 +78,19 @@ run bitwise_ops                              tests/llvm-shapes/bitwise_ops.vel
 run two_arrays                               tests/llvm-shapes/two_arrays.vel
 run arrays_and_len_folding                   tests/build/arrays_and_len_folding.vel
 run array_zero_filled                        tests/build/array_zero_filled.vel
-run parallel_for_correct                     tests/build/parallel_for_correct.vel
-run parallel_nested_2d                       tests/build/parallel_nested_2d.vel
+# `run-c`, not `run`: these are two of the seven programs the LLVM back end
+# refuses **by name and by design**, because LLVM IR has no OpenMP and emitting the
+# runtime ABI (`__kmpc_fork_call`) is out of scope for it.  A loop that says it is
+# parallel while running serially is the one failure mode this project has promised
+# never to ship, so the refusal is the promise being kept, and the row that needs a
+# `parallel for` is compiled by the C back end with a line here that says so.
+#
+# The ledger is two-sided and this is one side of it: `tests\llvm-refusals.txt`
+# lists the seven by name with the sentence their refusal must contain, and
+# `tools\llvm-column.ps1` fails if one of them compiles -- so when a row below
+# moves from `run-c` to `run`, the ledger has to move with it or the gate goes red.
+run-c parallel_for_correct                   tests/build/parallel_for_correct.vel
+run-c parallel_nested_2d                     tests/build/parallel_nested_2d.vel
 run while_with_narrowing                     tests/build/while_with_narrowing.vel
 run int_width_literals                       tests/build/int_width_literals.vel
 run strings                                  tests/build/strings.vel
@@ -103,7 +125,10 @@ run string_escapes                           tests/build/string_escapes.vel
 # run host_surface                           tests/build/host_surface.vel   -- source lost
 run control_flow                             tests/build/control_flow.vel
 run float_and_math                           tests/build/float_and_math.vel
-run pure_call_inside_parallel                tests/build/pure_call_inside_parallel.vel
+# `run-c`: the third of the seven `parallel for` programs, refused by the LLVM back
+# end by design.  See the comment above `parallel_for_correct` for the ledger, and
+# tests\llvm-refusals.txt for the sentence this refusal must contain.
+run-c pure_call_inside_parallel              tests/build/pure_call_inside_parallel.vel
 run bool_logic                               tests/build/bool_logic.vel
 # run bom_check                              tests/build/bom_check.vel      -- source lost
 # run crlf_check                             tests/build/crlf_check.vel     -- source lost
@@ -136,8 +161,18 @@ refuse-interp extern_c_probe_interp          tests/build/extern/extern_c_probe.v
 #
 # The four native cases are compiled and run: they must print their golden.
 # They are not interpreted — the interpreter cannot reach a C library at all,
-# which refuse-interp above asserts — so native is the right mode rather
-# than run, which would demand the interpreted twin agree.
+# which refuse-interp above asserts — so native is the right mode rather than
+# run, which would demand the interpreted twin agree.
+#
+# All four are the LLVM path, and two of them are why it was not: `extern c def
+# sqrt` in a program that also declares the back end's own `sqrt` used to be
+# *silently renamed* to `@sqrt.1` by `LLVMAddFunction`, because a taken name is
+# answered that way, and the link then failed with `undefined symbol: sqrt.1`.
+# `fn_add` in `runtime/vela_llvm_shim.c` now looks the name up first: the same
+# signature reuses the declaration, and a different one is refused with a
+# sentence instead of renamed.  Measured 2026-09-24 on
+# `extern_calls_as_declared`, whose IR held both `@sqrt` and `@sqrt.1` at once.
+# A `native-c` row is the C back end, for the same reason `run-c` rows are.
 #
 # The two ok cases need no golden: the claim is that the checker accepts them,
 # and a checker that starts refusing one of these has become too strict, which is
@@ -335,18 +370,24 @@ dumps sieve                                  bench/sieve.vel
 # been recorded yet.  `tools\refreeze.ps1` records them while keeping every
 # existing `.out`/`.err` byte for byte (a golden is an expectation and must not be
 # replaced by the compiler's own output).
+#
+# All four carry a `parallel for`, so all four are `run-c`: the LLVM back end
+# refuses them by design (`tests\llvm-refusals.txt`), and the C back end is what
+# compiles them.  That is four of the seven.
 
 refuse parallel_alias_cross_iteration        tests/probes/parallel_alias_cross_iteration.vel
-run    parallel_alias_read_only              tests/probes/parallel_alias_read_only.vel
-run    parallel_alias_read_any_index         tests/probes/parallel_alias_read_any_index.vel
-run    parallel_alias_same_index             tests/probes/parallel_alias_same_index.vel
-run    parallel_alias_nested_rowmajor        tests/probes/parallel_alias_nested_rowmajor.vel
+run-c  parallel_alias_read_only              tests/probes/parallel_alias_read_only.vel
+run-c  parallel_alias_read_any_index         tests/probes/parallel_alias_read_any_index.vel
+run-c  parallel_alias_same_index             tests/probes/parallel_alias_same_index.vel
+run-c  parallel_alias_nested_rowmajor        tests/probes/parallel_alias_nested_rowmajor.vel
 
 # ------------------------------------------------------- the compiler itself
 #
-# `selfhost/vm.vel` is the compiler.  The compiler under test writes its C,
-# builds a compiler from that C through its own build driver, and the compiler it
-# built writes the C again — byte-identical, or the foundation of the language is
-# a coincidence.  `run_tests.exe fast` skips this case.
+# `selfhost/vm.vel` is the compiler.  The compiler under test emits its C
+# (`emit-c`), builds a compiler from its own source through its own build driver
+# — `build`, the LLVM path, the default, so the fixpoint is proved on the path
+# that ships — and the compiler it built emits the C again: byte-identical, and
+# the same C as the checked-in seed, or the foundation of the language is a
+# coincidence.  `run_tests.exe fast` skips this case.
 
 fixpoint selfhost_fixpoint                   selfhost/vm.vel

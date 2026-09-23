@@ -410,15 +410,51 @@ def scored(mut t: Tally, good: bool, name: str, note: str, why: str) -> None {
 
 # ------------------------------------------------------------------ the cases
 
-# `run` — the program is compiled by the compiler under test (which drives the
-# host's C compiler itself) and executed; then, unless it reaches for a C library,
-# the same program is interpreted.  Both must print exactly what the golden holds.
-# This is diff_run.py's promise without a second front end to make it.
+# `run` — the program is compiled by the compiler under test and executed; then,
+# unless it reaches for a C library, the same program is interpreted.  Both must
+# print exactly what the golden holds.  This is diff_run.py's promise without a
+# second front end to make it.
+#
+# WHICH BACK END, and why the row says so.  The compiler under test drives two:
+#
+#   `build`    the LLVM back end.  It builds the module in this process through
+#              libLLVM and calls only `lld-link` — no C compiler is started.  This
+#              is the default and it is what a plain `run` row gets.
+#   `build-c`  the C back end, which emits C and hands it to the host's compiler.
+#              A `run-c` row says so **in the corpus**, one row at a time, with a
+#              comment above it saying which construct the LLVM back end refuses
+#              and why.  There is no fallback inside `build`: a program that the
+#              LLVM back end cannot compile is a program this corpus has to name,
+#              or the two-sided ledger in `tests/llvm-refusals.txt` would be
+#              hidden by a switch nobody can see.
+#
+# `llvm-column.ps1` is the other half of that ledger: it runs every `run` row
+# through both paths and requires the interpreter and the LLVM product to agree,
+# and it fails if a program on the refusals list compiles — so a row that moves
+# from `run-c` to `run` is a row whose refusal is gone, and the ledger has to say
+# so too.
 
-def case_run(mut t: Tally, name: str, path: str, record: bool, also_interp: bool) -> None {
-    mut rc: int = run_capture(t, concat(concat(q(cli()), " build "), q(path)), "build")
+def build_mode(c_back_end: bool) -> str {
+    if c_back_end {
+        return "build-c"
+    }
+    return "build"
+}
+
+def case_run(mut t: Tally, name: str, path: str, record: bool,
+             also_interp: bool, c_back_end: bool) -> None {
+    mut rc: int = run_capture(t, concat(concat(concat(q(cli()), " "),
+                                               build_mode(c_back_end)), concat(" ", q(path))), "build")
     if rc != 0 {
         scored(t, False, name, "", concat("could not be built: ", reads(cap_file(t.ncap, "build", ".err"))))
+        return
+    }
+    if bytes_of(exe_for(path)) == 0 {
+        # The driver reported success and wrote no executable.  Saying "exited
+        # non-zero" here would name the wrong problem: there is nothing to run.
+        scored(t, False, name, "",
+               concat(concat("the build driver (", build_mode(c_back_end)),
+                      ") reported success but wrote no executable"))
         return
     }
     rc = run_capture(t, q(exe_for(path)), "prog")
@@ -539,11 +575,24 @@ def case_interp_refuse(mut t: Tally, name: str, path: str, record: bool) -> None
 
 # `panic` — the program compiles, and the *program* stops at run time.  The
 # honest outcome for a divisor the compiler cannot see coming.
+#
+# `panic-c` is the same case on the C back end, for the same reason `run-c` exists:
+# a row the LLVM back end refuses by design, and a corpus that says which rows
+# those are instead of leaving the choice to a fallback.
 
-def case_panic(mut t: Tally, name: str, path: str, record: bool) -> None {
-    mut rc: int = run_capture(t, concat(concat(q(cli()), " build "), q(path)), "build")
+def case_panic(mut t: Tally, name: str, path: str, record: bool,
+               c_back_end: bool) -> None {
+    mut rc: int = run_capture(t, concat(concat(concat(q(cli()), " "),
+                                               build_mode(c_back_end)),
+                                        concat(" ", q(path))), "build")
     if rc != 0 {
         scored(t, False, name, "", concat("could not be built: ", reads(cap_file(t.ncap, "build", ".err"))))
+        return
+    }
+    if bytes_of(exe_for(path)) == 0 {
+        scored(t, False, name, "",
+               concat(concat("the build driver (", build_mode(c_back_end)),
+                      ") reported success but wrote no executable"))
         return
     }
     rc = run_capture(t, q(exe_for(path)), "prog")
@@ -670,6 +719,17 @@ def case_fixpoint(mut t: Tally, name: str, path: str, record: bool) -> None {
         scored(t, False, name, "", concat("generation 1 could not emit the C: ", reads(cap_file(t.ncap, "gen1", ".err"))))
         return
     }
+    # The compiler builds itself with the **default** mode, i.e. `build`, i.e. the
+    # LLVM path: a fixpoint proved on a path that no longer ships would be a claim
+    # about the wrong program.  That the LLVM-built compiler writes the same C the
+    # C-built one does is the strongest statement this project has about the two
+    # back ends agreeing, and `tools\selfhost-llvm.ps1` is the gate that makes the
+    # same build with no C compiler on `PATH` at all.
+    #
+    # Note what this case does *not* need any more: the emitted C.  It used to
+    # read `selfhost/vm.c`, which existed because the old C-driver `build` left it
+    # behind.  Both generations are now asked for their C directly, above and
+    # below, so the file that proved it is no longer a file anything writes.
     rc = run_capture(t, concat(concat(q(cli()), " build "), q(path)), "selfbuild")
     if rc != 0 {
         scored(t, False, name, "", concat("the compiler could not build itself: ", reads(cap_file(t.ncap, "selfbuild", ".err"))))
@@ -695,14 +755,15 @@ def case_fixpoint(mut t: Tally, name: str, path: str, record: bool) -> None {
         scored(t, False, name, "", "generation 2 does not write the C generation 1 wrote")
         return
     }
-    # generation 1 also wrote selfhost/vm.c through the build driver; that file
-    # has to be the same C, or the driver and the emitter disagree about it
-    seed: str = reads(concat(strip_vel(path), ".c"))
+    # and the checked-in seed, which is what a machine with no Vela compiles, has
+    # to be the same C: the compiler must reproduce what it was built from, not
+    # merely agree with itself
+    seed: str = reads("selfhost/build/vm.c")
     if seed != a {
-        scored(t, False, name, "", concat(concat(strip_vel(path), ".c"), " is not the C generation 1 wrote"))
+        scored(t, False, name, "", "selfhost/build/vm.c is not the C this compiler emits: the seed is stale")
         return
     }
-    scored(t, True, name, "generation 2 reproduces the C byte for byte", "")
+    scored(t, True, name, "generation 2 reproduces the C byte for byte, and it is the seed", "")
 }
 
 # ---------------------------------------------------------------------- main
@@ -776,13 +837,24 @@ def main() -> None {
                 if wanted {
                     if m == "run" {
                         total += 1
-                        case_run(t, name, path, record, True)
+                        case_run(t, name, path, record, True, False)
+                    } else if m == "run-c" {
+                        # Compiled by the C back end, explicitly.  The rows that
+                        # say this are the ones `tests\llvm-refusals.txt` records
+                        # as refused by the LLVM back end permanently and by
+                        # design, and each one carries a comment in `cases.txt`
+                        # saying so.  Everything else about the case is `run`.
+                        total += 1
+                        case_run(t, name, path, record, True, True)
                     } else if m == "native" {
                         # compiled and executed, but not interpreted: the program
                         # reaches for a C library, and the interpreter cannot —
                         # `refuse-interp` is where that is asserted
                         total += 1
-                        case_run(t, name, path, record, False)
+                        case_run(t, name, path, record, False, False)
+                    } else if m == "native-c" {
+                        total += 1
+                        case_run(t, name, path, record, False, True)
                     } else if m == "refuse" {
                         total += 1
                         case_refuse(t, name, path, record)
@@ -791,7 +863,10 @@ def main() -> None {
                         case_interp_refuse(t, name, path, record)
                     } else if m == "panic" {
                         total += 1
-                        case_panic(t, name, path, record)
+                        case_panic(t, name, path, record, False)
+                    } else if m == "panic-c" {
+                        total += 1
+                        case_panic(t, name, path, record, True)
                     } else if m == "ok" {
                         total += 1
                         case_ok(t, name, path)
