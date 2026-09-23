@@ -23,14 +23,31 @@ import java.util.Set;
  * folding is the one feature where a wrong range is *visible* -- a region that is
  * one character short eats a brace, and a region that is one long eats a line.
  *
- * This runs both pure functions over every file in the corpus and reports:
+ * THE ONE-SIDED AUTHORITY IS NOW A CRITERION, NOT A SHRUG.
  *
- *   * files where the region lists are identical (offset, end, placeholder);
- *   * files where they differ, with the first difference in full, and how many
- *     regions each produced.
+ * Neither the compiler nor any other authority defines a fold region list, so this
+ * tool cannot be a correctness verdict: it compares this plugin's shipping
+ * tree-derived ranges against its own *retired* brace matcher.  What it can do is
+ * decide, per file, whether the two implementations disagree about **what text is
+ * foldable** or only about **how finely it is cut**.  That is decidable from the
+ * two lists alone:
  *
- * A difference is a finding, not a failure: where the two disagree, one of them is
- * wrong, and the report says which by showing both.
+ *   every region of A lies inside (or is equal to) some region of B, and vice
+ *   versa  ->  the two agree about the content and differ about granularity;
+ *   some region of A lies inside no region of B  ->  this implementation folds
+ *   text the other does not fold at all, which is a real disagreement.
+ *
+ * Measured over the 126-file corpus before the rule was written in here
+ * (`FoldShapeProbe`, kept beside this file as the evidence for the rule): of the 62
+ * differing files, 38 differ in both directions and 24 in one, and **0** have a
+ * region that is in neither list's spans.  So the corpus contains no content
+ * disagreement at all, and the number to watch is the one that counts them.
+ *
+ * A file with a content disagreement is printed in full and counts as `wrong`.
+ * A granularity difference is printed, counted, and is *not* a defect: the tree
+ * folding a whole declaration body from its opening `{` to its closing `}` is the
+ * shape the platform's own folding builders produce for a method body, and the
+ * retired matcher folded only inner blocks.
  *
  *   java -cp <plugin classes> FoldDiff <repo-root> [--verbose]
  */
@@ -58,12 +75,16 @@ public final class FoldDiff {
         System.out.println();
         int same = 0;
         int differ = 0;
+        int granularity = 0;
+        int content = 0;
         int regions = 0;
         int absent = 0;
         int tooLarge = 0;
         int threw = 0;
         StringBuilder table = new StringBuilder(8192);
         StringBuilder detail = new StringBuilder(16384);
+        List<String> granularityFiles = new ArrayList<>();
+        List<String> disagreements = new ArrayList<>();
         table.append(pad("file", 58)).append(pad("tree", 6)).append(pad("brace", 6)).append("  verdict\n");
         table.append("-".repeat(58)).append("  ").append("-".repeat(4)).append("  ")
                 .append("-".repeat(4)).append("  ").append("-".repeat(30)).append('\n');
@@ -101,7 +122,32 @@ public final class FoldDiff {
                 verdict = "identical";
             } else {
                 differ++;
-                verdict = "DIFFERS";
+                // The decidable part: is any region of one list inside NO region of
+                // the other?  If not, the two agree about what is foldable.
+                List<String> uncoveredMine = uncovered(mine, theirs);
+                List<String> uncoveredTheirs = uncovered(theirs, mine);
+                if (uncoveredMine.isEmpty() && uncoveredTheirs.isEmpty()) {
+                    granularity++;
+                    verdict = "differs (granularity only)";
+                    granularityFiles.add("  " + rel + ": tree " + mine.size()
+                            + " region(s), brace " + theirs.size()
+                            + " -- every region of each is inside a region of the other");
+                } else {
+                    content++;
+                    verdict = "DIFFERS (CONTENT)";
+                    StringBuilder w = new StringBuilder("  " + rel + ": ");
+                    if (!uncoveredMine.isEmpty()) {
+                        w.append(uncoveredMine.size()).append(" tree region(s) inside no brace region (")
+                                .append(String.join(", ", uncoveredMine.subList(0,
+                                        Math.min(3, uncoveredMine.size())))).append(") ");
+                    }
+                    if (!uncoveredTheirs.isEmpty()) {
+                        w.append(uncoveredTheirs.size()).append(" brace region(s) inside no tree region (")
+                                .append(String.join(", ", uncoveredTheirs.subList(0,
+                                        Math.min(3, uncoveredTheirs.size())))).append(")");
+                    }
+                    disagreements.add(w.toString());
+                }
                 int n = Math.max(mine.size(), theirs.size());
                 for (int i = 0; i < n; i++) {
                     String a = i < mine.size() ? describe(mine.get(i)) : "<end of list>";
@@ -130,25 +176,67 @@ public final class FoldDiff {
         System.out.println("  files compared               : " + (same + differ));
         System.out.println("  identical region lists       : " + same);
         System.out.println("  different                    : " + differ);
+        System.out.println("    of which granularity only  : " + granularity
+                + "   (every region of each list is inside a region of the other)");
+        System.out.println("    of which CONTENT           : " + content
+                + "   (a region the other implementation does not fold at all)");
         System.out.println("  fold regions in the identical ones: " + regions);
+        System.out.println();
+        System.out.println("== the diffs that are a decidable disagreement (content), in full ==");
+        if (disagreements.isEmpty()) {
+            System.out.println("  (none: no region of either list lies outside every region of the other)");
+        } else {
+            for (String s : disagreements) System.out.println(s);
+        }
+        System.out.println();
+        System.out.println("== the granularity-only differences ==");
+        if (granularityFiles.isEmpty()) {
+            System.out.println("  (none)");
+        } else {
+            for (String s : granularityFiles) System.out.println(s);
+        }
         System.out.println();
         System.out.println("== every difference, in full ==");
         System.out.println(detail.length() == 0 ? "  (none)" : detail.toString());
-        System.out.println("VERDICT: " + (differ == 0 && threw == 0
-                ? "the tree's fold regions are the brace matcher's, file for file"
-                : differ + " file(s) differ and " + threw + " threw; each is listed above"
-                        + " with both sides"));
+        System.out.println("VERDICT: " + (content == 0 && threw == 0
+                ? "the tree's fold regions and the brace matcher's cover the same text in every"
+                        + " file (" + same + " identical, " + granularity
+                        + " differing only in how finely the text is cut, " + content
+                        + " disagreeing about content)"
+                : content + " file(s) fold text the retired brace matcher does not fold at all,"
+                        + " and " + threw + " threw; each is listed above with both sides"));
         Coverage cov = new Coverage()
                 .defectCategory("threw")
                 .defectCategory("missing-corpus-file")
                 .category("too-large")
+                .category("granularity-only-difference")
                 .ran(same)
                 .skipped("threw", threw)
                 .skipped("missing-corpus-file", absent)
                 .skipped("too-large", tooLarge)
-                .wrong(differ);
+                .skipped("granularity-only-difference", granularity)
+                .wrong(content);
         cov.print();
-        System.exit(differ > 0 ? 1 : (cov.hasDefect() ? 3 : 0));
+        // The exit code is the *decidable* part: a content disagreement fails, a
+        // granularity difference does not.  It used to exit 1 for all 62, which is
+        // exactly the reading this change exists to stop.
+        System.exit(content > 0 ? 1 : (cov.hasDefect() ? 3 : 0));
+    }
+
+    /** Regions of [inner] that lie inside no region of [outer] -- the real disagreements. */
+    private static List<String> uncovered(List<VelaFold> inner, List<VelaFold> outer) {
+        List<String> out = new ArrayList<>();
+        for (VelaFold f : inner) {
+            boolean covered = false;
+            for (VelaFold o : outer) {
+                if (o.getStart() <= f.getStart() && f.getEnd() <= o.getEnd()) {
+                    covered = true;
+                    break;
+                }
+            }
+            if (!covered) out.add("[" + f.getStart() + "," + f.getEnd() + ")");
+        }
+        return out;
     }
 
     private static String describe(List<VelaFold> list) {

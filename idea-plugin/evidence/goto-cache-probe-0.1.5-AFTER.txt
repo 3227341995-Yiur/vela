@@ -1,0 +1,60 @@
+# GotoOracle cache-write probe -- AFTER (the shipping saveCache)
+#
+#   run with   : powershell -ExecutionPolicy Bypass -File idea-plugin\tools\run-cache-probe.ps1
+#   written    : 2026-09-24T01:55:19+08:00
+#   version    : 0.1.5
+#   jar sha256 : 688239e932f8c145e7070cb6244a68b4ec4e6a016146603c60203f9c4e247322
+#   git HEAD   : 4d89f47 ﻿The safety corpus grows from 70 rows to 115, and one of them is a violation
+#   GotoOracle.java mtime : 09/24/2026 01:38:37  (the fix landed here)
+#   compiler   : NOT USED.  The probe exercises saveCache() only: it reads no compiler and no
+#                .vel file.  The --vm/--cache arguments the driver passes are inert here.
+#                The driver's "the tree changed" warning is about the frozen compiler copy,
+#                which this probe never starts.
+#
+# WHAT THE FIX WAS: saveCache moved the temp file onto the cache with
+# Files.move(..., REPLACE_EXISTING, ATOMIC_MOVE) and caught only
+# AtomicMoveNotSupportedException.  On Windows that rename fails with
+# AccessDeniedException while another handle has the target open -- so under exactly the
+# contention the surrounding synchronized exists for, the write THREW and the entries in
+# that map were never written.  It is now retried (20 attempts, backoff) and rethrows if all
+# attempts fail.  See the BEFORE file beside this one for the control that shows it.
+#
+# TWO RUNS AGREE: 320/320 saves returned, 0 torn.  This run read 11,608 snapshots; the
+# previous one read 10,655.
+
+=== Preconditions
+    repo root  : C:\Users\lu\Downloads\vela
+    JDK        : D:\JetBrains\IntelliJ IDEA 2026.2.1
+    frozen vm  : C:\Users\lu\AppData\Local\Temp\dsh-FjnNwR\vela-plugin-parse\vm.exe (845824 bytes, sha256 0f75d65d038208ea5d14bde5998fcc16177be0b691ae42086e12e4c774e647c7)
+    tree vm    : C:\Users\lu\Downloads\vela\selfhost\build\vm.exe (861696 bytes, sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a)
+    WARNING: the frozen compiler is NOT the tree compiler (the tree changed)
+
+=== Compile GotoOracle (and Coverage) from the tree
+    compiled
+
+=== GotoOracle --probe-cache with cache C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\goto-oracle.txt.probe\probe-cache.txt
+== GotoOracle cache-write probe ==
+cache path        : C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\goto-oracle.txt.probe\probe-cache.txt.probe\probe-cache.txt
+threads           : 8 (the same pool size GotoOracle uses)
+saveCache() calls : 320 from 8 threads, to ONE path
+entries per save  : 2000 growing by 5 per save (writer-local maps, so every whole snapshot has at least 2000 entries)
+
+control: a whole cache is accepted      : true
+control: a cut-off last line is torn    : true
+control: a line with no tab is torn     : true
+control: a newline inside a value is torn: true
+control: the real saveCache output is whole: true
+
+saveCache() calls that returned : 320
+saveCache() calls that threw    : 0   (the replace gave up after 20 attempts: the entries in that map are NOT on disk)
+reads of the cache file        : 11608
+TORN snapshots                 : 0  (a partial line, a missing trailing newline, or fewer entries than every save writes)
+reads during the move's window : 0   (the path was absent or empty three times running -- the file is being replaced, not half-written)
+short whole snapshots          : 0   (a save that raced another and wrote a smaller map)
+final file                     : 2200 entries, well formed
+keys every save wrote but the final cache lacks : 0
+
+VERDICT: every one of the 11608 snapshots was a whole cache: 8 threads wrote one path 320 time(s), 0 torn, 0 partial lines, 0 short, 0 failed writes, and the final file holds all 2000 keys every save wrote
+
+=== Done
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\cache-probe-CacheProbe.log

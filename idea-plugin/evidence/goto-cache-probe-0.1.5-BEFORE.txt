@@ -1,0 +1,38 @@
+# GotoOracle cache-write probe # BEFORE: a scratch copy of GotoOracle.java whose saveCache is the PRE-FIX shape -- ONE Files.move attempt, handling only AtomicMoveNotSupportedException. Built and run from %TEMP%\vela-probe-before so no file under idea-plugin\tools was touched.
+#
+#   run with   : powershell -ExecutionPolicy Bypass -File idea-plugin\tools\run-cache-probe.ps1
+#   written    : 2026-09-24T01:54:43+08:00
+#   version    : 0.1.5
+#   jar sha256 : 688239e932f8c145e7070cb6244a68b4ec4e6a016146603c60203f9c4e247322
+#   git HEAD   : b1644d4 ﻿The LLVM column gets a second corpus, because the first one flattered it
+#   GotoOracle.java mtime : 09/24/2026 01:38:37 (the fix landed here)
+#   compiler   : NOT USED.  The probe exercises saveCache() only; it reads no
+#                compiler and no .vel file.  Passed --vm/--cache are inert here.
+#
+== GotoOracle cache-write probe ==
+cache path        : C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\goto-oracle.txt.probe\probe-cache-before.txt.probe\probe-cache.txt
+threads           : 8 (the same pool size GotoOracle uses)
+saveCache() calls : 320 from 8 threads, to ONE path
+entries per save  : 2000 growing by 5 per save (writer-local maps, so every whole snapshot has at least 2000 entries)
+
+control: a whole cache is accepted      : true
+control: a cut-off last line is torn    : true
+control: a line with no tab is torn     : true
+control: a newline inside a value is torn: true
+control: the real saveCache output is whole: true
+
+saveCache() calls that returned : 282
+saveCache() calls that threw    : 38   (the replace gave up after 20 attempts: the entries in that map are NOT on disk)
+reads of the cache file        : 7469
+TORN snapshots                 : 0  (a partial line, a missing trailing newline, or fewer entries than every save writes)
+reads during the move's window : 291   (the path was absent or empty three times running -- the file is being replaced, not half-written)
+short whole snapshots          : 0   (a save that raced another and wrote a smaller map)
+final file                     : 2200 entries, well formed
+keys every save wrote but the final cache lacks : 0
+
+== the first problems seen ==
+  writing threw java.nio.file.AccessDeniedException: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\goto-oracle.txt.probe\probe-cache-before.txt.probe\probe-cache.txt.tmp -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\goto-oracle.txt.probe\probe-cache-before.txt.probe\probe-cache.txt
+  writing threw java.nio.file.AccessDeniedException: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\goto-oracle.txt.probe\probe-cache-before.txt.probe\probe-cache.txt.tmp -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\goto-oracle.txt.probe\probe-cache-before.txt.probe\probe-cache.txt
+  writing threw java.nio.file.AccessDeniedException: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\goto-oracle.txt.probe\probe-cache-before.txt.probe\probe-cache.txt.tmp -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\goto-oracle.txt.probe\probe-cache-before.txt.probe\probe-cache.txt
+
+VERDICT: the cache write is NOT safe: 0 torn snapshot(s), 0 short snapshot(s), 38 failed write(s), 0 missing key(s), 7469 read(s)

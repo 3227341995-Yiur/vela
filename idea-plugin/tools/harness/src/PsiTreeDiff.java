@@ -133,6 +133,7 @@ public final class PsiTreeDiff {
         int threw = 0;
         long nodesChecked = 0;
         long leavesChecked = 0;
+        long leavesPastParserTotal = 0;
         StringBuilder table = new StringBuilder(16384);
         List<String> failures = new ArrayList<>();
         table.append(pad("file", 58)).append(pad("nodes", 8)).append(pad("leaves", 8)).append("  verdict\n");
@@ -211,6 +212,8 @@ public final class PsiTreeDiff {
             }
             if (!tree.complete && lastClaimedEnd < text.length()) scannerRefusedFiles++;
             int leaves = 0;
+            int leavesJudged = 0;
+            int leavesPastParser = 0;
             int cursor = 0;
             boolean tiling = true;
             for (ASTNode leaf = firstLeaf(rootNode); leaf != null; leaf = nextLeaf(leaf)) {
@@ -234,7 +237,20 @@ public final class PsiTreeDiff {
                     }
                     continue;
                 }
-                if (!tree.complete && leaf.getStartOffset() >= lastClaimedEnd) continue;
+                if (!tree.complete && leaf.getStartOffset() >= lastClaimedEnd) {
+                    // Past the last token the parser read: on a file the scanner refused,
+                    // this is where the lexer's token for the unreadable text starts.  The
+                    // parser has no opinion about it, so there is nothing to compare it
+                    // against and it is counted as a leaf that was NOT judged -- the old
+                    // code fell through to the claim check below and failed the file over
+                    // it.  (That happened because the truncated scanner path used to close
+                    // its token list with a one-character newline at the failure offset,
+                    // which made `lastClaimedEnd` end one past the string token's start.
+                    // See `VelaSyntaxScanner.scan`.)
+                    leavesPastParser++;
+                    continue;
+                }
+                leavesJudged++;
                 if (!type.equals("WHITE_SPACE") && !type.equals("VELA_COMMENT")) {
                     // Whitespace and comments are the lexer's trivia, not the parser's
                     // tokens: the scanner never sees a comment at all (it skips them),
@@ -296,7 +312,8 @@ public final class PsiTreeDiff {
             if (problemsHere.isEmpty()) {
                 ok++;
                 nodesChecked += mineKinds.size();
-                leavesChecked += leaves;
+                leavesChecked += leavesJudged;
+                leavesPastParserTotal += leavesPastParser;
                 table.append(pad(rel, 58)).append(pad(String.valueOf(mineKinds.size()), 8))
                         .append(pad(String.valueOf(leaves), 8)).append("  ok\n");
             } else {
@@ -333,7 +350,14 @@ public final class PsiTreeDiff {
                 + " trivia, and is still required to be covered)");
         System.out.println("  composite nodes compared                     : " + nodesChecked);
         System.out.println("  leaf tokens compared                         : " + leavesChecked);
+        System.out.println("  leaf tokens past the parser's last token     : " + leavesPastParserTotal
+                + " (not judged: the parser has no opinion about text it did not read)");
         System.out.println("  VERDICT                                      : " + (bad == 0 ? "PASS" : "FAIL"));
+        // The coverage unit here is the FILE: ran = replayed through the platform's
+        // builder and every assertion held, wrong = a file that failed one.  The leaf
+        // counts above are not added to it -- they are a different unit, and mixing
+        // them would make `ran + skipped` stop reconciling against the corpus, which is
+        // the property this triple exists to have.
         Coverage cov = new Coverage()
                 .defectCategory("missing-corpus-file")
                 .defectCategory("replay-threw")

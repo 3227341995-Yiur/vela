@@ -8,6 +8,7 @@ import dev.vela.plugin.VelaTokKind;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -88,8 +91,14 @@ public final class GotoOracle {
     private boolean debug;
     private boolean show;
     private String single;
+    private boolean probeCache;
     private String vmSha = "";
     private final List<String> corpus = new ArrayList<>();
+
+    /** How many times the atomic move is retried when the destination is held open. */
+    private static final int MOVE_ATTEMPTS = 20;
+    /** Base backoff between move attempts, in milliseconds (multiplied by the attempt). */
+    private static final long MOVE_RETRY_MS = 5;
 
     public static void main(String[] args) throws Exception {
         GotoOracle tool = new GotoOracle();
@@ -100,13 +109,377 @@ public final class GotoOracle {
             else if (a.equals("--cache")) tool.cache = Paths.get(args[++i]);
             else if (a.equals("--rebuild-oracle")) tool.rebuild = true;
             else if (a.equals("--debug")) tool.debug = true;
+            else if (a.equals("--probe-cache")) tool.probeCache = true;
             else if (a.equals("--show")) tool.show = true;
             else if (a.equals("--single")) tool.single = args[++i];
             else rest.add(a);
         }
         tool.repoRoot = rest.isEmpty() ? Paths.get("").toAbsolutePath()
                 : Paths.get(rest.get(0)).toAbsolutePath();
+        if (tool.probeCache) {
+            tool.cacheProbe();
+            return;
+        }
         tool.run();
+    }
+
+    /**
+     * Prove the cache write cannot tear, by exercising the real `saveCache`.
+     *
+     * The claim is that `saveCache` is single-writer and atomic, and the way it was
+     * broken is what makes it worth proving: eight worker threads call it, and a
+     * torn cache file does not crash anything -- the next run's `loadCache` reads it
+     * and judges references against bindings that were never measured, which is a
+     * wrong oracle that reports clean.
+     *
+     * So this does the thing that used to tear: `THREADS` threads writing the same
+     * cache path over and over, with a reader sampling it continuously.  Every
+     * snapshot the reader sees must be a whole cache -- every line `key<TAB>value`
+     * with a key that is one of the keys written, no partial line, non-empty.  A
+     * single torn read is a finding, and the exit code says so.
+     *
+     * The keys are 64 hex characters (the shape `analyse` uses: a sha256, a file
+     * hash and a declaration key joined by `|`), so a partial write is detectable:
+     * a half-written line loses its tab, and a half-written file loses lines.
+     */
+    private void cacheProbe() throws Exception {
+        int threads = THREADS;
+        int rounds = 40;
+        int base = 2000;
+        Path dir = cache.resolveSibling(cache.getFileName() + ".probe");
+        Files.createDirectories(dir);
+        Path probeCache = dir.resolve("probe-cache.txt");
+        this.cache = probeCache;
+
+        // THE MAPS HAVE TO GROW MONOTONICALLY, OR THE MEASUREMENT IS VACUOUS.
+        // The first version of this probe had all writers `put` into one shared map
+        // and save it, which makes the reader's "fewer than N entries" test
+        // meaningless: whether a snapshot is short depends on which entries happened
+        // to be in the shared map at that instant, not on whether the write tore.  So
+        // each writer owns its map: writer `t` in round `r` saves `base + 5*(r+1)`
+        // entries, every one of which is a key derived from (t, r).  Every snapshot is
+        // therefore either a whole cache of >= `base` entries, or torn.
+        // ------------------------------------------------------- the fixture's format
+        //
+        // THE VALUES MUST NOT CONTAIN A REAL NEWLINE.  The first version of this probe
+        // wrote `"21,34\n99,120"` as a value -- reasoning that a binding list is
+        // multi-line -- and the reader then reported 8,151 "torn" snapshots whose
+        // reported cause was `line at byte 152 has no key/value tab: 33,44`.  That was
+        // the fixture, not the writer: this cache stores one entry per line, and the
+        // second half of such a value has no tab in it by construction.  The real
+        // format is visible in the shipped cache file:
+        //
+        //     0f75d65d...|0189a14e841680da|3169,10,484,function,q<TAB>26,28,46,56,60,
+        //
+        // so the invariant the reader checks -- every line is `key<TAB>value` -- is a
+        // fact about the format, and the fixture has to be a member of it.  This is the
+        // second time in this probe that the *instrument* was the thing at fault; both
+        // are written down here so the third does not happen.
+        String value = "11,22,33,44";
+
+        List<List<String>> writerKeys = new ArrayList<>();
+        for (int t = 0; t < threads; t++) {
+            List<String> keys = new ArrayList<>();
+            for (int r = 0; r < rounds; r++) {
+                for (int k = 0; k < 5; k++) {
+                    keys.add(sha256String("probe-key-" + t + "-" + r + "-" + k) + "|"
+                            + sha256String("file-" + t + "-" + r) + "|decl-" + t + "-" + r);
+                }
+            }
+            writerKeys.add(keys);
+        }
+        // Keys every writer has in every one of its saves: the ones that must survive
+        // into the final file whatever order the writers finished in.
+        List<String> commonKeys = new ArrayList<>();
+        for (int i = 0; i < base; i++) {
+            commonKeys.add(sha256String("probe-common-" + i) + "|" + sha256String("file-common")
+                    + "|decl-common-" + i);
+        }
+
+        System.out.println("== GotoOracle cache-write probe ==");
+        System.out.println("cache path        : " + probeCache);
+        System.out.println("threads           : " + threads + " (the same pool size GotoOracle uses)");
+        System.out.println("saveCache() calls : " + (threads * rounds) + " from " + threads
+                + " threads, to ONE path");
+        System.out.println("entries per save  : " + base + " growing by 5 per save (writer-local maps,"
+                + " so every whole snapshot has at least " + base + " entries)");
+        System.out.println();
+
+        AtomicLong writes = new AtomicLong();
+        AtomicLong writeFailures = new AtomicLong();
+        AtomicLong reads = new AtomicLong();
+        AtomicLong torn = new AtomicLong();
+        AtomicLong shortReads = new AtomicLong();
+        AtomicLong inFlight = new AtomicLong();
+        AtomicLong atomicallyWatched = new AtomicLong();
+        List<String> firstProblems = Collections.synchronizedList(new ArrayList<>());
+
+        // ---------------------------------------------------------------- the control
+        //
+        // A verifier that cannot fail proves nothing.  Before the concurrent phase,
+        // the reader is pointed at a deliberately torn file once and must call it torn
+        // -- otherwise "0 torn" below is a statement about the reader, not the writer.
+        Path control = dir.resolve("control-torn.txt");
+        String good = "aaaa\t1,2\nbbbb\t3,4\n";
+        Files.write(control, good.getBytes(StandardCharsets.UTF_8));
+        boolean controlGoodAccepted = !looksTorn(good);
+        boolean controlTornSeen = looksTorn("aaaa\t1,2\nbbbb\t3,");
+        boolean controlHalfLine = looksTorn("aaaa\t1,2\nbbbb");
+        boolean controlNewlineInValue = looksTorn("aaaa\t1,2\nbbbb\t33,44");
+        Path controlBackup = cache;
+        this.cache = control;
+        try {
+            saveCache(new LinkedHashMap<>(Map.of("x".repeat(64) + "|y|z", "5,6")));            String written = new String(Files.readAllBytes(control), StandardCharsets.UTF_8);
+            atomicallyWatched.set(looksTorn(written) ? 0 : 1);
+        } finally {
+            this.cache = controlBackup;
+        }
+        System.out.println("control: a whole cache is accepted      : " + controlGoodAccepted);
+        System.out.println("control: a cut-off last line is torn    : " + controlTornSeen);
+        System.out.println("control: a line with no tab is torn     : " + controlHalfLine);
+        // The control that would have caught this probe's own fixture bug: a value
+        // containing a real newline is NOT a member of this format, so the reader must
+        // call it torn.  It did -- which is how the bug was found -- and stating it here
+        // means the next fixture with a newline in a value fails the control rather than
+        // producing thousands of phantom tears.
+        System.out.println("control: a newline inside a value is torn: " + controlNewlineInValue);
+        System.out.println("control: the real saveCache output is whole: "
+                + (atomicallyWatched.get() == 1));
+        System.out.println();
+        if (!(controlGoodAccepted && controlTornSeen && controlHalfLine
+                && controlNewlineInValue && atomicallyWatched.get() == 1)) {
+            System.out.println("VERDICT: the probe's own reader is wrong, so its measurement of the"
+                    + " writer would be meaningless");
+            System.exit(2);
+        }
+
+        AtomicBoolean stop = new AtomicBoolean(false);
+        ExecutorService pool = Executors.newFixedThreadPool(threads + 1);
+        Future<?> readerFuture = pool.submit(() -> {
+            while (!stop.get()) {
+                readOnce(probeCache, reads, torn, inFlight, base, firstProblems);
+            }
+        });
+
+        List<Future<?>> writers = new ArrayList<>();
+        for (int t = 0; t < threads; t++) {
+            final int id = t;
+            final List<String> keys = writerKeys.get(t);
+            writers.add(pool.submit(() -> {
+                Map<String, String> mine = new LinkedHashMap<>();
+                for (String k : commonKeys) mine.put(k, value);
+                for (int r = 0; r < rounds; r++) {
+                    for (int k = 0; k < 5; k++) {
+                        mine.put(keys.get(r * 5 + k), value);
+                    }
+                    try {
+                        // The real one.  Not a reimplementation of it.
+                        saveCache(mine);
+                        writes.incrementAndGet();
+                    } catch (IOException e) {
+                        // A write that could not complete is counted apart from a tear:
+                        // with the retry above, the old file survives and no reader sees a
+                        // partial one, but the entries in `mine` are NOT on disk -- which is
+                        // a lost write, and a caller that ignores it loses work silently.
+                        writeFailures.incrementAndGet();
+                        if (firstProblems.size() < 3) firstProblems.add("writing threw " + e);
+                    }
+                }
+            }));
+        }
+        for (Future<?> f : writers) f.get();
+        stop.set(true);
+        readerFuture.get();
+        pool.shutdown();
+
+        String finalText = new String(Files.readAllBytes(probeCache), StandardCharsets.UTF_8);
+        Set<String> finalKeys = new LinkedHashSet<>();
+        String finalWhy = tornReason(finalText);
+        boolean malformedTorn = finalWhy != null;
+        for (String line : finalText.split("\n")) {
+            if (line.isEmpty()) continue;
+            int tab = line.indexOf('\t');
+            if (tab > 0) finalKeys.add(line.substring(0, tab));
+        }
+        if (malformedTorn) System.out.println("final file is torn because: " + finalWhy);
+        List<String> missing = new ArrayList<>();
+        for (String k : commonKeys) if (!finalKeys.contains(k)) missing.add(k);
+
+        System.out.println("saveCache() calls that returned : " + writes.get());
+        System.out.println("saveCache() calls that threw    : " + writeFailures.get()
+                + "   (the replace gave up after " + MOVE_ATTEMPTS + " attempts: the entries in"
+                + " that map are NOT on disk)");
+        System.out.println("reads of the cache file        : " + reads.get());
+        System.out.println("TORN snapshots                 : " + torn.get()
+                + "  (a partial line, a missing trailing newline, or fewer entries than"
+                + " every save writes)");
+        System.out.println("reads during the move's window : " + inFlight.get()
+                + "   (the path was absent or empty three times running -- the file is"
+                + " being replaced, not half-written)");
+        System.out.println("short whole snapshots          : " + shortReads.get()
+                + "   (a save that raced another and wrote a smaller map)");
+        System.out.println("final file                     : " + finalKeys.size() + " entries, "
+                + (malformedTorn ? "IS TORN" : "well formed"));
+        System.out.println("keys every save wrote but the final cache lacks : " + missing.size());
+        if (!firstProblems.isEmpty()) {
+            System.out.println();
+            System.out.println("== the first problems seen ==");
+            for (String s : firstProblems) System.out.println("  " + s);
+        }
+        System.out.println();
+        boolean ok = torn.get() == 0 && !malformedTorn && missing.isEmpty() && reads.get() > 0
+                && writeFailures.get() == 0;
+        System.out.println("VERDICT: " + (ok
+                ? "every one of the " + reads.get() + " snapshots was a whole cache: " + threads
+                        + " threads wrote one path " + writes.get() + " time(s), 0 torn, 0 partial"
+                        + " lines, 0 short, 0 failed writes, and the final file holds all "
+                        + commonKeys.size() + " keys every save wrote"
+                : "the cache write is NOT safe: " + torn.get() + " torn snapshot(s), "
+                        + shortReads.get() + " short snapshot(s), " + writeFailures.get()
+                        + " failed write(s), " + (malformedTorn ? "a torn final file, " : "")
+                        + missing.size() + " missing key(s), " + reads.get() + " read(s)"));
+        System.exit(ok ? 0 : 1);
+    }
+
+    /**
+     * Is this text not a whole cache?
+     *
+     * A whole cache is lines of `key<TAB>value` ending in a newline.  Anything else
+     * -- no trailing newline, an empty line other than the final one, a line with no
+     * tab -- is a partial write.  This is the probe's *instrument*, so the probe
+     * proves it can fire before trusting its own zeros (see the control).
+     */
+    private static boolean looksTorn(String text) {
+        return tornReason(text) != null;
+    }
+
+    /**
+     * WHY this text is not a whole cache, or null if it is one.
+     *
+     * The boolean above is kept for the control checks; this is what the reader
+     * reports, because "torn" with no byte position is a number, not a finding.  The
+     * three shapes are named separately: a missing trailing newline (the last line was
+     * still being written), a line with no tab (a line was cut mid-way), and an empty
+     * file.
+     */
+    private static String tornReason(String text) {
+        if (text.isEmpty()) return "the file is 0 bytes";
+        if (!text.endsWith("\n")) {
+            String tail = text.substring(Math.max(0, text.length() - 40));
+            return "no trailing newline; the file ends `" + tail.replace("\n", "\\n")
+                    + "` (" + text.length() + " bytes)";
+        }
+        int offset = 0;
+        for (String line : text.split("\n")) {
+            if (line.isEmpty()) {
+                offset += 1;
+                continue;
+            }
+            if (line.indexOf('\t') <= 0) {
+                return "line at byte " + offset + " has no key/value tab: `" + line + "`";
+            }            offset += line.length() + 1;
+        }
+        return null;
+    }
+
+    /**
+     * The reader's loop, factored out so the three outcomes cannot be confused.
+     *
+     * WHAT THE FIRST VERSION OF THIS PROBE GOT WRONG, AND WHY IT MATTERS
+     *
+     * The first run reported 9,065 "torn" snapshots out of 9,025 reads and looked
+     * like a devastating finding.  It was the *instrument*: between the moment
+     * `Files.move` starts replacing the target and the moment it finishes, a reader
+     * on a different thread can observe the path as **absent or empty** -- on Windows
+     * the replacement is not observable as a single instant.  Treating "the file was
+     * not there for a microsecond" as "the file's bytes are half-written" is exactly
+     * the kind of check that reports a catastrophic number for a property nobody was
+     * testing.
+     *
+     * The two outcomes are different and are counted apart:
+     *
+     *   not-there / empty  : the move was in flight.  Counted, NOT a finding.
+     *   partial bytes      : a line with no tab, a missing trailing newline, or a
+     *                        snapshot with fewer entries than every writer writes.
+     *                        THIS is a torn write, and it is the finding.
+     *
+     * A retry covers the in-flight case: three consecutive empty/missing reads means
+     * the file is persistently unavailable rather than mid-move, and that is a
+     * finding too.  The retry cannot mask a tear -- a torn file has *bytes* in it, and
+     * `looksTorn` fires on those on the first read, with no retry.
+     */
+    private void readOnce(Path probeCache, AtomicLong reads, AtomicLong torn,
+                          AtomicLong inFlight, int base, List<String> firstProblems) {
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                if (!Files.isRegularFile(probeCache)) {
+                    if (attempt < 2) continue;
+                    inFlight.incrementAndGet();
+                    return;
+                }
+                String text = new String(Files.readAllBytes(probeCache), StandardCharsets.UTF_8);
+                if (text.isEmpty()) {
+                    if (attempt < 2) continue;
+                    inFlight.incrementAndGet();
+                    return;
+                }
+                reads.incrementAndGet();
+                String why = tornReason(text);
+                if (why != null) {
+                    torn.incrementAndGet();
+                    if (firstProblems.size() < 3) {
+                        // Dump the whole neighbourhood of the bad line, not just the line:
+                        // a "torn" report that does not show what is around the tear cannot
+                        // distinguish a partial write from a fixture that is wrong about
+                        // the format, and this probe has already been wrong once.
+                        StringBuilder nb = new StringBuilder();
+                        String[] ls = text.split("\n", -1);
+                        for (int i = 0; i < Math.min(6, ls.length); i++) {
+                            String l = ls[i].length() > 70 ? ls[i].substring(0, 70) + "..." : ls[i];
+                            nb.append("\n            line ").append(i).append(": `")
+                              .append(l.replace("\t", "<TAB>")).append("`");
+                        }
+                        firstProblems.add("a torn snapshot was read: " + why
+                                + "  (" + text.length() + " bytes, " + ls.length + " lines)"
+                                + nb + "\n            ... last line: `"
+                                + (ls.length > 0 && ls[ls.length - 1].length() > 60
+                                    ? ls[ls.length - 1].substring(0, 60) + "..." : "")
+                                + "`");
+                    }
+                    return;
+                }
+                int entries = 0;
+                for (String line : text.split("\n")) if (!line.isEmpty()) entries++;
+                if (entries < base) {
+                    torn.incrementAndGet();
+                    if (firstProblems.size() < 5) {
+                        firstProblems.add("a whole-looking cache had only " + entries
+                                + " entries, fewer than the " + base + " every save writes");
+                    }
+                }
+                return;
+            } catch (IOException e) {
+                // A read that throws mid-move is the in-flight case; a read that throws
+                // three times is not.
+                if (attempt < 2) continue;
+                inFlight.incrementAndGet();
+                if (firstProblems.size() < 5) firstProblems.add("reading threw 3 times: " + e);
+                return;
+            }
+        }
+    }
+
+    /** A sha256 of a string, the shape the probe's cache keys are built from. */
+    private static String sha256String(String s) throws Exception {
+        return sha256Hex(s);
+    }
+
+    private static String sha256Hex(String s) throws Exception {
+        java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+        byte[] d = md.digest(s.getBytes(StandardCharsets.UTF_8));
+        StringBuilder sb = new StringBuilder(d.length * 2);
+        for (byte b : d) sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 
     private void run() throws Exception {
@@ -823,6 +1196,26 @@ public final class GotoOracle {
      * the key is a hash of the declaration and the value is a list of lines.  So:
      * one writer at a time, and the bytes land via a temporary file and a move, so
      * a cache file on disk is always a whole cache.
+     *
+     * THE ATOMIC MOVE NEEDS A RETRY, AND THAT WAS MEASURED, NOT GUESSED.
+     *
+     * `--probe-cache` (see `cacheProbe`) holds the destination open while 8 threads
+     * replace it, and the first run of it reported
+     * `java.nio.file.AccessDeniedException: ...probe-cache.txt.tmp -> ...probe-cache.txt`.
+     * On Windows a rename over an existing file is `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`,
+     * which **fails, sharing-violation style, while another handle has the target
+     * open** -- and it reports that failure as `AccessDeniedException`, which is not an
+     * `AtomicMoveNotSupportedException`, so the `catch` below did not fire and the
+     * exception escaped `saveCache` altogether.  The old file therefore survived
+     * (nothing was torn, and `loadCache` next run reads a whole earlier cache), but the
+     * write *failed*, and a caller that treats a thrown `IOException` as "the cache is
+     * written" would lose the entries in silence.
+     *
+     * So the atomic move is retried a bounded number of times, and a failure that
+     * survives the retries is rethrown as itself rather than being reported as a
+     * successful save.  This is the same property the surrounding `synchronized`
+     * is for: single-writer *within* a process is not the whole story, because two
+     * `GotoOracle` processes pointed at one default cache path are two writers.
      */
     private synchronized void saveCache(Map<String, String> cacheMap) throws IOException {
         Files.createDirectories(cache.getParent());
@@ -833,12 +1226,30 @@ public final class GotoOracle {
         Collections.sort(lines);
         Path tmp = cache.resolveSibling(cache.getFileName() + ".tmp");
         Files.write(tmp, lines, StandardCharsets.UTF_8);
-        try {
-            Files.move(tmp, cache, StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(tmp, cache, StandardCopyOption.REPLACE_EXISTING);
+        IOException lastFailure = null;
+        for (int attempt = 1; attempt <= MOVE_ATTEMPTS; attempt++) {
+            try {
+                try {
+                    Files.move(tmp, cache, StandardCopyOption.REPLACE_EXISTING,
+                            StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException e) {
+                    // The filesystem cannot do it atomically; a plain replace is the best
+                    // available, and it is still a whole file rather than a partial one.
+                    Files.move(tmp, cache, StandardCopyOption.REPLACE_EXISTING);
+                }
+                return;
+            } catch (AccessDeniedException e) {
+                // A reader (or another process) has the destination open.  Transient.
+                lastFailure = e;
+                try {
+                    Thread.sleep(MOVE_RETRY_MS * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("interrupted while replacing " + cache, ie);
+                }
+            }
         }
+        throw lastFailure;
     }
 
     private void collectCorpus() throws IOException {

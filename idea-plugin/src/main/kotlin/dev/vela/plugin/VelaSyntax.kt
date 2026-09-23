@@ -532,8 +532,32 @@ object VelaSyntaxScanner {
         // large) produced an empty structure view and an empty completion list.
         // Measured by `SymbolDiff`, which reported 0 declarations from the tree
         // against 1 from the token scan before this change.
+        //
+        // THE CLOSING NEWLINE COVERS NOTHING, AND THAT IS THE POINT.  It used to be
+        // `newline(pos)` -- kind NEWLINE, range `pos..pos+1` -- which *claimed* the
+        // character the scanner stopped at.  On an unterminated string that character
+        // is the opening quote, and `"` is the first byte of the *lexer's* one
+        // VELA_STRING token for the whole literal.  Two things then broke, both
+        // measured:
+        //
+        //   * the parser claimed 31..32 (`"`) and 31..36 (`"hello`) -- one character
+        //     claimed twice, by two tokens of different kinds;
+        //   * `PsiTreeDiff` decides "this leaf is past the last token the parser read"
+        //     by comparing against the largest end among the parser's tokens, which is
+        //     this newline's 32 rather than the string's 31.  A leaf starting exactly
+        //     at 31 is then not `>= 32`, so the VELA_STRING leaf fell back into the
+        //     "every non-trivia leaf must be a token the parser claimed" check and
+        //     failed it -- `psi-tree-diff.ps1`, 125 of 126, `tests/build/lexer_error.vel`.
+        //
+        // A zero-width NEWLINE at the failure offset is still a token, still a
+        // statement boundary for a truncated statement, and claims no character at
+        // all, which is the truth: the scanner never read one.  `arr[2]` on an
+        // integer literal that does not fit -- `tests/build/literal_overflow.vel` --
+        // is the case that keeps this token: `pos` is past the whole `arr[`, so the
+        // parser needs a boundary there to produce the empty `index` node the dumper
+        // prints.
         if (toks.isNotEmpty() && toks[toks.size - 1].kind != VelaTokKind.NEWLINE) {
-            toks.add(newline(pos))
+            toks.add(VelaTok(VelaTokKind.NEWLINE, pos, pos, 0, 0L, 0.0, true, 0, null))
         }
         toks.add(
             VelaTok(VelaTokKind.EOF, pos, pos, 0, 0L, 0.0, true, 0, null)
