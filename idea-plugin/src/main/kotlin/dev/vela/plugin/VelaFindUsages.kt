@@ -125,6 +125,10 @@ class VelaFindUsagesProvider : FindUsagesProvider {
             VelaSymbolKind.METHOD, VelaSymbolKind.FUNCTION -> declared.detail
             VelaSymbolKind.FIELD -> "${declared.name}: ${declared.type}"
             VelaSymbolKind.PARAMETER -> "${declared.name}: ${declared.type}"
+            // SPEC.md §13.  Named with the payload, because that is what distinguishes
+            // `Circle(radius: float)` from `Empty` in the results view.
+            VelaSymbolKind.ENUM -> "enum ${declared.name}"
+            VelaSymbolKind.VARIANT -> declared.detail
         }
     }
 

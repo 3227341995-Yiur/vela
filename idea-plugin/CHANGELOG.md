@@ -23,6 +23,97 @@ action registered as a group, and three extension points that were never
 registered (or registered under the wrong attribute name). An entry that says
 "added X, unverified" is worth more than one that says "added X".
 
+## 0.1.9 — the plugin follows the language into §13: `enum`, `match`, and the trees they make
+
+**What changed.** `SPEC.md` §13 landed in the compiler while 0.1.8 was being measured: `enum` and
+`match` became reserved words, and the corpus gained eighteen files (`tests\build\enum_*.vel`,
+`tests\probes\enum_*`) whose trees this plugin's parser had never seen.  That is the language
+moving and the plugin needing to follow, and this round is the follow: the two keywords, the PSI
+the compiler prints for them, and every number in `FEATURE_PARITY.md` re-measured on the result.
+
+* **The two keywords.**  `enum` and `match` are in `VelaTokenTypes.KEYWORDS` (the lexer's keyword
+  set, shared with the completion and with `VelaDeclarations`' "a keyword is not a reference") and
+  in `VELA_KEYWORDS` with the compiler's own ids 24 and 25.  The measurement that says whether they
+  landed is `PlatformEntry` row 7's `bare-end` family, and it was red before this round and is green
+  after it: on the §13 corpus the family stood at **139 wrong positions, one per file, each
+  reporting `not offered: keyword enum, keyword match`**; it is now **146 judged / 0 wrong**.  The
+  check can still fail, which is the part that matters: removing the two words from the plugin's
+  keyword list again makes the same family report the same line and exit 1 —
+  `tests/build/enum_else_arm.vel: the caret at the end of the file; not offered: keyword enum,
+  keyword match`, `COVERAGE: ran 17 / skipped 4 (...) / wrong 1`, `VERDICT: ... [FAIL]` — and the
+  raw output of that mutation is in the evidence.
+
+* **The trees.**  The parser gained `enum`/`variant`/`match`/`subject`/`arm`/`binding`, mirroring
+  `parse_enumdef`, `parse_variant`, `parse_match` and `parse_arm` in `selfhost/parts/parser.vel` --
+  including what the compiler's *parser* refuses and, deliberately, not what its *checker* refuses:
+  a nested pattern and `enum` used as a name are refused here, while exhaustiveness, a duplicate
+  arm, an unknown variant and a payload's arity are left to `vm.exe check`, because the compiler's
+  front end stops before them and a parser that guessed would refuse files the compiler accepts.
+  `VelaSyntaxDump` prints the six shapes exactly as `selfhost/parts/dump.vel` does
+  (`enum name=…`, `variant name=… fields=N`, one `field name=… type=…` per payload entry, `match`,
+  `subject`, `arm pattern=… binds=N`, one `binding name=…`, then the arm's block).  Measured, same
+  frozen compiler (`vm.exe` 867,328 bytes, `1e52032c…`): **`ast-diff.ps1` — 147 files in the corpus,
+  133 identical, `147,346 node lines` compared, 0 different, 0 suspect, 0 missing, 14 the compiler
+  refuses (all 14 of which this parser also refuses), `COVERAGE: ran 133 / skipped 14 / wrong 0`,
+  VERDICT PASS** — against 117 files and 134,587 node lines in the 0.1.8 pass.  And
+  **`psi-tree-diff.ps1` — 147 of 147 files replayed through the platform's own `PsiBuilderImpl`,
+  147,388 composite nodes and 399,393 leaf tokens compared, `failed 0`,
+  `COVERAGE: ran 147 / skipped 0 / wrong 0`, VERDICT PASS**.
+
+* **The plugin's own features see the new declarations.**  `VelaModel` reads an `enum` as a
+  declaration with its variants as children (`VelaSymbolKind.ENUM` / `VARIANT`), so the completion
+  offers the enum's own type name at module level and a variant's name where a value is expected;
+  `VelaHints.callTemplate` writes a payload-carrying variant as the call the language says it is
+  (`Circle` → `Circle(radius)`) and writes nothing for a payload-free one (`Empty`), because
+  `Empty()` is text the compiler refuses.  `PlatformEntry`'s insert family was taught the same rule
+  and judges it: **`insert` 1909 judged / 0 wrong**, with **13 `insert-not-a-callable`
+  positions** — one per payload-free variant in the corpus, counted and printed rather than called
+  wrong, which is the honest reading of "this name is a value, not a call".  A payload field is
+  *not* a symbol of the model, deliberately: nothing in the language can name one, so a symbol for
+  it would be a declaration no reader could navigate to.
+
+* **`HoverTruth` was red on this corpus and the red was the tool's, not the plugin's.**  Its dump
+  reader and its text scanner knew `struct`, `def`, `field` and `param`; with §13 in the corpus an
+  enum's variants looked like names nothing declares, so the axis that requires an undeclared name
+  to hover as *nothing* reported the true hover `enum Color` / `variant Red` as an invention
+  (21 findings, exit 1).  Both sides of the tool read `enum`/`variant`/payload now, and the one
+  thing the plugin's model deliberately does not declare — a payload field — is the counted class
+  `payload-field-not-a-model-declaration` (15).  The red run, the fix and the numbers are in
+  `## Open defects` entry 9 of `FEATURE_PARITY.md`.  The same blindness is why `SymbolDiff`'s
+  `tree-reports-more-declarations` went 25 → 42 and `FoldDiff`'s `wrong` 24 → 41: two difference
+  detectors against a retired implementation, both non-zero by design, both moved by the corpus
+  rather than by a regression.
+
+**What does not follow, named rather than implied.**  These are the §13 things this plugin still
+does not do, each with what it costs in the measurements above:
+
+* **Variant names are not resolved by go-to-declaration, find-usages or rename.**  The reference
+  table (`VelaTargets.declarationFor`) resolves a call to a `def` and a bare name to a struct; a
+  variant is neither, so `Circle(2.0)` and `Empty` resolve to nothing.  `GotoOracle`
+  (`ran 30880 / skipped 27305 / wrong 0`) counts those as `invisible-member`: the class grew from
+  10 to 18 positions with the §13 corpus, and they are printed in its log.  `RenameOracle`
+  (`ran 879 / skipped 5962 / wrong 0`, 0 MISSED, 0 WRONG-SCOPE) does not judge a variant at all,
+  because its declaration walk enumerates `def`/`struct`/`field`/`param`/`decl`/`for`.  That is a
+  coverage limit of those two tools for the new corpus, not a claim that a variant rename works.
+* **Parameter info does not open for a variant construction.**  `Circle(` names no `def`, so
+  `findElementForParameterInfo` answers null; `PlatformEntry` row 9 counts those calls as
+  `callee-not-a-declared-def` (623, up 24 with the corpus) and judges none of them.
+* **A variant name gets no semantic-highlight colour of its own.**  It is neither a type nor a
+  callable, and `VelaSemanticHighlighting` has no key for "variant"; the name is left to the
+  default colour, which is said in the code where the decision is made.
+* **A payload field is not a symbol**, so the hover for one is the counted class above and the
+  structure view shows a variant's payload as part of its detail rather than as child nodes.
+
+**What this does not prove.**  No IDE was started: every harness still drives the plugin's own entry
+points with stand-ins.  The compiler frozen for every number above is `vm.exe` 867,328 bytes,
+sha256 `1e52032c…` (`LLVM-C.dll` 74,159,616 bytes, `1286e894…`), and the corpus was not frozen
+either — `tests\` belongs to another track and is still growing, so the counts are one run over the
+tree as it stood.  `SymbolDiff` and `FoldDiff` stay non-zero by design: they are the regression
+detectors, and their numbers are the measured difference between the current reading and the
+retired one.  The plugin's parser reproduces the compiler's *parse* refusals, not its *checker*
+refusals: a file the checker refuses is a tree here and a diagnostic from `vm.exe check` in the
+editor, which is where the refusal reaches the user.
+
 ## 0.1.8 — the four things 0.1.7 counted but did not fix
 
 **What changed.** The 0.1.7 round moved rows 7, 9 and 19 to `implemented` and left a list of

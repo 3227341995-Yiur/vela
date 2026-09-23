@@ -1,0 +1,211 @@
+SPEC.md section 13 in the plugin: `enum`, payload variants, `match`, and the numbers that say the
+plugin followed the language   (0.1.9, 2026-09-24 07:10)
+
+WHAT THIS FILE IS
+=================
+
+`SPEC.md` §13 landed in the compiler while the 0.1.8 round was being measured: `enum` and `match`
+became reserved words, payload variants and `match` became syntax, and eighteen corpus files
+(`tests\build\enum_*.vel`, `tests\probes\enum_*`) arrived with them.  This is the round that makes
+the plugin follow: the two keywords, the six PSI node kinds the compiler prints for §13, the model
+and completion support that reads them, and every number in `FEATURE_PARITY.md` re-measured on the
+result.
+
+Three measurements are in here, and each is a *before and after* rather than an assertion:
+
+  1. **The keyword axis, and its falsification.**  `PlatformEntry` row 7's `bare-end` family was
+     **red** -- 139 files, one position each, every one reporting the same two missing keywords --
+     and is green with the two words in `VelaTokenTypes.KEYWORDS`.  Removing them again makes it
+     red on demand; the raw output of that mutation is below.
+  2. **The tree axis, against the compiler's own printer.**  `ast-diff.ps1` and `psi-tree-diff.ps1`
+     on the grown corpus, with the node and leaf counts.
+  3. **`HoverTruth` went red first and is green again**, and the red is the interesting one: the
+     plugin's hover was right and *the tool's oracle* knew only four declaration kinds.  Both the
+     red and the fix are quoted below, and it is written up as Open-defects entry 9.
+
+WHAT WAS MEASURED AGAINST (pinned)
+==================================
+
+this run's plugin
+    version       0.1.9                (src\main\resources\META-INF\plugin.xml line 52)
+    jar           dist\vela\lib\vela-idea-plugin.jar
+                  399,565 bytes  sha256 4a7372813ab969adcf2e344c176ab6fbdb7e196dcc9b1452a834e930f02090af
+    classes       build\classes, the same build the jar was packed from; `harness.ps1` snapshots
+                  them before running, so a concurrent build cannot disturb the run
+
+the frozen compiler (the oracle for every name, member, parameter, tree and verdict below)
+    vm.exe        867,328 bytes  sha256 1e52032c0d3108ed7e042a69d62056b11e1a2f134cb4cc0b1db95f0b9ac9ed1c
+    LLVM-C.dll   74,159,616 bytes  sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe
+    taken from selfhost\build\vm.exe at 2026-09-24 06:30 into %TEMP%\vela-plugin-drive-019\ and used
+    from there.  The tree's own `vm.exe` has been rebuilt several times during the day and may have
+    moved again; nothing in this file is a claim about any other binary.
+
+the language definition
+    SPEC.md §1.3 now lists **25** keywords (23 before §13) and the two new ones are `enum` and
+    `match`; §13 is "Enums with payloads, and `match`".  `PlatformEntry` reads that list at run
+    time and prints `oracle 4: SPEC.md keywords 25, builtins with documented parameter names 11`,
+    so this is the compiler's own document, not a copy.
+
+THE COMMANDS
+============
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File idea-plugin\harness.ps1 -Tool All `
+        -FrozenVm %TEMP%\vela-plugin-drive-019\vm.exe
+    powershell -NoProfile -ExecutionPolicy Bypass -File idea-plugin\ast-diff.ps1 `
+        -FrozenVm %TEMP%\vela-plugin-drive-019\vm.exe
+    powershell -NoProfile -ExecutionPolicy Bypass -File idea-plugin\psi-tree-diff.ps1
+
+MEASUREMENT 1 -- THE KEYWORD AXIS, AND THE MUTATION THAT MAKES IT FAIL
+=====================================================================
+
+    0.1.9, before the two keywords (the 0.1.8 build against the §13 SPEC.md and corpus, measured at
+    06:41 on the 24th):
+      oracle 4: SPEC.md keywords 25, builtins with documented parameter names 11
+        tests/build/enum_else_arm.vel: the caret at the end of the file; not offered: keyword enum, keyword match
+      COVERAGE: ran 2130 / skipped 140 (... template-names-not-in-spec 139 ...) / wrong 139
+      VERDICT: 139 position(s) of 2130 judged are wrong: the offer set is not the one the compiler's own declarations describe [FAIL]
+
+    0.1.9, the two words in the plugin's keyword set and the model reading enums, on the same corpus:
+        family                     judged  wrong
+        bare-end                   146     0
+        insert                     1909    0
+        after-dot                  194     0
+      COVERAGE: ran 2249 / skipped 160 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, receiver-type-not-written 0, receiver-not-a-struct 0, receiver-not-a-written-binding 1, insert-not-a-callable 13, template-names-not-in-spec 146, contributor-threw 0) / wrong 0
+      VERDICT: for every judged position the offer set is exactly the names the compiler declares (...) [PASS]
+
+    THE MUTATION, run on purpose so the green above is a measurement rather than a tautology --
+    `VelaLanguage.kt` rebuilt with `"enum", "match",` removed from `VelaTokenTypes.KEYWORDS`, and
+    the tool asked about one §13 file:
+      tests/build/enum_else_arm.vel: the caret at the end of the file; not offered: keyword enum, keyword match
+      COVERAGE: ran 17 / skipped 4 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, receiver-type-not-written 0, receiver-not-a-struct 0, receiver-not-a-written-binding 0, insert-not-a-callable 3, template-names-not-in-spec 1, contributor-threw 0) / wrong 1
+      VERDICT: 1 position(s) of 17 judged are wrong: the offer set is not the one the compiler's own declarations describe [FAIL]
+      exit 1
+    The file was restored byte for byte afterwards and the rebuild reproduced the same jar
+    (399,565 bytes, `4a737281…`).
+
+MEASUREMENT 2 -- THE TREES, AGAINST THE COMPILER'S OWN PRINTER
+==============================================================
+
+    ast-diff.ps1 (the corpus is `tests/cases.txt` + `tests/build` + `tests/probes` + `examples` +
+    `bench`, so the eighteen §13 files are in it):
+      files in the corpus       : 147        (0.1.8: 129)
+      match (tree identical)    : 133        (0.1.8: 117)
+      nodes compared, in detail : 147346 node line(s) over 133 file(s)   (0.1.8: 134587 over 117)
+      different                 : 0
+      suspect (dump proves nothing): 0
+      missing                   : 0
+      compiler refused          : 14 (of which this parser also refused: 14, accepted: 0)
+      compiler crashed          : 0
+      files that are not a match: []
+      VERDICT                   : PASS
+      COVERAGE: ran 133 / skipped 14 (compiler-refused 14, too-large 0, missing-corpus-file 0, compiler-crashed 0) / wrong 0
+
+    psi-tree-diff.ps1 (every file replayed through the platform's own `PsiBuilderImpl`):
+      composite nodes compared                     : 147388
+      leaf tokens compared                         : 399393
+      failed                                       : 0
+      leaf tokens past the parser's last token     : 12 (not judged: the parser has no opinion about text it did not read)
+      VERDICT                                      : PASS
+      COVERAGE: ran 147 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0) / wrong 0
+
+    What that required in the plugin, and where the shape comes from: the compiler's `dump.vel`
+    prints `enum name=Op` with `variant name=Add fields=2` and one `field name=a type=int` per
+    payload entry, then `match` / `subject` / `arm pattern=Add binds=2` / one `binding name=a` per
+    name the pattern binds, then the arm's block.  The plugin's parser mirrors `parse_enumdef`,
+    `parse_variant`, `parse_match` and `parse_arm` in `selfhost/parts/parser.vel` and its printer
+    mirrors that dump, node for node -- including the two encodings the parser deliberately keeps
+    apart: a payload field is a `field` node (the same node a struct field uses, as the compiler's
+    own parser reuses its field node) and a pattern binding is a `binding` node, while the *dump*
+    calls both `field` and `binding` respectively.
+
+MEASUREMENT 3 -- `HoverTruth` WAS RED, AND THE RED WAS THE TOOL'S
+=================================================================
+
+    0.1.9, the §13 corpus against an oracle that knew `struct`, `def`, `field` and `param`:
+      tests/build/enum_else_arm.vel:9 `Color`: neither this file nor the language declares it, and the hover says `enum enum Color` (summary: An enum declared in this file)
+      tests/build/enum_else_arm.vel:10 `Red`: neither this file nor the language declares it, and the hover says `variant Red` (summary: A variant of the enum `Color`)
+      tests/build/enum_else_arm.vel:11 `Green`: neither this file nor the language declares it, and the hover says `variant Green` (...)
+      tests/build/enum_else_arm.vel:12 `Blue`: neither this file nor the language declares it, and the hover says `variant Blue` (...)
+      tests/build/enum_payload_bind.vel: the compiler's dump and this harness's scanner disagree at declaration 0: the compiler says `field radius`, the scanner says `def u...`
+      ... 21 findings in all, and the same two shapes in tests/build/enum_match_no_else.vel,
+          enum_missing_variant.vel, enum_duplicate_arm.vel, enum_else_not_last.vel,
+          enum_match_non_enum.vel, enum_in_array.vel, enum_exhaustive_switch.vel,
+          enum_two_enums.vel, enum_binding_arity.vel, enum_unknown_variant.vel
+      COVERAGE: ran 12863 / skipped 91 (harness-threw 0, spec-documents-the-arity-without-parameter-names 24, compiler-refused-the-file 43, nested-def-outside-the-model 12, declaration-scan-disagrees-with-the-compiler-dump 10, variadic-signature-declares-no-parameter 1, builtin-signature-writes-no-return-type 1) / wrong 21
+      VERDICT: 21 row(s) disagree with the declaration the compiler prints [FAIL]
+
+    0.1.9, after both sides of the tool learned §13 (the same tool, the same corpus, the same frozen
+    compiler):
+      payload-field-not-a-model-declaration       15
+      COVERAGE: ran 13013 / skipped 96 (harness-threw 0, spec-documents-the-arity-without-parameter-names 24, compiler-refused-the-file 43, nested-def-outside-the-model 12, payload-field-not-a-model-declaration 15, variadic-signature-declares-no-parameter 1, builtin-signature-writes-no-return-type 1) / wrong 0
+      VERDICT: every one of the 13013 row(s) judged says what the compiler, SPEC.md or the absence of a declaration says [PASS]
+
+    The plugin's hover was **not** wrong in any of those 21: `enum Color` and `variant Red` are true
+    declarations of the file.  What was wrong was the tool's model of the language -- and the same
+    class of blindness is why `SymbolDiff`'s `tree-reports-more-declarations` went 25 → 42 (the tree
+    model declares `enum`/`variant` symbols the retired token scan cannot see) and `FoldDiff`'s
+    `wrong` went 24 → 41 (the fold model folds an enum body and a match arm's block, the retired
+    brace matcher does not).  Both of those are *difference* detectors and non-zero by design; what
+    this round adds is the reason their numbers moved.
+
+THE REST OF THE PASS, IN ONE PLACE
+==================================
+
+    GotoOracle     exit 0   COVERAGE: ran 30880 / skipped 27305 (crashed-file 0, compiler-refused 27287, invisible-member 18, ambiguous 0) / wrong 0
+    HintDiff       exit 0   COVERAGE: ran 37046 / skipped 78 (compiler-cannot-parse 51, arg-boundary-disagreement 12, compiler-refused-the-file 15, check-timed-out 0) / wrong 0
+    HintNames      exit 0   COVERAGE: ran 2094 / skipped 12 (threw 0, missing-corpus-file 0, check-timed-out 0, nothing-was-judged 0, no-model-entry-for-this-def 7, too-large 0, compiler-refused-the-file 5) / wrong 0
+    HintShapes     exit 0   COVERAGE: ran 9357 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 0
+    HintDupes      exit 0   COVERAGE: ran 2099 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 0
+    SymbolDiff     exit 1   COVERAGE: ran 90 / skipped 44 (threw 0, missing-corpus-file 0, too-large 0, type-spelling-only-difference 2, tree-reports-more-declarations 42, scan-reports-more-declarations 0) / wrong 13
+    FoldDiff       exit 1   COVERAGE: ran 68 / skipped 38 (threw 0, missing-corpus-file 0, too-large 0, granularity-only-difference 38) / wrong 41
+    FeatureProbe   exit 0   COVERAGE: ran 1621 / skipped 1 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0, needs-an-application-instance 1) / wrong 0
+    ParamNames     exit 0   COVERAGE: ran 2099 / skipped 6392 (harness-threw 0, missing-corpus-file 0, file-too-large 0, not-a-callable 6392, callee-not-in-this-file-and-not-a-builtin 0, builtin-arity-only-SPEC-md-names-none 0) / wrong 0
+    HintTruth      exit 0   COVERAGE: ran 8215 / skipped 7660 (harness-threw 0, missing-corpus-file 0, file-too-large 0, no-argument-call 3012, callee-not-declared-in-file 4648, builtin-arity-documented-without-names 0) / wrong 0
+    HoverTruth     exit 0   COVERAGE: ran 13013 / skipped 96 (...) / wrong 0
+    RenameOracle   exit 0   COVERAGE: ran 879 / skipped 5962 (compiler-refused 5763, too-large 0, missing-corpus-file 0, compiler-silent 40, not-attributable 159, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+      VERDICT: for every one of the 879 judged declaration(s), the reference table names exactly the 2955 use(s) the compiler binds and nothing else, and renaming them produces a program the compiler accepts
+    InspectionProbe exit 0  COVERAGE: ran 281 / skipped 43 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 43, empty-or-whitespace-only 0, excluded-by-request 0) / wrong 0
+    RenameWriteback exit 0  COVERAGE: ran 807 / skipped 6034 (compiler-refused-file 5763, too-large 0, missing-corpus-file 0, no-references-and-silent 39, not-attributable 146, new-name-refused 0, new-name-collides 0, too-many-references 86, crashed 0, contradiction 0) / wrong 0
+      VERDICT: for every one of the 807 judged declaration(s), the plugin's own write-back wrote exactly the 1735 reference(s) it claims and the declaration, changed no other token in the file, and produced a file the compiler accepts; renaming the declaration alone is refused by the compiler for 806 of them, and leaving out any one compiler-required reference is refused for 1727 of them
+    PlatformEntry  exit 0   COVERAGE: ran 14495 / skipped 2004 (25 named classes) / wrong 0   [rows 7, 9, 19 in one run]
+      row 7   bare-end 146 / insert 1909 / after-dot 194,  wrong 0
+      row 9   find 709 / show 688 / update 1380 / update-rebuilt 688,  wrong 0
+      row 19  must-not-close 1393 / close-restore 192 / closer-refused-without-it 146 / close-typed 3173 /
+              enter-block-open 777 / enter-input-refused 146 / enter-indent 2954,  wrong 0
+    the run's own reconciliation: "(none: each tool's verdict, exit code and wrong count agree)"
+
+WHAT THE PLUGIN STILL DOES NOT DO FOR §13, NAMED
+================================================
+
+  * **A variant name is not resolved by go-to-declaration, find-usages or rename.**  `VelaTargets`
+    resolves a call to a `def` and a bare name to a struct; a variant is neither.  `GotoOracle`
+    counts those positions as `invisible-member` (10 → 18 with this corpus, printed in its log), and
+    `RenameOracle` does not judge a variant at all, because its declaration walk enumerates
+    `def`/`struct`/`field`/`param`/`decl`/`for`.  So a variant rename is **not claimed**.
+  * **No popup for a variant construction.**  `Circle(2.0)` has no `def` to resolve, so
+    `findElementForParameterInfo` answers null; `PlatformEntry` row 9 judges none of them and counts
+    them in `callee-not-a-declared-def` (599 → 623).
+  * **No semantic-highlight colour of its own for a variant name.**  `VelaSemanticHighlighting`
+    classifies a name as a type or as a callable; a variant is neither (`Circle(2.0)` is a call and
+    `Empty` is a bare name), and the decision to leave it to the default colour is written where it
+    is made.  No measurement covers this, which is said rather than implied.
+  * **A payload field is not a symbol.**  The model declares none -- nothing in the language can
+    name one -- so `HoverTruth` counts 15 payload fields as
+    `payload-field-not-a-model-declaration` instead of demanding a hover for them, and the structure
+    view shows a variant with its payload spelling in its detail string rather than as child nodes.
+
+WHAT THIS FILE DOES NOT PROVE
+=============================
+
+  * **No IDE was started.**  Every harness here drives the plugin's own entry points with stand-ins
+    for the platform's editor, PSI and contexts; that is stated in each tool's own header.
+  * The corpus was not frozen: `tests\` belongs to another track and is still growing, so the
+    counts above are one run over the tree as it stood at 07:00-07:10, and the `enum_*` files
+    themselves may gain more.
+  * `SymbolDiff` and `FoldDiff` are failing by design and their numbers are the measured difference
+    from a retired implementation, not defects in the current one; the paragraph above says what
+    moved them and why.
+  * The plugin's parser reproduces the compiler's **parse** refusals (a nested pattern, `enum` used
+    as a name), not its **checker** refusals (arity, exhaustiveness, a duplicate arm, an unknown
+    variant).  A file the checker refuses is a tree here and a diagnostic from `vm.exe check` in
+    the editor, which is where the refusal is shown to the user.

@@ -202,10 +202,16 @@ object VelaHints {
         receiverWritten: Boolean,
         argumentsSurroundingSpace: Boolean = false,
     ): VelaCallTemplate? {
-        if (!sym.isCallable) return null
+        // A variant with a payload is written as a call (SPEC.md §13: `Circle(2.0)`),
+        // so it gets a template like any other call; a payload-free variant is a bare
+        // name and answer no template, which is what keeps completion from writing
+        // `Empty()`.  The variant's payload fields are its `parameters` -- the model
+        // reads them off the `variant` node's own field list.
+        val constructed = sym.kind == VelaSymbolKind.VARIANT && !sym.parameters.isNullOrEmpty()
+        if (!sym.isCallable && !constructed) return null
         // `symbolParameters` drops a variadic `...`, so `print` produces `()`
         // rather than a literal `( ... )`, and it drops a leading `mut `.
-        val parameters = parameterNames(sym)
+        val parameters = if (sym.isCallable) parameterNames(sym) else sym.parameters ?: emptyList()
         val names = if (receiverWritten) parameters.drop(1) else parameters
         if (names.isEmpty()) return VelaCallTemplate("()", 1, 1)
 

@@ -209,6 +209,15 @@ object VelaSemanticNames {
                     paramsOfCallable.getOrPut(symbol.parent) { HashMap() }[symbol.name] = symbol
                     fieldOrParamAt.getOrPut(at) { index }
                 }
+                VelaSymbolKind.ENUM -> structByName.getOrPut(symbol.name) { index }
+                VelaSymbolKind.VARIANT -> {
+                    // A variant name is a value: `Circle(2.0)` is a call and `Empty` is a
+                    // bare name (SPEC.md §13), so it is neither a type nor a function --
+                    // and this pass has no key for "variant", so the name is left to the
+                    // default colour rather than being told as something it is not.
+                    // Named here because it is a limit, and measured by nothing: the
+                    // colour of a variant name is not part of any row's evidence.
+                }
             }
         }
         val builtins = HashSet<String>(VelaModel.BUILTINS.size * 2)

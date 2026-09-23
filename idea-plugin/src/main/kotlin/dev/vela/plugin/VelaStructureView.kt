@@ -193,6 +193,9 @@ private class VelaStructureElement private constructor(
             VelaSymbolKind.METHOD, VelaSymbolKind.FUNCTION -> me.detail
             VelaSymbolKind.FIELD -> "${me.name}: ${me.type}"
             VelaSymbolKind.PARAMETER -> if (me.name == "self") "self" else "${me.name}: ${me.type}"
+            // SPEC.md §13: an enum and a variant both present as the declaration the
+            // model read, which is the same text hover and find-usages use.
+            VelaSymbolKind.ENUM, VelaSymbolKind.VARIANT -> me.detail
         }
     }
 

@@ -1121,6 +1121,32 @@ public final class PlatformEntry {
             return null;
         }
 
+        /**
+         * The `variant name=X` node declared in this file, or null -- SPEC.md section 13.
+         *
+         * A variant is not a `def`, which is why the insert family skipped every one of
+         * them until 0.1.9: its filter kept "what the dump calls callable", and the dump
+         * has a `variant` node for `Circle(radius: float)`.  A variant with a payload is
+         * inserted as a *call* -- `Circle` becomes `Circle(radius)` -- so this is the
+         * node its expected argument list is read from, and a payload-free variant's
+         * field list is empty, which the family already knows how to judge.
+         */
+        DNode variant(String name) {
+            for (DNode n : all) {
+                if (n.kind.equals("variant") && name.equals(n.name())) return n;
+            }
+            return null;
+        }
+
+        /** A variant's payload field names, in the order the compiler dumps them. */
+        List<String> variantFields(DNode variant) {
+            List<String> out = new ArrayList<String>();
+            for (DNode k : variant.kids) {
+                if (k.kind.equals("field") && k.name() != null) out.add(k.name());
+            }
+            return out;
+        }
+
         /** The members of a struct, in the order the compiler dumps them. */
         List<String> members(DNode struct) {
             List<String> out = new ArrayList<String>();
@@ -1222,7 +1248,13 @@ public final class PlatformEntry {
         Set<String> moduleNames() {
             Set<String> out = new LinkedHashSet<String>();
             for (DNode n : all) {
-                if (!(n.kind.equals("def") || n.kind.equals("struct") || n.kind.equals("extern"))) continue;
+                // `enum` joined this list when SPEC.md section 13 landed: an enum is a
+                // module-level declaration, `vm.exe parse` prints `enum name=Op` for it,
+                // and the bare-end family demands every module-level name -- so a plugin
+                // whose completion does not offer an enum's own type name now fails this
+                // row rather than passing by omission.
+                if (!(n.kind.equals("def") || n.kind.equals("struct")
+                        || n.kind.equals("extern") || n.kind.equals("enum"))) continue;
                 if (n.name() == null) continue;
                 boolean nested = false;
                 for (DNode p = n.parent; p != null; p = p.parent) {
@@ -1735,9 +1767,10 @@ public final class PlatformEntry {
             if (offered != null) {
                 for (LookupElement e : offered) {
                     String name = e.getLookupString();
+                    DNode variantNode = w.dump.variant(name);
                     if (!(w.dump.callable(name) != null || specBuiltinNames.containsKey(name)
-                            || pluginBuiltins.contains(name))) {
-                        continue; // a keyword or a non-callable: the family is callables only
+                            || pluginBuiltins.contains(name) || variantNode != null)) {
+                        continue; // a keyword or a non-callable: the family is calls only
                     }
                     List<String> want = null;
                     boolean fromCompiler = false;
@@ -1747,6 +1780,14 @@ public final class PlatformEntry {
                         fromCompiler = true;
                     } else if (specBuiltinNames.containsKey(name)) {
                         want = specBuiltinNames.get(name);
+                        fromCompiler = true;
+                    } else if (variantNode != null) {
+                        // SPEC.md §13: a variant with a payload is written as a call whose
+                        // arguments are the payload's fields, and a payload-free variant is
+                        // written as a bare name -- so the oracle for `Circle` is its field
+                        // list and for `Empty` it is *nothing*, which the `want.isEmpty()`
+                        // branch below already knows how to judge.
+                        want = w.dump.variantFields(variantNode);
                         fromCompiler = true;
                     }
                     if (want == null) continue;

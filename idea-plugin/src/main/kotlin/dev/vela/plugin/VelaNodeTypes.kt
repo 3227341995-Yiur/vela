@@ -56,6 +56,14 @@ internal object VelaNodeTypes {
     @JvmField val LIST: IElementType = IElementType("VELA_LIST", VelaLanguage)
     @JvmField val SLICE: IElementType = IElementType("VELA_SLICE", VelaLanguage)
     @JvmField val ERROR: IElementType = IElementType("VELA_ERROR", VelaLanguage)
+    // SPEC.md §13: an enum declaration, its variants, a `match` statement, the subject
+    // it matches on, one arm, and one name a pattern binds.
+    @JvmField val ENUM: IElementType = IElementType("VELA_ENUM", VelaLanguage)
+    @JvmField val VARIANT: IElementType = IElementType("VELA_VARIANT", VelaLanguage)
+    @JvmField val MATCH: IElementType = IElementType("VELA_MATCH", VelaLanguage)
+    @JvmField val SUBJECT: IElementType = IElementType("VELA_SUBJECT", VelaLanguage)
+    @JvmField val ARM: IElementType = IElementType("VELA_ARM", VelaLanguage)
+    @JvmField val BINDING: IElementType = IElementType("VELA_BINDING", VelaLanguage)
 
     /** The element type for a node kind.  Total: no `else` on purpose. */
     fun of(kind: VelaNodeKind): IElementType = when (kind) {
@@ -95,6 +103,12 @@ internal object VelaNodeTypes {
         VelaNodeKind.LIST -> LIST
         VelaNodeKind.SLICE -> SLICE
         VelaNodeKind.ERROR -> ERROR
+        VelaNodeKind.ENUM -> ENUM
+        VelaNodeKind.VARIANT -> VARIANT
+        VelaNodeKind.MATCH -> MATCH
+        VelaNodeKind.SUBJECT -> SUBJECT
+        VelaNodeKind.ARM -> ARM
+        VelaNodeKind.BINDING -> BINDING
     }
 
     /**

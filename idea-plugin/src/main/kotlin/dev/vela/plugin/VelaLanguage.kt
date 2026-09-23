@@ -80,6 +80,13 @@ object VelaTokenTypes {
         "def", "return", "if", "elif", "else", "while", "for", "in", "range",
         "break", "continue", "pass", "and", "or", "not", "True", "False",
         "None", "mut", "struct", "parallel", "pure", "extern",
+        // SPEC.md §13.  `enum` and `match` became reserved words when enums landed,
+        // and the list is read by the lexer (a word is coloured as a keyword or as a
+        // name), by the completion (every keyword is offered) and by
+        // `VelaDeclarations.declarationRange` (a keyword is not a reference to
+        // anything) -- so one list is what keeps all three from disagreeing about
+        // what the language owns.
+        "enum", "match",
     )
 }
 

@@ -49,7 +49,7 @@
       (253) to prove that every class and member they use is present in both 鈥?      so the plugin can honestly claim to load from 253 upward.  until-build is
       deliberately absent: no fake upper limit.
     -->
-    <version>0.1.8</version>
+    <version>0.1.9</version>
     <idea-version since-build="253"/>
 
     <depends>com.intellij.modules.platform</depends>

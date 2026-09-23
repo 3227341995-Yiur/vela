@@ -99,7 +99,12 @@ class VelaCompletionContributor : CompletionContributor() {
             .filter {
                 it.kind == VelaSymbolKind.FUNCTION ||
                     it.kind == VelaSymbolKind.METHOD ||
-                    it.kind == VelaSymbolKind.STRUCT
+                    it.kind == VelaSymbolKind.STRUCT ||
+                    // A variant is a name this file declares, and a variant with a
+                    // payload is inserted as a call, so the language's table must not be
+                    // allowed to offer a same-named builtin ahead of it either.
+                    it.kind == VelaSymbolKind.VARIANT ||
+                    it.kind == VelaSymbolKind.ENUM
             }
             .mapTo(HashSet()) { it.name }
 
@@ -148,19 +153,23 @@ class VelaCompletionContributor : CompletionContributor() {
     }
 
     private fun element(sym: VelaSymbol, receiverWritten: Boolean): LookupElement {
-        // A struct is a type: inserting it asks for no parentheses.  Everything
-        // else the model calls callable gets them, with the parameter names
-        // filled in when there is at least one, selected so the first keystroke
-        // replaces them — the same shape as `print(` in a language whose
-        // completion knows its own declarations.
-        if (sym.kind == VelaSymbolKind.STRUCT || !sym.isCallable) {
+        // A struct is a type: inserting it asks for no parentheses.  So is an enum --
+        // `Shape` is a type name (SPEC.md §13).  A *variant* asks for its payload's
+        // field names when it has a payload and for nothing when it does not, because
+        // the language makes construction a call in one case and a bare name in the
+        // other: `Circle(2.0)` is a call, `Empty` is a value.  So the two variant
+        // shapes are not the same entry, and `Empty()` would be text the compiler
+        // refuses.
+        val constructed = sym.kind == VelaSymbolKind.VARIANT && !sym.parameters.isNullOrEmpty()
+        val callable = sym.isCallable || constructed
+        if (sym.kind == VelaSymbolKind.STRUCT || sym.kind == VelaSymbolKind.ENUM || !callable) {
             return LookupElementBuilder.create(sym.name)
                 .withTypeText(sym.detail, true)
         }
-        val tail = if (sym.kind == VelaSymbolKind.METHOD) {
-            "  ${sym.type}"
-        } else {
-            "  -> ${sym.type}"
+        val tail = when (sym.kind) {
+            VelaSymbolKind.METHOD -> "  ${sym.type}"
+            VelaSymbolKind.VARIANT -> "  ${sym.detail}"
+            else -> "  -> ${sym.type}"
         }
         return LookupElementBuilder.create(sym.name)
             .withTailText(tail, true)

@@ -389,6 +389,16 @@ public final class HoverTruth {
             Ent d = dump.get(i);
             Ent s = scan.get(i);
             if (demandOnly) continue;
+            if (d.kind.equals("payload")) {
+                // SPEC.md §13.  The compiler prints a variant's payload as `field
+                // name=radius type=float`, and the plugin's model declares **no symbol**
+                // for it -- deliberately, because nothing in the language can name a
+                // payload field: a match arm binds new names positionally.  So this is a
+                // counted class and not a hover this tool demands, and the count is the
+                // cost of that decision on the §13 corpus.
+                bump("payload-field-not-a-model-declaration");
+                continue;
+            }
             if (d.nested) {
                 // A `def` inside another `def`'s body: the model reads module-level and
                 // struct-level declarations, so this declaration is outside its scope and
@@ -838,10 +848,29 @@ public final class HoverTruth {
             Ent e = null;
             if (body.startsWith("struct name=")) {
                 e = new Ent("struct", wordAfter(body, "struct name="));
+            } else if (body.startsWith("enum name=")) {
+                // SPEC.md §13.  The dump prints `enum name=Shape` and, one level in,
+                // `variant name=Circle fields=1` with a `field name=radius type=float`
+                // under it.  A reader that knew only `struct`/`def` saw the enum's
+                // *variants* as undeclared names and demanded that the hover say nothing
+                // about them -- which is 21 findings against a hover that says something
+                // true (`enum Color`, `variant Red`) the moment the language grows enums.
+                e = new Ent("enum", wordAfter(body, "enum name="));
+            } else if (body.startsWith("variant name=")) {
+                e = new Ent("variant", wordAfter(body, "variant name="));
+                e.owner = parent != null && parent.kind.equals("enum") ? parent.name : "";
             } else if (body.startsWith("field name=")) {
-                e = new Ent("field", wordAfter(body, "field name="));
+                // A `field` line whose nearest enclosing declaration is a `variant` is
+                // that variant's *payload*, not a struct field: the compiler prints both
+                // with the word `field`, and the plugin's model deliberately declares no
+                // symbol for a payload field, because nothing in the language can name
+                // one.  Keeping the two apart here is what lets the payload be a counted
+                // class instead of a hover this tool demands and the plugin does not owe.
+                String variant = variantOf(parent);
+                e = new Ent(variant != null ? "payload" : "field", wordAfter(body, "field name="));
                 e.type = attr(body, "type=");
                 e.mut = attr(body, "mut=").equals("1");
+                if (variant != null) e.owner = variant;
             } else if (body.startsWith("def name=")) {
                 e = new Ent("def", wordAfter(body, "def name="));
                 e.ret = attr(body, "ret=");
@@ -897,7 +926,22 @@ public final class HoverTruth {
     private static String ownerOf(Ent d) {
         if (d.kind.equals("param")) return d.owner;
         if (d.kind.equals("field") || d.kind.equals("def")) return d.nested ? "" : d.owner;
+        // A variant's owner is the enum that declares it (SPEC.md §13), which is what
+        // the plugin's hover answers with -- `VelaDocumentation` reads it off the
+        // symbol's parent, exactly as it does for a field's struct.
+        if (d.kind.equals("variant")) return d.owner;
         return "";
+    }
+
+    /** The nearest enclosing `variant` of an entry, or null -- SPEC.md §13. */
+    private static String variantOf(Ent parent) {
+        Ent p = parent;
+        while (p != null) {
+            if (p.kind.equals("variant")) return p.name;
+            if (p.kind.equals("struct") || p.kind.equals("def")) return null;
+            p = p.parent;
+        }
+        return null;
     }
 
     private static String wordAfter(String body, String prefix) {
@@ -991,7 +1035,38 @@ public final class HoverTruth {
                 pending = Scope.def(e.name);
                 continue;
             }
+            if (word.equals("enum")) {
+                // `enum Shape { Circle(radius: float) Empty }` -- SPEC.md §13.
+                int ns = skipSpace(text, i);
+                int ne = endName(text, ns);
+                if (ne > ns) {
+                    Ent e = new Ent("enum", text.substring(ns, ne));
+                    e.offset = ns;
+                    out.add(e);
+                    pending = Scope.enumBody(e.name);
+                }
+                continue;
+            }
             Scope top = scopes.peek();
+            if (top != null && top.isEnum && !top.insideDef) {
+                // An enum body holds variants and nothing else (SPEC.md §13), so a name
+                // here IS a variant -- and its payload, when it has one, is the
+                // parenthesised `field: Type` list the dump prints as `payload` under it.
+                Ent v = new Ent("variant", word);
+                v.offset = start;
+                v.owner = top.structName;
+                out.add(v);
+                int p = skipSpace(text, i);
+                if (p < text.length() && text.charAt(p) == '(') {
+                    int close = matchingParen(text, p);
+                    if (close > p) {
+                        scanPayloadFields(text, p + 1, close, v, out);
+                        i = close + 1;
+                        continue;
+                    }
+                }
+                continue;
+            }
             if (top != null && top.isStruct && !top.insideDef) {
                 int colon = skipSpace(text, i);
                 if (colon < text.length() && text.charAt(colon) == ':') {
@@ -1039,27 +1114,57 @@ public final class HoverTruth {
         }
     }
 
+    /**
+     * A variant's payload, scanned out of the parentheses the way [scanParamNames] scans a
+     * parameter list -- one `field: Type` entry per top-level comma, and every entry is a
+     * `payload` rather than a `param` or a struct `field` (SPEC.md §13).
+     */
+    private static void scanPayloadFields(String text, int from, int to, Ent variant,
+                                         List<Ent> out) {
+        for (int[] r : topLevelEntries(text, from, to)) {
+            int ns = skipSpace(text, r[0]);
+            int ne = endName(text, ns);
+            if (ne <= ns) continue;
+            Ent e = new Ent("payload", text.substring(ns, ne));
+            e.offset = ns;
+            e.owner = variant.name;
+            int colon = skipSpace(text, ne);
+            if (colon < r[1] && text.charAt(colon) == ':') {
+                int ts = skipSpace(text, colon + 1);
+                e.type = text.substring(ts, Math.min(endOfType(text, ts), r[1])).trim();
+            }
+            out.add(e);
+        }
+    }
+
     private static final class Scope {
         final boolean isStruct;
+        final boolean isEnum;
         final String structName;
         final boolean insideDef;
 
-        private Scope(boolean isStruct, String structName, boolean insideDef) {
+        private Scope(boolean isStruct, boolean isEnum, String structName, boolean insideDef) {
             this.isStruct = isStruct;
+            this.isEnum = isEnum;
             this.structName = structName;
             this.insideDef = insideDef;
         }
 
         static Scope struct(String name) {
-            return new Scope(true, name, false);
+            return new Scope(true, false, name, false);
+        }
+
+        /** An enum body: its members are variants, and they are not a struct's fields. */
+        static Scope enumBody(String name) {
+            return new Scope(false, true, name, false);
         }
 
         static Scope def(String name) {
-            return new Scope(false, "", true);
+            return new Scope(false, false, "", true);
         }
 
         static Scope inherit(Scope parent) {
-            return parent == null ? new Scope(false, "", false) : parent;
+            return parent == null ? new Scope(false, false, "", false) : parent;
         }
     }
 

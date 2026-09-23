@@ -185,10 +185,14 @@ class VelaDocumentationProvider : DocumentationProvider {
         val owner = when (sym.kind) {
             VelaSymbolKind.FIELD, VelaSymbolKind.METHOD -> ownerSymbol?.name ?: ""
             VelaSymbolKind.PARAMETER -> ownerSymbol?.name ?: ""
+            // A variant's owner is the enum that declares it (SPEC.md §13: a variant name
+            // is file-global, but the enum it belongs to is the fact a reader wants).
+            VelaSymbolKind.VARIANT -> ownerSymbol?.name ?: ""
             else -> ""
         }
         val signature = when (sym.kind) {
             VelaSymbolKind.STRUCT -> "struct ${sym.name}"
+            VelaSymbolKind.ENUM -> "enum ${sym.name}"
             VelaSymbolKind.FIELD -> if (sym.type.isEmpty()) sym.name else "${sym.name}: ${sym.type}"
             else -> sym.detail
         }
@@ -293,6 +297,14 @@ class VelaDocumentationProvider : DocumentationProvider {
             VelaSymbolKind.PARAMETER ->
                 if (owner.isEmpty()) "A parameter declared in this file."
                 else "A parameter of `$owner`."
+            // SPEC.md §13.  An enum is a type and a variant is one of its cases; the
+            // payload is *not* listed as fields here, because a payload field is not a
+            // symbol of this model (nothing can name one) and inventing a field list for
+            // the hover would be a second opinion about a declaration the tree owns.
+            VelaSymbolKind.ENUM -> "An enum declared in this file."
+            VelaSymbolKind.VARIANT ->
+                if (owner.isEmpty()) "A variant declared in this file."
+                else "A variant of the enum `$owner`."
         }
         if (parameters != null || !kind.isCallableKind()) return head
         return "$head The parameter list cannot be read, so no parameter names are given."

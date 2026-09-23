@@ -4,8 +4,8 @@
 
 <!--
 源文件 : CHANGELOG.md
-源文件字节 : 47852
-源文件 SHA256 : c4057ac0e727c5a04a29311cd53bec9bdb8a18a9159acd5bbb16a483df7c5617
+源文件字节 : 55447
+源文件 SHA256 : 1e32bf546c92ce2723c5cbd0dee3d41a9352b16a291e49e2ee0e04ca2f595ddb
 翻译日期 : 2026-09-24
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -23,6 +23,27 @@
 | 本文件 | 一条记录说改了什么，**以及什么被验证过、什么没有** |
 
 最后一列不是仪式。这个项目更老的那条规则是：没有人测量过的声称不存在。而这个插件已经发布过三个完成后完全无作用的功能——一个写错的文件扩展名、一个被当成组注册的动作，以及三个从未被注册（或者注册在错误属性名下）的扩展点。一条写着“加了 X，未验证”的记录，比一条写着“加了 X”的记录更有价值。
+
+## 0.1.9 —— 插件跟上语言走进 §13：`enum`、`match`，以及它们造出的树
+
+**改了什么。** 0.1.8 还在测量的时候，编译器那边落下了 `SPEC.md` §13：`enum` 和 `match` 成了保留字，语料一次多了十八个文件（`tests\build\enum_*.vel`、`tests\probes\enum_*`），而它们的树这个插件从来没有见过。那是语言在动、插件必须跟上；这一版就是跟上：两个关键字、编译器为它们打印的 PSI，以及把 `FEATURE_PARITY.md` 里每一个数字都在结果上重测一遍。
+
+* **两个关键字。** `enum` 与 `match` 进了 `VelaTokenTypes.KEYWORDS`（词法器的关键字集合，补全和 `VelaDeclarations` 的「关键字不是引用」共用它），也进了 `VELA_KEYWORDS`，带着编译器自己的编号 24 和 25。判定它们是否真的落地的是 `PlatformEntry` 第 7 行的 `bare-end` 家族：这一版之前它是**红的**——语料里 **139 个位置错，每个文件一个，每条都报 `not offered: keyword enum, keyword match`**；现在是 **146 判定 / 错 0**。而这条检查仍然能失败，这才是要紧的部分：把这两个词从插件的关键字表里再去掉，同一个家族就会报出同一行并以 1 退出——`tests/build/enum_else_arm.vel: the caret at the end of the file; not offered: keyword enum, keyword match`，`COVERAGE: ran 17 / skipped 4 (...) / wrong 1`，`VERDICT: ... [FAIL]`——那次变异运行的原始输出在证据文件里。
+
+* **树。** 解析器新增了 `enum`/`variant`/`match`/`subject`/`arm`/`binding`，逐一对应 `selfhost/parts/parser.vel` 里的 `parse_enumdef`、`parse_variant`、`parse_match` 和 `parse_arm`——包括编译器的**解析器**拒绝的东西，而刻意不包括它**检查器**拒绝的东西：嵌套模式、把 `enum` 当名字用，在这里就被拒；穷尽性、重复的 arm、未知的变体、payload 的参数个数，都留给 `vm.exe check`，因为编译器的前端在它们之前就停住，而一个靠猜的解析器会拒绝编译器接受的程序。`VelaSyntaxDump` 按 `selfhost/parts/dump.vel` 逐行打印这六种形状（`enum name=…`、`variant name=… fields=N`、每个 payload 条目一行 `field name=… type=…`、`match`、`subject`、`arm pattern=… binds=N`、每个绑定的名字一行 `binding name=…`，然后是 arm 的块）。实测，同一冻结编译器（`vm.exe` 867,328 字节，`1e52032c…`）：**`ast-diff.ps1`——语料 147 个文件，133 个完全相同，共比较 `147,346` 行节点，0 处不同、0 处存疑、0 处缺失，14 个编译器拒绝（其中 14 个本解析器也拒绝），`COVERAGE: ran 133 / skipped 14 / wrong 0`，VERDICT PASS**——而 0.1.8 那次是 117 个文件、134,587 行节点。以及 **`psi-tree-diff.ps1`——147 个文件全部经平台自己的 `PsiBuilderImpl` 重放，比较 147,388 个复合节点与 399,393 个叶子 token，`failed 0`，`COVERAGE: ran 147 / skipped 0 / wrong 0`，VERDICT PASS**。
+
+* **插件自己的功能也看得见这些新声明了。** `VelaModel` 把 `enum` 读成声明、把它的变体读成子项（`VelaSymbolKind.ENUM` / `VARIANT`），于是补全在模块层提供枚举自己的类型名，在需要值的位置提供变体名；`VelaHints.callTemplate` 把带 payload 的变体写成语言所说的那种调用（`Circle` → `Circle(radius)`），对不带 payload 的则什么都不写（`Empty`），因为 `Empty()` 是编译器会拒绝的文本。`PlatformEntry` 的 insert 家族也学会了同一条规则并真的去判它：**`insert` 判定 1909、错 0**，其中 **13 个 `insert-not-a-callable`** ——语料里每个不带 payload 的变体一个，被计数并打印，而不是被当成错，因为这才是「这个名字是值、不是调用」的诚实读法。payload 字段**不是**模型的符号，这是刻意的：语言里没有任何办法指名一个 payload 字段，给它一个符号就是给读者一个无法导航到的声明。
+
+* **`HoverTruth` 在这一版里红过一次，而红的是工具、不是插件。** 它的 dump 读取器和它的文本扫描器只认识 `struct`、`def`、`field`、`param`；§13 进了语料之后，枚举的变体在它眼里成了「谁都没声明的名字」，于是「未声明的名字必须悬停出空」这条轴把真实的悬停 `enum Color` / `variant Red` 报成了凭空捏造（21 条 finding，exit 1）。现在工具两侧都认识 `enum`/`variant`/payload，而插件模型刻意不声明的那个东西——payload 字段——是计数的类别 `payload-field-not-a-model-declaration`（15）。那次红的运行、修法与数字在 `FEATURE_PARITY.md` 的 `## Open defects` 第 9 条。同一种盲目也是 `SymbolDiff` 的 `tree-reports-more-declarations` 从 25 涨到 42、`FoldDiff` 的 `wrong` 从 24 涨到 41 的原因：这两个是与已退役实现做**差分**的探测器，按设计本来就非零，而这次是语料让它们动了，不是回归。
+
+**没有跟上的部分，点名写出而不是留着暗示。** 以下都是这个插件对 §13 仍然做不到的事，每条都带上它在上面那些测量里的代价：
+
+* **变体名没有被跳转、查找引用或重命名解析。** 引用表（`VelaTargets.declarationFor`）把调用解析到 `def`、把裸名字解析到结构体；变体两者都不是，所以 `Circle(2.0)` 和 `Empty` 什么都解析不到。`GotoOracle`（`ran 30880 / skipped 27305 / wrong 0`）把这些算作 `invisible-member`：这个类别随着 §13 语料从 10 涨到 18，并且它的日志里逐个打印。`RenameOracle`（`ran 879 / skipped 5962 / wrong 0`，0 MISSED、0 WRONG-SCOPE）根本不去判变体，因为它的声明遍历只枚举 `def`/`struct`/`field`/`param`/`decl`/`for`。那是这两个工具对新语料的覆盖限度，不是「变体重命名能用」的声称。
+* **变体构造没有参数信息弹窗。** `Circle(` 不指向任何 `def`，所以 `findElementForParameterInfo` 答 null；`PlatformEntry` 第 9 行把这些调用算进 `callee-not-a-declared-def`（623，比之前多 24），一个也不判。
+* **变体名没有自己的语义高亮颜色。** 它既不是类型也不是可调用物，而 `VelaSemanticHighlighting` 没有「变体」这个 key；名字被留给默认颜色，这个决定写在做出决定的那段代码里。
+* **payload 字段不是符号**，所以它的悬停就是上面那个计数类别，而结构视图把变体的 payload 显示在它的 detail 文本里，而不是作为子节点。
+
+**这一版没有证明什么。** 没有启动任何 IDE：每个 harness 仍是拿替身驱动插件自己的入口。上面每个数字都用同一个冻结编译器测出：`vm.exe` 867,328 字节，sha256 `1e52032c…`（`LLVM-C.dll` 74,159,616 字节，`1286e894…`）；语料也没有冻结——`tests\` 属于另一条轨道并且还在长，所以那些数字是某一次运行在当时的树上的结果。`SymbolDiff` 与 `FoldDiff` 按设计保持非零：它们是回归探测器，数字就是当前读法与已退役读法之间的实测差。插件的解析器复现的是编译器**解析**阶段的拒绝，而不是**检查**阶段的拒绝：被检查器拒绝的文件在这里是一棵树，在编辑器里则由 `vm.exe check` 给出诊断，那正是拒绝抵达用户的地方。
 
 ## 0.1.8 —— 0.1.7 数过但没有修的那四件事
 

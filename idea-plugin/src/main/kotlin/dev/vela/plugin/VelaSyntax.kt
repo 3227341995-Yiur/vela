@@ -218,6 +218,16 @@ object VelaKw {
     @JvmField val STRUCT = 21
     @JvmField val PARALLEL = 22
     @JvmField val EXTERN = 23
+
+    /*
+     * 24 and 25 are `enum` and `match`, and they are the compiler's numbers too:
+     * `keyword_id` in `selfhost/vela.vel` reserves them for §13.  Until 0.1.9 both
+     * words were ordinary identifiers to this parser, which is why every file the
+     * language gained for §13 parsed as something else -- and why `PlatformEntry`
+     * reported 139 files whose completion did not offer them.
+     */
+    @JvmField val ENUM = 24
+    @JvmField val MATCH = 25
 }
 
 /**
@@ -304,6 +314,8 @@ val VELA_KEYWORDS: Map<String, Int> = run {
     m["struct"] = VelaKw.STRUCT
     m["parallel"] = VelaKw.PARALLEL
     m["extern"] = VelaKw.EXTERN
+    m["enum"] = VelaKw.ENUM
+    m["match"] = VelaKw.MATCH
     m
 }
 
@@ -802,6 +814,21 @@ internal fun velaIsFieldMember(c: VelaSyntaxNode): Boolean =
         (c.kind == VelaNodeKind.DECL && c.typeText.isNotEmpty())
 
 /**
+ * Is this child of a variant its payload's field list entry?
+ *
+ * One place answers, because three readers ask: the model (the names completion writes
+ * between the parentheses), the dump (`fields=N`, then one `field name=… type=…` line
+ * each), and anything that has to count a variant's payload.  A payload field **is** a
+ * [VelaNodeKind.FIELD] node -- the same node a struct field uses, and deliberately so:
+ * the compiler stores its payload entries as its ordinary field node, and its dumper
+ * prints `field name=… type=…` for them, so a reader comparing two dumps is not told
+ * that one implementation reused a node.  The test is a function rather than a literal
+ * at each call site so that a second kind for payload fields would be one line here.
+ */
+internal fun velaIsVariantField(c: VelaSyntaxNode): Boolean =
+    c.kind == VelaNodeKind.FIELD
+
+/**
  * A node kind, named after the compiler's node kind of the same shape.
  *
  * The names are the compiler's (`module`, `def`, `param`, `augassign`, `cmp`,
@@ -858,6 +885,23 @@ enum class VelaNodeKind {
     LIST,
     SLICE,
     ERROR,
+
+    /*
+     * SPEC.md §13: `enum` declarations and `match` statements.
+     *
+     * The compiler's node ids are 35 (enum), 36 (variant), 37 (match) and 38 (arm);
+     * its payload fields are its ordinary `field` node and its pattern bindings its
+     * ordinary name node (25).  These are separate kinds here for the same reason the
+     * compiler's dumper prints them differently: a payload field is not a struct field
+     * and a pattern binding is not a declaration, and a reader comparing two dumps
+     * should not have to know that one implementation reuses a node.
+     */
+    ENUM,
+    VARIANT,
+    MATCH,
+    SUBJECT,
+    ARM,
+    BINDING,
 }
 
 /**
@@ -1227,6 +1271,8 @@ class VelaSyntaxParser private constructor(
                 VelaKw.DEF -> return parseFuncdef(at, 0)
                 VelaKw.EXTERN -> return parseExtern(at)
                 VelaKw.STRUCT -> return parseStructdef(at)
+                VelaKw.ENUM -> return parseEnumdef(at)
+                VelaKw.MATCH -> return parseMatch(at)
                 VelaKw.IF -> return parseIf(at)
                 VelaKw.ELIF -> {
                     advance()
@@ -1426,6 +1472,259 @@ class VelaSyntaxParser private constructor(
                 n.children.add(c)
             }
         }
+        n.endTok = if (pos > 0) pos - 1 else at
+        return n
+    }
+
+    /**
+     * `enum Name { Variant(f: T, g: U) Other }` -- SPEC.md §13.
+     *
+     * Mirrors `parse_enumdef` in `selfhost/parts/parser.vel`, including what it
+     * *refuses*: no variant at all, an unclosed body, a payload field with no type
+     * annotation.  It deliberately does not judge what the *checker* judges -- a
+     * variant name used twice, an enum that contains itself, a `match` that misses a
+     * variant -- because the compiler's front end stops before that, and a parser that
+     * guessed would refuse files the compiler accepts.
+     */
+    private fun parseEnumdef(at: Int): VelaSyntaxNode {
+        advance()
+        if (!atName()) {
+            return recover("expected an enum name")
+        }
+        val nm = text(pos)
+        advance()
+        val n = newNode(VelaNodeKind.ENUM, at)
+        n.name = nm
+        if (!atOp(VelaOps.LBRACE)) {
+            return recover("expected '{' to open the enum body, found '" + tokText() + "'")
+        }
+        advance()
+        var count = 0
+        while (!atClose() && !atEof() && !recovering) {
+            guard++
+            if (guard > stepLimit()) {
+                problem("the parser gave up here: the rest of the enum body is not readable as variants")
+                break
+            }
+            if (atNl()) {
+                advance()
+                continue
+            }
+            val before = pos
+            val v = parseVariant()
+            if (v != null) {
+                n.add(v)
+                count++
+            }
+            if (pos == before) advance()
+            recovering = false
+            if (atNl()) {
+                advance()
+                continue
+            }
+            if (atClose()) break
+            n.add(recover("expected a newline between variants, found '" + tokText() + "'"))
+            if (atNl()) advance()
+        }
+        if (recovering) return n
+        if (atEof()) {
+            problem("missing '}': an enum body is never closed")
+            n.endTok = pos - 1
+            return n
+        }
+        if (count == 0) {
+            problem("an enum needs at least one variant: '" + nm + "' has none")
+        }
+        n.endTok = pos
+        advance()
+        return n
+    }
+
+    /**
+     * `Variant(f: T, g: U)` or a payload-free `Variant` -- one line of an enum body.
+     *
+     * The payload is written and parsed like a parameter list (SPEC.md §13), but it is
+     * stored as [VelaNodeKind.FIELD]: the compiler dumps a payload entry as
+     * `field name=… type=…` precisely so that a reader comparing two dumps is not told
+     * that its parser reused the `param` node.
+     */
+    private fun parseVariant(): VelaSyntaxNode? {
+        if (!atName()) {
+            return recover("expected a variant name, found '" + tokText() + "'")
+        }
+        val at = pos
+        val nm = text(pos)
+        advance()
+        val n = VelaSyntaxNode(VelaNodeKind.VARIANT, at, at)
+        n.name = nm
+        if (atOp(VelaOps.LPAREN)) {
+            advance()
+            if (!atOp(VelaOps.RPAREN)) {
+                while (!recovering) {
+                    val fl = pos
+                    if (!atName()) {
+                        recover("expected a payload field name, found '" + tokText() + "'")
+                        return n
+                    }
+                    val fn = text(pos)
+                    advance()
+                    if (!atOp(VelaOps.COLON)) {
+                        recover("payload field '" + fn + "' has no type annotation")
+                        return n
+                    }
+                    advance()
+                    val ft = parseType() ?: return n
+                    val f = VelaSyntaxNode(VelaNodeKind.FIELD, fl, pos - 1)
+                    f.name = fn
+                    f.typeText = ft
+                    n.add(f)
+                    if (atOp(VelaOps.COMMA)) {
+                        advance()
+                        continue
+                    }
+                    break
+                }
+            }
+            if (!atOp(VelaOps.RPAREN)) {
+                recover("expected ')' to close the payload")
+                return n
+            }
+            advance()
+        }
+        n.endTok = if (pos > 0) pos - 1 else at
+        return n
+    }
+
+    /**
+     * `match subject { Arm(bindings) { ... } else { ... } }` -- SPEC.md §13.
+     *
+     * The subject travels in a [VelaNodeKind.SUBJECT] node of its own because the
+     * compiler dumps the word `subject` on a line of its own before the expression; a
+     * tree that put the expression straight under `match` could not print that line.
+     */
+    private fun parseMatch(at: Int): VelaSyntaxNode {
+        advance()
+        val n = newNode(VelaNodeKind.MATCH, at)
+        val subj = parseExpr()
+        if (subj == null) {
+            return n
+        }
+        // `VelaSyntaxNode.add` answers the child it adopted, not the node it was
+        // called on, so the wrapper is built in two steps here: writing
+        // `VelaSyntaxNode(SUBJECT, -1, -1).add(subj)` would hand the *expression*
+        // to the match and the `subject` line would never be printed -- which is
+        // exactly the 52-nodes-against-53 diff `ast-diff.ps1` reported first.
+        val subject = VelaSyntaxNode(VelaNodeKind.SUBJECT, -1, -1)
+        subject.add(subj)
+        n.add(subject)
+        if (!atOp(VelaOps.LBRACE)) {
+            recover("expected '{' to open the match body, found '" + tokText() + "'")
+            return n
+        }
+        advance()
+        var count = 0
+        while (!atClose() && !atEof() && !recovering) {
+            guard++
+            if (guard > stepLimit()) {
+                problem("the parser gave up here: the rest of the match body is not readable as arms")
+                break
+            }
+            if (atNl()) {
+                advance()
+                continue
+            }
+            val before = pos
+            val a = parseArm()
+            if (a != null) {
+                n.add(a)
+                count++
+            }
+            if (pos == before) advance()
+            recovering = false
+            if (atNl()) {
+                advance()
+                continue
+            }
+            if (atClose()) break
+            n.add(recover("expected a newline between the arms of a match, found '" + tokText() + "'"))
+            if (atNl()) advance()
+        }
+        if (recovering) return n
+        if (atEof()) {
+            problem("missing '}': a match body is never closed")
+            n.endTok = pos - 1
+            return n
+        }
+        if (count == 0) {
+            problem("a match needs at least one arm")
+        }
+        n.endTok = pos
+        advance()
+        return n
+    }
+
+    /**
+     * `Variant(a, b) { ... }`, `Variant { ... }` or `else { ... }` -- one arm.
+     *
+     * v1 binds positionally, so a pattern is a variant name and a parenthesised list of
+     * plain names.  A nested pattern (`Wrap(Small(n))`) is refused **here**, as a shape,
+     * exactly where `parse_arm` refuses it in the compiler: a call stands where a binding
+     * belongs, so what follows the inner `(` is not a `)`.  A guard (`... if r > 0`) is
+     * refused the same way -- nothing in this grammar starts one, so the token after the
+     * pattern is still waiting when the body's `{` is required, and that check is what
+     * refuses it.
+     *
+     * The *arity* is deliberately not judged: that needs the variant's field count, which
+     * is the checker's, and a parser that guessed would refuse files the compiler accepts.
+     */
+    private fun parseArm(): VelaSyntaxNode? {
+        val at = pos
+        var pat = ""
+        var isElse = false
+        val binds = ArrayList<VelaSyntaxNode>(2)
+        if (atKw(VelaKw.ELSE)) {
+            isElse = true
+            advance()
+        } else if (atName()) {
+            pat = text(pos)
+            advance()
+            if (atOp(VelaOps.LPAREN)) {
+                advance()
+                if (!atOp(VelaOps.RPAREN)) {
+                    while (!recovering) {
+                        val bl = pos
+                        if (!atName()) {
+                            recover("expected a binding name, found '" + tokText() + "'")
+                            return null
+                        }
+                        val bn = VelaSyntaxNode(VelaNodeKind.BINDING, bl, bl)
+                        bn.name = text(pos)
+                        binds.add(bn)
+                        advance()
+                        if (atOp(VelaOps.COMMA)) {
+                            advance()
+                            continue
+                        }
+                        break
+                    }
+                }
+                if (!atOp(VelaOps.RPAREN)) {
+                    recover("nested patterns are not supported in Vela 0.1; a pattern binds plain"
+                            + " names, and '" + tokText() + "' is where one would start")
+                    return null
+                }
+                advance()
+            }
+        } else {
+            return recover("expected a variant name or 'else' to open a match arm, found '"
+                    + tokText() + "'")
+        }
+        val n = VelaSyntaxNode(VelaNodeKind.ARM, at, at)
+        n.name = pat
+        if (isElse) n.flags = 1
+        for (b in binds) n.add(b)
+        val body = parseBody()
+        n.add(body)
         n.endTok = if (pos > 0) pos - 1 else at
         return n
     }

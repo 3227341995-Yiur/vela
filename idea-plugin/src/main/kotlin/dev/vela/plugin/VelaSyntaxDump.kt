@@ -182,6 +182,72 @@ object VelaSyntaxDump {
 
             VelaNodeKind.FIELD -> dumpField(sb, n, depth)
 
+            /*
+             * SPEC.md §13.  The six cases below are the compiler's `dump.vel` node
+             * kinds 35 (enum), 36 (variant), 37 (match) and 38 (arm), plus the two
+             * wrappers its printer writes for them: `subject` on a line of its own
+             * before the expression, and one `binding name=` line per name a pattern
+             * binds, before the arm's body.
+             *
+             * `fields=` and `binds=` are printed from the node's own children rather
+             * than from a stored count, so a tree can never say "2 fields" over one
+             * field line: the compiler stores a count and this counts, and the two
+             * agree on every file `ast-diff.ps1` compares.
+             */
+            VelaNodeKind.ENUM -> {
+                indent(sb, depth)
+                sb.append("enum name=").append(n.name).append('\n')
+                for (c in n.children) dumpNode(sb, tree, c, depth + 1)
+            }
+
+            VelaNodeKind.VARIANT -> {
+                indent(sb, depth)
+                sb.append("variant name=").append(n.name)
+                sb.append(" fields=").append(n.children.size)
+                sb.append('\n')
+                for (c in n.children) dumpField(sb, c, depth + 1)
+            }
+
+            VelaNodeKind.MATCH -> {
+                indent(sb, depth)
+                sb.append("match\n")
+                for (c in n.children) dumpNode(sb, tree, c, depth + 1)
+            }
+
+            VelaNodeKind.SUBJECT -> {
+                indent(sb, depth)
+                sb.append("subject\n")
+                for (c in n.children) dumpNode(sb, tree, c, depth + 1)
+            }
+
+            VelaNodeKind.ARM -> {
+                indent(sb, depth)
+                sb.append("arm pattern=")
+                // `else` is the arm that names no variant; the flag is the parser's
+                // (the same bit the rest of the tree uses for a shape flag), and the
+                // name is empty for it, so an `else` arm cannot be confused with a
+                // variant whose name happens to be spelled the same way -- which the
+                // language does not allow anyway, `else` being a keyword.
+                sb.append(if (n.flags and 1 != 0) "else" else n.name)
+                sb.append(" binds=").append(n.children.count { it.kind == VelaNodeKind.BINDING })
+                sb.append('\n')
+                for (c in n.children) {
+                    if (c.kind == VelaNodeKind.BINDING) {
+                        indent(sb, depth + 1)
+                        sb.append("binding name=").append(c.name).append('\n')
+                    }
+                }
+                val body = n.children.firstOrNull {
+                    it.kind == VelaNodeKind.BLOCK || it.kind == VelaNodeKind.UNDECLARED_BLOCK
+                }
+                dumpBody(sb, tree, body, depth + 1)
+            }
+
+            VelaNodeKind.BINDING -> {
+                indent(sb, depth)
+                sb.append("binding name=").append(n.name).append('\n')
+            }
+
             VelaNodeKind.DECL -> {
                 indent(sb, depth)
                 sb.append("decl name=").append(n.name)

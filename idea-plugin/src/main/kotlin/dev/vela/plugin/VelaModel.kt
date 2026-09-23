@@ -28,6 +28,16 @@ enum class VelaSymbolKind(val title: String) {
     FUNCTION("def"),
     FIELD("field"),
     PARAMETER("param"),
+
+    /*
+     * SPEC.md §13.  An enum is a *type* like a struct, and a variant is a name of its
+     * own: a variant name is file-global ("Every variant is reachable by name, and only
+     * one enum may claim one"), and `Circle(2.0)` is a call while `Empty` is a bare
+     * name -- so a variant is neither a struct nor a function, and giving it its own
+     * kind is what keeps the completion from writing `Empty()`.
+     */
+    ENUM("enum"),
+    VARIANT("variant"),
 }
 
 data class VelaSymbol(
@@ -192,10 +202,50 @@ object VelaModel {
                 VelaNodeKind.STRUCT -> readStructFromTree(statement, tree, text, out, -1)
                 VelaNodeKind.DEF -> readCallableFromTree(statement, tree, text, out, -1,
                     VelaSymbolKind.FUNCTION)
+                VelaNodeKind.ENUM -> readEnumFromTree(statement, tree, text, out, -1)
                 else -> Unit
             }
         }
         return out
+    }
+
+    /**
+     * An enum and its variants, in source order -- SPEC.md §13.
+     *
+     * A variant's payload fields are deliberately **not** symbols of this model: the
+     * language has no way to name a payload field (an arm binds new names positionally),
+     * so nothing in a file refers to one, and a symbol for it would be a declaration no
+     * reader could navigate to.
+     *
+     * The payload's field names *do* travel on the variant symbol, as its `parameters`,
+     * because they are exactly what completion must write between the parentheses:
+     * `Circle` becomes `Circle(radius)`.  A payload-free variant carries an **empty**
+     * list, which is the honest reading of "this variant declares no fields" -- `null`
+     * would say the list could not be read, and the completion would then have to refuse
+     * to write anything, which is right for `Empty` and wrong for `Circle`.
+     */
+    private fun readEnumFromTree(n: VelaSyntaxNode, tree: VelaSyntaxTree, text: CharSequence,
+                                 out: ArrayList<VelaSymbol>, parent: Int) {
+        val me = out.size
+        out.add(
+            VelaSymbol(
+                VelaSymbolKind.ENUM, n.name, "enum " + n.name, "",
+                lineAt(tree, n, text), parent,
+            )
+        )
+        for (v in n.children) {
+            if (v.kind != VelaNodeKind.VARIANT) continue
+            val fields = v.children.filter { velaIsVariantField(it) }
+            val detail = if (fields.isEmpty()) v.name
+            else v.name + "(" + fields.joinToString(", ") { it.name + ": " + it.typeText } + ")"
+            out.add(
+                VelaSymbol(
+                    VelaSymbolKind.VARIANT, v.name, detail, "",
+                    lineAt(tree, v, text), me,
+                    fields.map { it.name },
+                )
+            )
+        }
     }
 
     /**
@@ -409,6 +459,11 @@ object VelaModel {
         for (s in all) {
             when (s.kind) {
                 VelaSymbolKind.STRUCT, VelaSymbolKind.FUNCTION -> out.add(s)
+                // An enum is a type the whole file shares, like a struct, and a variant
+                // name is file-global by the language's own rule (SPEC.md 13: "Every
+                // variant is reachable by name, and only one enum may claim one"), so
+                // both are visible everywhere rather than only inside a body.
+                VelaSymbolKind.ENUM, VelaSymbolKind.VARIANT -> out.add(s)
                 VelaSymbolKind.FIELD, VelaSymbolKind.METHOD ->
                     if (struct != null && s.parent == all.indexOf(struct)) out.add(s)
                 VelaSymbolKind.PARAMETER ->
