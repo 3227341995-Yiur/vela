@@ -85,7 +85,8 @@ class VelaCompletionContributor : CompletionContributor() {
                     .withTypeText("keyword", true)
             )
         }
-        for ((name, description) in VelaModel.BUILTINS) {
+        for (builtin in VelaModel.BUILTINS) {
+            val name = builtin.name
             // `range` is both a builtin and a keyword; the keyword spelling above
             // is the one the lexer produces, so offering it twice would be two
             // identical entries.
@@ -93,9 +94,9 @@ class VelaCompletionContributor : CompletionContributor() {
             // The builtin is offered through the same path as a file's own
             // declaration: one symbol, one lookup element, one insert handler, so
             // `concat` inserts `concat(a, b)` for the same reason `fib` inserts
-            // `fib(n)`.  The description is the tail text the model already holds.
+            // `fib(n)`.  The tail text is the signature and the sentence together.
             val sym = VelaHints.builtinSymbol(name)
-            val base = LookupElementBuilder.create(name).withTailText("  $description", true)
+            val base = LookupElementBuilder.create(name).withTailText("  ${builtin.description}", true)
             result.addElement(
                 if (sym == null) base else base.withInsertHandler(callHandler(sym, receiverWritten = false))
             )

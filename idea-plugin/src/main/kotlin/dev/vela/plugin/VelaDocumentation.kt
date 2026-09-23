@@ -41,8 +41,8 @@ class VelaDocumentationProvider : DocumentationProvider {
     }
 
     /** The builtin named `name`, with the description `VelaModel.BUILTINS` gives it. */
-    private fun builtin(name: String): Pair<String, String>? =
-        VelaModel.BUILTINS.firstOrNull { it.first == name }
+    private fun builtin(name: String): VelaBuiltin? =
+        VelaModel.BUILTINS.firstOrNull { it.name == name }
 
     override fun generateDoc(element: PsiElement, originalElement: PsiElement?): String? {
         val target = originalElement ?: element
@@ -53,9 +53,9 @@ class VelaDocumentationProvider : DocumentationProvider {
 
         // The language's own names first: a builtin is not declared in this file, so
         // the model would find nothing and the hover would stay silent.
-        builtin(name)?.let { (_, description) ->
+        builtin(name)?.let { entry ->
             return html(
-                signature = description,
+                signature = entry.description,
                 kind = "builtin",
                 line = 0,
                 note = "Vela builtin — provided by the language, not declared in this file.",
@@ -84,7 +84,7 @@ class VelaDocumentationProvider : DocumentationProvider {
         val offset = target.textRange.startOffset
         val name = nameAt(text, offset) ?: return null
 
-        builtin(name)?.let { return "${it.first} — ${it.second}" }
+        builtin(name)?.let { return "${it.name} — ${it.description}" }
         val sym = declarationOf(text, offset, name) ?: return null
         val suffix = if (sym.line > 0) " (line ${sym.line})" else ""
         return "${sym.kind.title} ${sym.detail}$suffix"

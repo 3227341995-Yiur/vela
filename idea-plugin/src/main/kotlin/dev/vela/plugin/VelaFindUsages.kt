@@ -204,5 +204,5 @@ class VelaFindUsagesProvider : FindUsagesProvider {
     }
 
     private fun isBuiltin(name: String): Boolean =
-        VelaModel.BUILTINS.any { it.first == name }
+        VelaModel.BUILTINS.any { it.name == name }
 }
