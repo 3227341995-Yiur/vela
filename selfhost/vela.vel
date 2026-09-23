@@ -50,16 +50,19 @@ struct Ctx {
 #   0 kind   1 offset   2 length   3 value (int / op code / keyword id)
 #   4 line   5 flag (1 = the literal contains a backslash escape)
 #
-# capacity: 131072 tokens, i.e. Array[int, 131072 * 6]; a bigger file is refused
-# with a diagnostic rather than silently truncated.  (The parser, the
-# interpreter and this lexer are one programme, so they share the pool.)
+# capacity: 262144 tokens, i.e. Array[int, 262144 * 6] = 1 572 864 words; a bigger
+# file is refused with a diagnostic rather than silently truncated.  (The parser,
+# the interpreter and this lexer are one programme, so they share the pool.)
 #
 # The pool is a fixed array because Vela has no growable one, so its size is a
 # real limit on what this front end can compile — and the biggest program it has
-# to compile is itself.  It was 65536 until the compiler's own source passed
-# that; the number is now twice what `selfhost/vm.vel` needs, and the next time
-# it is crossed the honest move is to size it from the file rather than to guess
-# again.
+# to compile is itself.  It was 65536 tokens until the compiler's own source
+# passed that, then 131072, and it is 262144 now: the linked `selfhost/vm.vel` was
+# 128 608 tokens of 131 072 — 98% full — when the enum work went in, and a ceiling
+# that is one feature away from refusing is not a ceiling.  The *node* pool has its
+# own limit and its own comment (`new_node` in parts/parser.vel, `MEM_NT` in
+# parts/vm_state.vel); the next time either is crossed, the honest move is to size
+# it from the file rather than to guess again.
 #
 # kinds: 1 NAME 2 INT 3 FLOAT 4 STR 5 OP 6 NEWLINE 9 EOF
 # ops:   1 +  2 -  3 *  4 /  5 %  6 <  7 >  8 =  9 (  10 )  11 ,  12 :  13 .
@@ -71,27 +74,27 @@ struct Ctx {
 #           10 break 11 continue 12 pass 13 and 14 or 15 not 16 True
 #           17 False 18 None 19 mut 20 pure 21 struct 22 parallel
 
-def tk_kind(tk: Array[int, 786432], i: int) -> int {
+def tk_kind(tk: Array[int, 1572864], i: int) -> int {
     return tk[i * 6]
 }
 
-def tk_off(tk: Array[int, 786432], i: int) -> int {
+def tk_off(tk: Array[int, 1572864], i: int) -> int {
     return tk[i * 6 + 1]
 }
 
-def tk_len(tk: Array[int, 786432], i: int) -> int {
+def tk_len(tk: Array[int, 1572864], i: int) -> int {
     return tk[i * 6 + 2]
 }
 
-def tk_ival(tk: Array[int, 786432], i: int) -> int {
+def tk_ival(tk: Array[int, 1572864], i: int) -> int {
     return tk[i * 6 + 3]
 }
 
-def tk_line(tk: Array[int, 786432], i: int) -> int {
+def tk_line(tk: Array[int, 1572864], i: int) -> int {
     return tk[i * 6 + 4]
 }
 
-def tk_flag(tk: Array[int, 786432], i: int) -> int {
+def tk_flag(tk: Array[int, 1572864], i: int) -> int {
     return tk[i * 6 + 5]
 }
 
@@ -336,9 +339,9 @@ def report(mut cx: Ctx, msg: str) -> None {
     report_kind(cx, "syntax error", msg)
 }
 
-def push_tok(mut tk: Array[int, 786432], mut cx: Ctx, kind: int, off: int,
+def push_tok(mut tk: Array[int, 1572864], mut cx: Ctx, kind: int, off: int,
              ln: int, ival: int, flag: int) -> None {
-    if cx.ntok >= 131072 {
+    if cx.ntok >= 262144 {
         report(cx, "too many tokens")
         return
     }
@@ -355,7 +358,7 @@ def push_tok(mut tk: Array[int, 786432], mut cx: Ctx, kind: int, off: int,
 # ---------------------------------------------------------------------------
 # scanners
 
-def scan_number(src: str, mut tk: Array[int, 786432], mut tkf: Array[float, 65536],
+def scan_number(src: str, mut tk: Array[int, 1572864], mut tkf: Array[float, 65536],
                 mut cx: Ctx) -> None {
     n: int = len(src)
     start: int = cx.pos
@@ -495,7 +498,7 @@ def scan_number(src: str, mut tk: Array[int, 786432], mut tkf: Array[float, 6553
     push_tok(tk, cx, 2, start, cx.pos - start, iv, 0)
 }
 
-def scan_name(src: str, mut tk: Array[int, 786432], mut cx: Ctx) -> None {
+def scan_name(src: str, mut tk: Array[int, 1572864], mut cx: Ctx) -> None {
     n: int = len(src)
     start: int = cx.pos
     while cx.pos < n and is_alnum(bytes_at(src, cx.pos)) {
@@ -505,7 +508,7 @@ def scan_name(src: str, mut tk: Array[int, 786432], mut cx: Ctx) -> None {
     push_tok(tk, cx, 1, start, ln, keyword_id(src, start, ln), 0)
 }
 
-def scan_string(src: str, mut tk: Array[int, 786432], mut cx: Ctx) -> None {
+def scan_string(src: str, mut tk: Array[int, 1572864], mut cx: Ctx) -> None {
     n: int = len(src)
     quote: int = bytes_at(src, cx.pos)
     cx.pos += 1
@@ -536,7 +539,7 @@ def scan_string(src: str, mut tk: Array[int, 786432], mut cx: Ctx) -> None {
     push_tok(tk, cx, 4, start, ln, 0, esc)
 }
 
-def scan_op(src: str, mut tk: Array[int, 786432], mut cx: Ctx) -> None {
+def scan_op(src: str, mut tk: Array[int, 1572864], mut cx: Ctx) -> None {
     n: int = len(src)
     c: int = bytes_at(src, cx.pos)
     mut c2: int = 0
@@ -637,7 +640,7 @@ def scan_op(src: str, mut tk: Array[int, 786432], mut cx: Ctx) -> None {
 # ---------------------------------------------------------------------------
 # the lexer
 
-def lex(src: str, mut tk: Array[int, 786432], mut tkf: Array[float, 65536],
+def lex(src: str, mut tk: Array[int, 1572864], mut tkf: Array[float, 65536],
         mut cx: Ctx) -> None {
     n: int = len(src)
     # A byte-order mark is a writing artefact, not part of the program: several
@@ -713,7 +716,7 @@ def lex(src: str, mut tk: Array[int, 786432], mut tkf: Array[float, 65536],
 # ---------------------------------------------------------------------------
 # driver
 
-def dump_tokens(tk: Array[int, 786432], mut cx: Ctx) -> None {
+def dump_tokens(tk: Array[int, 1572864], mut cx: Ctx) -> None {
     mut i: int = 0
     while i < cx.ntok {
         emit_int(tk_kind(tk, i))
@@ -745,7 +748,7 @@ def main() -> None {
         warn_nl()
         return
     }
-    mut tk: Array[int, 786432]
+    mut tk: Array[int, 1572864]
     mut tkf: Array[float, 65536]
     mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0)
     lex(src, tk, tkf, cx)

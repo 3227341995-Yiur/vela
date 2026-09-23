@@ -358,7 +358,7 @@ def type_packed(ty: Array[int, 262144], t: int,
 
 # ---------------------------------------------------------- registering shapes
 
-def add_field(nd: Array[int, 655360], ty: Array[int, 262144],
+def add_field(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], path: str,
               mut vm: VM, sid: int, f: int) -> None {
     mut h: int = 0
@@ -383,7 +383,7 @@ def add_field(nd: Array[int, 655360], ty: Array[int, 262144],
     stb_put(mem, sid, STB_SIZE(), n + 1)
 }
 
-def add_function(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+def add_function(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
                  mut vm: VM, d: int, owner: int) -> int {
     if vm.nfn >= 4096 {
         fail(path, nd_line(nd, d), "too many functions")
@@ -406,7 +406,7 @@ def add_function(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str
     return fn
 }
 
-def add_struct(nd: Array[int, 655360], ty: Array[int, 262144],
+def add_struct(nd: Array[int, 1310720], ty: Array[int, 262144],
                mut mem: Array[int, 3741696], path: str, mut vm: VM,
                s: int) -> None {
     if vm.nstruct >= 1024 {
@@ -482,7 +482,7 @@ def add_struct(nd: Array[int, 655360], ty: Array[int, 262144],
 # every payload field is one cell, whatever it holds -- which is why the layout
 # row can be finished in the first pass.
 
-def add_enum_names(nd: Array[int, 655360],
+def add_enum_names(nd: Array[int, 1310720],
                    mut mem: Array[int, 3741696], path: str, mut vm: VM,
                    s: int) -> None {
     name: int = nd[s * 10 + 1]
@@ -531,7 +531,7 @@ def add_enum_names(nd: Array[int, 655360],
     enb_put(mem, eid, ENB_NMAX(), widest)
 }
 
-def add_enum_variants(nd: Array[int, 655360], ty: Array[int, 262144],
+def add_enum_variants(nd: Array[int, 1310720], ty: Array[int, 262144],
                       mut mem: Array[int, 3741696], path: str, mut vm: VM,
                       s: int) -> None {
     eid: int = find_enum(mem, vm, nd[s * 10 + 1])
@@ -549,7 +549,7 @@ def add_enum_variants(nd: Array[int, 655360], ty: Array[int, 262144],
     }
 }
 
-def add_variant(nd: Array[int, 655360], ty: Array[int, 262144],
+def add_variant(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mut mem: Array[int, 3741696], path: str, mut vm: VM,
                 eid: int, v: int, tag: int) -> None {
     name: int = nd[v * 10 + 1]
@@ -633,7 +633,7 @@ def check_variants_visible(mem: Array[int, 3741696], path: str, vm: VM) -> None 
 
 # -------------------------------------------------------- binding expressions
 
-def count_chain(nd: Array[int, 655360], head: int) -> int {
+def count_chain(nd: Array[int, 1310720], head: int) -> int {
     mut n: int = 0
     mut a: int = head
     while a > 0 {
@@ -643,7 +643,7 @@ def count_chain(nd: Array[int, 655360], head: int) -> int {
     return n
 }
 
-def check_call(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+def check_call(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
                vm: VM, e: int, callee: int) -> None {
     nargs: int = count_chain(nd, nd[e * 10 + 2])
     if nd_kind(nd, callee) != 25 {
@@ -695,7 +695,7 @@ def check_call(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
     fail(path, nd_line(nd, e), "this is not something that can be called")
 }
 
-def bind_name(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
+def bind_name(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
               mut vm: VM, e: int) -> None {
     h: int = nd[e * 10 + 1]
     i: int = sc_find(mem, vm, h)
@@ -740,7 +740,7 @@ def bind_name(nd: Array[int, 655360], mut mem: Array[int, 3741696], path: str,
     fail_name(path, nd_line(nd, e), "undeclared name", interned(h))
 }
 
-def walk_expr(nd: Array[int, 655360], ty: Array[int, 262144],
+def walk_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], path: str, mut vm: VM,
               e: int) -> None {
     if e <= 0 {
@@ -809,7 +809,7 @@ def walk_expr(nd: Array[int, 655360], ty: Array[int, 262144],
 
 # -------------------------------------------------------- binding statements
 
-def declare_local(nd: Array[int, 655360], ty: Array[int, 262144],
+def declare_local(nd: Array[int, 1310720], ty: Array[int, 262144],
                   mut mem: Array[int, 3741696], path: str, mut vm: VM,
                   decl: int, tgt: int) -> None {
     if nd_kind(nd, tgt) != 25 {
@@ -872,7 +872,7 @@ def declare_local(nd: Array[int, 655360], ty: Array[int, 262144],
     nt_put(mem, decl, NT_VAL(), sid)
 }
 
-def walk_body(nd: Array[int, 655360], ty: Array[int, 262144],
+def walk_body(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], path: str, mut vm: VM,
               head: int) -> None {
     mut s: int = head
@@ -906,7 +906,7 @@ def row_of_packed(packed: int) -> int {
 # decided here because this is the first pass that has the variant table; whether
 # that variant belongs to the *subject's* enum is the checker's question, since
 # only a type can answer it.
-def walk_arm(nd: Array[int, 655360], ty: Array[int, 262144],
+def walk_arm(nd: Array[int, 1310720], ty: Array[int, 262144],
              mut mem: Array[int, 3741696], path: str, mut vm: VM,
              a: int) -> None {
     pat: int = nd[a * 10 + 1]
@@ -952,7 +952,7 @@ def walk_arm(nd: Array[int, 655360], ty: Array[int, 262144],
     vm.scn = mark
 }
 
-def walk_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
+def walk_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], path: str, mut vm: VM,
               s: int) -> None {
     k: int = nd_kind(nd, s)
@@ -1064,7 +1064,7 @@ def walk_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
 # defined below it — and a language where the order of definitions decides
 # which ones are visible is a language with a trap in it.
 
-def resolve_function(nd: Array[int, 655360], ty: Array[int, 262144],
+def resolve_function(nd: Array[int, 1310720], ty: Array[int, 262144],
                      mut mem: Array[int, 3741696], path: str, mut vm: VM,
                      fn: int) -> None {
     vm.scn = vm.nglob
@@ -1089,7 +1089,7 @@ def resolve_function(nd: Array[int, 655360], ty: Array[int, 262144],
     ft_put(mem, fn, FT_NLOCAL(), vm.nlocal)
 }
 
-def resolve_module(nd: Array[int, 655360], ty: Array[int, 262144],
+def resolve_module(nd: Array[int, 1310720], ty: Array[int, 262144],
                    mut mem: Array[int, 3741696], path: str,
                    mut vm: VM) -> None {
     # Pass 1: every top-level *name*.  An enum registers its own name and the

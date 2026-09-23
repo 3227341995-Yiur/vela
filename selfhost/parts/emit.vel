@@ -55,7 +55,7 @@ def emit_cname(h: int) -> None {
 # `Self.method` becomes `vl_Self__method`, and a struct type is `struct vl_Self`
 # with members `f_name`: one naming rule for the whole back end, so nothing a
 # program declares can collide with a runtime symbol or a C keyword.
-def emit_fn_name(nd: Array[int, 655360], mem: Array[int, 3741696],
+def emit_fn_name(nd: Array[int, 1310720], mem: Array[int, 3741696],
                  f: int) -> None {
     d: int = ft_get(mem, f, FT_DEF())
     owner: int = ft_get(mem, f, FT_OWNER())
@@ -75,7 +75,7 @@ def emit_fn_name(nd: Array[int, 655360], mem: Array[int, 3741696],
     emit_str(interned(nd[d * 10 + 1]))
 }
 
-def emit_fn_ret_ctype(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_fn_ret_ctype(nd: Array[int, 1310720], ty: Array[int, 262144],
                       mem: Array[int, 3741696], vm: VM, path: str,
                       f: int) -> None {
     t: int = ft_get(mem, f, FT_RETTY())
@@ -261,7 +261,7 @@ def is_ptr_ctype(kind: int) -> bool {
 
 # ------------------------------------------------------------- declarations
 
-def emit_param_decl(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_param_decl(nd: Array[int, 1310720], ty: Array[int, 262144],
                     mem: Array[int, 3741696], vm: VM, path: str,
                     p: int) -> None {
     emit_ty_ctype(ty, nd[p * 10 + 2], mem, vm, path, nd_line(nd, p))
@@ -269,7 +269,7 @@ def emit_param_decl(nd: Array[int, 655360], ty: Array[int, 262144],
     emit_cname(nd[p * 10 + 1])
 }
 
-def emit_decl_head(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_decl_head(nd: Array[int, 1310720], ty: Array[int, 262144],
                    mem: Array[int, 3741696], vm: VM, path: str,
                    d: int) -> None {
     emit_binding_ctype(nd, ty, mem, vm, path, nt_get(mem, d, NT_LIT()),
@@ -290,7 +290,7 @@ def emit_int_lit(v: int) -> None {
     emit_str("LL")
 }
 
-def emit_binop_operands(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_binop_operands(nd: Array[int, 1310720], ty: Array[int, 262144],
                         flt: Array[float, 65536], src: str, path: str,
                         mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
     # returns the kind of the *left* operand, which is the kind of both: Vela has
@@ -301,7 +301,7 @@ def emit_binop_operands(nd: Array[int, 655360], ty: Array[int, 262144],
     return lt
 }
 
-def emit_paren_expr(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_paren_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
                     flt: Array[float, 65536], src: str, path: str,
                     mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
     emit_str("(")
@@ -310,7 +310,7 @@ def emit_paren_expr(nd: Array[int, 655360], ty: Array[int, 262144],
     return k
 }
 
-def emit_binop(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_binop(nd: Array[int, 1310720], ty: Array[int, 262144],
                flt: Array[float, 65536], src: str, path: str,
                mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
     op: int = nd[e * 10 + 1]
@@ -462,7 +462,7 @@ def emit_op_text(op: int) -> None {
     emit_str("?")
 }
 
-def emit_cmp(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_cmp(nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
     op: int = nd[e * 10 + 1]
@@ -491,7 +491,7 @@ def emit_cmp(nd: Array[int, 655360], ty: Array[int, 262144],
     return K_BOOL()
 }
 
-def emit_boolop(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_boolop(nd: Array[int, 1310720], ty: Array[int, 262144],
                 flt: Array[float, 65536], src: str, path: str,
                 mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
     op: int = nd[e * 10 + 1]
@@ -507,7 +507,7 @@ def emit_boolop(nd: Array[int, 655360], ty: Array[int, 262144],
     return K_BOOL()
 }
 
-def emit_unary(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_unary(nd: Array[int, 1310720], ty: Array[int, 262144],
                flt: Array[float, 65536], src: str, path: str,
                mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
     op: int = nd[e * 10 + 1]
@@ -548,7 +548,7 @@ def emit_unary(nd: Array[int, 655360], ty: Array[int, 262144],
     return K_NONE()
 }
 
-def emit_name(nd: Array[int, 655360], mem: Array[int, 3741696], path: str,
+def emit_name(nd: Array[int, 1310720], mem: Array[int, 3741696], path: str,
               vm: VM, e: int) -> int {
     sk: int = nt_get(mem, e, NT_SYM())
     if sk == SYM_LOCAL() {
@@ -578,7 +578,7 @@ def local_kind(mem: Array[int, 3741696], e: int) -> int {
 # `s.f` and `p.f`: the arrow depends on how the base arrived.  A name that is a
 # `mut` struct parameter is a pointer in C (that is what makes a method's write
 # visible to its caller), and everything else is a value.
-def emit_field_base(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_field_base(nd: Array[int, 1310720], ty: Array[int, 262144],
                     flt: Array[float, 65536], src: str, path: str,
                     mem: Array[int, 3741696], mut vm: VM, base: int) -> None {
     if nd_kind(nd, base) == 25 {
@@ -595,7 +595,7 @@ def emit_field_base(nd: Array[int, 655360], ty: Array[int, 262144],
     emit_str(".")
 }
 
-def emit_field(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_field(nd: Array[int, 1310720], ty: Array[int, 262144],
                flt: Array[float, 65536], src: str, path: str,
                mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
     base: int = nd[e * 10 + 1]
@@ -613,7 +613,7 @@ def emit_field(nd: Array[int, 655360], ty: Array[int, 262144],
 
 # A field's kind comes from the struct table, where the resolver put each field's
 # name beside the packed kind of its declared type.
-def field_kind(nd: Array[int, 655360], ty: Array[int, 262144],
+def field_kind(nd: Array[int, 1310720], ty: Array[int, 262144],
                mem: Array[int, 3741696], vm: VM, e: int) -> int {
     base: int = nd[e * 10 + 1]
     packed: int = expr_packed(nd, ty, mem, vm, base)
@@ -626,7 +626,7 @@ def field_kind(nd: Array[int, 655360], ty: Array[int, 262144],
     return unpack_kind(sfl_get(mem, off + idx * 2 + 1))
 }
 
-def emit_call(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_call(nd: Array[int, 1310720], ty: Array[int, 262144],
               flt: Array[float, 65536], src: str, path: str,
               mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
     callee: int = nd[e * 10 + 1]
@@ -666,7 +666,7 @@ def emit_call(nd: Array[int, 655360], ty: Array[int, 262144],
 
 # `recv.name(args)`: the receiver becomes argument 0, and it is a pointer exactly
 # when the method declares `mut self` — which is how `p.scale(2.0)` reaches p.
-def emit_method_call(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_method_call(nd: Array[int, 1310720], ty: Array[int, 262144],
                      flt: Array[float, 65536], src: str, path: str,
                      mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
     callee: int = nd[e * 10 + 1]
@@ -695,7 +695,7 @@ def emit_method_call(nd: Array[int, 655360], ty: Array[int, 262144],
     return ft_ret_kind(nd, ty, mem, vm, fn)
 }
 
-def ft_ret_kind(nd: Array[int, 655360], ty: Array[int, 262144],
+def ft_ret_kind(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mem: Array[int, 3741696], vm: VM, f: int) -> int {
     return type_packed(ty, ft_get(mem, f, FT_RETTY()), mem, vm)
 }
@@ -734,7 +734,7 @@ def builtin_kind(b: int) -> int {
 # itself a `mut` parameter is a pointer too.  Four combinations, and getting one
 # of them wrong is a compile error in the generated C rather than a wrong answer —
 # which is the good kind of wrong, but it still has to be right.
-def emit_arg_for_param(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_arg_for_param(nd: Array[int, 1310720], ty: Array[int, 262144],
                        flt: Array[float, 65536], src: str, path: str,
                        mem: Array[int, 3741696], mut vm: VM, arg: int,
                        parampacked: int) -> None {
@@ -771,7 +771,7 @@ def emit_arg_for_param(nd: Array[int, 655360], ty: Array[int, 262144],
 }
 
 # Arguments against the callee's parameter list, so each one knows how to arrive.
-def emit_args_vs_params(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_args_vs_params(nd: Array[int, 1310720], ty: Array[int, 262144],
                         flt: Array[float, 65536], src: str, path: str,
                         mem: Array[int, 3741696], mut vm: VM, args: int,
                         p: int) -> None {
@@ -793,7 +793,7 @@ def emit_args_vs_params(nd: Array[int, 655360], ty: Array[int, 262144],
     }
 }
 
-def emit_args(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_args(nd: Array[int, 1310720], ty: Array[int, 262144],
               flt: Array[float, 65536], src: str, path: str,
               mem: Array[int, 3741696], mut vm: VM, head: int) -> None {
     mut a: int = head
@@ -808,13 +808,13 @@ def emit_args(nd: Array[int, 655360], ty: Array[int, 262144],
     }
 }
 
-def emit_one_arg(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_one_arg(nd: Array[int, 1310720], ty: Array[int, 262144],
                  flt: Array[float, 65536], src: str, path: str,
                  mem: Array[int, 3741696], mut vm: VM, e: int) -> None {
     emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
 }
 
-def emit_two_args(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_two_args(nd: Array[int, 1310720], ty: Array[int, 262144],
                   flt: Array[float, 65536], src: str, path: str,
                   mem: Array[int, 3741696], mut vm: VM, e: int) -> None {
     emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
@@ -822,7 +822,7 @@ def emit_two_args(nd: Array[int, 655360], ty: Array[int, 262144],
     emit_expr(nd, ty, flt, src, path, mem, vm, nd_nx(nd, nd[e * 10 + 2]))
 }
 
-def emit_three_args(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_three_args(nd: Array[int, 1310720], ty: Array[int, 262144],
                     flt: Array[float, 65536], src: str, path: str,
                     mem: Array[int, 3741696], mut vm: VM, e: int) -> None {
     emit_two_args(nd, ty, flt, src, path, mem, vm, e)
@@ -836,7 +836,7 @@ def emit_three_args(nd: Array[int, 655360], ty: Array[int, 262144],
 # therefore evaluated twice when the chosen one wins — which is what the compiler
 # does today, and this back end matches the compiler rather than improving on it
 # behind its back.
-def emit_choice(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_choice(nd: Array[int, 1310720], ty: Array[int, 262144],
                 flt: Array[float, 65536], src: str, path: str,
                 mem: Array[int, 3741696], mut vm: VM, e: int,
                 rel: str) -> None {
@@ -855,7 +855,7 @@ def emit_choice(nd: Array[int, 655360], ty: Array[int, 262144],
     emit_str(")")
 }
 
-def emit_builtin(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_builtin(nd: Array[int, 1310720], ty: Array[int, 262144],
                  flt: Array[float, 65536], src: str, path: str,
                  mem: Array[int, 3741696], mut vm: VM, b: int, e: int) -> None {
     line: int = nd_line(nd, e)
@@ -1058,7 +1058,7 @@ def emit_builtin(nd: Array[int, 655360], ty: Array[int, 262144],
 
 # ---------------------------------------------------------------- statements
 
-def emit_print(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_print(nd: Array[int, 1310720], ty: Array[int, 262144],
                flt: Array[float, 65536], src: str, path: str,
                mem: Array[int, 3741696], mut vm: VM, e: int,
                indent: int) -> None {
@@ -1104,7 +1104,7 @@ def emit_print(nd: Array[int, 655360], ty: Array[int, 262144],
 # while the interpreter kept 300 — so the value goes through the runtime's check
 # first.  It is the same `vela_fit_u8`/`vela_fit_i32` the other two paths call, so
 # the sentence and the exit status are the runtime's and cannot drift.
-def emit_store_value(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_store_value(nd: Array[int, 1310720], ty: Array[int, 262144],
                      flt: Array[float, 65536], src: str, path: str,
                      mem: Array[int, 3741696], mut vm: VM, dstp: int, v: int,
                      line: int) -> None {
@@ -1129,7 +1129,7 @@ def emit_store_value(nd: Array[int, 655360], ty: Array[int, 262144],
     emit_str(")")
 }
 
-def emit_assign(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_assign(nd: Array[int, 1310720], ty: Array[int, 262144],
                 flt: Array[float, 65536], src: str, path: str,
                 mem: Array[int, 3741696], mut vm: VM, s: int,
                 indent: int) -> None {
@@ -1165,7 +1165,7 @@ def emit_assign(nd: Array[int, 655360], ty: Array[int, 262144],
 # in C, so a store emits the element directly and relies on the check that was
 # hoisted in front of the statement — which is also what assigned the index
 # temporary the store then subscripts with.
-def emit_lvalue(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_lvalue(nd: Array[int, 1310720], ty: Array[int, 262144],
                 flt: Array[float, 65536], src: str, path: str,
                 mem: Array[int, 3741696], mut vm: VM, tgt: int) -> None {
     if nd_kind(nd, tgt) == 31 {
@@ -1185,7 +1185,7 @@ def emit_lvalue(nd: Array[int, 655360], ty: Array[int, 262144],
 # length is known from the binding.  The check carries the index temporary's
 # assignment, because a store cannot: in C the subscript comes after the check
 # and has to read the same one value, not re-evaluate the index.
-def emit_index_check(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_index_check(nd: Array[int, 1310720], ty: Array[int, 262144],
                      flt: Array[float, 65536], src: str, path: str,
                      mem: Array[int, 3741696], mut vm: VM, tgt: int) -> None {
     emit_str("vela_bounds_check((")
@@ -1198,7 +1198,7 @@ def emit_index_check(nd: Array[int, 655360], ty: Array[int, 262144],
     emit_str(")")
 }
 
-def emit_augassign(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_augassign(nd: Array[int, 1310720], ty: Array[int, 262144],
                    flt: Array[float, 65536], src: str, path: str,
                    mem: Array[int, 3741696], mut vm: VM, s: int,
                    indent: int) -> None {
@@ -1276,7 +1276,7 @@ def emit_augassign(nd: Array[int, 655360], ty: Array[int, 262144],
     emit_str(");\n")
 }
 
-def emit_if(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_if(nd: Array[int, 1310720], ty: Array[int, 262144],
             flt: Array[float, 65536], src: str, path: str,
             mem: Array[int, 3741696], mut vm: VM, s: int, indent: int) -> None {
     emit_str("if (")
@@ -1302,7 +1302,7 @@ def emit_if(nd: Array[int, 655360], ty: Array[int, 262144],
     emit_str("\n")
 }
 
-def emit_while(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_while(nd: Array[int, 1310720], ty: Array[int, 262144],
                flt: Array[float, 65536], src: str, path: str,
                mem: Array[int, 3741696], mut vm: VM, s: int,
                indent: int) -> None {
@@ -1326,7 +1326,7 @@ def emit_while(nd: Array[int, 655360], ty: Array[int, 262144],
 
 # `for i in range(a, b)` has no step node, which is a step of one; anything else
 # is a step OpenMP's canonical form does not accept.
-def par_step_is_one(nd: Array[int, 655360], s: int) -> bool {
+def par_step_is_one(nd: Array[int, 1310720], s: int) -> bool {
     return nd[s * 10 + 4] <= 0
 }
 
@@ -1340,7 +1340,7 @@ def par_step_is_one(nd: Array[int, 655360], s: int) -> bool {
 # `parallel for`, so this is belt and braces rather than the guard doing the
 # work: an emitter should never write C the host compiler will not take, even
 # when the program that would make it do so cannot currently reach it.
-def par_chain_ok(nd: Array[int, 655360], head: int) -> bool {
+def par_chain_ok(nd: Array[int, 1310720], head: int) -> bool {
     mut s: int = head
     while s > 0 {
         k: int = nd_kind(nd, s)
@@ -1392,7 +1392,7 @@ def par_chain_ok(nd: Array[int, 655360], head: int) -> bool {
 # them (start, then bound), and so that the bound is loop-invariant as the
 # canonical form requires.  Both are read before the pragma, i.e. outside the
 # parallel region, which is what makes "once, in order" true.
-def emit_for_omp(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_for_omp(nd: Array[int, 1310720], ty: Array[int, 262144],
                  flt: Array[float, 65536], src: str, path: str,
                  mem: Array[int, 3741696], mut vm: VM, s: int,
                  indent: int) -> None {
@@ -1454,7 +1454,7 @@ def emit_for_omp(nd: Array[int, 655360], ty: Array[int, 262144],
 # It does not descend into `while`/`for`, and it does not have to look for
 # anything else: kinds 6-9, 13 and 15 hold no sub-statements, and 16-19 do not
 # exist (`selfhost/AST.md`).
-def for_body_continues(nd: Array[int, 655360], head: int) -> bool {
+def for_body_continues(nd: Array[int, 1310720], head: int) -> bool {
     mut s: int = head
     while s > 0 {
         k: int = nd_kind(nd, s)
@@ -1480,7 +1480,7 @@ def for_body_continues(nd: Array[int, 655360], head: int) -> bool {
 # The condition and the increment are spelled once each, through these, so that
 # the two shapes `emit_for` can write cannot drift apart.  Text for text they are
 # exactly what the single `while` form used to write.
-def emit_for_cond(nd: Array[int, 655360], s: int) -> None {
+def emit_for_cond(nd: Array[int, 1310720], s: int) -> None {
     emit_str("vl_step_")
     emit_int(s)
     emit_str(" > 0 ? ")
@@ -1493,7 +1493,7 @@ def emit_for_cond(nd: Array[int, 655360], s: int) -> None {
     emit_int(s)
 }
 
-def emit_for_incr(nd: Array[int, 655360], path: str, s: int, line: int) -> None {
+def emit_for_incr(nd: Array[int, 1310720], path: str, s: int, line: int) -> None {
     emit_cname(nd[s * 10 + 1])
     emit_str(" = vela_add_range(")
     emit_cname(nd[s * 10 + 1])
@@ -1504,7 +1504,7 @@ def emit_for_incr(nd: Array[int, 655360], path: str, s: int, line: int) -> None 
     emit_str(")")
 }
 
-def emit_for(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_for(nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mem: Array[int, 3741696], mut vm: VM, s: int, indent: int) -> None {
     line: int = nd_line(nd, s)
@@ -1579,7 +1579,7 @@ def emit_for(nd: Array[int, 655360], ty: Array[int, 262144],
 # An array declaration is an arena allocation whose elements are zero, which is
 # what makes `Array[float, 4] = [0.0]` and a bare `Array[int, 8]` the same thing
 # with a different number of written elements.
-def emit_array_decl(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_array_decl(nd: Array[int, 1310720], ty: Array[int, 262144],
                     flt: Array[float, 65536], src: str, path: str,
                     mem: Array[int, 3741696], mut vm: VM, s: int,
                     indent: int) -> None {
@@ -1625,7 +1625,7 @@ def emit_array_decl(nd: Array[int, 655360], ty: Array[int, 262144],
     }
 }
 
-def emit_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
               flt: Array[float, 65536], src: str, path: str,
               mem: Array[int, 3741696], mut vm: VM, s: int,
               indent: int) -> None {
@@ -1730,7 +1730,7 @@ def emit_stmt(nd: Array[int, 655360], ty: Array[int, 262144],
     trap(path, nd_line(nd, s), "this statement has no C spelling yet")
 }
 
-def emit_body(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_body(nd: Array[int, 1310720], ty: Array[int, 262144],
               flt: Array[float, 65536], src: str, path: str,
               mem: Array[int, 3741696], mut vm: VM, head: int,
               indent: int) -> None {
@@ -1798,7 +1798,7 @@ def emit_index_temp(node: int) -> None {
 # A node this walk misses would be an undeclared identifier in the emitted C,
 # which cl refuses: the loud kind of wrong, never a silently shared or stale
 # temporary.
-def emit_index_decls(nd: Array[int, 655360], s: int, indent: int) -> None {
+def emit_index_decls(nd: Array[int, 1310720], s: int, indent: int) -> None {
     k: int = nd_kind(nd, s)
     if k == 6 {
         # assignment or declaration: the target may be an index (a store) and the
@@ -1853,7 +1853,7 @@ def emit_index_decls(nd: Array[int, 655360], s: int, indent: int) -> None {
     # break, continue and the empty statement hold no expressions
 }
 
-def emit_index_decls_list(nd: Array[int, 655360], head: int,
+def emit_index_decls_list(nd: Array[int, 1310720], head: int,
                           indent: int) -> None {
     mut a: int = head
     while a > 0 {
@@ -1862,7 +1862,7 @@ def emit_index_decls_list(nd: Array[int, 655360], head: int,
     }
 }
 
-def emit_index_decls_expr(nd: Array[int, 655360], e: int, indent: int) -> None {
+def emit_index_decls_expr(nd: Array[int, 1310720], e: int, indent: int) -> None {
     if e <= 0 {
         return
     }
@@ -1919,7 +1919,7 @@ def emit_index_decls_expr(nd: Array[int, 655360], e: int, indent: int) -> None {
 # The element a store or an augmented assignment is about: the array, and the one
 # temporary the hoisted check already assigned.  Never the index expression a
 # second time — that is the whole point of the temporary.
-def emit_index_place(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_index_place(nd: Array[int, 1310720], ty: Array[int, 262144],
                      flt: Array[float, 65536], src: str, path: str,
                      mem: Array[int, 3741696], mut vm: VM, tgt: int) -> None {
     emit_expr(nd, ty, flt, src, path, mem, vm, nd[tgt * 10 + 1])
@@ -1930,7 +1930,7 @@ def emit_index_place(nd: Array[int, 655360], ty: Array[int, 262144],
 
 # ---------------------------------------------------------------- expressions
 
-def emit_expr(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
               flt: Array[float, 65536], src: str, path: str,
               mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
     k: int = nd_kind(nd, e)
@@ -2023,14 +2023,14 @@ def emit_expr(nd: Array[int, 655360], ty: Array[int, 262144],
 # The kind of an expression, without printing anything.  The emitter needs it
 # *before* it emits operands (to choose the operator) which is why it is a
 # separate walk rather than a return value the caller can look at first.
-def expr_kind(nd: Array[int, 655360], ty: Array[int, 262144],
+def expr_kind(nd: Array[int, 1310720], ty: Array[int, 262144],
               mem: Array[int, 3741696], vm: VM, e: int) -> int {
     return unpack_kind(expr_packed(nd, ty, mem, vm, e))
 }
 
 # The same walk, without the unpacking: an array's length travels beside its kind
 # (see pack_kind), and a bounds check needs the number.
-def expr_packed(nd: Array[int, 655360], ty: Array[int, 262144],
+def expr_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mem: Array[int, 3741696], vm: VM, e: int) -> int {
     if e <= 0 {
         return K_NONE()
@@ -2128,7 +2128,7 @@ def expr_packed(nd: Array[int, 655360], ty: Array[int, 262144],
 
 # A parameter is a pointer in C exactly when it is a `mut` struct, which is the
 # same rule the runtime's `param_decl` follows for the stage-0 compiler.
-def param_packed(nd: Array[int, 655360], ty: Array[int, 262144],
+def param_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
                  mem: Array[int, 3741696], vm: VM, p: int) -> int {
     t: int = nd[p * 10 + 2]
     k: int = type_kind(ty, t, mem, vm)
@@ -2155,7 +2155,7 @@ def param_packed(nd: Array[int, 655360], ty: Array[int, 262144],
     return pack_kind(k, ty_len(ty, t))
 }
 
-def emit_proto(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_proto(nd: Array[int, 1310720], ty: Array[int, 262144],
                mem: Array[int, 3741696], vm: VM, path: str, f: int) -> None {
     # An `extern c` function has no body: it is somebody else's, and this
     # prototype is the *only* thing Vela writes about it — spelled from the
@@ -2175,7 +2175,7 @@ def emit_proto(nd: Array[int, 655360], ty: Array[int, 262144],
 # A struct value's C spelling depends on how it arrived: a local is a value, a
 # `mut` parameter is a pointer (that is what makes `p.scale(2.0)` visible to the
 # caller), and a field of a struct is a value inside another value.
-def emit_binding_ctype(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_binding_ctype(nd: Array[int, 1310720], ty: Array[int, 262144],
                        mem: Array[int, 3741696], vm: VM, path: str,
                        packed: int, line: int) -> None {
     emit_packed_ctype(mem, vm, path, line, packed)
@@ -2201,7 +2201,7 @@ def emit_packed_ctype(mem: Array[int, 3741696], vm: VM, path: str, line: int,
     emit_ctype(k, path, line)
 }
 
-def emit_params(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_params(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mem: Array[int, 3741696], vm: VM, path: str, f: int,
                 with_names: bool) -> None {
     mut p: int = ft_get(mem, f, FT_PARAM())
@@ -2224,7 +2224,7 @@ def emit_params(nd: Array[int, 655360], ty: Array[int, 262144],
     }
 }
 
-def emit_function(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_function(nd: Array[int, 1310720], ty: Array[int, 262144],
                   flt: Array[float, 65536], src: str, path: str,
                   mem: Array[int, 3741696], mut vm: VM, f: int) -> None {
     emit_str("static ")
@@ -2243,7 +2243,7 @@ def emit_function(nd: Array[int, 655360], ty: Array[int, 262144],
 # those proofs yet (see the header of this file, and `ELISION_PLAN.md`), rather
 # than the two things it used to claim: that there was no checker, and that
 # proving things away was a property of the back end rather than work not done.
-def emit_program(nd: Array[int, 655360], ty: Array[int, 262144],
+def emit_program(nd: Array[int, 1310720], ty: Array[int, 262144],
                  flt: Array[float, 65536], src: str, path: str,
                  mut mem: Array[int, 3741696], mut vm: VM) -> None {
     emit_str("/* Generated by the self-hosted Vela compiler.  This file is a Vela program's\n")

@@ -8,8 +8,19 @@
 # DESIGN.md 7.1 describes for the parser:
 #
 #     mem    one int pool, cut into regions by the MEM_* offsets below:
-#              [MEM_CELLS, MEM_NT)     value cells, stride 4 (tag, a, b, c)
-#              [MEM_NT, MEM_FT)        node table, stride 4, one record per AST node
+#              [MEM_CELLS, CELL_HEAP_MAX)  value cells, stride 4 (tag, a, b, c)
+#              [HEAP0, CELL_HEAP_MAX)      ^ the heap half of the same region
+#              [SCOPE_BASE, +SCOPE_MAX*4)  the resolver's scope stack
+#              [SCOPE_SHAPE, +SCOPE_MAX)   one shape row per scope entry
+#              [MEM_ENB, MEM_VRB)          the enum table, stride 6
+#              [MEM_VRB, MEM_VFL)          the variant table, stride 6
+#              [MEM_VFL, MEM_NT)           payload field records, stride 2
+#              [MEM_NT, MEM_NT + 8 * 131072)  node table, stride 8, one record per
+#                                          AST node -- moved into this hole (it
+#                                          used to sit between MEM_CELLS' end and
+#                                          MEM_FT) when the node pool doubled to
+#                                          131072 nodes, because the region's size
+#                                          is the pool's size times eight
 #              [MEM_FT, MEM_STB)       function table, stride 8
 #              [MEM_STB, MEM_SFLD)     struct table, stride 6
 #              [MEM_SFLD, MEM_MET)     field name handles, per struct
@@ -75,7 +86,7 @@ def HEAP0() -> int { return 262144 }            # the heap starts at this cell
 def CELL_HEAP_MAX() -> int { return 786432 }
 
 def MEM_CELLS() -> int { return 0 }
-def MEM_NT() -> int { return 3145728 }
+def MEM_NT() -> int { return 1600000 }         # node table, stride 8
 def MEM_FT() -> int { return 3670016 }
 def MEM_STB() -> int { return 3702784 }
 def MEM_SFLD() -> int { return 3708928 }
@@ -258,10 +269,13 @@ def MET_MUTSELF() -> int { return 3 }   # 1 when the receiver is `mut self`
 # cells to copy, and for an enum that is exactly `stride`.  A payload-free variant's
 # block is one cell, the tag alone.
 #
-# Where the tables live: the resolver's scope region ends at 1 048 000 words and the
-# node table starts at 3 145 728, so two million words of the arena were unallocated
-# -- `mem` is `Array[int, 3741696]` in ~250 signatures and it is not worth moving a
-# constant anywhere else.
+# Where the tables live: the resolver's scope region ends at 1 048 000 words and
+# the function table starts at 3 670 016, so two million words of the arena were
+# unallocated -- `mem` is `Array[int, 3741696]` in ~250 signatures and it is not
+# worth moving a constant anywhere else.  The node table lives here too now (see
+# the layout at the top of this file): its region is the node pool's size times
+# eight, so doubling the pool meant finding 524 288 words for it, and this hole is
+# where they were.
 
 def MEM_ENB() -> int { return 1150000 }   # enums, stride 6, 4096 of them
 def MEM_VRB() -> int { return 1190000 }   # variants, stride 6, 4096 of them
@@ -530,19 +544,19 @@ def vfl_put(mut mem: Array[int, 3741696], i: int, v: int) -> None {
 # e, f.  Word 4 (`d`) is dead in the parser and is the for-loop's step for a
 # `for` node, so nothing here reads it.
 
-def nd_kind(nd: Array[int, 655360], n: int) -> int {
+def nd_kind(nd: Array[int, 1310720], n: int) -> int {
     return nd[n * 10 + 0]
 }
 
-def nd_w(nd: Array[int, 655360], n: int, k: int) -> int {
+def nd_w(nd: Array[int, 1310720], n: int, k: int) -> int {
     return nd[n * 10 + k]
 }
 
-def nd_line(nd: Array[int, 655360], n: int) -> int {
+def nd_line(nd: Array[int, 1310720], n: int) -> int {
     return nd[n * 10 + 5]
 }
 
-def nd_nx(nd: Array[int, 655360], n: int) -> int {
+def nd_nx(nd: Array[int, 1310720], n: int) -> int {
     return nd[n * 10 + 7]
 }
 
