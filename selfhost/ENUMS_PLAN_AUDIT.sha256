@@ -1,0 +1,9 @@
+# SHA-256 of the four files of the ENUMS_PLAN re-anchor (2026-09-24).
+# Recompute with: Get-FileHash <path> -Algorithm SHA256
+# The plan pair is the pair tools\docs-zh-check.ps1 verifies (recorded 14976 / 45d3a8e5...).
+# The AUDIT row is the revision of this session's final save; AUDIT.md is the only
+# file here that anything may still touch, so recompute it before trusting it.
+45d3a8e5ae1f62f016a790e2d182cfa7b033e8532b32b9a10c11ff3a7f9a0341  ENUMS_PLAN.md
+92129f81b403123efe6004b1e575eab4624f6d855751555d97ab8ca11f957fee  ENUMS_PLAN.zh-CN.md
+e9e28708ade7248623205201672cef5070b3f98a4ec1f0ee673d753c860e4cc3  ENUMS_PLAN_AUDIT.md
+51871ee33fead400eb04452c1b03dd288f413900bc95047925b9368f6009c464  ENUMS_PLAN_AUDIT.evidence.txt
