@@ -1692,6 +1692,18 @@ public final class RenameWriteback {
             case STRUCT:
                 addName(text, tree, n, "struct", out);
                 break;
+            // SPEC.md §13: an enum and its variants, so the write-back is driven over the
+            // two names the plugin's reference table gained in 0.1.10.  The proof this tool
+            // exists for is the one that matters here: a renamed variant must leave a file
+            // `vm.exe check` still accepts, and renaming the declaration alone must be
+            // refused -- which is what tells a write set that is *right* from one that is
+            // merely non-empty.
+            case ENUM:
+                addName(text, tree, n, "enum", out);
+                break;
+            case VARIANT:
+                addName(text, tree, n, "variant", out);
+                break;
             case FIELD:
                 addName(text, tree, n, "field", out);
                 break;

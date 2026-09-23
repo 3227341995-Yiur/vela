@@ -2189,6 +2189,15 @@ public final class PlatformEntry {
             } else if (specBuiltinNames.containsKey(cs.callee) && cs.receiver == null) {
                 declared = specBuiltinNames.get(cs.callee);
                 builtin = true;
+            } else if (cs.receiver == null && w.dump.variant(cs.callee) != null) {
+                // SPEC.md §13: a variant with a payload is constructed as a call, and the
+                // call's arguments are the payload's fields in declaration order -- the same
+                // reader the insert family uses to hold `Circle` to `Circle(radius)`.  The
+                // popup must open for such a call like any other the file declares, so this
+                // is *judged* and not counted: these were the positions in the
+                // `callee-not-a-declared-def` class (24 of them on the §13 corpus) that this
+                // round moves into `find`/`show`/`update`.
+                declared = w.dump.variantFields(w.dump.variant(cs.callee));
             } else if (cs.receiver == null && w.dump.struct(cs.callee) != null) {
                 // A struct's own name, called: the compiler's dump lists the call's
                 // arguments against the struct's `field` nodes in order, so the

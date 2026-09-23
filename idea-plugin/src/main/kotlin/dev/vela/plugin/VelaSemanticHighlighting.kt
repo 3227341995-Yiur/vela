@@ -53,6 +53,14 @@ enum class VelaNameKind {
      * could not tell the two apart would push that decision onto the annotator.
      */
     TYPE,
+
+    /**
+     * A variant's name -- its declaration inside the enum body, its construction, the
+     * pattern that matches it, and a payload-free variant written as a value (SPEC.md
+     * §13).  One kind for all four positions, because the language gives them one word
+     * and the compiler's dump prints the same name at each.
+     */
+    VARIANT,
 }
 
 /** One classified name: the half-open range the lexer gives it, and what it names. */
@@ -178,6 +186,8 @@ object VelaSemanticNames {
 
         val structByName = HashMap<String, Int>()
         val callables = HashSet<String>()
+        /** Every variant name this file declares -- SPEC.md §13, drawn as [VelaNameKind.VARIANT]. */
+        val variants = HashSet<String>()
         val membersOfStruct = HashMap<Int, HashMap<String, VelaSymbol>>()
         val paramsOfCallable = HashMap<Int, HashMap<String, VelaSymbol>>()
         val fieldOrParamAt = HashMap<String, Int>()
@@ -210,14 +220,7 @@ object VelaSemanticNames {
                     fieldOrParamAt.getOrPut(at) { index }
                 }
                 VelaSymbolKind.ENUM -> structByName.getOrPut(symbol.name) { index }
-                VelaSymbolKind.VARIANT -> {
-                    // A variant name is a value: `Circle(2.0)` is a call and `Empty` is a
-                    // bare name (SPEC.md §13), so it is neither a type nor a function --
-                    // and this pass has no key for "variant", so the name is left to the
-                    // default colour rather than being told as something it is not.
-                    // Named here because it is a limit, and measured by nothing: the
-                    // colour of a variant name is not part of any row's evidence.
-                }
+                VelaSymbolKind.VARIANT -> variants.add(symbol.name)
             }
         }
         val builtins = HashSet<String>(VelaModel.BUILTINS.size * 2)
@@ -299,6 +302,23 @@ object VelaSemanticNames {
                         // A struct's name is a type, and in Vela there is nowhere
                         // else for it to appear: `p: Vec2`, `-> Vec2`, `Vec2(...)`.
                         kind = VelaNameKind.STRUCT_USE
+                    }
+                    if (kind == null && variants.contains(name)) {
+                        // SPEC.md §13: a variant name, wherever it is written -- the
+                        // declaration inside the enum body, a construction (`Circle(2.0)`),
+                        // an arm's pattern (`Circle(r) { ... }`) and a bare value
+                        // (`Empty`).  The compiler's own dump is the authority that it is
+                        // a *variant* and not a plain name: it prints `variant name=…`
+                        // for the declaration and `name Circle` at every use, and this
+                        // pass is what gives the two positions one colour to agree on.
+                        //
+                        // **Nothing measures this colour.**  No harness asks which key a
+                        // name is drawn with; `FeatureProbe` checks that the keys the
+                        // *lexer* draws are the keys the colour page registers, and these
+                        // semantic kinds are drawn with platform defaults and registered
+                        // nowhere.  So the decision is written down here and named as
+                        // unmeasured in the row, rather than implied to be covered.
+                        kind = VelaNameKind.VARIANT
                     }
                     // A binding — `mut p: Vec2 = ...` or `p: Vec2 = ...` inside a
                     // body.  The model declares fields and parameters, not locals,
@@ -672,4 +692,7 @@ private fun colourOf(kind: VelaNameKind): TextAttributesKey = when (kind) {
     VelaNameKind.FIELD -> DefaultLanguageHighlighterColors.INSTANCE_FIELD
     VelaNameKind.PARAMETER -> DefaultLanguageHighlighterColors.PARAMETER
     VelaNameKind.TYPE -> DefaultLanguageHighlighterColors.KEYWORD
+    // A variant is a value of a type the file declares, which is the platform's constant
+    // colour -- the same decision Java's own enum constants get.
+    VelaNameKind.VARIANT -> DefaultLanguageHighlighterColors.CONSTANT
 }

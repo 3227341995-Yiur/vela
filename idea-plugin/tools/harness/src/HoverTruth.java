@@ -389,16 +389,11 @@ public final class HoverTruth {
             Ent d = dump.get(i);
             Ent s = scan.get(i);
             if (demandOnly) continue;
-            if (d.kind.equals("payload")) {
-                // SPEC.md §13.  The compiler prints a variant's payload as `field
-                // name=radius type=float`, and the plugin's model declares **no symbol**
-                // for it -- deliberately, because nothing in the language can name a
-                // payload field: a match arm binds new names positionally.  So this is a
-                // counted class and not a hover this tool demands, and the count is the
-                // cost of that decision on the §13 corpus.
-                bump("payload-field-not-a-model-declaration");
-                continue;
-            }
+            // A payload field is judged like any other declaration from 0.1.10: the model
+            // declares it (with the variant as its owner), so this tool holds the hover to
+            // it instead of counting it.  The class that used to be bumped here --
+            // `payload-field-not-a-model-declaration` -- is gone, and the 15 positions it
+            // held are in `ran`.
             if (d.nested) {
                 // A `def` inside another `def`'s body: the model reads module-level and
                 // struct-level declarations, so this declaration is outside its scope and
@@ -806,13 +801,24 @@ public final class HoverTruth {
 
     /** One declaration the compiler's dump printed, or the scanner found. */
     private static final class Ent {
-        final String kind;      // struct | field | def | param
+        final String kind;      // struct | enum | variant | field | def | param
         final String name;
         String type = "";
         String ret = "";
         boolean mut;
         String owner = "";
         boolean nested;
+        /**
+         * Is this `field` line a *variant's payload* rather than a struct field?
+         *
+         * The two are the same word in the compiler's dump -- `field name=radius
+         * type=float` under a `variant`, `field name=x type=int` under a `struct` -- so the
+         * kind cannot tell them apart.  What differs is the **owner**: a struct field
+         * belongs to its struct and a payload field to the variant that carries it
+         * (SPEC.md §13), which is what the plugin's hover answers with and therefore what
+         * this tool has to expect.
+         */
+        boolean payload;
         int offset = -1;
         int indent;
         Ent parent;
@@ -860,17 +866,22 @@ public final class HoverTruth {
                 e = new Ent("variant", wordAfter(body, "variant name="));
                 e.owner = parent != null && parent.kind.equals("enum") ? parent.name : "";
             } else if (body.startsWith("field name=")) {
-                // A `field` line whose nearest enclosing declaration is a `variant` is
-                // that variant's *payload*, not a struct field: the compiler prints both
-                // with the word `field`, and the plugin's model deliberately declares no
-                // symbol for a payload field, because nothing in the language can name
-                // one.  Keeping the two apart here is what lets the payload be a counted
-                // class instead of a hover this tool demands and the plugin does not owe.
+                // A `field` line under a `variant` is that variant's payload (SPEC.md §13).
+                // The *kind* stays `field`, because that is the word the compiler's dump
+                // prints and the word the plugin's hover answers with; what the flag below
+                // changes is the **owner** -- a struct field belongs to its struct, and a
+                // payload field belongs to the variant that carries it.  Until 0.1.10 this
+                // was a counted class (`payload-field-not-a-model-declaration`) because the
+                // model declared no symbol for it; the model declares one now, so it is
+                // judged like any other declaration, which is the measurement that says so.
                 String variant = variantOf(parent);
-                e = new Ent(variant != null ? "payload" : "field", wordAfter(body, "field name="));
+                e = new Ent("field", wordAfter(body, "field name="));
                 e.type = attr(body, "type=");
                 e.mut = attr(body, "mut=").equals("1");
-                if (variant != null) e.owner = variant;
+                if (variant != null) {
+                    e.payload = true;
+                    e.owner = variant;
+                }
             } else if (body.startsWith("def name=")) {
                 e = new Ent("def", wordAfter(body, "def name="));
                 e.ret = attr(body, "ret=");
@@ -925,6 +936,10 @@ public final class HoverTruth {
 
     private static String ownerOf(Ent d) {
         if (d.kind.equals("param")) return d.owner;
+        // A payload field's owner is the variant that carries it (SPEC.md §13), the same
+        // relationship a struct field has with its struct -- and both are `field` lines in
+        // the dump, which is why the flag exists at all.
+        if (d.payload) return d.owner;
         if (d.kind.equals("field") || d.kind.equals("def")) return d.nested ? "" : d.owner;
         // A variant's owner is the enum that declares it (SPEC.md §13), which is what
         // the plugin's hover answers with -- `VelaDocumentation` reads it off the
@@ -1125,9 +1140,10 @@ public final class HoverTruth {
             int ns = skipSpace(text, r[0]);
             int ne = endName(text, ns);
             if (ne <= ns) continue;
-            Ent e = new Ent("payload", text.substring(ns, ne));
+            Ent e = new Ent("field", text.substring(ns, ne));
             e.offset = ns;
             e.owner = variant.name;
+            e.payload = true;
             int colon = skipSpace(text, ne);
             if (colon < r[1] && text.charAt(colon) == ':') {
                 int ts = skipSpace(text, colon + 1);

@@ -1042,6 +1042,14 @@ public final class GotoOracle {
             case PARAM -> addName(text, tree, n, "parameter", out);
             case DECL -> addName(text, tree, n, "local", out);
             case FOR -> addName(text, tree, n, "loop variable", out);
+            // SPEC.md §13.  An enum is a declaration a reader navigates to (`c: Shape`),
+            // and so is a variant -- `Circle(2.0)`, the pattern `Circle(r) { ... }`, a bare
+            // `Empty`.  Adding them here is what makes those positions *judged* at all: with
+            // no declaration of the name in this list, the compiler is never asked about it
+            // and every reference to a variant fell into "unresolved, no target expected",
+            // which is how a plugin that resolves nothing passed this row by omission.
+            case ENUM -> addName(text, tree, n, "enum", out);
+            case VARIANT -> addName(text, tree, n, "variant", out);
             default -> {
             }
         }

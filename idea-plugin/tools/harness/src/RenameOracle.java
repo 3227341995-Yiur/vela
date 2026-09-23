@@ -925,6 +925,17 @@ public final class RenameOracle {
             case STRUCT:
                 addName(text, tree, n, "struct", out);
                 break;
+            // SPEC.md §13: the two names a file declares that this walk did not know.  A
+            // variant is renamed as a declaration like any other -- and the compiler is the
+            // authority on which *uses* must follow it: the construction, the arm's pattern,
+            // and a bare value.  Judging them is the whole point; not listing them here is
+            // why "0 MISSED" was true of a reference table that could not resolve one.
+            case ENUM:
+                addName(text, tree, n, "enum", out);
+                break;
+            case VARIANT:
+                addName(text, tree, n, "variant", out);
+                break;
             case FIELD:
                 addName(text, tree, n, "field", out);
                 break;

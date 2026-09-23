@@ -53,9 +53,19 @@ class VelaParameterInfoHandler : ParameterInfoHandler<PsiElement, ParameterHint>
         val calleeAt = call.openParen - call.name.length
         // A name this file declares is answered by that declaration or by nothing:
         // the language's table is only consulted for a name the file does not write.
-        val declared = VelaTargets.declaredParameterNames(text, calleeAt)
-            ?: (if (VelaTargets.declaresFunction(text, calleeAt)) null
-                else VelaTargets.builtinParameterNames(call.name))
+        val declared = if (sym.kind == VelaSymbolKind.VARIANT) {
+            // SPEC.md §13: a variant with a payload is constructed as a call, and the
+            // declaration it names *is* the variant -- whose payload field names the model
+            // read off the `variant` node's own field list, in declaration order.  That
+            // list is the answer here rather than a second reading of the file: the popup
+            // and the completion's `Circle` -> `Circle(radius)` template must not be able
+            // to disagree about one declaration, and both now ask this same symbol.
+            sym.parameters
+        } else {
+            VelaTargets.declaredParameterNames(text, calleeAt)
+                ?: (if (VelaTargets.declaresFunction(text, calleeAt)) null
+                    else VelaTargets.builtinParameterNames(call.name))
+        }
         // A METHOD WITH A RECEIVER DROPS ITS LEADING PARAMETER, for the same reason
         // `VelaInlayHints.parameterHints` does: `p.dot(q)` writes the receiver's argument
         // before the dot, so the parentheses' arguments are the parameters *after* it.  The

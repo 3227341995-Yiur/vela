@@ -93,6 +93,16 @@ fun resolveCall(text: CharSequence, call: VelaCall): VelaSymbol? {
         if (member != null) return member
     }
 
+    // SPEC.md §13: a variant *with* a payload is constructed as a call, so a call site
+    // whose name is a variant names that variant -- and its arguments are the payload's
+    // fields, in declaration order, which the model already carries as the variant's
+    // `parameters`.  Asked before the file's own functions, because a variant name is
+    // file-global and the compiler refuses a file that has both.
+    VelaModel.symbols(text).firstOrNull {
+        it.name == call.name && it.kind == VelaSymbolKind.VARIANT &&
+            !it.parameters.isNullOrEmpty()
+    }?.let { return it }
+
     VelaModel.symbols(text).firstOrNull {
         it.name == call.name && (it.kind == VelaSymbolKind.FUNCTION || it.kind == VelaSymbolKind.METHOD)
     }?.let { return it }

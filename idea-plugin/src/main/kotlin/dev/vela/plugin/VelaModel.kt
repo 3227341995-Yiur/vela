@@ -212,17 +212,20 @@ object VelaModel {
     /**
      * An enum and its variants, in source order -- SPEC.md §13.
      *
-     * A variant's payload fields are deliberately **not** symbols of this model: the
-     * language has no way to name a payload field (an arm binds new names positionally),
-     * so nothing in a file refers to one, and a symbol for it would be a declaration no
-     * reader could navigate to.
+     * A variant's payload fields are declared here too, as [VelaSymbolKind.FIELD] children
+     * of the variant: the compiler's own dump prints them as `field name=… type=…` under
+     * the `variant` node, so the *hover* for one is the declaration the dump prints (and
+     * `HoverTruth` holds it to that, which is the measurement that used to be the counted
+     * class `payload-field-not-a-model-declaration`).  Nothing can **name** one -- a match
+     * arm binds new names positionally (SPEC.md §13) -- so they are declarations a reader
+     * can hover and land on, and not names any reference resolves.
      *
      * The payload's field names *do* travel on the variant symbol, as its `parameters`,
-     * because they are exactly what completion must write between the parentheses:
-     * `Circle` becomes `Circle(radius)`.  A payload-free variant carries an **empty**
-     * list, which is the honest reading of "this variant declares no fields" -- `null`
-     * would say the list could not be read, and the completion would then have to refuse
-     * to write anything, which is right for `Empty` and wrong for `Circle`.
+     * because they are exactly what completion and the parameter-info popup must write
+     * between the parentheses: `Circle` becomes `Circle(radius)`.  A payload-free variant
+     * carries an **empty** list, which is the honest reading of "this variant declares no
+     * fields" -- `null` would say the list could not be read, and the completion would then
+     * have to refuse to write anything, which is right for `Empty` and wrong for `Circle`.
      */
     private fun readEnumFromTree(n: VelaSyntaxNode, tree: VelaSyntaxTree, text: CharSequence,
                                  out: ArrayList<VelaSymbol>, parent: Int) {
@@ -238,6 +241,7 @@ object VelaModel {
             val fields = v.children.filter { velaIsVariantField(it) }
             val detail = if (fields.isEmpty()) v.name
             else v.name + "(" + fields.joinToString(", ") { it.name + ": " + it.typeText } + ")"
+            val vm = out.size
             out.add(
                 VelaSymbol(
                     VelaSymbolKind.VARIANT, v.name, detail, "",
@@ -245,6 +249,14 @@ object VelaModel {
                     fields.map { it.name },
                 )
             )
+            for (f in fields) {
+                out.add(
+                    VelaSymbol(
+                        VelaSymbolKind.FIELD, f.name, f.typeText, f.typeText,
+                        lineAt(tree, f, text), vm,
+                    )
+                )
+            }
         }
     }
 

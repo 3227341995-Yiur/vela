@@ -42,7 +42,19 @@ package dev.vela.plugin
  * whose type is not written down; a member its struct does not declare; and any
  * name that is not declared anywhere.
  */
-enum class VelaTargetKind { FUNCTION, METHOD, STRUCT, FIELD, LOCAL, PARAMETER, LOOP_VARIABLE }
+enum class VelaTargetKind {
+    FUNCTION, METHOD, STRUCT, FIELD, LOCAL, PARAMETER, LOOP_VARIABLE,
+
+    /*
+     * SPEC.md §13.  Two more names a file declares and a reader can click:
+     * an enum's own name (written in a type annotation, `c: Shape`) and a
+     * variant's (written as a construction, `Circle(2.0)`, in an arm pattern,
+     * `Circle(r) { ... }`, and as a bare value, `Empty`).  A variant is
+     * file-global by the language's own rule, so one lookup by name is the whole
+     * answer -- the compiler refuses two enums claiming one variant name.
+     */
+    ENUM, VARIANT,
+}
 
 /** A declaration a name refers to: what it is, what it is called, and where it is. */
 class VelaTarget(
@@ -312,16 +324,24 @@ object VelaTargets {
             }
         }
 
-        // 5. A call: the file's own function, or nothing (a builtin is declared by the
+        // 5. A call: a variant's construction first (SPEC.md §13 -- `Circle(2.0)` is the
+        // shape a call already has, and an arm's pattern `Circle(r) { ... }` is the same
+        // shape), then the file's own function, then nothing (a builtin is declared by the
         // language, and a method needs a receiver, which case 1 answered already).
         if (after < src.length && src[after] == '(') {
+            fileVariant(tree, name)?.let { return targetAt(tree, it, VelaTargetKind.VARIANT) }
             return callTarget(tree, name)
         }
 
-        // 6. A file-level declaration by that name: a function or a struct.
+        // 6. A file-level declaration by that name: a function, a struct, an enum, or a
+        // variant.
         fileFunction(tree, name)?.let { return targetAt(tree, it, VelaTargetKind.FUNCTION) }
         // A bare `Vec2`, written as a type.
         fileStruct(tree, name)?.let { return targetAt(tree, it, VelaTargetKind.STRUCT) }
+        // A bare `Shape` in a type position (`c: Shape`, `Array[Shape, 4]`), or a
+        // payload-free variant written as a value (`Empty`).
+        fileEnum(tree, name)?.let { return targetAt(tree, it, VelaTargetKind.ENUM) }
+        fileVariant(tree, name)?.let { return targetAt(tree, it, VelaTargetKind.VARIANT) }
         return null
     }
 
@@ -369,6 +389,22 @@ object VelaTargets {
     /** `Vec2` -> the struct whose name is `name`, at file level or in any struct. */
     private fun fileStruct(tree: VelaSyntaxTree, name: String): VelaSyntaxNode? =
         findDecl(tree.root) { it.kind == VelaNodeKind.STRUCT && it.name == name }
+
+    /** `Shape` -> the enum whose name is that -- SPEC.md §13, a type like a struct. */
+    private fun fileEnum(tree: VelaSyntaxTree, name: String): VelaSyntaxNode? =
+        findDecl(tree.root) { it.kind == VelaNodeKind.ENUM && it.name == name }
+
+    /**
+     * `Circle` -> the variant whose name is that, in whichever enum declares it.
+     *
+     * A *file-global* lookup, and it is the language that makes it unambiguous rather than
+     * this function guessing: SPEC.md §13 says "a variant name is file-global, because v1
+     * has no expected-type machinery ... a second enum declaring the same variant name is
+     * refused, naming both".  So on any file the compiler accepts there is at most one
+     * variant of a given name, and on a file it refuses the answer does not matter.
+     */
+    private fun fileVariant(tree: VelaSyntaxTree, name: String): VelaSyntaxNode? =
+        findDecl(tree.root) { it.kind == VelaNodeKind.VARIANT && it.name == name }
 
     /**
      * A `def` written at file level with this name.

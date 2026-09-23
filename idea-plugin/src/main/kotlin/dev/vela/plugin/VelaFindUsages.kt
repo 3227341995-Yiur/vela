@@ -280,7 +280,19 @@ object VelaUsageSearch {
         if (name.isEmpty() || !name.all { isNamePart(it) } || name.first().isDigit()) return false
         if (isBuiltinName(name)) return true
         if (VelaReferences.referenceTargetAt(text, start, end) != null) return true
-        return VelaDeclarations.isDeclarationNameAt(text, start, end)
+        if (VelaDeclarations.isDeclarationNameAt(text, start, end)) return true
+        // SPEC.md §13: an enum's own name (`enum Shape { … }`) and a variant's
+        // (`Add(a: int, b: int)`, `Empty`) are declarations whose *shape* the token scan
+        // above does not know -- it looks for `struct X`, `def f`, `for i` and `name:`,
+        // and none of those is what §13 writes.  They are asked the other way round
+        // instead: the name resolves to *itself* through the reference machinery, which
+        // is what "this leaf is a declaration and not a use of one" means.  Measured:
+        // without this line the platform refused Find Usages at all 22 of them, and
+        // `RenameOracle` reported every one as `NOT-SEARCHABLE` -- the declaration's own
+        // name, the element a reader puts the caret on before asking for its usages.
+        val self = VelaTargets.declarationFor(text, start)
+        if (self != null && self.start == start && self.end == end) return true
+        return false
     }
 
     /**
@@ -325,6 +337,9 @@ object VelaUsageSearch {
         VelaTargetKind.LOCAL -> "variable"
         VelaTargetKind.PARAMETER -> "parameter"
         VelaTargetKind.LOOP_VARIABLE -> "loop variable"
+        // SPEC.md §13: the two words the language gained, shown as the language spells them.
+        VelaTargetKind.ENUM -> "enum"
+        VelaTargetKind.VARIANT -> "variant"
     }
 
     /** A name the language itself declares.  No line of this file is its declaration. */
