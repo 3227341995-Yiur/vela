@@ -38,7 +38,7 @@ carries, or it says which commit it came from instead.
 | **faster than C++** | **not established on either matmul row, and the loss is measured:** serial matmul 512² **0.5433 s against the C++ twin's 0.2241 s (2.4× slower)**, parallel matmul **0.0680 s against 0.0221 s (3.1× slower)**, mandelbrot a tie to the microsecond, sieve 1.5× slower against an explicitly *unchecked* C++ row — `bench/RESULTS.md` | the loss is the checked arithmetic still *in the inner loop*: `vm.exe emit-c bench/matmul.vel` emits 6 `vela_bounds_check`, 7 `vela_add_range` and 3 `vela_mul_range` calls (measured 2026-09-22 on the working tree's compiler, which is not the pinned revision of `bench/RESULTS.md`; the earlier counts quoted here were 6/10/6). **No check is proved away anywhere** — what the interval machinery proves today is confined to `parallel for`, and the two ordinary-loop rows of `SPEC.md` §6.1 are honestly marked "designed, not built" |
 | **Rust's safety design** | no pointers, no `unsafe`, no `free`, arena-only, indexing checked, integer arithmetic checked, and the `parallel for` aliasing rule is **complete**: the cross-iteration read is refused, `out[i] = a[i] * 2` and `a[i] = a[i] + 1` stay legal. All five cases that prove it are in `tests/cases.txt` with their recorded outputs — `parallel_alias_cross_iteration` is a `refuse` case whose `.err` holds the message; the four legal shapes are `run` cases whose `.out` files hold their answers — so the rule is written *and* there are five recorded verdicts behind it | two different things are still owed, and this cell used to name only one of them: the **proof machinery** that removes a check is not built (the checks are not yet *proven away* where a proof exists), and there is no concurrency beyond `parallel for`. Reading "finish the aliasing rule" as if the rule were unwritten is wrong — it is the check-removal proof that is unfinished |
 | **Python's syntax, strict semantics** | brace-based, statically typed, no truthiness, `/` refuses integers, string `+` refused, explicit `mut`, scope rules | the type system still has holes: a `str` bound to `int` is accepted by `check`; an undeclared type name is caught by an emitter panic instead of a diagnostic |
-| **pure-bred / independent** | the compiler's source is Vela; the linker is Vela; there is no Python and no C++ anywhere; `selfhost_fixpoint` passes | **`build` still needs `cl.exe`**: C is the code-generation backend. That is the remaining host-language dependence, and the LLVM workstream is what removes it — `build-llvm` already links with `lld-link` alone, which is where that work stands (§ Stream 1 below) |
+| **pure-bred / independent** | the compiler's source is Vela; the linker is Vela; there is no Python and no C++ anywhere; `selfhost_fixpoint` passes | **met since 2026-09-24: `build` no longer needs `cl.exe`.** `vm.exe build x.vel` builds the module in process through `libLLVM` — linked into the compiler, the way `rustc` carries LLVM — and calls one external program, `lld-link`. `tools\llvm-no-cl.ps1` is the gate: it disarms the C compiler with `CL=/Zs` (which `cl.exe` reads itself, so no `cl.bat` on `PATH` can be walked around by `vcvars64.bat`), requires `build` to work anyway, requires `build-c` to fail under it, and requires `build-c` to work without it. The C back end stays as the reference implementation and is reached by name, `build-c`; `tools\build.ps1` step 4 promotes the compiler the LLVM path built, so the seed C is stage 0 and everything a person builds with `build` is pure.  What is still owed under this row is the *later* phase of the dependency, not the C compiler: `lld-link` is still an external program, and the phase table's `later` row (our own COFF/PE writer) is what would remove it |
 
 ## Stream 1 — the backend, and "faster than C++"
 
@@ -56,10 +56,13 @@ Ordered, each step verifiable on its own.
    the rest of the corpus, not the mechanism.
 2. **LLVM phase 2 — landed, measured 2026-09-22.** `runtime/vela_llvm_shim.c`
    (scalar interface over `llvm-c`) is linked into `vm.exe`, which writes the
-   `.obj` itself: `vm.exe build-llvm examples\hello.vel` prints `built hello.exe
+   `.obj` itself: `vm.exe build examples\hello.vel` prints `built hello.exe
    (LLVM in-process; lld-link, no C compiler)` and exits 0, and the executable
    runs, so the host dependency is a linker and nothing else. Acceptance:
-   no external compiler; only a linker. Met.
+   no external compiler; only a linker. Met — and it has since been *promoted*:
+   this command was spelled `build-llvm` when the row was written, `build` is the
+   same path now, `build-llvm` is a synonym kept for the gates and the documents,
+   and the C back end is reached by name as `build-c`.
 3. **Proof-driven check removal** — *the actual performance lever*, and it does
    not need LLVM at all. The checker's interval analysis already exists; what is
    missing is the emitter consuming it. Acceptance, measurable today:
@@ -238,4 +241,4 @@ four, which is the kind of arithmetic a reader cannot check without counting:
 | Rust's safety design | the safety corpus: every case's recorded diagnostic, plus the three-way differential |
 | Python's syntax, strict semantics | `vm.exe check` on the four measured holes, plus the corpus's 55 refusal cases |
 | complete high-level features | streams 2.1–2.8, each with the acceptance line above |
-| pure-bred | `vm.exe build selfhost\vm.vel` with no `cl.exe` anywhere on `PATH` |
+| pure-bred | `vm.exe build selfhost\vm.vel` with no `cl.exe` anywhere on `PATH`, plus `tools\llvm-no-cl.ps1` for the same claim with the compiler disarmed rather than absent |

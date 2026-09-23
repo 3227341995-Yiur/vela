@@ -23,12 +23,23 @@ rather than by reading this file:
 | the IDEA plugin | `idea-plugin\build-offline.ps1` | **0.1.4**: `dist\vela-idea-plugin-0.1.4.zip` 324 186 B, `RESULT: PASS` (154 OK / 0 FAIL), 98 concrete top-level classes, **0 dead**.  The capability ledger is `idea-plugin\FEATURE_PARITY.md`: 27 rows, **18 `implemented`, 8 `partial`, 1 `refused-deliberately`, 0 missing**, and the parameter-name defect the owner reported is closed with before/after evidence in `idea-plugin\evidence\` |
 | the benchmarks | `tools\bench.ps1 -Reps 7` | re-measured and recorded in `bench/RESULTS.md` in its own dated section: serial matmul **2.42× slower**, parallel **3.49× by best-of-7 / 2.80× by median**, mandelbrot a tie, sieve 1.50× slower.  **"Faster than C++" is still not established**, and §4's ladders remain the argument for the only lever that could change that |
 
-Unchanged by any of the above, and still the shape of the work: `build` sends C to
-`cl.exe`, so north star ① holds **only** on the `build-llvm` path; and the language
-is missing enums with payloads and `match`, modules/`import`, `Result`/`?`,
-generics, closures, nested functions, string concatenation, slices and
-iteration/traits — nine features with **zero** lines of code.  A dated list of what
-each of those needs is in the goal this session is running against.
+**Changed since this block was written, and it is the change the whole LLVM
+workstream was for: `build` no longer sends C to `cl.exe`.**  `vm.exe build x.vel`
+builds the module in process through `libLLVM` — linked into the compiler, the way
+`rustc` carries LLVM — writes the object itself, and calls one external program,
+`lld-link`.  North star ① holds on **the default path** now, and
+`tools\llvm-no-cl.ps1` is that claim as a gate: it disarms the C compiler with
+`CL=/Zs` (read by `cl.exe` itself, so no PATH trick can be walked around by
+`vcvars64.bat`) and requires `build` to work, `build-c` to fail, and `build-c` to
+work when it is not disarmed.  The C back end is not gone: it is the reference
+implementation and it is reached by name, `build-c`, which is how the seven
+`parallel for` rows are built and how the fixpoint's emitted C is produced.
+
+What the language is still missing is unchanged: enums with payloads and `match`,
+modules/`import`, `Result`/`?`, generics, closures, nested functions, string
+concatenation, slices and iteration/traits — nine features, and the enum branch is
+in progress.  A dated list of what each of those needs is in the goal this session
+is running against.
 
 ## 0. Where this session left the tree (2026-09-20, 02:1x)
 
@@ -61,8 +72,8 @@ subset this backend compiles**, and not beyond it:
 
 | steps ⑤⑥ | state |
 |---|---|
-| ⑤ the three-way differential over the whole corpus | **not done as a tool**; the leader ran it by hand twice.  **Run 1: 4 match, 19 refused.  Run 2: 7 match, 16 refused.  `DIVERGE 0` in both** — the backend has never yet printed something different from the other two. The 16 refusals are an enumerable list: `parallel for` 6 (**refused by design**: LLVM IR has no OpenMP), builtins other than `print`/`len`-of-array 3, struct parameter or local 2, `len`/compare of `str` 2, in-place update 1, `and`/`or` 1 |
-| ⑥ `build-llvm` replaces `build` | **not done, and must not be claimed.** `build` still sends C to `cl.exe`. A backend that compiles 7 of 23 cases is not a backend that compiles the language |
+| ⑤ the three-way differential over the whole corpus | **not done as a tool on that date**; the leader ran it by hand twice.  **Run 1: 4 match, 19 refused.  Run 2: 7 match, 16 refused.  `DIVERGE 0` in both** — the backend has never yet printed something different from the other two. The 16 refusals are an enumerable list: `parallel for` 6 (**refused by design**: LLVM IR has no OpenMP), builtins other than `print`/`len`-of-array 3, struct parameter or local 2, `len`/compare of `str` 2, in-place update 1, `and`/`or` 1.  **It is a tool now** — `tools\llvm-column.ps1`, over two corpora, with a two-sided refusal ledger — and its verdict is `match 42   refused-by-design 7/7   open gaps 0/0   DIVERGE 0` |
+| ⑥ `build-llvm` replaces `build` | **DONE since this row was written, and the row is kept because it is the record of the day it was not.**  `build-llvm` is now a synonym for `build`, and `build` is the LLVM path: the C back end is reached by name, `build-c`.  The seven programs the LLVM back end refuses by design are `run-c` rows in `tests\cases.txt`, each with a comment saying why, and `tools\llvm-no-cl.ps1` proves the default path starts no C compiler by disarming one (`CL=/Zs`) |
 | ④ `vm.exe` carries its own code generator | **landed**: `vm.exe` grew from 634 368 to 782 848 bytes and now links `libLLVM`. Its cost is measured: `LLVM-C.dll` is a **load-time** dependency, and a `vm.exe` copied anywhere without it **does not start** — exit `0xC0000135`, before `main`, with nothing that names LLVM. `tools\smoke.ps1` asserts the DLL and the runtime object sit beside the compiler |
 
 **The gate is red, and the cause is known to the line.**  Last full run, against a

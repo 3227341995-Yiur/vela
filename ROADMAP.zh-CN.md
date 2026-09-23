@@ -4,8 +4,8 @@
 
 <!--
 源文件 : ROADMAP.md
-源文件字节 : 18004
-源文件 SHA256 : 858b83c1e03a6da1be121488e8424d8aa899004b99e818b7dd56ceed5699dc5e
+源文件字节 : 19057
+源文件 SHA256 : fe62a4e2cd61a9e12e32a5cf02082ce876315e416dc7c555307a5fdf0852e1b7
 翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。

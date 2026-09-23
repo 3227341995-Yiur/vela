@@ -294,7 +294,7 @@ in `SPEC.md`, not a tool: nothing in this tree parses Vela except the compiler.
 | 1 | `selfhost/vela.vel` — **lexer in Vela**, verified token-for-token against stage 0 | done, and it stayed: the lexer is part of the compiler in the tree |
 | 2 | **parser in Vela** (`selfhost/parts/parser.vel` + `dump.vel` + `vm_main.vel`, linked into `selfhost/vm.vel`), verified tree-for-tree against stage 0 | done |
 | 2.5 | interpreter in Vela, so `vm.exe run file.vel` needs neither Python nor a C compiler | **done**: `parts/{vm_state,resolve,eval}.vel`; the corpus's `run` cases hold it to the compiled twin's output, program by program |
-| 3 | C11 emitter in Vela (`parts/emit.vel`) and the driver that uses it: `vm.exe build file.vel` | **done**: the corpus's `dumps` cases compare the C it writes and the `native` cases run what it produces; the compiler compiles itself (`vm.exe build selfhost/vm.vel`); `tools/build.ps1` step 5 checks the fixpoint byte for byte; and `vm.exe build` drives the host's C compiler itself, which is how that script builds everything it builds |
+| 3 | C11 emitter in Vela (`parts/emit.vel`) and the driver that uses it: `vm.exe emit-c file.vel`, `vm.exe build-c file.vel` — and, since the LLVM back end was promoted, `vm.exe build file.vel` for the path that needs no C compiler | **done**: the corpus's `dumps` cases compare the C it writes and the `native` cases run what it produces; the compiler compiles itself (`vm.exe build-c selfhost/vm.vel`); `tools/build.ps1` step 6 checks the fixpoint byte for byte; and `vm.exe build-c` drives the host's C compiler itself, so one binary is that whole toolchain — while `vm.exe build` reaches the same product through `libLLVM` in process and a linker, with no C compiler anywhere |
 | 4 | the checker in Vela (`parts/check.vel`), then stage 0 out of the toolchain | **done**: the corpus's `refuse` cases and their goldens (`tests/golden/*.err`) are the record of it. `check` runs before every `emit-c`, `run` and `build` (`vm_main.vel`), so the front end refuses rather than emitting C for a program it would refuse, and `vm.exe` is the only driver there is |
 | 5 | foreign functions (C only, C++ deliberately out of scope — §9.3) | **done, in the small shape §9 describes**: `extern c [pure] def` for scalar C functions, refused at the declaration *and* at the call site, with no foreign call in the interpreter.  Left out deliberately: blocks, `cstr`, `(T*, N)` arrays, `extern struct`, variadics, callbacks (§9.5) |
 What already works, and can be run:
@@ -383,15 +383,27 @@ and both must print the golden output).
 
 The stage-3 emitter translates every program in the corpus to C that means what
 stage 0's C meant, and then translates *the compiler*: `vm.exe build
-selfhost/vm.vel` writes `selfhost/vm.c` and the host's C compiler turns it into
-`selfhost/vm.exe`, which the build promotes over `selfhost/build/vm.exe`. The
+selfhost/vm.vel` builds it — through the compiler's own LLVM back end now, which
+is the same source and the same fixpoint — and the build promotes the result over
+`selfhost/build/vm.exe`. The
 property that has to hold is the fixpoint — the compiler it built must re-emit
-`selfhost/vm.vel` as the same C, byte for byte — and `tools/build.ps1` step 5
+`selfhost/vm.vel` as the same C, byte for byte — and `tools/build.ps1` step 6
 checks exactly that (it writes `selfhost/build/_fixpoint_gen2.c` and compares its
-hash with `selfhost/build/vm.c` and `selfhost/vm.c`; they are the same today,
-`9CD51090CBCFBF3B`, 759 600 bytes). The corpus has a `fixpoint` case that says the
-same thing. The Python differential suites that first caught this are gone with
-stage 0; the check they performed is the build's own.
+hash with `selfhost/build/vm.c` and `selfhost/vm.c`). The corpus has a `fixpoint`
+case that says the same thing. The Python differential suites that first caught
+this are gone with stage 0; the check they performed is the build's own.
+
+**Two things about that step changed on 2026-09-24, when `build` became the LLVM
+path, and both matter to a reader of this section.** The promoted compiler is the
+one the *LLVM* back end built, not the one `cl.exe` built — the seed C is stage 0,
+stage 1 comes out of it, and everything a person builds after that is pure. And
+none of the three C files is a promoted side effect any more: `build` writes no C
+at all, so step 6 asks both generations for it (`emit-c`) at the moment it compares
+them. What the step refuses to do is overwrite the seed: a moved emitter makes it
+fail with the sentence that says to refreeze `selfhost/build/vm.c` deliberately,
+because a seed a build rewrites on the way past is not a seed — and this file's own
+hash lines are the reason that matters, since a number written into prose is out of
+date the moment a part changes (the `9CD51090CBCFBF3B` above is 2026-09-20's).
 
 Corpus programs would not have found the bug this exposed, because none of them
 put an escape in a string:
@@ -528,7 +540,7 @@ are different claims, and only the second one is true:
 
 | what | how | what it proves |
 |---|---|---|
-| the corpus (`tests/run_tests.vel`) | a Vela program, built by `vm.exe build`; `tests/cases.txt` is one case per line, `tests/golden/` holds what each case must produce | programs compile, run and print exactly what they should (`run`, `native`, `panic`), **and** the programs that must be refused are refused with the right reason, byte for byte (`refuse`, `refuse-interp`) — including the cases where a conservative compiler would wrongly refuse a valid program (`ok`) |
+| the corpus (`tests/run_tests.vel`) | a Vela program, built by `vm.exe build` (and by `build-c` for the rows the LLVM back end refuses by design); `tests/cases.txt` is one case per line, `tests/golden/` holds what each case must produce | programs compile, run and print exactly what they should (`run`, `native`, `panic`), **and** the programs that must be refused are refused with the right reason, byte for byte (`refuse`, `refuse-interp`) — including the cases where a conservative compiler would wrongly refuse a valid program (`ok`) |
 | the same corpus, `dumps` cases | `lex`, `parse` and `emit-c` digests for one file | a change in one stage cannot hide behind an unchanged other stage |
 | `fixpoint` cases | the compiler builds itself through its own driver | the compiler it built writes the C it was built from |
 | `tools/build.ps1 -Suites` | step 6 of the build | the suite runs as part of the build, so a change that breaks a case breaks the build |
@@ -682,7 +694,8 @@ library.
 
 ### 9.4 Why the host surface grew by three for stage 3
 
-`vm.exe build file.vel` has to emit C and then get a C compiler to compile it, and
+`vm.exe build file.vel` has to start a *linker*, and `vm.exe build-c file.vel` has
+to start a C compiler and then a linker, and
 Vela had no way to start a process at all. That deserved care, because this is the
 one feature that could quietly end the safety claim — so the surface grew by
 exactly three calls, each answering a question the language otherwise cannot ask,
@@ -698,14 +711,29 @@ What none of them does: return a pointer, return a handle into the language's ow
 memory, load a library, or keep state that outlives the call. Safe Rust has
 `std::process::Command` and `std::env`; this is that class of surface cut down to
 its smallest useful shape. It is also what makes a *single binary* the whole
-toolchain: `vm.exe build` re-enters itself in `emit-c` mode (the shell redirects,
-so the back end keeps one output target), finds MSVC through `VELA_VCVARS` or the
-standard install directories, and falls back to `$VELA_CC`, `cc`, `gcc` or
-`clang`. What holds it to account is the build itself: `tools/build.ps1` builds
-every stage with this driver and checks the fixpoint, and `vm.exe build
-selfhost/vm.vel` is the largest program it will ever be handed.
+toolchain, in either of its two shapes: `vm.exe build` re-enters itself in
+`emit-llvm` mode (the shell redirects, so the emitter has one output target) and
+then builds the object in process through `libLLVM`, with a linker as the only
+external program; `vm.exe build-c` re-enters itself in `emit-c` mode, finds MSVC
+through `VELA_VCVARS` or the standard install directories, and falls back to
+`$VELA_CC`, `cc`, `gcc` or `clang`. What holds both to account is the build
+itself: `tools/build.ps1` builds every stage with them, checks the fixpoint on the
+C, and `vm.exe build selfhost/vm.vel` is the largest program either will ever be
+handed. A single binary needs `run_command` for one reason and not two: to start a
+linker, and — on the C path only — a C compiler.
 
-Three host quirks are recorded here because they cost real debugging time:
+**And the process table is a shared resource, which this project learned the hard
+way.** Three separate tools used to kill every `cl`, `link`, `vm`, `vctip` and
+`mspdbsrv` on the machine by image name, and in a tree with a worktree — or an
+IDE — that takes another checkout's in-flight compile with it, so a gate's verdict
+depended on what somebody else happened to be doing. The rule now: a sweep kills
+only the processes this build writes over, by path, and never the *shared* PDB
+server, which one instance serves every compiler that asks for it. Measured and
+recorded in `tools\_ownership-probe.ps1` and `tools\_cl-helper-spawn.ps1`.
+
+Four host quirks are recorded here because they cost real debugging time. The fourth
+was added on 2026-09-24 and it is the one that bites a *tool writer* rather than the
+compiler:
 
 * **`cmd.exe /c` strips one leading and one trailing quote** unless the whole
   command line is exactly one quoted executable. Every command this driver builds
@@ -723,6 +751,36 @@ Three host quirks are recorded here because they cost real debugging time:
   because of it; the cost today is that two `tools/build.ps1` runs at once fight
   over `selfhost/build/vm.exe` (the second one's C link fails with `LNK1104:
   cannot open ... vm.exe`). One build at a time.
+* **Windows PowerShell 5.1 reads a `.ps1` without a BOM as ANSI**, so a sequence
+  of Chinese characters written *inside a script* is not what the script says.
+  This is not about output: the literals themselves arrive as mojibake, and the
+  failures it produces do not point at themselves. Measured twice in one round by
+  the tool that splices the bilingual documents:
+
+  - the search strings matched nothing, because the strings being searched for
+    were not the strings in the file. The symptom was a probe reporting "NOT
+    FOUND" for anchors that were plainly there;
+  - and the second symptom was a **parse error naming a line forty lines further
+    down** — a mangled character had eaten a quote, so every quote after it paired
+    wrongly. An error that far from its cause is the expensive shape.
+
+  The fix, and it applies to every tool here that deals in non-ASCII: **keep the
+  text in its own file and read it with `[System.IO.File]::ReadAllBytes` and an
+  explicit UTF-8 decode**, so the code page plays no part. `tools\_zh-edit.ps1`
+  takes its replacements from `tools\_zh-fragments.txt` and its search strings
+  from `tools\_zh-anchors.txt` for exactly this reason. (`.ps1` files in this
+  repository that must contain Chinese already carry a BOM and are read correctly
+  — `tools\docs-zh-check.ps1` builds its own Chinese labels from code points
+  rather than typing them, which is the same fix one level down.)
+
+  **And bound a line-range edit by the next *structural* marker, not by the next
+  blank line.** The same script's first version replaced 21 lines where 2 were
+  meant, because the block it was replacing contained a blank line and the next
+  blank line was three bullets later: the scalar-types, `pure` and
+  argument-crossing bullets of §12 were deleted and replaced by one bullet's
+  opening. The diff caught it; the log said "step 5 done: 21 lines" and would not
+  have. A splice tool should print the count it replaced *and* refuse when the
+  count is larger than the thing it is replacing.
 
 Stage 5 needed no *stub table* on the interpreted path: a language with no unsafe
 surface has no `dlsym` either, and rather than invent one the interpreter has no
@@ -748,8 +806,9 @@ extern c "libm" {                          # the shape that was designed, not bu
 ```
 
 * **No library name, no header, no `extern c "..." { ... }` block.** The link
-  step belongs to Vela's own driver (`vm.exe build` hands the emitted C to
-  cl.exe), and a library name Vela never passes to a linker would be a promise
+  step belongs to Vela's own driver (`vm.exe build-c` hands the emitted C to
+  cl.exe; `vm.exe build` hands the object it built itself to `lld-link`), and a
+  library name Vela never passes to a linker would be a promise
   about a toolchain Vela does not drive. One declaration per function says the
   same thing with less to get wrong.
 * **No `cstr`, and no `Array[T, N]` crossing as `(T*, N)`.** These are the two

@@ -75,7 +75,7 @@ there names its own acceptance test.
 | **faster than C++** | `powershell -ExecutionPolicy Bypass -File tools\bench.ps1 -Reps 7` | **not established yet, and the gap is now measured in one place.**  After the emitter fix of 2026-09-19 (each array index computed once instead of twice), serial matmul 512² is **2.4x slower** than its C++ twin (0.5433 s against 0.2241 s, `bench\RESULTS.md`), parallel matmul 3.1x slower (0.0680 s against 0.0221 s), sieve 1.5x slower *while keeping its checks* against an explicitly unchecked C++ row (0.0197 s against 0.0134 s), and mandelbrot ties to the microsecond (0.011950 s both).  The whole remaining matmul gap is the **checked index arithmetic** — `vela_mul_range`/`vela_add_range` on the subscript are ~68% of the post-fix time, while removing the bounds check alone is worth **0.029 s** (the ladder in `bench\RESULTS.md`: `0.543 − 0.514`; the earlier `~0.04 s` does not reproduce from that ladder and was dropped rather than re-guessed) — so the number that decides this claim is the one `selfhost/ELISION_PLAN.md` will produce, not this row |
 | **Rust's safety design** | the corpus's refusal cases, `tools\smoke.ps1`, `vm.exe check tests\probes\parallel_alias_*.vel` | no pointers, no `unsafe`, no `free`, arena-only; bounds and overflow checks fire in compiled code *and* in the interpreter, with the same message; a `parallel for` body that writes an array may read it only at its own index — **proved by a run**: the cross-iteration read is refused (`'parallel for' reads 'a' at an index other than the one it writes …`) while the four legal shapes compile and still emit `#pragma omp` |
 | **Python's syntax, strict semantics** | `vm.exe check` | conditions must be `bool`, `//` and `%` are floor, string `+` is refused, a value-producing statement is refused — but a `str` bound to an `int` is still accepted by `check`, and an undeclared type name is caught by an emitter panic rather than by a diagnostic |
-| **pure-bred** | `vm.exe build selfhost\vm.vel` with no `cl.exe` on `PATH` | the compiler's source is Vela, the linker is Vela, there is no Python and no C++ anywhere, and `selfhost_fixpoint` passes — but **`build` still needs a C compiler**: C is the code-generation backend. `run` needs nothing (`vm.exe run` is a built-in interpreter), and the LLVM backend that removes the C compiler from `build` is **started, not finished**: its M1 is met (the same program, through the interpreter, the C backend, and hand-written LLVM IR linked by `clang-cl`, prints identical bytes byte for byte — `tools\llvm-m1.ps1`), and the emitter that would write that IR does not exist yet |
+| **pure-bred** | `vm.exe build selfhost\vm.vel` with no `cl.exe` on `PATH` | **met since 2026-09-24.** The compiler's source is Vela, the linker is Vela, there is no Python and no C++ anywhere, `selfhost_fixpoint` passes — and **`build` no longer needs a C compiler**: it builds the module in process through `libLLVM` (linked into `vm.exe` itself, the way `rustc` carries LLVM), writes the object itself, and calls one external program, `lld-link`. `tools\selfhost-llvm.ps1` is that claim as a gate: it copies `selfhost/vm.vel` out of the tree, builds it with `build` under a `PATH` where `where cl`, `where clang` and `where clang-cl` all find nothing, and requires the compiler it produced to accept and run a program. The C back end is not gone — it is the reference implementation and it is reached by name, `build-c`, which is how the seven `parallel for` rows are built, because LLVM IR has no OpenMP and this project will not ship a loop that says it is parallel while running serially |
 
 Three defects were found by reading the tree against these claims rather than by
 trusting them, and all three are fixed: the compiler could not link any program
@@ -215,10 +215,12 @@ Everything below is the self-hosted compiler.  There is no Python in this
 repository, and no Python in any command on this page.
 
 ```bat
-selfhost\build\vm.exe run   examples\hello.vel   :: interpret it (no C compiler)
-selfhost\build\vm.exe build examples\hello.vel   :: compile it with MSVC/gcc and run
+selfhost\build\vm.exe run   examples\hello.vel   :: interpret it (nothing else needed)
+selfhost\build\vm.exe build examples\hello.vel   :: build it natively and run: libLLVM in
+                                                 :: process + lld-link, no C compiler
 selfhost\build\vm.exe check examples\hello.vel   :: front end only: diagnostics + proofs
-selfhost\build\vm.exe emit-c examples\hello.vel  :: show the generated C11
+selfhost\build\vm.exe emit-c examples\hello.vel  :: show the generated C11 (the C back end)
+selfhost\build\vm.exe build-c examples\hello.vel :: the same program through the C back end
 selfhost\build\vm.exe lex   bench\matmul.vel     :: the token stream
 selfhost\build\vm.exe parse bench\matmul.vel     :: the syntax tree
 
@@ -230,8 +232,9 @@ tests\run_tests.exe struct                        :: only cases whose name match
 
 `tools/build.ps1` is the whole toolchain: bootstrap `vm.exe` from the checked-in
 C, link the compiler's parts with a linker written in Vela, have the compiler
-compile itself, and check the fixpoint — the compiler it built must write the
-same C again.  Its transcript lands in `..\vela-build-report.txt`.
+compile itself through its own LLVM back end — no C compiler runs in that step —
+and check the fixpoint: three generations of the emitted C, all byte-identical and
+all equal to the seed.  Its transcript lands in `..\vela-build-report.txt`.
 
 The test suite is `tests/run_tests.vel` — a Vela program, run by Vela, holding
 the corpus (source files plus `tests/golden/`) to what it must do: what a program
@@ -343,10 +346,12 @@ Two more things about this tree, both measured rather than guessed:
   command can die and need its host restarted.  The driver now reaps the helper
   immediately after the C compiler exits, and `tools\build.ps1` / `tools\smoke.ps1`
   clean up as well.
-* **`vm.exe build` writes its intermediate C and object files under the system temp
-  directory** (`%TEMP%\vela-build\<source name>`), so the directory that holds a
-  program gains exactly one new file: the executable.  C is this implementation's
-  code-generation detail, never an artifact of a Vela program.
+* **No build mode leaves an intermediate beside the program.** `build` writes its
+  `.obj` and the IR it dumps for a reader into `%TEMP%\vela-build\<source name>`,
+  `build-c` writes its `.c` and `.obj` there, and either way the directory that
+  holds a program gains exactly one new file: the executable.  C is one of this
+  implementation's two code-generation back ends and LLVM IR is the other, and
+  neither is an artifact of a Vela program.
 
 ## Self-hosting
 
@@ -359,7 +364,7 @@ C++), and Vela is explicit about the stages:
 | **1** | `selfhost/vela.vel` — Vela's **lexer written in Vela** | working; token-for-token identical to stage 0 on every file in this repo, including its own source |
 | **2** | **parser** in Vela, linked into `selfhost/vm.vel` | working: syntax-tree output identical to stage 0 on every `.vel` file, including its own source |
 | **2.5** | **interpreter** in Vela (`selfhost/parts/resolve.vel`, `eval.vel`) | working: `vm.exe run file.vel` executes a program with no Python and no C compiler in the loop, and every program in the corpus prints exactly what the compiled twin prints |
-| **3** | C11 emitter in Vela (`selfhost/parts/emit.vel`) and its own driver: `vm.exe emit-c file.vel`, `vm.exe build file.vel` | working: the C it writes means the same thing as stage 0's did on every program in the corpus; it **compiles itself** (`vm.exe build selfhost/vm.vel` → `vm_by_vela.exe`, byte-identical C, fixed point when it compiles the compiler again); and `vm.exe build` **drives the host's C compiler itself**, so one binary is the whole toolchain |
+| **3** | C11 emitter in Vela (`selfhost/parts/emit.vel`) and its own driver: `vm.exe emit-c file.vel`, `vm.exe build-c file.vel` — and, since the LLVM back end was promoted, `vm.exe build file.vel` for the back end that needs no C compiler | working: the C it writes means the same thing as stage 0's did on every program in the corpus; it **compiles itself** (`vm.exe build-c selfhost/vm.vel` → `vm_by_vela.exe`, byte-identical C, fixed point when it compiles the compiler again); and `vm.exe build-c` **drives the host's C compiler itself**, so one binary is the whole C toolchain.  `vm.exe build` is the same job through `libLLVM` in process and `lld-link`, with no C compiler at all — that is the default now, and `build-c` is what the seven `parallel for` rows and the fixpoint's emitted C are built by |
 | **4** | the **checker** in Vela (`selfhost/parts/check.vel`), then stage 0 **out of the tree** | **done**: `selfhost/parts/check.vel` carries every verdict stage 0 had — the last differential run put every program *and every reject case* in the tree to both checkers and got **70/70 agreement, 42 of them byte for byte, 0 verdict differences**.  With that certified, the test goldens were frozen and **the Python front end was deleted**: `vela/` (lexer, parser, checker, emitter, CLI), the browser IDE, the Python build tools (`rebuild.py`, `bootstrap.py`, `link_selfhost.py`), the Python test suites and the frozen indentation front end in `tools/legacy/`.  `check` runs before every `emit-c`, `run` and `build`, so the surviving front end refuses what it must instead of emitting C for it |
 | **5** | foreign functions: declared `extern c` bindings to **C** libraries | **working, in the small shape**: the declaration *is* the C prototype (no header, no library name, and the declared name is the symbol the back end calls), the types are scalars (`int`/`i32`/`u8`/`float`/`bool`, and `-> None` for a C `void`), and `pure` is the user's word for a C function with no side effects.  The checker refuses where it cannot describe the boundary honestly, at the declaration (`'extern c' parameter 's' has type str`; an array and a struct too — which is why there are no foreign methods) **and at the call site**: an argument crosses only as the kind the parameter declares, with the one exception of an int constant that fits, so `abs(1.5)` and `abs(int_value)` are `vela: type error` at the line of the call rather than a conversion the C compiler would make silently; arity is the resolver's verdict, and the interpreter has no foreign call at all (`refuse-interp` asserts it).  What is deliberately left out — `extern c "lib" { ... }` blocks, `cstr`, `(T*, N)` arrays, `extern struct`, variadics, callbacks, unsigned wider than `u8` — is `DESIGN.md` §9.5 |
 
@@ -448,21 +453,29 @@ representation, not of the compiler.
 selfhost\build\vm.exe build tools\link_selfhost.vel  :: build the linker
 tools\link_selfhost.exe                              :: regenerate selfhost/vm.vel
 tools\link_selfhost.exe --check                      :: is it up to date?
-selfhost\build\vm.exe build selfhost\vm.vel          :: the compiler compiles itself
+selfhost\build\vm.exe build selfhost\vm.vel          :: the compiler compiles itself,
+                                                     :: through its own LLVM back end
 selfhost\build\vm.exe parse bench\matmul.vel         :: the tree, from Vela
-selfhost\build\vm.exe lex   selfhost\vm.vel          :: the tokens (74115 of them)
+selfhost\build\vm.exe lex   selfhost\vm.vel          :: the tokens
 selfhost\build\vm.exe run   tests\build\recursion_fib.vel
 ```
 
-**The compiler compiles itself.** The C11 back end is complete enough that the
-program in `selfhost/vm.vel` is a program it can translate, and the build script
-checks the consequence — the C written by the compiler it built is the C that
+**The compiler compiles itself.** Both back ends are complete enough that the
+program in `selfhost/vm.vel` is a program they can translate, and both are held to
+the same consequence — the C written by the compiler they built is the C that
 built it:
 
 ```bat
-selfhost\build\vm.exe build selfhost\vm.vel   :: -> selfhost\vm.c + selfhost\vm.exe
-selfhost\vm.exe emit-c selfhost\vm.vel        :: must equal selfhost\vm.c, byte for byte
+selfhost\build\vm.exe build selfhost\vm.vel   :: -> selfhost\vm.exe (LLVM path, no cl.exe)
+selfhost\build\vm.exe emit-c selfhost\vm.vel  :: -> the C, on stdout
+selfhost\vm.exe emit-c selfhost\vm.vel        :: must equal the seed, selfhost\build\vm.c,
+                                              :: byte for byte
 ```
+
+`tools\build.ps1` checks exactly that: three generations of the emitted C — the
+checked-in seed, the compiler it promoted, and the compiler that compiler built —
+all byte-identical.  The fixpoint is judged by the **C**, not by executable bytes,
+because a PE timestamp makes two builds of one program differ.
 
 That is not hypothetical. The first self-hosted build compiled, ran, and printed
 `\` wherever a newline belonged: the emitter wrote the **raw source text** of a

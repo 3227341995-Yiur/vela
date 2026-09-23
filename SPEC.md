@@ -400,8 +400,11 @@ The checker accepts it only if **all** of these hold:
 
 Anything else produces a safety error that names the reason, rather than a
 `#pragma omp parallel for` handed to the C compiler in the hope that the writes do
-not collide: the pragma is emitted only for a loop these rules admitted, and the
-build passes `/openmp` (or `-fopenmp`) only when the emitted C carries one. (The
+not collide: the pragma is emitted only for a loop these rules admitted, and
+`build-c` passes `/openmp` (or `-fopenmp`) only when the emitted C carries one.
+**`build` — the default — does not compile a `parallel for` at all**: it refuses
+it by name, because LLVM IR has no OpenMP and serialising the loop silently is the
+outcome this rule exists to prevent. (The
 C++ twin of the matmul benchmark in `bench/matmul.cpp` shows the failure mode this
 rule prevents: with the inner indices hoisted out of the parallel body, it
 silently produces garbage.)
@@ -476,11 +479,20 @@ against the Python front end that no longer exists, are in `DESIGN.md` §7.
 
 Everything the compiler does is reachable from its own command line, which §11
 lists: `lex`, `count`, `parse` and `nodes` for the front end's own view, `check`
-for the verdicts, `emit-c` and `build` for the C and the binary, `run` for the
+for the verdicts, `emit-c` for the C, `build` for the binary, `run` for the
 interpreter. A test that wants the compiler's opinion of a program *and* the
 program's own output runs two modes and compares them, which is what the corpus
 in `tests/run_tests.vel` does: its `run` cases require the interpreted and the
 compiled program to print the same thing.
+
+**There are two back ends, and `build` is the one that does not need a C
+compiler.** `build` emits LLVM IR, builds the object in process — `libLLVM` is
+linked into `vm.exe` itself — and links it with `lld-link`. No C compiler is
+started, no `.c` and no `.ll` is left anywhere the user looks, and there is no
+fallback: a program the LLVM back end refuses is refused, with the reason. The C
+back end is the reference implementation, it stays in the tree, and it is reached
+by name — `build-c` — and never by accident. §11 lists both and says which
+constructs each one accepts.
 
 ---
 
@@ -495,30 +507,76 @@ selfhost\build\vm.exe parse  file.vel    the syntax tree, in the canonical dump 
 selfhost\build\vm.exe nodes  file.vel    the raw node pool, one line per node
 selfhost\build\vm.exe check  file.vel    refuse the program if it is not allowed to exist
 selfhost\build\vm.exe emit-c file.vel    the C11 the program compiles to, on stdout
+selfhost\build\vm.exe emit-llvm file.vel the LLVM IR the program compiles to, on stdout
 selfhost\build\vm.exe run    file.vel [program arguments...]
                                          interpret the program
 selfhost\build\vm.exe build  file.vel [runtime-dir]
-                                         emit the C and hand it to the host's C compiler,
-                                         producing file.c and file.exe beside the source
+                                         build it through libLLVM in process and link it
+                                         with lld-link: no C compiler is started, and
+                                         file.exe is the only product
+selfhost\build\vm.exe build-c file.vel [runtime-dir] [extra-link]
+                                         the C back end: emit the C and hand it to the
+                                         host's C compiler, producing file.exe beside
+                                         the source (the C goes to the build scratch)
+selfhost\build\vm.exe build-llvm file.vel [runtime-dir]
+                                         the same path as `build`, under the name the
+                                         gates and the LLVM plan use
 ```
 
-* **No mode has options**, with one exception: `build`'s optional second argument
-  is the directory holding `vela_runtime.h` — `runtime` by default, handed to the
-  C compiler as its include directory. There is no `-O`, no `-o`, no
-  `--fast-int`, no `--no-omp`.
+* **No mode has options**, with one exception: the optional argument after the
+  file is the directory holding `vela_runtime.h` — `runtime` by default, handed to
+  the C compiler as its include directory and used by `build` to find
+  `vela_llvm_runtime.obj`. `build-c` takes a second one, a string appended to the
+  C compiler's command line, which only `tools\build.ps1` passes: it is how the
+  compiler links its own dependencies into the `vm.exe` it is building. There is
+  no `-O`, no `-o`, no `--fast-int`, no `--no-omp`.
 * `check` prints `ok` and exits 0 when the program is accepted, and writes the
-  diagnostic to stderr and exits non-zero when it is refused. `run` and `build`
-  run the same check first, so no mode emits or executes a program the checker
-  would refuse.
+  diagnostic to stderr and exits non-zero when it is refused. `run`, `build` and
+  `build-c` run the same check first, so no mode emits or executes a program the
+  checker would refuse.
 * `run` hands the program its arguments: `arg(0)` is the source path and
   `argc() - 1` is the number of arguments after it.
-* `build` is the whole toolchain in one binary — no driver script, no Python, and
-  no second process other than the C compiler. It emits the C by re-entering
-  itself in `emit-c` mode (so the back end keeps one output target and the shell
-  does the redirecting), finds MSVC through `VELA_VCVARS` or the standard install
-  locations, and falls back to `$VELA_CC`, `cc`, `gcc` or `clang`. It asks the C
-  it just wrote whether that C contains a `#pragma omp` and passes `/openmp` (or
+* **`build` starts exactly one external program — a linker — and no compiler.**
+  `libLLVM` is a load-time dependency of `vm.exe` itself, so the code generator is
+  the compiler's own library, the way `rustc` carries LLVM; the module is built
+  and verified in process, the object file is written by the compiler, and the
+  link line names one program, `lld-link`. A program that itself calls the LLVM
+  shim (the compiler is the only one) links that object and `LLVM-C.lib` too, and
+  the driver knows because it asks the module it just wrote.
+* **`build-c` is the C back end, and it is the whole toolchain in one binary** —
+  no driver script, no Python. It emits the C by re-entering itself in `emit-c`
+  mode (so the back end keeps one output target and the shell does the
+  redirecting), finds MSVC through `VELA_VCVARS` or the standard install
+  locations, and falls back to `$VELA_CC`, `cc`, `gcc` or `clang`. It asks the C it
+  just wrote whether that C contains a `#pragma omp` and passes `/openmp` (or
   `-fopenmp`) only when it does.
+* **Which constructs each back end accepts is a fact about this implementation,
+  not a promise about the language.** The LLVM back end compiles ordinary
+  programs — arithmetic with its checks, `if`/`while`/`for`, functions and
+  recursion, structs and methods, arrays and indexing, strings and their builtins,
+  `extern c` — and it does **not** compile `parallel for`, deliberately and
+  permanently: LLVM IR has no OpenMP, emitting the runtime ABI is out of scope,
+  and a loop that says it is parallel while running serially is the one failure
+  mode this project has promised never to ship. Those programs are compiled by
+  `build-c`, and `tests/cases.txt` marks the seven rows that say so (`run-c`)
+  with a comment naming the reason, beside the ledger in
+  `tests/llvm-refusals.txt` that `tools\llvm-column.ps1` holds both halves of.
+* **An install is three files, and two of them are not optional.** `vm.exe`
+  carries `libLLVM` inside it, so **`LLVM-C.dll` is a load-time dependency of the
+  compiler itself**: a copy of `vm.exe` in a directory without the DLL does not
+  start at all — `STATUS_DLL_NOT_FOUND` (exit `0xC0000135`) before `main`, with
+  nothing on either stream mentioning LLVM, so every later check would fail
+  naming the wrong problem. `vela_llvm_runtime.obj` is the second: `build` links
+  it into every program it builds, and it is looked for beside the compiler.
+  `tools\build.ps1` copies both beside every `vm.exe` it writes and refuses to
+  finish without them, and `tools\smoke.ps1` asserts them. This is the same shape
+  a Rust toolchain has with its own `libLLVM` — the library lives with the
+  compiler, not with the user's program.
+  **`build`'s product needs neither.** The executable `build` writes is linked
+  against the C runtime and nothing else: it starts and runs on a machine with no
+  LLVM, no DLL and no C compiler. Measured: `vm.exe build p.vel` in a directory
+  that is not the repository exits 0, the program runs, and the directory holds
+  `p.vel` and `p.exe` and nothing else.
 * A missing mode, or one the compiler does not know, prints that list and exits
   non-zero.
 * The sources also carry a **`debug` mode** — the same interpreter, stopped, with
@@ -533,8 +591,18 @@ selfhost\build\vm.exe build  file.vel [runtime-dir]
 
 Building the compiler itself is `tools\build.ps1` (§10, `DESIGN.md` §7): one
 command that bootstraps the compiler from the checked-in C, links the parts,
-compiles the compiler with the compiler, and checks the result. The suite is
-`tests\run_tests.vel`, a Vela program built by that same compiler.
+builds the compiler with the compiler — through the compiler's own LLVM back end,
+so no C compiler runs in that step — and checks three generations of the emitted
+C against each other and against the seed. The suite is `tests\run_tests.vel`, a
+Vela program built by that same compiler.
+
+§12 is about the boundary `extern c` draws, and one thing about it belongs here
+because it is a property of *this* implementation and was measured: a declared
+name that collides with one the LLVM back end already emits for an operator
+(`sqrt` for `**`, `pow`, `floor`, `fabs`) is the **same symbol**, not a second
+one. Reusing the declaration is what keeps the call on the C library; a collision
+with a different type is refused rather than renamed, because one name cannot
+carry two signatures.
 
 ---
 
@@ -550,7 +618,10 @@ extern c pure def sqrt(x: float) -> float    # `double sqrt(double)`, no side ef
 
 * **The declaration is the prototype.** There is no header to include and no
   library to name, and the declared name *is* the C symbol: the back end calls it
-  by its bare name, with none of the `vl_` prefix a Vela function gets.
+  by its bare name, with none of the `vl_` prefix a Vela function gets. A declared
+  name that the back end already emits for an operator is the same symbol and
+  reuses that declaration (`sqrt`, `pow`, `floor`, `fabs`); a declared name whose
+  type disagrees with an existing one is refused, not renamed.
 * **The types are scalars.** `int` is C's `long long`, `i32` C's `int`, `u8` C's
   `unsigned char`, `float` C's `double`, `bool` C's `bool`; `-> None` is C's
   `void` result. A `str`, an array and a struct are refused where they are

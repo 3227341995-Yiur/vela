@@ -4,8 +4,8 @@
 
 <!--
 源文件 : STATUS.md
-源文件字节 : 32831
-源文件 SHA256 : 4bafb7eb5e2b36adead46f1a157168530b02f8a717ae51283d8649c0a33b447e
+源文件字节 : 34068
+源文件 SHA256 : 23e5d78fc3cc5988df7240011b5a0a689f716c2e584fc845276897aa717767ad
 翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。

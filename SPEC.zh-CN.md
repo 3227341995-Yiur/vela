@@ -4,9 +4,9 @@
 
 <!--
 源文件 : SPEC.md
-源文件字节 : 30228
-源文件 SHA256 : efd360e1ebbab421005cf2ac7a7d7a54c41872828b8dfb5c3eaaaae91aed6741
-翻译日期 : 2026-09-24
+源文件字节 : 35428
+源文件 SHA256 : a6f0fe435acbb13fd85c7e4374acdb58c0e24598d05e80908e302f07f8b168c1
+翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -417,10 +417,16 @@ Vela 0.1 没有模块系统——而 `vm.exe build selfhost/vm.vel` 把它变回
 阶段，以及每一个阶段是拿什么对已经不复存在的 Python 前端认证的，都在 `DESIGN.md` §7。
 
 编译器所做的一切都能从它自己的命令行到达，§11 列出了这些：`lex`、`count`、`parse` 和
-`nodes` 用于前端自己的视图，`check` 用于各种判定，`emit-c` 和 `build` 用于 C 和二进制，
-`run` 用于解释器。一个既想要编译器对某程序的看法、*又*想要该程序自己输出的测试，会运行
-两个模式并比较它们，这正是 `tests/run_tests.vel` 里的语料所做的：它的 `run` 用例要求被
-解释和被编译的程序打印同样的东西。
+`nodes` 用于前端自己的视图，`check` 用于各种判定，`emit-c` 用于它写出的 C，`build` 用于原生二进制，
+`run` 用于解释器。一个既想要编译器对某程序的看法、*又*想要该程序自己输出的测试，会运行两个模式并
+比较它们，这正是 `tests/run_tests.vel` 里的语料所做的：它的 `run` 用例要求被解释和被编译的程序打印
+同样的东西。
+
+**有两个后端，而 `build` 是那个不需要 C 编译器的。** `build` 发出 LLVM IR，在进程内构建目标
+文件——`libLLVM` 就链接在 `vm.exe` 自己里面——再用 `lld-link` 链接它。它不启动任何 C 编译器，
+用户看得到的地方不会留下 `.c`、也不会留下 `.ll`，而且没有回退：LLVM 后端拒绝的程序就是被拒绝，
+并给出理由。C 后端是参考实现，它留在树里，而且是按*名字*到达的——`build-c`——永远不会被意外用到。
+§11 两个都列，并说明各自接受哪些构造。
 
 ---
 
@@ -435,26 +441,56 @@ selfhost\build\vm.exe parse  file.vel    the syntax tree, in the canonical dump 
 selfhost\build\vm.exe nodes  file.vel    the raw node pool, one line per node
 selfhost\build\vm.exe check  file.vel    refuse the program if it is not allowed to exist
 selfhost\build\vm.exe emit-c file.vel    the C11 the program compiles to, on stdout
+selfhost\build\vm.exe emit-llvm file.vel the LLVM IR the program compiles to, on stdout
 selfhost\build\vm.exe run    file.vel [program arguments...]
                                          interpret the program
 selfhost\build\vm.exe build  file.vel [runtime-dir]
-                                         emit the C and hand it to the host's C compiler,
-                                         producing file.c and file.exe beside the source
+                                         build it through libLLVM in process and link it
+                                         with lld-link: no C compiler is started, and
+                                         file.exe is the only product
+selfhost\build\vm.exe build-c file.vel [runtime-dir] [extra-link]
+                                         the C back end: emit the C and hand it to the
+                                         host's C compiler, producing file.exe beside
+                                         the source (the C goes to the build scratch)
+selfhost\build\vm.exe build-llvm file.vel [runtime-dir]
+                                         the same path as `build`, under the name the
+                                         gates and the LLVM plan use
 ```
 
-* **没有模式带选项**，只有一个例外：`build` 的可选第二参数是存放 `vela_runtime.h` 的目录
-  ——默认是 `runtime`，作为包含目录交给 C 编译器。没有 `-O`，没有 `-o`，没有
-  `--fast-int`，没有 `--no-omp`。
-* 当程序被接受时，`check` 打印 `ok` 并以 0 退出；当它被拒绝时，把诊断写到 stderr 并以
-  非零退出。`run` 和 `build` 先运行同一个检查，所以没有任何模式会输出或执行一个检查器
-  会拒绝的程序。
+* **没有模式带选项**，只有一个例外：文件名之后那个可选参数是存放 `vela_runtime.h` 的目录
+  ——默认是 `runtime`，它既作为包含目录交给 C 编译器，也用来让 `build` 找到
+  `vela_llvm_runtime.obj`。`build-c` 还多接受一个参数：追加到 C 编译器的命令行后面的一个字符串，
+  只有 `tools\build.ps1` 会传它，用来把编译器自己的依赖链接进它正在构建的那个 `vm.exe`。没有
+  `-O`，没有 `-o`，没有 `--fast-int`，没有 `--no-omp`。
+* 当程序被接受时，`check` 打印 `ok` 并以 0 退出；当它被拒绝时，把诊断写到 stderr 并以非零退出。
+  `run`、`build` 和 `build-c` 都先运行同一个检查，所以没有任何模式会输出或执行一个检查器会拒绝的
+  程序。
 * `run` 把参数交给程序：`arg(0)` 是源文件路径，`argc() - 1` 是它之后的参数个数。
-* `build` 是装在一个二进制里的整条工具链——没有驱动脚本，没有 Python，除了 C 编译器之外
-  没有第二个进程。它通过以 `emit-c` 模式重新进入自己来输出 C（这样后端只有一个输出目标，
-  重定向由 shell 来做），通过 `VELA_VCVARS` 或标准安装位置找到 MSVC，并回退到
-  `$VELA_CC`、`cc`、`gcc` 或 `clang`。它询问它刚写出的那份 C 里面有没有
-  `#pragma omp`，并且只在有时才传 `/openmp`（或 `-fopenmp`）。
-* 缺少模式，或给了一个编译器不认识的模式，会打印那个列表并以非零退出。
+* **`build` 只启动一个外部程序——一个链接器——而不启动编译器。** `libLLVM` 是 `vm.exe` 自己的
+  载入期依赖，所以代码生成器就是这个编译器自己的库，正如 `rustc` 带着 LLVM 那样；模块在进程内构建
+  并验证，目标文件由编译器自己写出，链接命令行上只出现一个程序：`lld-link`。如果被编译的程序自己
+  调用了 LLVM shim（只有编译器是这样），链接行上还会多出那个目标文件和 `LLVM-C.lib`，而驱动之所
+  以知道，是因为它去问了自己刚写出的那个模块。
+* **`build-c` 是 C 后端，它把整条工具链装在一个二进制里**——没有驱动脚本，没有 Python。它通过以
+  `emit-c` 模式重新进入自己来输出 C（这样后端只有一个输出目标，重定向由 shell 来做），通过
+  `VELA_VCVARS` 或标准安装位置找到 MSVC，并回退到 `$VELA_CC`、`cc`、`gcc` 或 `clang`。它询问它
+  刚写出的那份 C 里面有没有 `#pragma omp`，并且只在有时才传 `/openmp`（或 `-fopenmp`）。
+* **每个后端接受哪些构造是关于这个实现的事实，不是关于语言的承诺。** LLVM 后端编译普通程序——
+  带检查的算术、`if`/`while`/`for`、函数与递归、结构与方法、数组与下标、字符串及其内建函数、
+  `extern c`——它**不**编译 `parallel for`，这是有意且永久的：LLVM IR 没有 OpenMP，发出那套运行
+  时 ABI 超出范围，而一个自称并行却串行执行的循环是这个项目承诺永不发布的唯一失败模式。那些程序由
+  `build-c` 编译，而 `tests/cases.txt` 用 `run-c` 标出那七行，并在旁边写明原因；另一半是
+  `tests/llvm-refusals.txt` 里那份账本，`tools\llvm-column.ps1` 同时掌管两侧。
+* **一次安装是三个文件，其中两个不是可选的。** `vm.exe` 内部带着 `libLLVM`，所以
+  **`LLVM-C.dll` 是这个编译器自己的载入期依赖**：一个放在没有这个 DLL 的目录里的 `vm.exe` 根本
+  起不来——`STATUS_DLL_NOT_FOUND`（退出码 `0xC0000135`）发生在 `main` 之前，两个输出流上都不会
+  提到 LLVM，于是之后每一个检查都会失败并报出错误的问题。`vela_llvm_runtime.obj` 是第二个：
+  `build` 把它链接进它构建的每一个程序，并且在编译器旁边找它。`tools\build.ps1` 把它写出的每个
+  `vm.exe` 旁边都放上这两个文件，缺了就拒绝结束；`tools\smoke.ps1` 断言它们在那里。这与 Rust
+  工具链带着自己的 `libLLVM` 是同一种形状——库待在编译器身边，而不是待在用户的程序身边。
+  **`build` 的产物两个都不需要。** `build` 写出的可执行文件只链接 C 运行时，别的什么都不链接：
+  它在一台既没有 LLVM、也没有那个 DLL、也没有 C 编译器的机器上照样启动并运行。实测：在一个不是仓库
+  的目录里执行 `vm.exe build p.vel` 退出 0，程序能跑，而那个目录里只有 `p.vel` 和 `p.exe`。
 * 源码里还带一个 **`debug` 模式**——同一个解释器，停下来，事件在 **stderr** 上，
   命令从调用者指定目录里的文件读取
   （`vm.exe debug file.vel <cmddir> [program arguments...]`）。
@@ -463,9 +499,10 @@ selfhost\build\vm.exe build  file.vel [runtime-dir]
   以及 `vars` 在一个局部变量明明在作用域内的停点上报告 `locals 0`。本文档记录该模式存在
   以及它拒绝承诺什么；面向编辑器的判定是 §10.6 的。
 
-构建编译器自己本身是 `tools\build.ps1`（§10，`DESIGN.md` §7）：一条命令从签入的 C 引导出
-编译器、链接各个部分、用编译器编译编译器、并检查结果。测试套件是 `tests\run_tests.vel`，
-一个由同一个编译器构建的 Vela 程序。
+构建编译器自己本身是 `tools\build.ps1`（§10，`DESIGN.md` §7）：一条命令从签入的 C 引导出编译器、
+链接各个部分、用编译器自己的 LLVM 后端构建编译器——那一步不运行任何 C 编译器——并检查三代发出的 C
+彼此逐字节相同、且等于那个种子。测试套件是 `tests\run_tests.vel`，一个由同一个编译器构建的 Vela
+程序。
 
 ---
 
@@ -479,7 +516,9 @@ extern c pure def sqrt(x: float) -> float    # `double sqrt(double)`, no side ef
 ```
 
 * **声明就是原型。** 没有头文件可包含，没有库可命名，而被声明的名字*就是* C 符号：
-  后端用它的裸名调用它，没有 Vela 函数会得到的 `vl_` 前缀。
+  后端用它的裸名调用它，没有 Vela 函数会得到的 `vl_` 前缀。如果声明的名字与后端为某个运算符
+  已经发出的名字相同，那就是同一个符号，会复用那份声明（`sqrt`、`pow`、`floor`、`fabs`）；
+  如果声明的类型与已有声明不一致，就拒绝它而不是改名。
 * **类型是标量。** `int` 是 C 的 `long long`，`i32` 是 C 的 `int`，`u8` 是 C 的
   `unsigned char`，`float` 是 C 的 `double`，`bool` 是 C 的 `bool`；`-> None` 是 C 的
   `void` 结果。一个 `str`、一个数组和一个结构体在它们被写下的地方、在声明的那一行被拒绝

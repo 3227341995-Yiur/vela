@@ -218,14 +218,33 @@ function Judge-One {
 }
 
 # --------------------------------------------------- corpus one: tests\cases.txt
+#
+# **`run` *and* `run-c`**, and the second half is not a detail.  This script judges a row
+# by asking the LLVM back end to build it: a `run` row is one the corpus expects the LLVM
+# path to handle, and a `run-c` row is one the corpus expects the *C* path to handle
+# because the LLVM back end refuses it by name.  The refusal ledger is the other side of
+# that, so both kinds belong in the sweep -- and for one round they did not: this reader
+# matched `^run` with a strict single space, the seven `parallel for` rows moved to `run-c`
+# when `build` became the LLVM path, and the sweep silently lost seven rows.  It did not
+# pass; it *failed*, and that is how it was caught:
+#
+#     parallel_for_correct   LEDGER-ENTRY-WITH-NO-CASE
+#     ... (all seven)
+#     stale ledger 7
+#
+# which is the ledger doing its job: an entry that describes a program this run never saw
+# is decoration, and this script says so rather than counting it as verified.  (`native` and
+# `panic` rows are deliberately *not* here: they are not in the refusals ledger's scope,
+# and their own suites cover them -- `case_run`/`case_panic` in `tests\run_tests.vel`, which
+# is where the C path and the LLVM path are one row apart.)
 $cases = @()
 foreach ($line in (Get-Content -LiteralPath $casesFile)) {
-    if ($line -match '^\s*run\s+(\S+)\s+(\S+)\s*$') {
-        $cases += [pscustomobject]@{ Name = $Matches[1]; Path = $Matches[2] }
+    if ($line -match '^\s*(run|run-c)\s+(\S+)\s+(\S+)\s*$') {
+        $cases += [pscustomobject]@{ Name = $Matches[2]; Path = $Matches[3]; Mode = $Matches[1] }
     }
 }
 Say ''
-Say ("== the corpus: {0} 'run' row(s) from tests\cases.txt" -f $cases.Count)
+Say ("== the corpus: {0} 'run'/'run-c' row(s) from tests\cases.txt" -f $cases.Count)
 foreach ($c in $cases) {
     Judge-One -Name $c.Name -Source (Join-Path $root ($c.Path -replace '/', '\')) `
               -Ledger $refusals.Table -IsGapLedger $false -ScratchRoot (Join-Path $scratch 'corpus')
