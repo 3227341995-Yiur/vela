@@ -171,6 +171,68 @@ object VelaTargets {
         VelaSignatures.parameterNamesInSignature(name, signature)
 
     /**
+     * The type **written beside the binding** of [name] that is in scope at [at], or null
+     * when no local binding of that name is in scope there.
+     *
+     * This answers the question `VelaNames.structTypeOf` could not, for the most ordinary
+     * way a local is written down in this language:
+     *
+     *     mut p: Vec2 = Vec2(3.0, 4.0)
+     *     q: Vec2 = Vec2(1.0, 2.0)
+     *     print(p.dot(q))        -- `p.` completed nothing, `p.dot(` opened no popup
+     *
+     * `VelaModel` declares structs, defs, fields, methods and parameters and **no locals
+     * at all**, so a binding is invisible to the model reader and `p.` resolved to nothing
+     * -- 29 after-dot positions and 6 parameter-info calls in the corpus were positions
+     * `PlatformEntry` could only count.  The type is in the file's own characters
+     * (`p: Vec2`), the tree records it on the `decl` node, and this reads it from there:
+     * the model path reads the same tree, so the two cannot disagree about a declaration.
+     *
+     * **Inner-first**, because a binding in an inner block shadows an outer one -- the
+     * compiler's rule (SPEC.md 6.2), the rule [declarationFor] case 3 follows for uses,
+     * and now the rule `VelaNames.structTypeOf` inherits by asking this.
+     *
+     * Three answers, and the caller has to tell them apart:
+     *
+     *   * a type, when the binding writes one (`q: Vec2`);
+     *   * the **empty string**, when a binding of that name is in scope but writes no
+     *     type.  The compiler refuses such a file -- `binding 'n' has no type annotation`
+     *     -- so this is a file being typed, which is exactly when a reader has to be
+     *     careful: the local still shadows whatever the outer name meant, so the honest
+     *     answer is "the file does not say" and the caller must not fall back to a
+     *     parameter's type of the same name;
+     *   * null, when no binding of that name is in scope, which is what lets the
+     *     parameter and struct-name readings below it run.
+     *
+     * A `for` variable is deliberately **not** read here: `for i in range(...)` writes no
+     * type, and the model's own answer for such a receiver is nothing either, so reading
+     * it would change no answer while adding a scope rule (the variable is not in scope
+     * in its own `range(...)` header) that nothing has measured.
+     */
+    fun localBindingType(text: CharSequence, at: Int, name: String): String? {
+        val src = text.toString()
+        val tree = VelaSyntaxParser.parse(src)
+        val chain = chainAt(tree, src, at) ?: return null
+        for (node in chain.reversed()) {
+            if (node.kind != VelaNodeKind.BLOCK && node.kind != VelaNodeKind.MODULE_BLOCK) continue
+            var best = -1
+            var bestType = ""
+            for (child in node.children) {
+                if (child.kind != VelaNodeKind.DECL) continue
+                if (child.name != name) continue
+                val start = sourceStart(tree, child, src)
+                if (start < 0 || start >= at) continue   // declared after this use
+                if (start > best) {
+                    best = start
+                    bestType = child.typeText
+                }
+            }
+            if (best >= 0) return bestType
+        }
+        return null
+    }
+
+    /**
      * The declaration the name at [offset] refers to, or null.
      */
     fun declarationFor(text: CharSequence, offset: Int): VelaTarget? {

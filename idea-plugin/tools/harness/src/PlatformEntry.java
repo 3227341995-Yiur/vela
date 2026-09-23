@@ -133,6 +133,24 @@ import java.util.regex.Pattern;
  * question: **when the platform calls this method with this input, is the answer the
  * declaration gives?**  The evidence says which method was called and with what.
  *
+ * WHAT CHANGED IN 0.1.8, AND WHY THE NUMBERS BELOW MOVED.
+ *
+ *   * **A local binding with a written type is judged, not counted.**  `q: Vec2 = ...`
+ *     is the most ordinary way a local is written in this language, and the model's type
+ *     reader resolved only `self`, parameters and struct names -- so 29 `after-dot`
+ *     positions (row 7) and 6 calls (row 9) were classified `receiver-is-a-local` and
+ *     skipped.  The plugin now reads the tree's own `decl` node
+ *     (`VelaTargets.localBindingType`), those positions moved into the judged families,
+ *     and the class that remains is `receiver-not-a-written-binding`: a receiver whose
+ *     type the dump knows and no binding writes beside the name (a field, a loop
+ *     variable), which the plugin answers nothing for by design.
+ *   * **The fallback half of `findElementForUpdatingParameterInfo` is measured.**  It
+ *     was unreachable code -- the items in `objectsToView` are `ParameterHint`s, so the
+ *     cast to `PsiElement` could never succeed -- and the plugin's popup therefore could
+ *     not survive an edit.  The new `update-rebuilt` family rebuilds the anchor leaf,
+ *     requires the handler to find it again from `objectsToView`, and requires `null`
+ *     when that array is empty.  Every judged call is a position in that family.
+ *
  * THE ORACLES, AND WHY NONE OF THEM IS THE PLUGIN.
  *
  *   oracle 1  `vm.exe parse <file>` -- the compiler's own dump: `def name=F` with
@@ -1147,10 +1165,45 @@ public final class PlatformEntry {
             return best;
         }
 
+        /** The node kinds this file declares this name as, for a skip message. */
+        String kindsOf(String name) {
+            StringBuilder sb = new StringBuilder();
+            for (DNode n : all) {
+                if (!name.equals(n.name())) continue;
+                if (sb.length() > 0) sb.append(" + ");
+                sb.append(n.kind).append(n.attr("type") == null ? "" : " (" + n.attr("type") + ")");
+            }
+            return sb.length() == 0 ? "nothing" : sb.toString();
+        }
+
         /** Is this name declared as a `param` anywhere in this file? */
         boolean hasParam(String name) {
             for (DNode n : all) {
                 if (n.kind.equals("param") && name.equals(n.name())) return true;
+            }
+            return false;
+        }
+
+        /**
+         * Does the file write this name's type **beside the name** — a `param`
+         * (`o: Vec2`) or a `decl` (`q: Vec2 = ...`)?
+         *
+         * This is the question the position classes turn on, and it is not the same as
+         * [declaredType], which also answers for a `field` and a `for` variable.  The
+         * plugin's reader resolves a *binding* — `self`, a parameter, a local with a
+         * written type, a struct's own name — and nothing else: `inner.bump()` where
+         * `inner` is a field of the enclosing struct has a type the dump knows and no
+         * binding to read it from, so it is counted in its own class rather than
+         * demanded of the plugin.  Before 0.1.8 every local was in that class, which is
+         * how 29 after-dot positions and 6 calls became positions the row could not
+         * judge; they are judged from 0.1.8, because `VelaTargets.localBindingType`
+         * reads the same `decl` nodes this asks about.
+         */
+        boolean hasWrittenBinding(String name) {
+            for (DNode n : all) {
+                if (!(n.kind.equals("decl") || n.kind.equals("param"))) continue;
+                if (!name.equals(n.name())) continue;
+                if (n.attr("type") != null && !n.attr("type").isEmpty()) return true;
             }
             return false;
         }
@@ -1456,7 +1509,9 @@ public final class PlatformEntry {
         "lex-unavailable", "crashed",
         "receiver-type-not-written",   // `.` on a receiver the dump writes no type for
         "receiver-not-a-struct",       // the written type is not a struct of this file
-        "receiver-is-a-local",         // a local with a written type: a MEASURED limit of the model
+        "receiver-not-a-written-binding", // the type is the dump's, but no `decl`/`param` writes
+                                       // it beside the name (a field, a loop variable): the plugin
+                                       // reads bindings, and answers nothing here by design
         "insert-not-a-callable",       // an offered element whose insert handler wrote nothing
         "template-names-not-in-spec",  // a builtin's names that SPEC.md section 8 does not document
         "contributor-threw",           // the platform entry point threw on this position
@@ -1467,13 +1522,15 @@ public final class PlatformEntry {
         "lex-unavailable", "crashed",
         "callee-not-a-declared-def",   // a struct constructor, an undeclared name, a method of
                                        // a receiver whose type the dump does not write
-        "receiver-is-a-local",         // `p.dot(q)` where `p` is a local: the model resolves nothing
+        "receiver-not-a-written-binding", // `o.inner.bump()` where `inner` is a field: the type is
+                                       // the dump's, no binding writes it beside the name
         "receiver-on-a-function",
         "method-call-without-receiver",
         "spec-row-documents-no-names",
         "plugin-claims-no-names",      // the plugin's own builtin reader answers null too
         "parameter-list-untrusted",    // the item carries no parameter names, so the popup is disabled by design
         "struct-constructor-popup-closed", // a struct called as a constructor: the popup does not open
+        "rebuilt-anchor-unavailable",  // the stand-in could not produce a leaf the hint is not on
     };
 
     static final String[] SKIP3 = {
@@ -1598,10 +1655,12 @@ public final class PlatformEntry {
      *                 suggested name nothing declares.
      *   `after-dot`   `<receiver>.` at the caret, for the receivers the plugin's own rule
      *                 resolves (`self`, a parameter whose written type is a struct of this
-     *                 file, a struct's own name).  The offer set must be exactly the
-     *                 members `vm.exe parse` lists for that struct: no member missing, no
-     *                 name invented.  The receivers the rule does *not* resolve -- a local
-     *                 with a written type -- are counted in their own class and printed.
+     *                 file, a local binding with a written type, a struct's own name).  The
+     *                 offer set must be exactly the members `vm.exe parse` lists for that
+     *                 struct: no member missing, no name invented.  The receivers the rule
+     *                 does *not* resolve -- a field or a loop variable read as a receiver,
+     *                 whose type the dump knows and no binding writes beside the name -- are
+     *                 counted in their own class and printed.
      *   `insert`      `LookupElement.handleInsert` on the offered elements, in a real
      *                 `InsertionContext` over a real `OffsetMap`: for a callable the
      *                 written text must be the call template whose names are the ones the
@@ -1771,12 +1830,25 @@ public final class PlatformEntry {
                         + d.receiver + ".` has written type `" + type + "`");
                 continue;
             }
-            boolean parameter = w.dump.hasParam(d.receiver);
             boolean self = d.receiver.equals("self") && enclosingStructName(tree1, d.dot) != null;
             boolean structName = d.receiver.equals(struct.name());
-            if (!parameter && !self && !structName) {
-                w.c1.skip("receiver-is-a-local", w.rel + ":" + lineOf(text, d.dot) + " `"
-                        + d.receiver + ".` is a local of type `" + type + "`");
+            // A LOCAL BINDING WITH A WRITTEN TYPE IS A JUDGED POSITION FROM 0.1.8.
+            //
+            // It was the 29-position class this row counted and did not judge, and the
+            // reason was a real hole in the plugin and not a measurement gap: `q: Vec2 =
+            // ...` is the most ordinary way a local is written, and the model's type
+            // reader resolved only `self`, parameters and struct names.  The reader
+            // (`VelaTargets.localBindingType`) now reads the tree's own `decl` node, so
+            // the position is demanded of the plugin like the other three kinds.  The
+            // condition is `hasWrittenBinding`, not the old `!param && !self &&
+            // !structName`, so a receiver that is a *field* or a loop variable -- a type
+            // the dump knows and no binding writes beside a name -- is still counted in
+            // its own class rather than called wrong.
+            if (!w.dump.hasWrittenBinding(d.receiver) && !self && !structName) {
+                w.c1.skip("receiver-not-a-written-binding", w.rel + ":" + lineOf(text, d.dot) + " `"
+                        + d.receiver + ".` has written type `" + type + "` and the file declares it"
+                        + " as " + w.dump.kindsOf(d.receiver) + ", not as a binding with a type"
+                        + " written beside the name");
                 continue;
             }
             List<LookupElement> offered = offers(cc, file, ed, d.dot + 1, w.c1, w);
@@ -2096,16 +2168,22 @@ public final class PlatformEntry {
             }
 
             int receiverParams = cs.receiver == null ? 0 : 1;
-            // The receivers the model resolves, for the skip class below: a local with a
-            // written struct type is the limit this row shares with row 7's after-dot.
+            // The receivers the model resolves, for the skip class below: `self`, a
+            // parameter, a local binding with a written type, a struct's own name.  The
+            // local was the 6-call class this row counted and did not judge until 0.1.8
+            // (`VelaTargets.localBindingType` reads the tree's `decl` node now), and the
+            // class that remains is a receiver whose type the dump knows but no binding
+            // writes beside the name -- `o.inner.bump()`, where `inner` is a field.
             if (cs.receiver != null && !cs.receiver.equals("self")) {
                 String rtype = w.dump.declaredType(cs.receiver);
-                boolean param = w.dump.hasParam(cs.receiver);
+                boolean binding = w.dump.hasWrittenBinding(cs.receiver);
                 boolean structName = rtype != null && w.dump.struct(stripMut(rtype)) != null
                         && stripMut(rtype).equals(cs.receiver);
-                if (!param && !structName && rtype != null && w.dump.struct(stripMut(rtype)) != null) {
-                    w.c2.skip("receiver-is-a-local", w.rel + ":" + line + " `" + cs.receiver + "."
-                            + cs.callee + "(` is a local of type `" + rtype + "`");
+                if (!binding && !structName && rtype != null && w.dump.struct(stripMut(rtype)) != null) {
+                    w.c2.skip("receiver-not-a-written-binding", w.rel + ":" + line + " `" + cs.receiver + "."
+                            + cs.callee + "(` has written type `" + rtype + "` and the file declares it as "
+                            + w.dump.kindsOf(cs.receiver) + ", not as a binding with a type written"
+                            + " beside the name");
                     continue;
                 }
             }
@@ -2268,6 +2346,90 @@ public final class PlatformEntry {
                 }
             }
             if (!anyJudged) continue;
+            rebuiltAnchor(w, real, file, handler, create.items, cs, line, carets.get(0));
+        }
+    }
+
+    /**
+     * The SECOND half of `findElementForUpdatingParameterInfo`, measured -- the half that
+     * was unreachable code until 0.1.8.
+     *
+     * The platform re-resolves the anchor after an edit, so the leaf it hands back is a new
+     * object carrying none of the user data the old one had; the items that were shown come
+     * back in `objectsToView`.  The 0.1.7 handler read that array as `(shown[0] as?
+     * PsiElement)`, and its items are `ParameterHint`s -- never PSI elements -- so the cast
+     * could not succeed and the branch could not run: the popup closed after any edit, and
+     * the code that looked like the safety net for that was a fossil.  The handler now looks
+     * for the item's own `(` again and puts the hint back on the leaf it finds, which is what
+     * makes the popup survive the edit.
+     *
+     * Nothing about this is asserted.  The leaf is rebuilt ([Fil.rebuiltLeafAt]), the handler
+     * is asked for it, and then `updateParameterInfo` is given what came back and asked to
+     * set the caret's own argument index -- which it can only do if the hint is on the
+     * element it was handed.  And the falsification runs too: with `objectsToView` empty the
+     * handler must answer *null*, because there is then nothing that says which call the
+     * element belonged to.  A handler that invented one would be drawing a hint for a call
+     * it was never shown.
+     */
+    private void rebuiltAnchor(FileWork w, Fil real, PsiFile file, VelaParameterInfoHandler handler,
+                               Object[] items, CallSite cs, int line, int caret) {
+        String where = w.rel + ":" + line + " `" + cs.callee + "`";
+        PsiElement rebuilt = real.rebuiltLeafAt(cs.openParen);
+        if (rebuilt == null) {
+            w.c2.skip("rebuilt-anchor-unavailable", w.rel + ":" + line + " `" + cs.callee
+                    + "` has no leaf at its `(` after the rebuild");
+            return;
+        }
+        // THE FALSIFICATION FIRST, because it also proves the stand-in did its job: with
+        // nothing shown, nothing says which call this leaf belonged to, so the honest
+        // answer is null -- and a non-null answer here would mean the rebuilt leaf still
+        // carried the hint, which would make the positive check below measure nothing.
+        UpdCtx bare = new UpdCtx(file, caret, cs.openParen, rebuilt);
+        bare.objectsToView = null;
+        PsiElement carried;
+        try {
+            carried = handler.findElementForUpdatingParameterInfo(bare.proxy());
+        } catch (Throwable t) {
+            w.c2.wrong("update-rebuilt", "  " + where + " findElementForUpdatingParameterInfo threw"
+                    + " with nothing in objectsToView: " + oneLine(String.valueOf(t)));
+            return;
+        }
+        if (carried != null) {
+            w.c2.skip("rebuilt-anchor-unavailable", w.rel + ":" + line + " `" + cs.callee
+                    + "` the rebuilt leaf answers with nothing in objectsToView, so the rebuild"
+                    + " did not take");
+            return;
+        }
+        UpdCtx upd = new UpdCtx(file, caret, cs.openParen, rebuilt);
+        upd.objectsToView = items;
+        w.c2.ran("update-rebuilt");
+        PsiElement back;
+        try {
+            back = handler.findElementForUpdatingParameterInfo(upd.proxy());
+        } catch (Throwable t) {
+            w.c2.wrong("update-rebuilt", "  " + where + " findElementForUpdatingParameterInfo"
+                    + " threw once the anchor leaf was rebuilt: " + oneLine(String.valueOf(t)));
+            return;
+        }
+        if (back == null) {
+            w.c2.wrong("update-rebuilt", "  " + where + " the anchor leaf was rebuilt (the platform"
+                    + " does that after an edit) and the handler found nothing, though the item it"
+                    + " showed came back in objectsToView: the popup would not survive an edit");
+            return;
+        }
+        upd.current = Integer.MIN_VALUE;
+        upd.currentCalls = 0;
+        try {
+            handler.updateParameterInfo(back, upd.proxy());
+        } catch (Throwable t) {
+            w.c2.wrong("update-rebuilt", "  " + where + " updateParameterInfo threw on the element"
+                    + " found after the rebuild: " + oneLine(String.valueOf(t)));
+            return;
+        }
+        if (upd.currentCalls != 1 || upd.current != 0) {
+            w.c2.wrong("update-rebuilt", "  " + where + " the element found after the rebuild carries"
+                    + " no hint: updateParameterInfo called setCurrentParameter " + upd.currentCalls
+                    + " time(s), with " + upd.current + " (the caret is in argument 0)");
         }
     }
 
@@ -3052,9 +3214,11 @@ public final class PlatformEntry {
         printWrong(c);
         c.note("the platform's own ParameterInfoControllerBase was not run: this tool calls the"
                 + " five methods it calls, in its order, with the contexts it passes");
-        c.note("the fallback half of findElementForUpdatingParameterInfo -- the leaf was rebuilt, so"
-                + " the anchor is looked for among `objectsToView`, which holds ParameterHint items"
-                + " and not PSI elements -- is not exercised by the identity path above");
+        c.note("the fallback half of findElementForUpdatingParameterInfo IS exercised (family"
+                + " `update-rebuilt`): the anchor leaf is rebuilt with none of the user data the old"
+                + " one carried, and the handler has to find it again through `objectsToView`, whose"
+                + " items are ParameterHint and not PSI elements -- and answer null when that array"
+                + " is empty");
         printNotes(c);
         boolean controlOk = controlParamInfo();
         return sectionVerdict("the popup does not name the parameter the compiler binds the caret's"

@@ -1,0 +1,151 @@
+harness.ps1 -Tool All on 0.1.8 -- the raw coverage triple of all fifteen tools, plus the
+two differentials   (0.1.8, 2026-09-24 05:46)
+
+WHAT THIS FILE IS
+=================
+
+The raw output of the two commands below, kept because `FEATURE_PARITY.md`'s coverage-triple
+table now quotes **one pass of one artifact** and a reader has to be able to check every number
+in it against the run it came from.  Before this round that table mixed three passes (0.1.5,
+0.1.6, 0.1.7) and said so; every row in it now belongs to the 0.1.8 jar and the compiler pinned
+below.
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File idea-plugin\harness.ps1 -Tool All `
+        -FrozenVm %TEMP%\vela-plugin-drive\vm.exe
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File idea-plugin\ast-diff.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File idea-plugin\psi-tree-diff.ps1
+
+The two differentials are separate scripts, which is why they are two more commands; they are not
+part of `harness.ps1`'s fifteen.
+
+WHAT WAS MEASURED AGAINST (pinned)
+==================================
+
+this run's plugin
+    version       0.1.8                (src\main\resources\META-INF\plugin.xml line 52)
+    jar           dist\vela\lib\vela-idea-plugin.jar
+                  393,168 bytes  sha256 1be05f267467a2423c8ed975640e78bc519f01f3843d764eb51eee4f653bb4c4
+    dist zip      dist\vela-idea-plugin-0.1.8.zip
+                  369,469 bytes  sha256 59af6b40dbad624dc2a88184ef3237cd75bd5f095ce5e5888334581156f19383
+    classes       build\classes (170 class files), the same build the jar was packed from;
+                  harness.ps1 snapshots them before running, so a concurrent build cannot disturb
+                  the run
+
+the frozen compiler (the oracle for every name, member, parameter and verdict below)
+    vm.exe        803,840 bytes  sha256 20a15de85a795623eb3d3727604f359a9dd76c9e3966592025015529e3db8c64
+    LLVM-C.dll   74,159,616 bytes  sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe
+    taken from selfhost\build\vm.exe at 2026-09-24 05:25 into %TEMP%\vela-plugin-drive\ and used
+    from there.  THE TREE'S COMPILER MOVED DURING THIS ROUND -- the same run's own precondition
+    block prints it at 803,840 bytes with sha256 ec449ee4… where the frozen copy is 20a15de8… --
+    which is exactly why the copy is frozen and why its hash is written here and in every
+    evidence file of this round.  No number below is a claim about `ec449ee4…`.
+
+THE RAW OUTPUT
+==============
+
+raw: the precondition block, quoted from the run's own log (the javac notice that follows it in
+the log is the two `[removal]` deprecation warnings `InspectionProbe` has always produced, in the
+console's own encoding; it is not repeated here)
+
+    === Preconditions
+        repo root     : C:\Users\lu\Downloads\vela
+        JDK           : D:\JetBrains\IntelliJ IDEA 2026.2.1
+        tools         : GotoOracle, HintDiff, HintNames, HintShapes, HintDupes, SymbolDiff, FoldDiff, FeatureProbe, ParamNames, HintTruth, HoverTruth, RenameOracle, InspectionProbe, RenameWriteback, PlatformEntry
+        using the frozen compiler already at C:\Users\lu\AppData\Local\Temp\dsh-V8YcWe\vela-plugin-drive\vm.exe (-Refreeze to replace it)
+        frozen compiler: 803840 bytes  sha256 20a15de85a795623eb3d3727604f359a9dd76c9e3966592025015529e3db8c64
+        tree   compiler: 803840 bytes  sha256 ec449ee45331e0226518ad7deb8ad105dd32369be43687c5401b117f41aff8ca
+
+    === Compile the harness against the plugin classes
+        plugin classes snapshotted: 171 file(s) -> idea-plugin\build\tools\harness\classes\classes-snapshot-37144 (a concurrent build-offline.ps1 cannot disturb this run)
+        22 source file(s) -> idea-plugin\build\tools\harness\classes (98 class file(s))
+
+raw: the coverage line and the verdict of every one of the fifteen tools, in the order they ran
+
+    GotoOracle     exit 0   COVERAGE: ran 28452 / skipped 24983 (crashed-file 0, compiler-refused 24973, invisible-member 10, ambiguous 0) / wrong 0
+    GotoOracle     VERDICT: no reference goes to a declaration the compiler does not bind it to, over 28452 judged reference(s)  [exit 0, wrong 0]
+    HintDiff       exit 0   COVERAGE: ran 33676 / skipped 122 (compiler-cannot-parse 95, arg-boundary-disagreement 12, compiler-refused-the-file 15, check-timed-out 0) / wrong 0
+    HintDiff       VERDICT: every hint names the parameter the compiler declares for that argument, and every declared parameter has a hint (4 file(s) the compiler refuses were not judged and are counted as `compiler-refused-the-file` 15 argument position(s))  [exit 0, wrong 0]
+    HintNames      exit 0   COVERAGE: ran 1972 / skipped 12 (threw 0, missing-corpus-file 0, check-timed-out 0, nothing-was-judged 0, no-model-entry-for-this-def 7, too-large 0, compiler-refused-the-file 5) / wrong 0
+    HintNames      VERDICT: [PASS] the model and the tree give the same parameter names for all 1972 callable(s) compared (wrong 0, no defect category tripped; 2 file(s) the compiler refuses were not judged and are counted as `compiler-refused-the-file` 5 callable(s))  [exit 0, wrong 0]
+    HintShapes     exit 0   COVERAGE: ran 9049 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 0
+    HintShapes     VERDICT: [PASS] every one of 251022 hint label(s) drawn over 9049 prefix run(s) is a plain identifier (wrong 0, no defect category tripped)  [exit 0, wrong 0]
+    HintDupes      exit 0   COVERAGE: ran 1977 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 0
+    HintDupes      VERDICT: [PASS] no callable in the corpus and no builtin repeats or empties a parameter name (1977 asked, wrong 0, no defect category tripped)  [exit 0, wrong 0]
+    SymbolDiff     exit 1   COVERAGE: ran 89 / skipped 27 (threw 0, missing-corpus-file 0, too-large 0, type-spelling-only-difference 2, tree-reports-more-declarations 25, scan-reports-more-declarations 0) / wrong 13
+    SymbolDiff     VERDICT: 13 file(s) have the same symbol count as the retired token scan and different content, and 0 threw; each is listed above with both sides  [exit 1, wrong 13]
+    FoldDiff       exit 1   COVERAGE: ran 67 / skipped 38 (threw 0, missing-corpus-file 0, too-large 0, granularity-only-difference 38) / wrong 24
+    FoldDiff       VERDICT: 24 file(s) fold text the retired brace matcher does not fold at all, and 0 threw; each is listed above with both sides  [exit 1, wrong 24]
+    FeatureProbe   exit 0   COVERAGE: ran 1591 / skipped 1 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0, needs-an-application-instance 1) / wrong 0
+    FeatureProbe   VERDICT: [PASS] all six features answered as the invariant requires, over 1591 judged unit(s) (5 corpus-wide checks per readable file, plus one artifact-level check), wrong 0, no defect category tripped  [exit 0, wrong 0]
+    ParamNames     exit 0   COVERAGE: ran 1977 / skipped 5924 (harness-threw 0, missing-corpus-file 0, file-too-large 0, not-a-callable 5924, callee-not-in-this-file-and-not-a-builtin 0, builtin-arity-only-SPEC-md-names-none 0) / wrong 0
+    ParamNames     VERDICT: every parameter list either names what its declaration names, or names nothing  [exit 0, wrong 0]
+    HintTruth      exit 0   COVERAGE: ran 7471 / skipped 6825 (harness-threw 0, missing-corpus-file 0, file-too-large 0, no-argument-call 2688, callee-not-declared-in-file 4137, builtin-arity-documented-without-names 0) / wrong 0
+    HintTruth      VERDICT: every label drawn is a parameter name the declaration gives for that argument  [exit 0, wrong 0]
+    HoverTruth     exit 0   COVERAGE: ran 12128 / skipped 91 (harness-threw 0, spec-documents-the-arity-without-parameter-names 24, compiler-refused-the-file 53, nested-def-outside-the-model 12, variadic-signature-declares-no-parameter 1, builtin-signature-writes-no-return-type 1) / wrong 0
+    HoverTruth     VERDICT: every one of the 12128 row(s) judged says what the compiler, SPEC.md or the absence of a declaration says  [exit 0, wrong 0]
+    RenameOracle   exit 0   COVERAGE: ran 857 / skipped 5546 (compiler-refused 5366, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 151, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+    RenameOracle   VERDICT: for every one of the 857 judged declaration(s), the reference table names exactly the 2893 use(s) the compiler binds and nothing else, and renaming them produces a program the compiler accepts  [exit 0, wrong 0]
+    InspectionProbe exit 0  COVERAGE: ran 265 / skipped 53 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 53, empty-or-whitespace-only 0, excluded-by-request 0) / wrong 0
+    InspectionProbe VERDICT: [PASS] every finding the three registered inspections report was walked to a refusal the frozen compiler itself makes on that line, every fix removes the refusal it was offered for, and no finding lands on a file the compiler accepts -- over 265 judged file(s), wrong 0, no defect category tripped  [exit 0, wrong 0]
+    RenameWriteback exit 0  COVERAGE: ran 785 / skipped 5618 (compiler-refused-file 5366, too-large 0, missing-corpus-file 0, no-references-and-silent 28, not-attributable 139, new-name-refused 0, new-name-collides 0, too-many-references 85, crashed 0, contradiction 0) / wrong 0
+    RenameWriteback VERDICT: for every one of the 785 judged declaration(s), the plugin's own write-back wrote exactly the 1688 reference(s) it claims and the declaration, changed no other token in the file, and produced a file the compiler accepts; renaming the declaration alone is refused by the compiler for 785 of them, and leaving out any one compiler-required reference is refused for 1681 of them  [exit 0, wrong 0]
+    PlatformEntry  exit 0   COVERAGE: ran 13805 / skipped 1866 (...) / wrong 0   [rows 7, 9, 19 in one run]
+    PlatformEntry  VERDICT: the typed handler writes exactly one matching closer, at the caret, for every position the compiler's own token stream calls code, writes nothing where the character is inside a string or a comment or the closer is already there, and the Enter handler writes the body of an opened brace or the indentation the file itself uses at that depth [PASS]
+
+raw: PlatformEntry's own three coverage lines, which are the rows the table quotes separately
+
+    row 7   COVERAGE: ran 2117 / skipped 139 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, receiver-type-not-written 0, receiver-not-a-struct 0, receiver-not-a-written-binding 1, insert-not-a-callable 0, template-names-not-in-spec 138, contributor-threw 0) / wrong 0
+    row 7   VERDICT: for every judged position the offer set is exactly the names the compiler declares (after-dot: the struct's members; bare: the file's own module names, every keyword of SPEC.md 1.3 and every builtin section 8 names), no name is offered that nothing declares, and the insert handler writes the declaration's own parameter names [PASS]
+    row 9   COVERAGE: ran 3359 / skipped 620 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, callee-not-a-declared-def 599, receiver-not-a-written-binding 0, receiver-on-a-function 0, method-call-without-receiver 0, spec-row-documents-no-names 0, plugin-claims-no-names 0, parameter-list-untrusted 0, struct-constructor-popup-closed 21, rebuilt-anchor-unavailable 0) / wrong 0
+    row 9   VERDICT: for every judged call the popup opens, the index it sets names the parameter the compiler binds that argument to, the drawn string is the declaration's own parameter names in order, and the emphasis covers exactly that parameter [PASS]
+    row 19  COVERAGE: ran 8329 / skipped 1107 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, closer-not-required 0, prefix-not-a-complete-program 40, indent-not-the-corpus-step 35, first-line 347, line-ends-with-brace 685) / wrong 0
+    row 19  VERDICT: the typed handler writes exactly one matching closer, at the caret, for every position the compiler's own token stream calls code, writes nothing where the character is inside a string or a comment or the closer is already there, and the Enter handler writes the body of an opened brace or the indentation the file itself uses at that depth [PASS]
+
+    combined COVERAGE: ran 13805 / skipped 1866 (25 named classes) / wrong 0   [rows 7, 9, 19 in one run]
+    frozen compiler: 20a15de85a795623eb3d3727604f359a9dd76c9e3966592025015529e3db8c64
+    compiler processes: 1008 (8 s, 4 thread(s))
+    harness.ps1 exit 1 -- and the only non-zero exits are the two regression detectors, by design:
+        SymbolDiff : exit 1 -- 13 file(s) ... [exit 1, wrong 13]
+        FoldDiff   : exit 1 -- 24 file(s) ... [exit 1, wrong 24]
+
+    the run's own reconciliation of the three things a reader has to check:
+        === Verdict vs exit vs coverage
+              (none: each tool's verdict, exit code and wrong count agree)
+
+raw: ast-diff.ps1 (a separate script; its log is idea-plugin\build\tools\harness\classes\ast-diff.log)
+
+    same-file pairs compared : 6, agreed: 6
+    cross pairs tested       : 6, detected as different: 6, unsuitable: 0, missed: 0
+    VERDICT: the comparison rejects a wrong tree, and accepts the right one
+    files in the corpus       : 129
+    match (tree identical)    : 117
+    nodes compared, in detail : 134587 node line(s) over 117 file(s)
+    different                 : 0
+    suspect (dump proves nothing): 0
+    missing                   : 0
+    compiler refused          : 12 (of which this parser also refused: 12, accepted: 0)
+    compiler crashed          : 0
+    files that are not a match: []
+    VERDICT                   : PASS
+    COVERAGE: ran 117 / skipped 12 (compiler-refused 12, too-large 0, missing-corpus-file 0, compiler-crashed 0) / wrong 0
+
+raw: psi-tree-diff.ps1 (its log is build\tools\harness\psi-classes\psi-tree-diff.log)
+
+    COVERAGE: ran 129 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0) / wrong 0
+    corpus accounted for    : 129  (ran + skipped)
+
+WHAT THIS FILE DOES NOT PROVE
+=============================
+
+  * No IDE was started by any of the seventeen.  `PlatformEntry`'s own limits are stated in
+    `evidence\platform-entry-0.1.8-20260924-0546.txt`; the other tools' limits are in their own
+    headers.
+  * The corpus was not frozen: `tests\` belongs to another track and grew while this round ran
+    (`GotoOracle` 26,077 → 28,452 judged against the 0.1.5 pass, `HintDiff` 31,188 → 33,676,
+    `RenameWriteback` 782 → 785).  The numbers above are one run over the tree as it stood at
+    05:44.
+  * `SymbolDiff` and `FoldDiff` are failing *by design* — they are the regression detectors, and
+    their `wrong` counts are the measured difference between the current reading and the retired
+    one.  They were 13 and 24 in the 0.1.5 pass too; what moved is the corpus (86 → 89 and
+    64 → 67 judged).

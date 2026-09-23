@@ -19,22 +19,35 @@ package dev.vela.plugin
 /**
  * The struct a receiver expression names, or null when the text does not say.
  *
- * Vela is immutable and has no local type annotations, so the type of `x` in
- * `x.member` is genuinely not in a file's character stream — only declarations
- * are.  Three receivers *are* written down, and exactly those three resolve:
+ * Four receivers are written down in the file's own characters, and exactly those four
+ * resolve:
  *
  *   * `self`, inside a struct, is that struct;
- *   * a parameter's type is in its own declaration (`o: Vec2`), so a parameter
- *     name resolves to the struct of its declared type;
+ *   * a local binding's type is in its own declaration (`q: Vec2 = Vec2(1.0, 2.0)`) --
+ *     this is the most ordinary way a local is written in this language, and it was the
+ *     one receiver the reader did not resolve: `q.` completed nothing and `q.dot(`
+ *     opened no popup, which `PlatformEntry` counted as 29 + 6 positions it could not
+ *     judge;
+ *   * a parameter's type is in its own declaration (`o: Vec2`), so a parameter name
+ *     resolves to the struct of its declared type;
  *   * a struct's own name is its type, for the static call `Vec2.member`.
  *
  * Anything else returns null, and the caller then offers nothing rather than
- * something invented.
+ * something invented.  The two declaration-shaped cases share one reader and differ
+ * only in where the type is kept: the tree's `decl`/`param` nodes
+ * ([VelaTargets.localBindingType] answers the first, the model's own symbol list the
+ * second), so a local and a parameter cannot be read differently.
  */
 fun structTypeOf(text: CharSequence, offset: Int, receiver: String): VelaSymbol? {
     if (receiver == "self") {
         return VelaModel.enclosingStruct(text, offset)
     }
+    // A local binding, whose type is written beside its name.  Asked FIRST because that
+    // is what shadowing means: a local of this name is closer than any parameter, and a
+    // local that writes no type still shadows, so the answer there is null (the file
+    // does not say) and never the outer name's type.
+    val local = VelaTargets.localBindingType(text, offset, receiver)
+    if (local != null) return if (local.isEmpty()) null else structNamed(text, local)
     // A parameter (or any visible declaration) whose declared type is a struct
     // in this file.
     for (s in VelaModel.visibleSymbols(text, offset)) {

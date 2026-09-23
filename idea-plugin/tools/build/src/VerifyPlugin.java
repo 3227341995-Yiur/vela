@@ -1515,6 +1515,17 @@ public final class VerifyPlugin {
      * `vm.exe` plus every `*.dll` beside it in `selfhost\build`, and a file that is
      * already there with the same size and modified time is left alone (that
      * `LLVM-C.dll` is 74 MB, and the mutation test runs this check a dozen times).
+     *
+     * THE DLL IS LINKED, NOT COPIED, AND THAT IS WHAT STOPPED THE WORKSPACE FILLING UP.
+     * `build\verify\` is one directory per *plugin root*, and the negative test builds a
+     * root per mutant -- twelve of them -- so a real 74 MB copy per root held ~890 MB of
+     * the same bytes per version, four versions deep: measured, `build\` was 2.87 GB and
+     * 2.74 GB of it was `LLVM-C.dll` under `build\verify\`.  A hard link is one file with
+     * two directory entries: no second allocation, and the compiler still starts, because
+     * it loads the library from the directory it sits in and a link *is* that directory
+     * entry.  The control is not weakened -- the mutant still runs the real compiler, and
+     * the same size-and-age check still makes a second run a no-op -- and where a link
+     * cannot be made (a scratch tree on another volume) [linkForRun] copies instead.
      */
     private void diagnosticsEndToEnd(Path jar, Path repoRoot, Class<?> compilerCls, Object compiler,
                                      Class<?> problemCls) {
@@ -1542,15 +1553,17 @@ public final class VerifyPlugin {
             // The compiler's own directory is the DLL search path, so every library it
             // sits beside has to come along; `LLVM-C.dll` is the one that exists today.
             int dlls = 0;
+            int linked = 0;
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(vm.getParent(), "*.dll")) {
                 for (Path lib : stream) {
-                    copyForRun(lib, scratch.resolve(lib.getFileName().toString()));
+                    if (linkForRun(lib, scratch.resolve(lib.getFileName().toString()))) linked++;
                     dlls++;
                 }
             }
             System.out.println("    compiler  : " + vm + " -> copied to " + vmCopy
-                    + (dlls > 0 ? " with " + dlls + " sibling .dll file(s), because the compiler"
-                            + " imports LLVM-C.dll from its own directory" : ""));
+                    + (dlls > 0 ? " with " + dlls + " sibling .dll file(s) (" + linked
+                            + " hard-linked to the compiler's own file, not copied), because the"
+                            + " compiler imports LLVM-C.dll from its own directory" : ""));
 
             Path cleanSrc = repoRoot.resolve("tests").resolve("build").resolve("arith_basics.vel");
             if (!Files.isRegularFile(cleanSrc)) {
@@ -1677,6 +1690,48 @@ public final class VerifyPlugin {
             }
         }
         Files.copy(from, to, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /**
+     * Put the file at `to` as a second *directory entry* for `from`, and copy it only when
+     * the filesystem will not take a link.  Answers true when a link was made.
+     *
+     * Why this exists, measured rather than argued: every plugin root `build\verify\` is
+     * stripped of user data and refilled by this check, and the negative test makes one
+     * plugin root per mutant, so a real copy of the compiler's 74 MB library per root cost
+     * ~890 MB per version -- 2.74 GB of the 2.87 GB under `build\`, which is a workspace
+     * that can fill up in the middle of a gate.  A hard link is the same file with a
+     * second name, and it keeps the one property the control needs: the compiler starts,
+     * because Windows resolves the import from the executable's own directory and a link
+     * is a normal directory entry there.  When the link cannot be made -- the scratch tree
+     * on another volume, or a filesystem without hard links -- the copy is the fallback,
+     * so where the scratch lives cannot decide whether the negative set runs.
+     *
+     * The size-and-modified-time check cannot be used here the way [copyForRun] uses it,
+     * and finding that out cost a wrong line of output: a *copy* from an earlier run has
+     * the same size and the same modified time as its source, so a check on those two
+     * reported "hard-linked" for a file nothing had linked -- measured, with
+     * `fsutil hardlink list` naming one path where a link has two.  What is asked here is
+     * the real question, `Files.isSameFile`, which compares the file identity: true for a
+     * link already made, false for a copy.  A copy is replaced by a link rather than left
+     * alone, because leaving it alone is what keeps 74 MB on disk per plugin root.
+     */
+    private static boolean linkForRun(Path from, Path to) throws IOException {
+        if (Files.isRegularFile(to)) {
+            try {
+                if (Files.isSameFile(to, from)) return true;
+            } catch (IOException ignored) {
+                // cannot compare it: link it
+            }
+        }
+        try {
+            Files.deleteIfExists(to);
+            Files.createLink(to, from);
+            return true;
+        } catch (IOException | UnsupportedOperationException e) {
+            Files.copy(from, to, StandardCopyOption.REPLACE_EXISTING);
+            return false;
+        }
     }
     /** Runs `vm.exe check <file>` byte-exactly: streams to files, then decoded as UTF-8. */
     private static String runCompiler(Path vm, Path file) throws Exception {

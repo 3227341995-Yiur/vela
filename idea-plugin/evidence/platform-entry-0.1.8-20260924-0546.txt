@@ -1,0 +1,325 @@
+PlatformEntry -- the two things 0.1.7 counted, fixed and measured, with the before/after raw lines
+for every harness the model change can move   (0.1.8, 2026-09-24 05:46)
+
+WHAT THIS FILE IS
+=================
+
+The 0.1.7 round moved rows 7, 9 and 19 to `implemented` and left a list of things it had *counted*
+and deliberately not fixed.  This round fixed the two that were real defects and measured what the
+fix changed:
+
+  1. **A type-annotated local's members were unreachable.**  In `PlatformEntry` that was 29
+     `after-dot` positions (row 7) and 6 calls (row 9) classified `receiver-is-a-local` and
+     skipped — a binding written `q: Vec2 = ...` and then used as `q.` got no member completion
+     and no parameter info, because `VelaNames.structTypeOf` resolved only `self`, parameters and
+     struct names while `VelaModel` declares no locals at all.  The class is **empty now**: those
+     positions are judged, and 28 of the 29 fail on the 0.1.7 build and pass on this one.
+  2. **The dead half of `findElementForUpdatingParameterInfo`.**  0.1.7 wrote down that its
+     `objectsToView` fallback could never run and left it in place.  It could not: the items are
+     `ParameterHint`s and the code cast them to `PsiElement`.  It is reachable and measured now by
+     a new family, `update-rebuilt`, and it is **663 judged / 663 wrong** on the 0.1.7 build.
+
+Everything below is the *same harness*, the *same corpus*, the *same frozen compiler*, with the
+plugin build the only difference between the two runs of each pair.  The 0.1.7 classes are the
+jar's: `dist\vela-idea-plugin-0.1.7.zip` → `vela\lib\vela-idea-plugin.jar`, extracted by
+`tools\build\src\JarTool`.
+
+WHAT WAS MEASURED AGAINST (pinned)
+==================================
+
+this run's plugin
+    version       0.1.8                (src\main\resources\META-INF\plugin.xml line 52)
+    jar           dist\vela\lib\vela-idea-plugin.jar
+                  393,168 bytes  sha256 1be05f267467a2423c8ed975640e78bc519f01f3843d764eb51eee4f653bb4c4
+    dist zip      dist\vela-idea-plugin-0.1.8.zip
+                  369,469 bytes  sha256 59af6b40dbad624dc2a88184ef3237cd75bd5f095ce5e5888334581156f19383
+    classes       build\classes (170 class files), the same build the jar was packed from;
+                  harness.ps1 snapshots them before running, so a concurrent build cannot disturb
+                  the run
+
+the plugin build the "before" numbers came from
+    dist\vela-idea-plugin-0.1.7.zip, 368,716 bytes
+    sha256 9dfc7b0762b06a474914238db9c1ef5b60bad8d275ff5e9c663550f74d3f1bb6
+    (the artifact 0.1.7's own evidence file pins; its `vela-idea-plugin.jar` is 392,458 bytes,
+    sha256 f8413a0ffca5b7541b9f03a0ae41e97232b581135374297a70605c5b526eb1db)
+
+the frozen compiler (the oracle for every name, member, parameter and verdict below)
+    vm.exe        803,840 bytes  sha256 20a15de85a795623eb3d3727604f359a9dd76c9e3966592025015529e3db8c64
+    LLVM-C.dll   74,159,616 bytes  sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe
+    taken from selfhost\build\vm.exe at 2026-09-24 05:25 into %TEMP%\vela-plugin-drive\ and used
+    from there.  THE TREE'S COMPILER AND SPEC.md BOTH MOVED DURING THIS ROUND (see the last
+    section) -- which is why the copy is frozen, and why every number here belongs to 20a15de8…
+    and to the SPEC.md of 05:35-05:44, not to whatever the tree holds now.
+
+THE COMMANDS
+============
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File idea-plugin\harness.ps1 -Tool PlatformEntry `
+        -FrozenVm %TEMP%\vela-plugin-drive\vm.exe
+
+and, for the pairs, the tool run directly against a chosen build's classes -- the same thing the
+harness does, with `$pluginClasses` swapped (the 0.1.8 side uses `build\classes`):
+
+    $env:CLASSPATH = "build\tools\harness\classes;<classes under test>;src\main\resources;<platform classpath from build\args\platform-classpath.txt>"
+    java PlatformEntry C:\Users\lu\Downloads\vela --vm %TEMP%\vela-plugin-drive\vm.exe --control
+    java GotoOracle   C:\Users\lu\Downloads\vela --vm %TEMP%\vela-plugin-drive\vm.exe --cache %TEMP%\control\goto-oracle.txt
+    java RenameOracle C:\Users\lu\Downloads\vela --vm %TEMP%\vela-plugin-drive\vm.exe
+    java RenameWriteback C:\Users\lu\Downloads\vela --vm %TEMP%\vela-plugin-drive\vm.exe --control
+    java HintDiff     C:\Users\lu\Downloads\vela
+    java HoverTruth   C:\Users\lu\Downloads\vela
+
+THE RESULT -- section 1 of 2: the local-binding reader (row 7)
+=============================================================
+
+raw: 0.1.7 jar -- 28 of the 29 counted positions are judged and wrong
+
+    === row 7: VelaCompletionContributor through fillCompletionVariants ===
+      family                     judged  wrong
+      -------------------------  ------  -----
+      bare-end                   138     0
+      insert                     1785    0
+      after-dot                  194     28
+      not judged, by class: compiler-refused-file 0  too-large 0  missing-corpus-file 0  dump-unavailable 0  lex-unavailable 0  crashed 0  receiver-type-not-written 0  receiver-not-a-struct 0  receiver-not-a-written-binding 1  insert-not-a-callable 0  template-names-not-in-spec 138  contributor-threw 0
+        receiver-not-a-written-binding:
+          tests/safety/cases/hole_parallel_impure_method_nested_receiver.vel:25 `inner.` has written type `Inner` and the file declares it as field (Inner) + attr, not as a binding with a type written beside the name
+      every wrong position, in full:
+      tests/build/struct_and_methods.vel:18 `p.` (type `Vec2`): the compiler declares [x, y, dot, scale]; not offered [x, y, dot, scale]
+      tests/build/struct_and_methods.vel:19 `p.` (type `Vec2`): the compiler declares [x, y, dot, scale]; not offered [x, y, dot, scale]
+      tests/build/struct_and_methods.vel:20 `p.` (type `Vec2`): the compiler declares [x, y, dot, scale]; not offered [x, y, dot, scale]
+      tests/build/struct_and_methods.vel:20 `p.` (type `Vec2`): the compiler declares [x, y, dot, scale]; not offered [x, y, dot, scale]
+      tests/build/struct_value_semantics.vel:8 `a.` (type `P`): the compiler declares [x]; not offered [x]
+      tests/build/struct_value_semantics.vel:9 `a.` (type `P`): the compiler declares [x]; not offered [x]
+      tests/build/struct_value_semantics.vel:9 `b.` (type `P`): the compiler declares [x]; not offered [x]
+      tests/llvm-shapes/inplace_field_update.vel:11 `c.` (type `Counter`): the compiler declares [n, bump]; not offered [n, bump]
+      tests/llvm-shapes/inplace_field_update.vel:12 `c.` (type `Counter`): the compiler declares [n, bump]; not offered [n, bump]
+      tests/llvm-shapes/inplace_field_update.vel:13 `c.` (type `Counter`): the compiler declares [n, bump]; not offered [n, bump]
+      tests/llvm-shapes/struct_return.vel:9 `p.` (type `P`): the compiler declares [x]; not offered [x]
+      tests/llvm-shapes/str_in_struct.vel:7 `p.` (type `P`): the compiler declares [name, n]; not offered [name, n]
+      tests/llvm-shapes/two_structs.vel:19 `p.` (type `Box`): the compiler declares [n, m, add]; not offered [n, m, add]
+      tests/llvm-shapes/two_structs.vel:20 `q.` (type `Box`): the compiler declares [n, m, add]; not offered [n, m, add]
+      tests/llvm-shapes/two_structs.vel:21 `p.` (type `Box`): the compiler declares [n, m, add]; not offered [n, m, add]
+      tests/llvm-shapes/two_structs.vel:21 `p.` (type `Box`): the compiler declares [n, m, add]; not offered [n, m, add]
+      tests/llvm-shapes/two_structs.vel:22 `q.` (type `Box`): the compiler declares [n, m, add]; not offered [n, m, add]
+      tests/llvm-shapes/two_structs.vel:22 `q.` (type `Box`): the compiler declares [n, m, add]; not offered [n, m, add]
+      tests/llvm-shapes/two_structs.vel:23 `p.` (type `Box`): the compiler declares [n, m, add]; not offered [n, m, add]
+      tests/llvm-shapes/two_structs.vel:24 `p.` (type `Box`): the compiler declares [n, m, add]; not offered [n, m, add]
+      tests/llvm-shapes/two_structs.vel:25 `q.` (type `Box`): the compiler declares [n, m, add]; not offered [n, m, add]
+      tests/safety/cases/concurrency_pure_method_legal.vel:15 `b.` (type `Box`): the compiler declares [v, get]; not offered [v, get]
+      tests/safety/cases/hole_member_method_as_value.vel:24 `p.` (type `Pt`): the compiler declares [x, sum]; not offered [x, sum]
+      tests/safety/cases/hole_narrowing_field_store_i32.vel:8 `p.` (type `P`): the compiler declares [x]; not offered [x]
+      tests/safety/cases/hole_narrowing_field_store_i32.vel:9 `p.` (type `P`): the compiler declares [x]; not offered [x]
+      tests/safety/cases/hole_parallel_impure_method_nested_receiver.vel:25 `o.` (type `Outer`): the compiler declares [inner]; not offered [inner]
+      ide-demo/tour.vel:41 `q.` (type `Point`): the compiler declares [x, y, manhattan, moved]; not offered [x, y, manhattan, moved]
+      ide-demo/tour.vel:41 `q.` (type `Point`): the compiler declares [x, y, manhattan, moved]; not offered [x, y, manhattan, moved]
+    COVERAGE: ran 2117 / skipped 139 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, receiver-type-not-written 0, receiver-not-a-struct 0, receiver-not-a-written-binding 1, insert-not-a-callable 0, template-names-not-in-spec 138, contributor-threw 0) / wrong 28
+    VERDICT: 28 position(s) of 2117 judged are wrong: the offer set is not the one the compiler's own declarations describe [FAIL]
+
+raw: 0.1.8 jar -- the same 194 positions, the same tool, the same compiler
+
+    === row 7: VelaCompletionContributor through fillCompletionVariants ===
+      family                     judged  wrong
+      -------------------------  ------  -----
+      bare-end                   138     0
+      insert                     1785    0
+      after-dot                  194     0
+      not judged, by class: compiler-refused-file 0  too-large 0  missing-corpus-file 0  dump-unavailable 0  lex-unavailable 0  crashed 0  receiver-type-not-written 0  receiver-not-a-struct 0  receiver-not-a-written-binding 1  insert-not-a-callable 0  template-names-not-in-spec 138  contributor-threw 0
+      every wrong position, in full:
+        (none)
+    COVERAGE: ran 2117 / skipped 139 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, receiver-type-not-written 0, receiver-not-a-struct 0, receiver-not-a-written-binding 1, insert-not-a-callable 0, template-names-not-in-spec 138, contributor-threw 0) / wrong 0
+    VERDICT: for every judged position the offer set is exactly the names the compiler declares (after-dot: the struct's members; bare: the file's own module names, every keyword of SPEC.md 1.3 and every builtin section 8 names), no name is offered that nothing declares, and the insert handler writes the declaration's own parameter names [PASS]
+
+and the same section's control, which is what makes the zeros above a measurement -- it is the same
+run on both builds, and it fires:
+
+    == control: the comparators asked to fire, on a real position ==
+      position: tests/build/struct_and_methods.vel:6 self.; the compiler declares [x, y, dot, scale] and the plugin offered [x, y, dot, scale]
+      one member the compiler declares, dropped from the answer : caught: not offered [x]
+      one name no declaration gives, added to the answer        : caught: offered but not a member [zzq_not_a_member]
+      template: tests/accept/modules/module_import_reserved_name.vel name len wrote `(a)` for the declaration's [a]
+      one parameter name in the template replaced by an invented one: caught: the template would name [zzq_not_a_parameter] and the declaration names [a]
+      control verdict: every comparator fires in both directions, so its zeros above are a measurement
+
+WHAT THE FIX IS
+===============
+
+  * `VelaTargets.localBindingType(text, at, name)` -- new.  Reads the parser tree's own `decl` node
+    for the nearest binding of that name **above** `at` inside the enclosing blocks, **inner block
+    first** (the compiler's shadowing rule, SPEC.md 6.2, which `VelaTargets.declarationFor` case 3
+    already follows for uses).  Three answers, and the caller distinguishes them: the type written
+    beside the name; the empty string for a binding that writes no type (the compiler refuses such
+    a file -- `binding 'n' has no type annotation` -- so this is a file being typed, and a local
+    still shadows, so the honest answer is "the file does not say" and never the outer name's
+    type); and null for no binding at all, which is what lets the parameter and struct-name
+    readings run.
+  * `VelaNames.structTypeOf` asks it **first**, before the parameter loop, because that is what
+    shadowing means.  Its doc comment used to say Vela "has no local type annotations", which was
+    simply false; it names the four receivers now.
+  * **The remaining counted position is named, not hidden.**  `tests/safety/cases/
+    hole_parallel_impure_method_nested_receiver.vel:25` is `inner.` where `inner` is a *field* of
+    the enclosing struct: the compiler's dump types it (`field (Inner) + attr`), and no binding
+    writes that type beside a name, so the plugin answers nothing there **by design**.  It is
+    `receiver-not-a-written-binding` (1 position, and 0 in row 9), and the skip row prints the
+    declaration's own node kinds rather than the harness's guess at them.
+
+THE RESULT -- section 2 of 2: the rebuilt-anchor path (row 9)
+============================================================
+
+raw: 0.1.7 jar -- every judged call loses the popup once the anchor leaf is rebuilt
+
+    === row 9: VelaParameterInfoHandler, all five platform steps ===
+      family                     judged  wrong
+      -------------------------  ------  -----
+      find                       684     0
+      show                       663     0
+      update                     1349    0
+      update-rebuilt             663     663
+      not judged, by class: compiler-refused-file 0  too-large 0  missing-corpus-file 0  dump-unavailable 0  lex-unavailable 0  crashed 0  callee-not-a-declared-def 599  receiver-not-a-written-binding 0  receiver-on-a-function 0  method-call-without-receiver 0  spec-row-documents-no-names 0  plugin-claims-no-names 0  parameter-list-untrusted 0  struct-constructor-popup-closed 21  rebuilt-anchor-unavailable 0
+      every wrong position, in full:
+      tests/build/arrays_and_len_folding.vel:3 `len` the anchor leaf was rebuilt (the platform does that after an edit) and the handler found nothing, though the item it showed came back in objectsToView: the popup would not survive an edit
+      tests/build/arrays_and_len_folding.vel:7 `len` the anchor leaf was rebuilt (the platform does that after an edit) and the handler found nothing, though the item it showed came back in objectsToView: the popup would not survive an edit
+      tests/build/arrays_and_len_folding.vel:10 `len` the anchor leaf was rebuilt (the platform does that after an edit) and the handler found nothing, though the item it showed came back in objectsToView: the popup would not survive an edit
+      tests/build/bom_first_byte.vel:29 `len` ... (660 more, one per judged call: every `len`, `print`, `fib`, `classify`, `cap`, `sq`, `abs`, `read_text`, `env`, `argc`, `sqrt` call in the corpus, and every method call)
+    COVERAGE: ran 3359 / skipped 620 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, callee-not-a-declared-def 599, receiver-not-a-written-binding 0, receiver-on-a-function 0, method-call-without-receiver 0, spec-row-documents-no-names 0, plugin-claims-no-names 0, parameter-list-untrusted 0, struct-constructor-popup-closed 21, rebuilt-anchor-unavailable 0) / wrong 663
+    VERDICT: 663 position(s) of 3359 judged are wrong: the popup does not name the parameter the compiler binds the caret's argument to [FAIL]
+
+raw: 0.1.8 jar -- the same 663 calls, the same tool, the same compiler
+
+    === row 9: VelaParameterInfoHandler, all five platform steps ===
+      family                     judged  wrong
+      -------------------------  ------  -----
+      find                       684     0
+      show                       663     0
+      update                     1349    0
+      update-rebuilt             663     0
+      not judged, by class: compiler-refused-file 0  too-large 0  missing-corpus-file 0  dump-unavailable 0  lex-unavailable 0  crashed 0  callee-not-a-declared-def 599  receiver-not-a-written-binding 0  receiver-on-a-function 0  method-call-without-receiver 0  spec-row-documents-no-names 0  plugin-claims-no-names 0  parameter-list-untrusted 0  struct-constructor-popup-closed 21  rebuilt-anchor-unavailable 0
+      every wrong position, in full:
+        (none)
+    COVERAGE: ran 3359 / skipped 620 (...) / wrong 0
+    VERDICT: for every judged call the popup opens, the index it sets names the parameter the compiler binds that argument to, the drawn string is the declaration's own parameter names in order, and the emphasis covers exactly that parameter [PASS]
+
+and its control:
+
+    == control: the comparators asked to fire, on a real call ==
+      call: tests/build/arrays_and_len_folding.vel:3 `len`, the compiler's parameter list is [a], this argument binds `a`
+      the item's argument index moved by one                    : caught: the index moved by one is bound to `a` by the compiler and the popup emphasises `` in `a -> int`
+      the drawn parameter list corrupted                       : caught: draws the parameters as [zzq_not_a_parameter] and the call's arguments name [a]
+      the declaration's return type replaced by `zzq`            : caught: draws the return type as ` -> int` and the declaration spells ` -> zzq`
+      control verdict: every comparator fires in both directions, so its zeros above are a measurement
+
+WHAT THE FIX IS
+===============
+
+`VelaParameterInfoHandler.findElementForUpdatingParameterInfo` used to read the items back as:
+
+    (shown[0] as? PsiElement)?.let { if (it.getUserData(HINT) != null) return it }
+
+Those items are `ParameterHint`s -- `showParameterInfo` puts the hint itself in `itemsToShow` -- so
+the cast could not succeed and the branch was a fossil that looked like a safety net.  The handler
+now looks for the item among `objectsToView`, checks that the offset still holds the call's own `(`
+(after an edit that moved the text the honest answer is to let the popup close, not to hang the
+hint on whatever token the old offset now lands in), puts the hint back on the leaf it finds, and
+answers null when there is nothing shown.  The harness measures all of that, including the
+falsification: with `objectsToView` empty the handler must answer *null*, and before the positive
+check runs the tool requires that same null answer, so a rebuilt leaf that still carried the hint
+would be reported as `rebuilt-anchor-unavailable` 663 times rather than passing the check
+vacuously.
+
+Row 19 is untouched by either fix, and it is in both runs: `ran 8329 / skipped 1107 (...) / wrong 0`
+on the 0.1.7 jar and on this one, which is why the combined line moves by exactly the 28 and 663
+above and nothing else.
+
+THE OTHER HARNESSES THE MODEL CHANGE CAN MOVE, RUN TWICE
+=======================================================
+
+`VelaNames.structTypeOf` is on the resolution path of `VelaDeclarations` (go-to-declaration, the
+reference provider and the rename write-back) as well as of the completion and the popup, so the
+change could have moved rows 8, 10, 11 and 12 as well as 7 and 9.  The tools that reach it were run
+twice, against the 0.1.7 jar's classes and against this build's, with the same harness and the same
+frozen compiler.  **Every number is identical:**
+
+    GotoOracle        0.1.7  COVERAGE: ran 28452 / skipped 24983 (crashed-file 0, compiler-refused 24973, invisible-member 10, ambiguous 0) / wrong 0
+    GotoOracle        0.1.8  COVERAGE: ran 28452 / skipped 24983 (crashed-file 0, compiler-refused 24973, invisible-member 10, ambiguous 0) / wrong 0
+    RenameOracle      0.1.7  COVERAGE: ran 857 / skipped 5546 (compiler-refused 5366, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 151, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+    RenameOracle      0.1.8  COVERAGE: ran 857 / skipped 5546 (compiler-refused 5366, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 151, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+      both: for every one of the 857 judged declaration(s), the reference table names exactly the 2893 use(s) the compiler binds and nothing else
+    RenameWriteback   0.1.7  COVERAGE: ran 786 / skipped 5617 (compiler-refused-file 5366, too-large 0, missing-corpus-file 0, no-references-and-silent 28, not-attributable 138, new-name-refused 0, new-name-collides 0, too-many-references 85, crashed 0, contradiction 0) / wrong 0
+    RenameWriteback   0.1.8  COVERAGE: ran 786 / skipped 5617 (compiler-refused-file 5366, too-large 0, missing-corpus-file 0, no-references-and-silent 28, not-attributable 138, new-name-refused 0, new-name-collides 0, too-many-references 85, crashed 0, contradiction 0) / wrong 0
+      both: wrote exactly the 1689 reference(s) it claims, and the compiler accepts the file read back for 786 of 786
+    HintDiff          0.1.7  COVERAGE: ran 33676 / skipped 122 (compiler-cannot-parse 95, arg-boundary-disagreement 12, compiler-refused-the-file 15, check-timed-out 0) / wrong 0
+    HintDiff          0.1.8  COVERAGE: ran 33676 / skipped 122 (compiler-cannot-parse 95, arg-boundary-disagreement 12, compiler-refused-the-file 15, check-timed-out 0) / wrong 0
+    HoverTruth        0.1.7  COVERAGE: ran 12128 / skipped 91 (harness-threw 0, spec-documents-the-arity-without-parameter-names 24, compiler-refused-the-file 53, nested-def-outside-the-model 12, variadic-signature-declares-no-parameter 1, builtin-signature-writes-no-return-type 1) / wrong 0
+    HoverTruth        0.1.8  COVERAGE: ran 12128 / skipped 91 (harness-threw 0, spec-documents-the-arity-without-parameter-names 24, compiler-refused-the-file 53, nested-def-outside-the-model 12, variadic-signature-declares-no-parameter 1, builtin-signature-writes-no-return-type 1) / wrong 0
+
+Two of those differ from the `-Tool All` pass quoted in `harness-0.1.8-20260924-0546.txt` by one
+declaration (`RenameWriteback` 786 vs 785 judged, `RenameOracle`'s and `RenameWriteback`'s
+compiler-refused skips by one): the corpus is another track's and one file moved between the two
+runs.  That is why the pair above was run *twice over the same tree*, minutes apart; the All pass
+is the other tree state and both are labelled.
+
+WHAT THIS FILE DOES NOT PROVE
+=============================
+
+  * **No IDE was started.**  `PlatformEntry` drives the platform's own entry points with stand-ins
+    for `Document`, `Editor`, the PSI leaves and the three parameter-info context interfaces; the
+    recording result set does not filter by prefix, sort or draw.  What is claimed is the decision.
+  * **A local that writes no type is reasoned, not measured.**  `mut n = 0` is refused by the
+    compiler (`binding 'n' has no type annotation`), so no *accepted* file can produce it: the rule
+    that such a binding shadows and answers nothing is read from the compiler's own message and from
+    the tree, not from a corpus position.
+  * **`VelaGotoDeclaration` keeps its own reader for a binding** (`localDeclaration`, a token scan,
+    which needs the binding's *range* and not only its type, for find-usages).  The two readers agree
+    on every typed local in the corpus, and that agreement is what the five identical pairs above
+    measure; it is not a proof about positions the corpus does not hold (a local that shadows a
+    parameter of a *different* struct type, a binding inside a `for` header).
+  * **SPEC.md and the compiler both moved during this round.**  The corpus and the language's own
+    definition are the other track's: SPEC.md's §1.3 gained the keywords `enum` and `match` at
+    05:59 (`enum`/`match` are also in the working tree now, with §13 and a dozen new corpus files),
+    and `selfhost\build\vm.exe` was rebuilt to 978,944 bytes after this round's frozen copy was
+    taken.  Every number here belongs to the frozen `20a15de8…` and to SPEC.md as it stood at
+    05:35-05:44.  Run against the tree as it stands *now*, row 7's `bare-end` family reports
+    `not offered: keyword enum, keyword match` -- measured, by re-running the tool on a single file
+    at 05:52 -- which is the plugin's keyword table not yet knowing §13, and it is reported here
+    rather than fixed, because it is a language feature landing in another track and not one of the
+    four things this round was sent to do.
+
+ADDENDUM -- THIS ROUND'S WORKING TREE WAS DESTROYED AND RE-APPLIED; HERE IS HOW IT WAS VERIFIED
+==============================================================================================
+
+Between 05:52 and 05:57 the other track's `git merge enums` aborted on a locked
+`selfhost\build\vm.exe` and, in its abort path, reset the working tree -- which held every one of
+this round's uncommitted edits.  Nothing had been staged, so nothing was recoverable from git: no
+stash, no dangling blob.  Everything in this file above was written from measurements taken before
+that, and the two evidence files were untracked, so they survived untouched.
+
+The edits were re-applied from the round's own transcript, and the re-application is **proven
+identical**, not asserted:
+
+  * **the plugin**: rebuilt `dist\vela\lib\vela-idea-plugin.jar` comes out
+    **393,168 bytes, sha256 1be05f267467a2423c8ed975640e78bc519f01f3843d764eb51eee4f653bb4c4** --
+    byte for byte the artifact pinned at the top of this file, which also survives inside
+    `dist\vela-idea-plugin-0.1.8.zip` (369,469 bytes, sha256 59af6b40…, both hashes re-checked
+    against the rebuilt pair).  `build-offline.ps1` prints `RESULT: PASS`.
+  * **the harness**: `harness.ps1` recompiled all 22 sources from the restored tree, and all **98
+    `.class` files are byte-identical** to the ones compiled at 05:43 for the run quoted above
+    (per-file SHA-256, 98 identical / 0 different / 0 missing).  So the tool that produced the
+    coverage lines in this file is the tool on disk.
+
+Re-run from the restored sources at 06:41, which also measures the language's own movement:
+
+    row 7   COVERAGE: ran 2130 / skipped 140 (... receiver-not-a-written-binding 1, template-names-not-in-spec 139 ...) / wrong 139
+    row 7   VERDICT: 139 position(s) of 2130 judged are wrong: the offer set is not the one the compiler's own declarations describe [FAIL]
+    row 9   COVERAGE: ran 3373 / skipped 621 (... callee-not-a-declared-def 600 ...) / wrong 0        VERDICT: ... [PASS]
+    row 19  COVERAGE: ran 8375 / skipped 1112 (... first-line 349, line-ends-with-brace 688) / wrong 0  VERDICT: ... [PASS]
+
+Both fixes this round made are still standing in that run: row 9's four families are `find` 686,
+`show` 665, `update` 1357 and `update-rebuilt` 665, all `wrong 0` -- the rebuilt-anchor family that
+was 663/663 wrong on the 0.1.7 jar is clean -- and row 19's families (`must-not-close` 1360,
+`close-typed` 3045, `closer-refused-without-it` 139, `enter-block-open` 726, `enter-input-refused`
+139, `enter-indent` 2781) are all `wrong 0` too.  Row 7 is **red**
+for the reason named in the section above and for no other: `template-names-not-in-spec` is 139
+instead of 138 (one more corpus file) and the 139 wrong positions are the `bare-end` family, one
+per file, each reporting the same two missing keywords (`enum`, `match`).  Every number that moved
+between the 05:44 pass and this one moved because the corpus grew by the fourteen `enum` files and
+SPEC.md gained two keywords; the plugin's own two axes are steady, and the differences from the
+05:44 pass are: row 7 `ran 2117 → 2130`, row 9 `ran 3359 → 3373`, row 19 `ran 8329 → 8375` and
+`skipped 1107 → 1112`.

@@ -485,7 +485,7 @@ object VelaSemanticNames {
      *
      * A receiver resolves when its *type is written down* — `self` inside a struct,
      * a name declared beside a type (`o: Vec2`, `v: Vec2`, `mut p: Vec2`), or the
-     * name of a struct.  Those are the three `VelaNames.structTypeOf` resolves for
+     * name of a struct.  Those are the receivers `VelaNames.structTypeOf` resolves for
      * hover, plus a name whose declared type this pass has seen in an enclosing
      * scope; anything else names nothing here, and a member the resolved struct
      * does not declare names nothing either — `o.x` is not a field of a struct

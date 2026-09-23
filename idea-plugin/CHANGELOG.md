@@ -23,7 +23,84 @@ action registered as a group, and three extension points that were never
 registered (or registered under the wrong attribute name). An entry that says
 "added X, unverified" is worth more than one that says "added X".
 
-## 0.1.7 — the platform's own entry points, driven (rows 7, 9 and 19)
+## 0.1.8 — the four things 0.1.7 counted but did not fix
+
+**What changed.** The 0.1.7 round moved rows 7, 9 and 19 to `implemented` and left a list of
+things it had *counted* and deliberately not fixed. This is those, in the order it named them.
+
+* **A type-annotated local's members were unreachable.**  `q: Vec2 = Vec2(1.0, 2.0)` followed by
+  `q.` completed nothing and `q.dot(` opened no popup, because the model's type reader
+  (`VelaNames.structTypeOf`) resolved only `self`, parameters and struct names — and `VelaModel`
+  declares structs, defs, fields, methods and parameters and **no locals at all**.  This was not a
+  measurement gap: a local written with a type annotation is the most ordinary way a local is
+  written in this language (`vm.exe` refuses a binding without one: `binding 'n' has no type
+  annotation`), so it was a hole a user would meet on their first program.  `VelaTargets` gained
+  `localBindingType`, which reads the tree's own `decl` node — the same tree every other reader
+  reads — innermost block first, so a rebinding in an inner block shadows an outer name the way
+  the compiler's own rule (SPEC.md 6.2) says it does.  Measured, same harness, same frozen
+  compiler: `PlatformEntry` row 7's `after-dot` family goes from **166 judged / 0 wrong with 29
+  `receiver-is-a-local` skipped** to **194 judged**, and on the 0.1.7 jar those 28 newly judged
+  positions are **28 wrong** ("the compiler declares [x, y, dot, scale]; not offered [x, y, dot,
+  scale]") against **0** on this build; row 9's 6 `receiver-is-a-local` calls are judged too and
+  are clean on both builds, because the by-name method fallback happened to name the right method
+  there — the class disappeared because the *reader* now resolves the receiver, and that is said
+  plainly rather than claimed as a second defect.  One position does **not** become judgeable and
+  the harness says why in its own class: `o.inner.bump()`, where `inner` is a *field* of the
+  enclosing struct — its type is in the compiler's dump and no binding writes it beside the name,
+  which is `receiver-not-a-written-binding`, not something this plugin claims to resolve.
+
+* **The dead half of `findElementForUpdatingParameterInfo` is alive and measured.**  0.1.7 wrote
+  down that its `objectsToView` fallback could never run, and left it in place.  It could not: the
+  items the platform hands back are `ParameterHint`s, and the code read `(shown[0] as?
+  PsiElement)` — a cast that cannot succeed.  The consequence was user-visible: after any edit the
+  anchor leaf is rebuilt, nothing found it, and the popup closed.  It now looks for the item among
+  `objectsToView`, checks that the offset still holds the call's own `(`, puts the hint back on the
+  leaf it finds, and answers `null` when it cannot — and `PlatformEntry` measures it: the new
+  `update-rebuilt` family rebuilds the anchor leaf for every judged call, requires the handler to
+  find it again, and requires `null` when `objectsToView` is empty.  Measured: **663 judged, 663
+  wrong on the 0.1.7 jar, 0 wrong on 0.1.8.**
+
+* **The build tree no longer fills up, and the negative harness no longer copies the compiler's
+  74 MB library once per mutant.**  `VerifyPlugin` copies `vm.exe` and its sibling DLLs into each
+  plugin root's `build\verify\`; the negative test builds one root per mutant, so a real copy per
+  root cost ~890 MB per version and `build\` had reached **2,876,518,684 bytes**, of which
+  **2,743,905,792** was `LLVM-C.dll` under `build\verify\`.  The DLL is now a *hard link* to the
+  compiler's own file — the same bytes, no second allocation — with the copy kept as the fallback
+  for a scratch tree on another volume, so the control is not weakened: the mutant still runs the
+  real compiler, and every check that ran before still runs.  Measured: the six trees for versions
+  that are no longer current (`build\verify\negative-0.1.4`, `-0.1.5`, `-0.1.6`, `mutation-0.1.4`,
+  `-0.1.5`, `-0.1.6`) were **2,774,319,999 bytes** and their deletion took `build\` from
+  **2,876,518,684 to 102,231,703 bytes** — the remaining 74 MB of that being the one `LLVM-C.dll`
+  copy the 0.1.8 build had already made, which the next run turns into a link.  Their
+  `*-report*.txt` files were kept in `build\verify\pruned-reports\` so the record of what each of
+  those sets found is not silently lost, and the 0.1.8 negative set was re-run to prove the link
+  did not weaken it: `evidence\build-trees-0.1.8-20260924-0546.txt`.
+
+* **Every number in the coverage-triple table of `FEATURE_PARITY.md` that could be re-measured was
+  re-measured on this jar**, and the rows that could not be are the ones whose tools are owned by
+  the other track (`ast-diff.ps1`, `psi-tree-diff.ps1`) or whose measurement is a one-off with its
+  own evidence file; each of those rows now says which of the two it is instead of carrying a
+  number from another version.
+
+**What this does not prove.**  No IDE was started: `PlatformEntry` still drives the platform's own
+entry points with stand-ins for the `Document`, the `Editor`, the PSI and the three parameter-info
+context interfaces, and that file names every one of them.  The row 7 numbers above are one run
+over the corpus as it stands, with the compiler frozen at `20a15de8…` (the tree's `vm.exe` was
+rebuilt by the other track after 0.1.7's evidence, so its `b69557cf…` is *not* the oracle these
+numbers were measured against, and it was rebuilt again to 978,944 bytes before this entry was
+written).  A local whose binding writes no type annotates a file the compiler refuses, so the rule
+for it — shadow, and answer nothing — is reasoned from the compiler's own message and from the
+tree, not measured on an accepted file.  `VelaGotoDeclaration` keeps its own token-scan reader for
+a binding, because it needs the binding's *range* and not only its type; the two agree on every
+typed local in the corpus (`GotoOracle`, `RenameOracle` and `RenameWriteback` re-run, same
+numbers), and that they agree is measured, not assumed.  **And SPEC.md moved under this round**:
+§1.3 gained the keywords `enum` and `match` at 05:59 (see §13 and the fourteen new
+`tests\build\enum_*.vel` files), which the plugin's own keyword table does not know yet — measured
+by re-running `PlatformEntry` on one file, whose row 7 `bare-end` family then reports `not offered:
+keyword enum, keyword match`.  That is the language moving ahead of the plugin and it is named
+here rather than papered over; the numbers in this entry belong to the SPEC.md of 05:35-05:44.
+
+
 
 **What changed.** Three defects, all three found by *driving* the platform object the row is
 about rather than by reading it, and all three are fixes to shipped behaviour:

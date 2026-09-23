@@ -1,0 +1,151 @@
+The build trees, the 74 MB library, and the thousand compiler runs   (0.1.8, 2026-09-24 05:46)
+
+WHAT THIS FILE IS
+=================
+
+Three measurements the 0.1.7 round left to be made, and none of them is about the plugin's
+behaviour -- they are about the workspace the plugin is measured in.  A workspace that fills up
+mid-gate produces failures that look like something else, which is why this is written down with
+numbers rather than fixed quietly.
+
+  1. `idea-plugin\build` was **2.87 GB**, and 2.74 GB of it was 37 separate real copies of the
+     74,159,616-byte `LLVM-C.dll`.
+  2. The copies were made by `VerifyPlugin` -- once per *plugin root* -- and the negative test
+     builds one plugin root per mutant, so a negative set for one version cost ~890 MB.
+  3. `PlatformEntry` runs `vm.exe` 1008 times per full pass, and after a pass the process table
+     held 37 `vm.exe` entries that no longer exist but cannot be killed.
+
+WHAT IT MEASURED AGAINST
+========================
+
+    plugin version  0.1.8   jar dist\vela\lib\vela-idea-plugin.jar 393,168 bytes
+                            sha256 1be05f267467a2423c8ed975640e78bc519f01f3843d764eb51eee4f653bb4c4
+    frozen compiler vm.exe 803,840 bytes
+                            sha256 20a15de85a795623eb3d3727604f359a9dd76c9e3966592025015529e3db8c64
+                            (frozen at 05:25; the tree's own `vm.exe` has since been rebuilt twice)
+    platform        IntelliJ IDEA 2026.2.1 (D:\JetBrains), the IDE the verifier runs against
+    time            2026-09-24, 05:46-06:40
+
+THE PRUNE, MEASURED BEFORE AND AFTER
+====================================
+
+    before   idea-plugin\build   2,876,518,684 bytes
+    after    idea-plugin\build     102,231,703 bytes
+    reclaimed                     2,774,286,981 bytes
+
+The six trees deleted, each of which is a *complete tree for a version that is no longer current*
+-- `tools\negative-tests.ps1` and `mutation-test.ps1` both name their output directory after the
+version read out of `plugin.xml`, so a version's whole set lives in one directory and none of them
+is referenced by any script:
+
+    build\verify\negative-0.1.4        918,827,152 bytes
+    build\verify\negative-0.1.5        923,560,052 bytes
+    build\verify\negative-0.1.6        929,631,385 bytes
+    build\verify\mutation-0.1.4            748,746 bytes
+    build\verify\mutation-0.1.5            749,082 bytes
+    build\verify\mutation-0.1.6            803,582 bytes
+    --------------------------------------------
+    total                            2,774,319,999 bytes
+    (the 33,018-byte difference from the build-tree delta is the six report files copied out below)
+
+Those trees were real copies, so their apparent size *is* their allocated size and the 2.77 GB is
+space actually returned.  Before deleting them, each tree's own `*-report*.txt` was copied to
+`build\verify\pruned-reports\` (six files, 33,018 bytes) so that what each set found is not
+silently lost: the tracked evidence for 0.1.5 and 0.1.6 is in `evidence\negative-0.1.5-raw.txt`,
+`evidence\negative-0.1.6-20260924-0444.txt`, `evidence\mutation-0.1.5-raw.txt` and
+`evidence\mutation-0.1.6-20260924-0442.txt`, and 0.1.4's raw record exists only as the report that
+was kept.
+
+THE FIX, AND HOW IT IS MEASURED
+===============================
+
+`VerifyPlugin.diagnosticsEndToEnd` copies `vm.exe` and every `*.dll` beside it into the plugin
+root's `build\verify\`.  The DLL is now put there by `VerifyPlugin.linkForRun`, which makes a **hard
+link** and falls back to a copy only where the filesystem will not take one (a scratch tree on
+another volume), so where the scratch lives cannot decide whether the negative set runs.
+
+  * THE COMPILER STILL STARTS.  That is the property the control needs and it is measured, not
+    argued: the 0.1.8 negative set was re-run end to end, every mutant runs the real compiler, and
+    the result is unchanged -- `negative tests: 12/12 caught; 0 missed; 0 void`, on a `baseline:
+    PASS (the unmutated jar agrees with the verifier)`.
+
+  * ONE FILE, FOURTEEN NAMES.  `fsutil hardlink list` on a mutant's copy now prints fourteen paths
+    for one file:
+
+        \Users\lu\Downloads\vela\idea-plugin\build\verify\LLVM-C.dll
+        \Users\lu\Downloads\vela\selfhost\build\LLVM-C.dll
+        \Users\lu\Downloads\vela\idea-plugin\build\verify\negative-0.1.8\baseline\build\verify\LLVM-C.dll
+        ... and one for each of the other eleven mutants' roots
+
+    Before the change the same command printed one path, which is the measurement that caught the
+    first version of this fix: it decided "already linked" by comparing size and modified time, and
+    a *copy* has the same size and modified time as its source -- so it reported "1 hard-linked"
+    for a file nothing had linked.  `Files.isSameFile` asks the question that has an answer (file
+    identity), and a stale copy is replaced by a link rather than left alone.
+
+  * THE SPACE, WHICH IS THE POINT, MEASURED AS FREE SPACE RATHER THAN AS FILE LENGTHS.  A hard
+    link reports the *target's* size through `Get-ChildItem`, so summing file lengths cannot show
+    the saving -- the 0.1.8 negative tree still measures 938,277,541 bytes that way, which is why
+    this is written down as a caveat rather than as a number.  What was actually allocated is the
+    drive's own answer:
+
+        C: free before the run   585,356,460,032 bytes
+        C: free after  the run   585,303,658,496 bytes
+        cost of the whole set        52,801,536 bytes   (50 MB)
+
+    Thirteen plugin roots, each with a `vm.exe` copy (802 KB) plus its own jar, its own copy of
+    every `dist\*.zip`, its logs and its verifier scratch, came to 50 MB.  With a real DLL copy per
+    root the same run would have allocated ~890 MB more than that, which is what the 0.1.4-0.1.6
+    trees' 918-929 MB each were made of.
+
+  * THE REMAINING 74 MB.  `build\verify\LLVM-C.dll` in the *real* plugin root was still a copy made
+    by the pre-fix build when the prune was measured, and the 102,231,703-byte figure above
+    includes it.  The next `build-offline.ps1` run turned it into a link (the run prints `with 1
+    sibling .dll file(s) (1 hard-linked to the compiler's own file, not copied)`), so the real tree
+    is smaller than that number today; the figure is left as measured rather than recomputed.
+
+THE THOUSAND COMPILER RUNS, AND THE THIRTY-SEVEN THAT LINGER
+============================================================
+
+`PlatformEntry` prints `compiler processes: 1008` for a pass over 318 corpus files.  That is **~3
+per file** -- one `vm.exe parse`, one `vm.exe lex`, one `vm.exe check` -- and not one per position:
+the pass judges 13,805 positions with those 1008 runs, so the per-file batching is already what it
+should be, and the count would only fall by giving up one of the three oracles (the dump, the token
+stream, and the compiler's own verdict are three different questions about the same file).
+
+The 37 `vm.exe` entries that `Stop-Process` refuses ("Access is denied", no start time, 0 CPU
+between them) are **not** produced by the harness, and that is measured too:
+
+    vm.exe entries before a fresh run    37
+    13 more compiler runs later          37      (a `--single` run: `compiler processes: 6`)
+    after a control batch of thousands   37      (GotoOracle/RenameOracle/RenameWriteback twice each)
+
+so the number is a fixed set, not a per-run leak, and it does not grow with more runs.  What the
+harness does per compiler run is `ProcessBuilder` with `redirectOutput`/`redirectError` to **temp
+files** (not pipes -- a pipe is the handle that usually leaks), then `waitFor()`, then reads and
+deletes the files, keeping no reference to the `Process`; there is no child handle for it to close
+after the run.  No `java` and no harness shell was alive when the 37 were counted, so whatever holds
+those entries open is outside the harness's reach; naming it would need a handle-analysis tool this
+machine does not have, and it is left named rather than guessed.  They are inert: no CPU, no locks,
+and the compiler's own `vm.exe` and `LLVM-C.dll` are freely replaceable (a refreeze during this
+round succeeded while all 37 existed).
+
+WHAT THIS FILE DOES NOT PROVE
+=============================
+
+  * Nothing here says anything about the plugin's behaviour: the behavioural numbers are in
+    `evidence\harness-0.1.8-20260924-0546.txt` and
+    `evidence\platform-entry-0.1.8-20260924-0546.txt`.
+  * The prune was measured with `Get-ChildItem | Measure-Object Length`, which is the *apparent*
+    size.  That is honest for the six deleted trees (they held real copies) and dishonest for the
+    linked 0.1.8 set, which is why the linked set is reported as a free-space delta instead and the
+    apparent figure is printed above with this warning attached.
+  * The 50 MB was measured over one negative-set run on this machine, with this corpus and this
+    compiler.  It is one run, not an average.
+  * `build\` still holds ~100 MB of historical scratch that is not version-tagged
+    (`classes-253`, `classes-py253`, `probe`, `sem`, `decl`, `repro`, `wb-probe`, `tools-check`,
+    `rename-negative`, `artifact-253`, `artifact-262`, ...).  They were **not** deleted: the brief
+    was to delete the trees for versions that are no longer current, and these carry no version, so
+    which of them is still wanted is a judgement for the track that made them -- `artifact-253` in
+    particular is named as the record of the `since-build` defect in `FEATURE_PARITY.md`.  They come
+    to under 5 MB together, so the pruning is not hiding anything behind them.

@@ -93,13 +93,30 @@ class VelaParameterInfoHandler : ParameterInfoHandler<PsiElement, ParameterHint>
         val anchor = context.file.findElementAt(context.parameterListStart)
         if (anchor != null && anchor.getUserData(HINT) != null) return anchor
 
-        // The caret has moved and that leaf was rebuilt: the ones that were shown are
-        // handed back in `objectsToView`.
-        val shown = context.objectsToView
-        if (shown != null && shown.isNotEmpty()) {
-            (shown[0] as? PsiElement)?.let { if (it.getUserData(HINT) != null) return it }
-        }
-        return null
+        // THE LEAF WAS REBUILT, AND THIS HALF USED TO BE UNREACHABLE AS WRITTEN.
+        //
+        // The platform re-resolves the anchor after an edit, so the leaf that comes back
+        // is a *new object* with no hint on it -- and the items it was shown are handed
+        // back in `objectsToView`.  The old code read that array as `(shown[0] as?
+        // PsiElement)`, and those items are `ParameterHint`s, never PSI elements, so the
+        // cast could not succeed: the branch was a fossil that looked like a safety net,
+        // and the popup simply closed after any edit.  Measured, not argued: `PlatformEntry`
+        // rebuilds the anchor leaf and requires the handler to find it again -- the check
+        // is wrong for every judged call on the 0.1.7 build and clean from 0.1.8.
+        //
+        // The item knows the `(` the popup was opened on, so the same leaf can be found
+        // again and the hint put back on it: the platform then calls `updateParameterInfo`
+        // with this element, and that is where the hint is read from.
+        val item = context.objectsToView?.firstOrNull { it is ParameterHint } as? ParameterHint
+            ?: return null
+        if (item.openParen < 0) return null
+        val leaf = context.file.findElementAt(item.openParen) ?: return null
+        // The offset has to still hold that `(`: after an edit that moved the text, the
+        // honest answer is to let the popup close, not to hang the hint on whatever token
+        // the old offset now lands in.  A leaf whose text is not the `(` is not this call.
+        if (leaf.text != "(") return null
+        leaf.putUserData(HINT, item)
+        return leaf
     }
 
     override fun updateParameterInfo(parameterOwner: PsiElement, context: UpdateParameterInfoContext) {
