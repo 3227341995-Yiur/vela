@@ -209,6 +209,54 @@ Info "tree   compiler: $((Get-Item -LiteralPath $treeVm).Length) bytes  sha256 $
 
 Step 'Compile the harness against the plugin classes'
 New-Item -ItemType Directory -Force -Path $harnessOut | Out-Null
+
+# THE PLUGIN CLASSES ARE SNAPSHOTTED, BECAUSE A LOCK CANNOT BE MADE TO WORK HERE.
+#
+# `build-offline.ps1` rewrites `build\classes` whenever another agent builds the plugin, and a
+# run in flight then dies with `NoClassDefFoundError` -- measured by the harness agent on
+# 2026-09-24, whose run was rebuilt under at 02:59:51.  A lock was the first answer and it was
+# mine: `%TEMP%\vela-plugin-build.lock`.  It cannot work, and the agent proved why --
+# `%TEMP%` is PER AGENT (`dsh-0pLQ8Y` for one, `dsh-ZAbG4j` for another), so two agents take two
+# different locks; and the host's own temp lock was not writable from inside an agent's sandbox
+# at all ("Access to the path is denied").  Every instruction this session gave about that lock
+# was therefore decorative.
+#
+# A snapshot needs nobody's cooperation: copy the classes once, and run against the copy.  The
+# directory is under `build\` (gitignored) and is named for the process, so two agents cannot
+# collide on it either.
+$pluginClassesLive = $pluginClasses
+$snap = Join-Path $harnessOut ("classes-snapshot-" + $PID)
+Remove-Item -LiteralPath $snap -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $snap | Out-Null
+# AND IT WAITS, BECAUSE `build\classes` IS EMPTY FOR A MOMENT EVERY TIME IT IS REBUILT.
+# `build-offline.ps1` clears the directory and then refills it, so a snapshot taken in that
+# window finds nothing.  Dying there would be honest but useless -- the very run this snapshot
+# exists to protect would fail whenever a build happened to be in flight.  Measured: the first
+# version of this check died with "no plugin classes to snapshot" on its first run, during
+# another agent's rebuild.  So: bounded retry, and then a refusal that names the cause.
+$snapped = 0
+for ($attempt = 1; $attempt -le 12; $attempt++) {
+    if (Test-Path -LiteralPath $pluginClassesLive) {
+        # `-Path`, NOT `-LiteralPath`: the source is a wildcard, and `-LiteralPath` treats `*` as
+        # a character, so the first version of this copied NOTHING, silently, and then reported
+        # "no plugin classes" for 60 s while `build\classes` held 171 files.  Measured, on the
+        # first run of this snapshot.  An instrument that cannot find what it is looking at is
+        # the defect this file exists to catch, so it is worth a line rather than a fix alone.
+        Copy-Item -Path (Join-Path $pluginClassesLive '*') -Destination $snap -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $snapped = @(Get-ChildItem -LiteralPath $snap -File -Recurse -ErrorAction SilentlyContinue).Count
+    if ($snapped -gt 0) { break }
+    if ($attempt -lt 12) {
+        if ($attempt -eq 1) { Info "plugin classes are absent right now (a build-offline.ps1 is probably rewriting them); waiting up to 60 s" }
+        Start-Sleep -Seconds 5
+    }
+}
+if ($snapped -eq 0) {
+    Die "no plugin classes under $pluginClassesLive after 60 s -- run build-offline.ps1 first, or wait for the build that is rewriting it to finish"
+}
+$pluginClasses = $snap
+Info "plugin classes snapshotted: $snapped file(s) -> $snap (a concurrent build-offline.ps1 cannot disturb this run)"
+
 $classpath = (Get-Content -LiteralPath $classpathFile -Raw).Trim()
 $sources = @(Get-ChildItem -LiteralPath $harnessSrc -Filter '*.java' | ForEach-Object { $_.FullName })
 if ($sources.Count -eq 0) { Die "no *.java under $harnessSrc" }
