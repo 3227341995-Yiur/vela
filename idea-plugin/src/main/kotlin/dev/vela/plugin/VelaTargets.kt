@@ -208,7 +208,20 @@ object VelaTargets {
         }
 
         // 3. A local binding that precedes this use, innermost block first.
-        for (node in chain) {
+        //
+        // `chainAt` returns the chain outermost first, innermost last, so the walk has to
+        // run BACKWARDS for the header of this case to be true.  Walking it forwards looked
+        // up the outermost matching block first and stopped there, which is the opposite of
+        // the language's shadowing rule (SPEC.md 6.2: "Shadowing across blocks stays legal",
+        // and the file's own comment one line above).  The cost was measured, not argued:
+        // `tests/safety/cases/scope_shadow_across_blocks_ok.vel` has an outer `x` on line 5
+        // and an inner `x` on line 7; with the forward walk the `print(x)` on line 8 -- inside
+        // the inner block, so bound to the inner declaration by the compiler -- was credited
+        // to the OUTER `x` (RenameOracle: "the table claims line 8 (offset 292) ... NOT-REQUIRED"),
+        // so a rename of the outer binding rewrote the inner block's use and a rename of the
+        // inner one left it behind.  Inner-first puts the inner binding back in charge of the
+        // uses inside its own block.
+        for (node in chain.reversed()) {
             if (node.kind != VelaNodeKind.BLOCK && node.kind != VelaNodeKind.MODULE_BLOCK) continue
             var best: VelaSyntaxNode? = null
             for (child in node.children) {

@@ -229,12 +229,24 @@ function Quoted([string] $s) { '"' + ($s -replace '\\', '/') + '"' }
 function Write-ArgFile([string] $path, [string[]] $lines) {
     [System.IO.File]::WriteAllLines($path, [string[]] $lines, (New-Object System.Text.UTF8Encoding($false)))
 }
+
+# AND THE ARGFILE DOES NOT FIT EITHER -- which is how this file broke on 2026-09-24, when three
+# new tools (`HoverTruth`, `RenameOracle`, `InspectionProbe`, the last one 1,355 lines) grew
+# `javac.args` past the same 32 767-character limit.  The measured failure was not a compile
+# error: `Out-File` threw `FileOpenFailure` on the argfile, javac never ran, the *stale* class
+# files stayed in place, and the only symptom was a tool reporting "no measurement" -- two
+# rounds were spent on that symptom before the argfile size was looked at.
+#
+# The classpath therefore goes through `CLASSPATH`, which javac and java both read when no
+# `-cp` is given and which has no length limit.  Everything that *is* per-invocation -- the
+# release level, the output directory, the source list or the tool's own arguments -- stays in
+# the argfile, which is now a few kilobytes.
+$env:CLASSPATH = $cp
 $javacArgsFile = Join-Path $harnessOut 'javac.args'
 Write-ArgFile $javacArgsFile (@(
         '--release 21',
         '-encoding UTF-8',
-        '-d ' + (Quoted $harnessOut),
-        '-cp ' + (Quoted $cp)
+        '-d ' + (Quoted $harnessOut)
     ) + @($sources | ForEach-Object { Quoted $_ }))
 # Every source is passed, never a stale class file: the tree is what is tested, and a
 # class file from a previous round would silently disagree with it.
@@ -336,7 +348,9 @@ foreach ($t in $run) {
         }
     }
     $runArgsFile = Join-Path $harnessOut "$t.args"
-    Write-ArgFile $runArgsFile (@('-cp ' + (Quoted $cp)) + @($a | ForEach-Object { Quoted $_ }))
+    # No `-cp` here either: the classpath is in `CLASSPATH` (see above), because the tool
+    # argument lists plus a 32 KB classpath cross the same 32 767-character limit.
+    Write-ArgFile $runArgsFile @($a | ForEach-Object { Quoted $_ })
     $log = Join-Path $harnessOut "$t.log"
     # Written to files rather than piped: this machine's shell turns a native
     # program's stderr into a terminating error when it is captured in a pipeline,

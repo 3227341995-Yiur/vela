@@ -19,6 +19,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The parameter-hint differential: is every hint's name the name the declaration
@@ -55,6 +56,9 @@ import java.util.Set;
 public final class HintDiff {
 
     private static final long MAX_FILE_BYTES = 2L * 1024 * 1024;
+
+    /** How long `vm.exe check` gets before this harness stops waiting for it (see check()). */
+    private static final int CHECK_TIMEOUT_SECONDS = 30;
 
     private Path repoRoot;
     private Path vm;
@@ -108,6 +112,10 @@ public final class HintDiff {
         long unresolvedCalls = 0;
         long unresolvedWithHints = 0;
         long unjudgedCalls = 0;
+        long refusedArgs = 0;
+        long checkTimeouts = 0;
+        List<String> refusedFiles = new ArrayList<>();
+        List<String> refusedObservations = new ArrayList<>();
         List<String> findings = new ArrayList<>();
         if (show) {
             System.out.println("== every multi-argument call: file, line, callee, declared names, hints drawn, verdict ==");
@@ -122,6 +130,38 @@ public final class HintDiff {
             // counted as unjudged rather than judged by this plugin's own model.
             boolean judgeable = declared != null;
             if (!judgeable) declared = new LinkedHashMap<>();
+            // ---- where this file's judgement is decided, and why it cannot be decided yet ----
+            //
+            // A FILE THE COMPILER REFUSES IS NOT VELA, SO WHAT THIS PLUGIN DOES INSIDE IT IS NOT
+            // A DEFECT.  That is the shape of the eight findings this tool used to report: the
+            // acceptance corpus holds the language's unimplemented features, and `vm.exe check`
+            // refuses those files outright (`vela: type error: nested functions are not
+            // supported` in tests/accept/nested_fn_{called,capture_refused,recurse,sibling_call}
+            // .vel), yet the hints inside them were judged against declarations and reported as
+            // missing.
+            //
+            // The compiler is asked at the END of a file, and only when the file produced a
+            // finding, because 180 of the 312 corpus files are refused by `check` *by design*
+            // (tests/safety/cases/**, tests/build/check_cases/**, selfhost/parts/**) and asking
+            // about every file costs ~340 s -- one fifty-byte file alone takes 13 s and took
+            // 326 s under load.  Skipping all 180 would move most of this harness's work to the
+            // skip side, which is the failure its own coverage comment warns about; a file whose
+            // hints are all correct is judged, which is a stronger statement than not looking.
+            //
+            // So this file's contributions are deltas from these baselines, and if the compiler
+            // refuses it they are rolled back and re-filed in the named skip class.
+            long baseJudged = judgedArgs;
+            long baseWrong = wrong;
+            long baseExtra = extra;
+            long baseMissing = missingHint;
+            long baseUnresolvedHint = unresolvedWithHints;
+            long baseBoundary = boundaryUnjudged;
+            long baseCalls = calls;
+            long baseMulti = multi;
+            long baseHints = hints;
+            long baseCorrect = correct;
+            long baseSuppressed = suppressedByConvention;
+            int baseFindings = findings.size();
             List<String> texts = new ArrayList<>();
             texts.add(full);
             if (step > 0) {
@@ -273,6 +313,57 @@ public final class HintDiff {
                     }
                 }
             }
+            // ---- the file is over: is it Vela at all? ----------------------------------
+            long fileBad = (wrong - baseWrong) + (extra - baseExtra) + (missingHint - baseMissing)
+                    + (unresolvedWithHints - baseUnresolvedHint);
+            // Every unit this file put on the `ran` side, or would have: judged argument
+            // positions plus the ones filed under arg-boundary-disagreement.
+            long fileUnits = (judgedArgs - baseJudged) + (boundaryUnjudged - baseBoundary);
+            if (fileBad > 0) {
+                Check c = check(vm, p);
+                if (c.timedOut) {
+                    // The compiler did not answer, so whether this file is Vela is unknown, and
+                    // its findings stand.  Counted as a defect: a run that could not ask the one
+                    // authority it has is not a clean run.
+                    checkTimeouts++;
+                    findings.add("  " + rel + ": `vm.exe check` did not answer within "
+                            + CHECK_TIMEOUT_SECONDS + "s, so whether the compiler refuses this file"
+                            + " is unknown and its " + fileBad + " finding(s) stand");
+                } else if (c.exit != 0) {
+                    wrong = baseWrong;
+                    extra = baseExtra;
+                    missingHint = baseMissing;
+                    unresolvedWithHints = baseUnresolvedHint;
+                    boundaryUnjudged = baseBoundary;
+                    judgedArgs = baseJudged;
+                    calls = baseCalls;
+                    multi = baseMulti;
+                    hints = baseHints;
+                    correct = baseCorrect;
+                    suppressedByConvention = baseSuppressed;
+                    refusedArgs += fileUnits;
+                    refusedFiles.add(rel + "  (`vm.exe check` exit " + c.exit + ": " + oneLine(c.err) + ")");
+                    for (int i = baseFindings; i < findings.size(); i++) {
+                        refusedObservations.add(findings.get(i).trim());
+                    }
+                    if (findings.size() > baseFindings) findings.subList(baseFindings, findings.size()).clear();
+                }
+            }
+        }
+        // WHAT THE COMPILER REFUSED IS PRINTED, WITH ITS OWN WORDS, BEFORE THE TOTALS.  A skip
+        // class whose members a reader cannot see is a place to hide work.
+        if (!refusedFiles.isEmpty()) {
+            System.out.println();
+            System.out.println("== files `vm.exe check` refuses, so they are NOT judged ==");
+            for (String f : refusedFiles) System.out.println("  " + f);
+            if (!refusedObservations.isEmpty()) {
+                System.out.println("  their findings, kept as observations rather than defects:");
+                for (String f : refusedObservations) System.out.println("  " + f);
+            }
+            System.out.println("  (" + refusedArgs + " argument position(s) moved from the judged side"
+                    + " to this named skip; the compiler was asked only about files that produced a"
+                    + " finding, and a refused file whose hints are all correct is judged, not"
+                    + " skipped)");
         }
         System.out.println("== totals ==");
         System.out.println("  calls with a declared callee : " + calls + " (of which multi-argument: " + multi + ")");
@@ -294,18 +385,33 @@ public final class HintDiff {
         else for (String f : findings) System.out.println(f);
         System.out.println();
         long bad = wrong + extra + unresolvedWithHints + missingHint;
+        // THE VERDICT CARRIES WHAT IT DID NOT JUDGE.  `wrong 0` over a corpus with refused files
+        // must not read like `wrong 0` over the whole corpus.
+        String scope = refusedArgs == 0
+                ? "the compiler refused no file with a finding, so nothing was moved out of the"
+                        + " verdict"
+                : refusedFiles.size() + " file(s) the compiler refuses were not judged and are"
+                        + " counted as `compiler-refused-the-file` " + refusedArgs
+                        + " argument position(s)";
         System.out.println("VERDICT: " + (bad == 0
                 ? "every hint names the parameter the compiler declares for that argument,"
-                        + " and every declared parameter has a hint"
-                : bad + " hint position(s) are not right"));
+                        + " and every declared parameter has a hint ("
+                        + (checkTimeouts > 0 ? checkTimeouts + " file(s) the compiler did not answer"
+                                + " about within " + CHECK_TIMEOUT_SECONDS + "s, whose findings stand; "
+                                : "")
+                        + scope + ")"
+                : bad + " hint position(s) are not right -- and " + scope));
         // The unit is an ARGUMENT POSITION, so `ran + skipped` is every argument position
         // in the corpus and the two sides reconcile.  A call whose callee is declared
         // neither in the file nor by the language's own table is judged (the correct
-        // answer is no hint), so it is on the `ran` side; only a file the compiler cannot
-        // parse is skipped.
+        // answer is no hint), so it is on the `ran` side; a file the compiler cannot parse,
+        // and one it refuses, are skipped -- in two named classes, because "the parser could
+        // not read it" and "the language does not have this program" are different facts.
         Coverage cov = new Coverage()
                 .category("compiler-cannot-parse")
                 .category("arg-boundary-disagreement")
+                .category("compiler-refused-the-file")
+                .defectCategory("check-timed-out")
                 // THE SUPPRESSED POSITIONS ARE JUDGED, NOT SKIPPED, AND THAT IS THE POINT.
                 //
                 // They were counted as skipped in the first version of this triple, which
@@ -321,9 +427,64 @@ public final class HintDiff {
                 .ran(judgedArgs)
                 .skipped("compiler-cannot-parse", skipArgsUnparsable)
                 .skipped("arg-boundary-disagreement", boundaryUnjudged)
+                .skipped("compiler-refused-the-file", refusedArgs)
+                .defect("check-timed-out", checkTimeouts)
                 .wrong(bad);
         cov.print();
-        System.exit(bad == 0 ? 0 : 1);
+        // 1 is "a hint position is not right", 3 is "the harness or the corpus is at fault".
+        System.exit(bad == 0 ? (cov.hasDefect() ? 3 : 0) : 1);
+    }
+
+    /** What `vm.exe check` said about one file. */
+    private static final class Check {
+        int exit;
+        boolean timedOut;
+        String err = "";
+    }
+
+    /**
+     * Run the frozen compiler's own verdict over a file, with a bound.
+     *
+     * Non-zero means the compiler refuses the file -- a syntax error or a type error, which is
+     * the language saying this is not a Vela program.  The question is asked about a temporary
+     * `.vel` copy of the file's own bytes, exactly as `declarationsFromDump` asks `parse`.
+     *
+     * The bound is not paranoia: `vm.exe check tests/safety/cases/strict_no_inferred_binding_type.vel`
+     * (fifty bytes, `mut a = 1`) takes 13 s on an idle machine and took 326 s while another
+     * harness was running -- in this binary the known `type_kind(-1)` hang.  A harness that
+     * waits for that forever is a harness that hangs.
+     */
+    private static Check check(Path vm, Path file) throws IOException, InterruptedException {
+        Check c = new Check();
+        Path tmp = Files.createTempFile("vela-hintdiff-check", ".vel");
+        Path out = Files.createTempFile("vela-hintdiff-check-out", ".txt");
+        Path err = Files.createTempFile("vela-hintdiff-check-err", ".txt");
+        try {
+            Files.write(tmp, Files.readAllBytes(file));
+            ProcessBuilder pb = new ProcessBuilder(vm.toString(), "check", tmp.toString());
+            pb.redirectOutput(out.toFile());
+            pb.redirectError(err.toFile());
+            Process proc = pb.start();
+            if (!proc.waitFor(CHECK_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                c.timedOut = true;
+                proc.destroyForcibly();
+                proc.waitFor();
+            } else {
+                c.exit = proc.exitValue();
+            }
+            c.err = new String(Files.readAllBytes(err), StandardCharsets.UTF_8)
+                    .replace("\r", " ").replace("\n", " ");
+        } finally {
+            Files.deleteIfExists(tmp);
+            Files.deleteIfExists(out);
+            Files.deleteIfExists(err);
+        }
+        return c;
+    }
+
+    private static String oneLine(String s) {
+        String t = s.replaceAll("\\s+", " ").trim();
+        return t.length() > 130 ? t.substring(0, 130) + "..." : t;
     }
 
     /** The declared parameter names for a callee, or null when nothing declares it. */

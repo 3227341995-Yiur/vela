@@ -1,0 +1,375 @@
+COMPILER-REFUSED SKIP CLASS for HintNames and HintDiff -- facts, before/after, controls
+produced 2026-09-24 03:15 on this machine
+
+plugin version : 0.1.6 (plugin.xml)
+git HEAD       : 2b7bf04  The held-file rule was written for the names I had seen, and the next build produced a new one
+plugin jar     : 3ff8091cfec5a8936f38f4ca62e41396799a528177b8075adec4b067250435a7
+compiler FROZEN: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi2\vm\vm.exe  867840 bytes  sha256 501b6cbb5701f3d5ef36396b9ddcaf4ce740e66d6ca325f482c2451e76810fdf
+compiler in tree: 873472 bytes  sha256 cb149624424d0d0a54391855bcebb11c3b7c16b2a9535211048220a5e654da23
+  (the tree binary moved three times during this work; every number below is against the
+   frozen copy, which is what harness.ps1 was given with -FrozenVm)
+
+Files changed (working tree, not committed):
+  idea-plugin\harness.ps1                        (--vm for HintNames; the tool's own doc)
+  idea-plugin\tools\harness\src\HintNames.java   (refusal class + the nothing-was-judged guard)
+  idea-plugin\tools\harness\src\HintDiff.java    (refusal class, second parse/check class kept apart)
+
+##############################################################################
+# 1. WHY THE CLASS IS APPLIED LAZILY: the corpus-wide measurement it rests on
+##############################################################################
+vm.exe check over the same 312 files both tools walk (my frozen binary), one process
+per file, the way the tools themselves would ask:
+    corpus files : 312
+    check accept : 132
+    check refuse : 180
+    elapsed      : 339 s  (slowest 326854 ms on tests/safety/cases/strict_no_inferred_binding_type.vel)
+
+refused files by directory:
+      60  tests/safety
+      50  tests/build
+      47  tests/accept
+      12  tests/probes
+      10  selfhost/parts
+       1  ide-demo/broken.vel
+
+So 180 of 312 files are refused BY DESIGN (tests/safety/cases are the refusals,
+tests/build/check_cases are the errors, selfhost/parts are pieces of a linked program),
+and one fifty-byte file decides the cost of asking about every file:
+    tests/safety/cases/strict_no_inferred_binding_type.vel (50 bytes, mut a = 1 without a
+    type annotation) -- 326 s inside that sweep, 13 s and 15 s in two bounded reruns, and
+    still running after 30 s under load; the same program with mut a: int = 1 answers in
+    25 ms.  That is the known type_kind(-1) hang, still present in this binary.
+    A per-file sweep therefore costs ~340 s for EACH tool and would move most of their
+    corpus to the skip side; the class is therefore asked only where a finding appeared.
+
+##############################################################################
+# 2. BEFORE -- the two tools on the unmodified sources (byte-exact from git HEAD)
+##############################################################################
+HintNames (the two disagreeing files are the closure acceptance corpus):
+      tests/accept/closure_fn_parameter.vel line 7 `apply`  tree=[f]  model=[]
+      tests/accept/closure_lambda_as_argument.vel line 10 `apply`  tree=[f]  model=[]
+    where the two sources disagree: 2
+    COVERAGE: ran 1958 / skipped 7 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 7, too-large 0) / wrong 2
+    VERDICT: [FAIL] 2 of 1958 callable(s) name their parameters differently in the model than in the tree (each one listed above)
+HintDiff (the eight missing-hint findings are all in the nested-function corpus):
+      tests/accept/nested_fn_called.vel:12 `succ` argument 1 is `n`, argument written `0`, but no hint was drawn at all
+      tests/accept/nested_fn_called.vel:12 `succ` argument 1 is `n`, argument written `1`, but no hint was drawn at all
+      tests/accept/nested_fn_called.vel:13 `succ` argument 1 is `n`, argument written `9`, but no hint was drawn at all
+      tests/accept/nested_fn_capture_refused.vel:16 `add_base` argument 1 is `n`, argument written `1`, but no hint was drawn at all
+      tests/accept/nested_fn_recurse.vel:12 `fact` argument 1 is `n`, argument written `n - 1`, but no hint was drawn at all
+      tests/accept/nested_fn_recurse.vel:14 `fact` argument 1 is `n`, argument written `5`, but no hint was drawn at all
+      tests/accept/nested_fn_sibling_call.vel:13 `succ` argument 1 is `n`, argument written `succ(n)`, but no hint was drawn at all
+      tests/accept/nested_fn_sibling_call.vel:15 `twice_succ` argument 1 is `n`, argument written `0`, but no hint was drawn at all
+    VERDICT: 8 hint position(s) are not right
+    COVERAGE: ran 32126 / skipped 107 (compiler-cannot-parse 95, arg-boundary-disagreement 12) / wrong 8
+
+##############################################################################
+# 3. AFTER -- the same two tools, same corpus, same frozen compiler (standalone)
+##############################################################################
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi2\logs\FINAL-HintNames.log  (29 line(s), showing 29)
+comparing: parameterNames(VelaModel.symbols) against the tree's param nodes
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi2\vm\vm.exe (867840 bytes, sha256 501b6cbb5701f3d5ef36396b9ddcaf4ce740e66d6ca325f482c2451e76810fdf)
+
+== files `vm.exe check` refuses, so they are NOT judged ==
+  tests/accept/closure_fn_parameter.vel  (`vm.exe check` exit 2: vela: syntax error: expected ')' after the parameters at line 7 vela: panic: the front end stopped after an error)
+  tests/accept/closure_lambda_as_argument.vel  (`vm.exe check` exit 2: vela: syntax error: expected ')' after the parameters at line 10 vela: panic: the front end stopped after an error)
+  their disagreements, kept as observations rather than defects:
+    tests/accept/closure_fn_parameter.vel line 7 `apply`  tree=[f]  model=[]
+    tests/accept/closure_lambda_as_argument.vel line 10 `apply`  tree=[f]  model=[]
+  (5 callable(s) moved from `wrong` to this named skip; the compiler was asked only about the files where a disagreement was found, because 180 of the 312 corpus files are refused by design and asking about every one costs ~340 s)
+
+callables compared            : 1953
+where the two sources disagree: 0
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 1953
+  skipped                 : 12
+      threw                 0         <- a defect, not a limit
+      missing-corpus-file   0         <- a defect, not a limit
+      check-timed-out       0         <- a defect, not a limit
+      nothing-was-judged    0         <- a defect, not a limit
+      no-model-entry-for-this-def  7       
+      too-large             0       
+      compiler-refused-the-file  5       
+  wrong                   : 0
+  corpus accounted for    : 1965  (ran + skipped)
+
+COVERAGE: ran 1953 / skipped 12 (threw 0, missing-corpus-file 0, check-timed-out 0, nothing-was-judged 0, no-model-entry-for-this-def 7, too-large 0, compiler-refused-the-file 5) / wrong 0
+VERDICT: [PASS] the model and the tree give the same parameter names for all 1953 callable(s) compared (wrong 0, no defect category tripped; 2 file(s) the compiler refuses were not judged and are counted as `compiler-refused-the-file` 5 callable(s))
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi2\logs\FINAL-HintDiff.log  (48 line(s), showing 48)
+expected : `vm.exe parse` -- the param name= lines under each def name=
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi2\vm\vm.exe (867840 bytes, sha256 501b6cbb5701f3d5ef36396b9ddcaf4ce740e66d6ca325f482c2451e76810fdf)
+rule     : argument i's hint must read `<declared param i>: `, or not be drawn
+half-typed: not searched (pass --truncate N)
+
+
+== files `vm.exe check` refuses, so they are NOT judged ==
+  tests/accept/nested_fn_called.vel  (`vm.exe check` exit 2: vela: type error: nested functions are not supported at C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-hintdiff-check1455845576269...)
+  tests/accept/nested_fn_capture_refused.vel  (`vm.exe check` exit 2: vela: type error: nested functions are not supported at C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-hintdiff-check4510510488746...)
+  tests/accept/nested_fn_recurse.vel  (`vm.exe check` exit 2: vela: type error: nested functions are not supported at C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-hintdiff-check1217192314540...)
+  tests/accept/nested_fn_sibling_call.vel  (`vm.exe check` exit 2: vela: type error: nested functions are not supported at C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-hintdiff-check2624793575486...)
+  their findings, kept as observations rather than defects:
+  tests/accept/nested_fn_called.vel:12 `succ` argument 1 is `n`, argument written `0`, but no hint was drawn at all
+  tests/accept/nested_fn_called.vel:12 `succ` argument 1 is `n`, argument written `1`, but no hint was drawn at all
+  tests/accept/nested_fn_called.vel:13 `succ` argument 1 is `n`, argument written `9`, but no hint was drawn at all
+  tests/accept/nested_fn_capture_refused.vel:16 `add_base` argument 1 is `n`, argument written `1`, but no hint was drawn at all
+  tests/accept/nested_fn_recurse.vel:12 `fact` argument 1 is `n`, argument written `n - 1`, but no hint was drawn at all
+  tests/accept/nested_fn_recurse.vel:14 `fact` argument 1 is `n`, argument written `5`, but no hint was drawn at all
+  tests/accept/nested_fn_sibling_call.vel:13 `succ` argument 1 is `n`, argument written `succ(n)`, but no hint was drawn at all
+  tests/accept/nested_fn_sibling_call.vel:15 `twice_succ` argument 1 is `n`, argument written `0`, but no hint was drawn at all
+  (15 argument position(s) moved from the judged side to this named skip; the compiler was asked only about files that produced a finding, and a refused file whose hints are all correct is judged, not skipped)
+== totals ==
+  calls with a declared callee : 9726 (of which multi-argument: 6281)
+  hints drawn                  : 11828
+  hint names correct           : 11828
+  hint names WRONG             : 0
+  hints beyond the parameters  : 0
+  positions where the two sides disagree about an argument's boundary, so no hint was judged: 12
+  declared params with no hint : 0 (of which correctly suppressed because the argument already reads as the parameter's own name: 16579)
+  calls to an undeclared callee: 1304, of which drew a hint: 0
+  calls in files the compiler cannot parse, unjudged: 77
+
+== findings ==
+  (none)
+
+VERDICT: every hint names the parameter the compiler declares for that argument, and every declared parameter has a hint (4 file(s) the compiler refuses were not judged and are counted as `compiler-refused-the-file` 15 argument position(s))
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 32342
+  skipped                 : 122
+      compiler-cannot-parse 95      
+      arg-boundary-disagreement  12      
+      compiler-refused-the-file  15      
+      check-timed-out       0         <- a defect, not a limit
+  wrong                   : 0
+  corpus accounted for    : 32464  (ran + skipped)
+
+COVERAGE: ran 32342 / skipped 122 (compiler-cannot-parse 95, arg-boundary-disagreement 12, compiler-refused-the-file 15, check-timed-out 0) / wrong 0
+
+##############################################################################
+# 4. AFTER -- inside a full harness.ps1 -Tool All run
+##############################################################################
+The two tools' own sections, cut out of that run's capture (FINAL2-all.raw.txt in the logs
+directory above).  A -Tool All pass covers all thirteen tools, four of them owned by other
+agents, so the run's own summary and exit code are reported separately at the end.
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi2\logs\FINAL2-all.raw.txt  section '=== HintDiff', lines 468..
+=== HintDiff
+expected : `vm.exe parse` -- the param name= lines under each def name=
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi2\vm\vm.exe (867840 bytes, sha256 501b6cbb5701f3d5ef36396
+b9ddcaf4ce740e66d6ca325f482c2451e76810fdf)
+rule     : argument i's hint must read `<declared param i>: `, or not be drawn
+half-typed: not searched (pass --truncate N)
+
+
+== files `vm.exe check` refuses, so they are NOT judged ==
+  tests/accept/nested_fn_called.vel  (`vm.exe check` exit 2: vela: type error: nested functions are not supported at C:
+\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-hintdiff-check1364932505716...)
+  tests/accept/nested_fn_capture_refused.vel  (`vm.exe check` exit 2: vela: type error: nested functions are not suppor
+ted at C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-hintdiff-check1469603989780...)
+  tests/accept/nested_fn_recurse.vel  (`vm.exe check` exit 2: vela: type error: nested functions are not supported at C
+:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-hintdiff-check8460193225452...)
+  tests/accept/nested_fn_sibling_call.vel  (`vm.exe check` exit 2: vela: type error: nested functions are not supported
+ at C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-hintdiff-check1608088336923...)
+  their findings, kept as observations rather than defects:
+  tests/accept/nested_fn_called.vel:12 `succ` argument 1 is `n`, argument written `0`, but no hint was drawn at all
+  tests/accept/nested_fn_called.vel:12 `succ` argument 1 is `n`, argument written `1`, but no hint was drawn at all
+  tests/accept/nested_fn_called.vel:13 `succ` argument 1 is `n`, argument written `9`, but no hint was drawn at all
+  tests/accept/nested_fn_capture_refused.vel:16 `add_base` argument 1 is `n`, argument written `1`, but no hint was dra
+wn at all
+  tests/accept/nested_fn_recurse.vel:12 `fact` argument 1 is `n`, argument written `n - 1`, but no hint was drawn at al
+l
+  tests/accept/nested_fn_recurse.vel:14 `fact` argument 1 is `n`, argument written `5`, but no hint was drawn at all
+  tests/accept/nested_fn_sibling_call.vel:13 `succ` argument 1 is `n`, argument written `succ(n)`, but no hint was draw
+n at all
+  tests/accept/nested_fn_sibling_call.vel:15 `twice_succ` argument 1 is `n`, argument written `0`, but no hint was draw
+n at all
+  (15 argument position(s) moved from the judged side to this named skip; the compiler was asked only about files that 
+produced a finding, and a refused file whose hints are all correct is judged, not skipped)
+== totals ==
+  calls with a declared callee : 9726 (of which multi-argument: 6281)
+  hints drawn                  : 11828
+  hint names correct           : 11828
+  hint names WRONG             : 0
+  hints beyond the parameters  : 0
+  positions where the two sides disagree about an argument's boundary, so no hint was judged: 12
+  declared params with no hint : 0 (of which correctly suppressed because the argument already reads as the parameter's
+ own name: 16579)
+  calls to an undeclared callee: 1304, of which drew a hint: 0
+  calls in files the compiler cannot parse, unjudged: 77
+
+== findings ==
+  (none)
+
+VERDICT: every hint names the parameter the compiler declares for that argument, and every declared parameter has a hin
+t (4 file(s) the compiler refuses were not judged and are counted as `compiler-refused-the-file` 15 argument position(s
+))
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 32342
+  skipped                 : 122
+      compiler-cannot-parse 95      
+      arg-boundary-disagreement  12      
+      compiler-refused-the-file  15      
+      check-timed-out       0         <- a defect, not a limit
+  wrong                   : 0
+  corpus accounted for    : 32464  (ran + skipped)
+
+---- raw: C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi2\logs\FINAL2-all.raw.txt  section '=== HintNames', lines 533..
+=== HintNames
+comparing: parameterNames(VelaModel.symbols) against the tree's param nodes
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-0pLQ8Y\vela-mioi2\vm\vm.exe (867840 bytes, sha256 501b6cbb5701f3d5ef36396
+b9ddcaf4ce740e66d6ca325f482c2451e76810fdf)
+
+== files `vm.exe check` refuses, so they are NOT judged ==
+  tests/accept/closure_fn_parameter.vel  (`vm.exe check` exit 2: vela: syntax error: expected ')' after the parameters 
+at line 7 vela: panic: the front end stopped after an error)
+  tests/accept/closure_lambda_as_argument.vel  (`vm.exe check` exit 2: vela: syntax error: expected ')' after the param
+eters at line 10 vela: panic: the front end stopped after an error)
+  their disagreements, kept as observations rather than defects:
+    tests/accept/closure_fn_parameter.vel line 7 `apply`  tree=[f]  model=[]
+    tests/accept/closure_lambda_as_argument.vel line 10 `apply`  tree=[f]  model=[]
+  (5 callable(s) moved from `wrong` to this named skip; the compiler was asked only about the files where a disagreemen
+t was found, because 180 of the 312 corpus files are refused by design and asking about every one costs ~340 s)
+
+callables compared            : 1953
+where the two sources disagree: 0
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 1953
+  skipped                 : 12
+      threw                 0         <- a defect, not a limit
+      missing-corpus-file   0         <- a defect, not a limit
+      check-timed-out       0         <- a defect, not a limit
+      no-model-entry-for-this-def  7       
+      too-large             0       
+      compiler-refused-the-file  5       
+  wrong                   : 0
+  corpus accounted for    : 1965  (ran + skipped)
+
+COVERAGE: ran 1953 / skipped 12 (threw 0, missing-corpus-file 0, check-timed-out 0, no-model-entry-for-this-def 7, too-
+large 0, compiler-refused-the-file 5) / wrong 0
+VERDICT: [PASS] the model and the tree give the same parameter names for all 1953 callable(s) compared (wrong 0, no def
+ect category tripped; 2 file(s) the compiler refuses were not judged and are counted as `compiler-refused-the-file` 5 c
+allable(s))
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\HintNames.log
+
+
+the run as a whole, as far as it had got when this file was written:
+        tools         : GotoOracle, HintDiff, HintNames, HintShapes, HintDupes, SymbolDiff, FoldDiff, FeatureProbe, ParamNa
+        frozen compiler: 867840 bytes  sha256 501b6cbb5701f3d5ef36396b9ddcaf4ce740e66d6ca325f482c2451e76810fdf
+
+every tool that had finished by then, with its exit code (the two this work owns both
+exit 0; SymbolDiff and FoldDiff are another agent's and report their own findings):
+    GotoOracle       exit 0
+    HintDiff         exit 0
+    HintNames        exit 0
+    HintShapes       exit 0
+    HintDupes        exit 0
+    SymbolDiff       exit 1
+    FoldDiff         exit 1
+    FeatureProbe     exit 0
+    ParamNames       exit 0
+    HintTruth        exit 0
+    HoverTruth       exit 0
+
+##############################################################################
+# 5. CONTROL A -- the class is not 'skip everything': a refused file and an ACCEPTED file
+##############################################################################
+Mutant copies of the two tools (built in %TEMP%, never in the tree) whose oracle is damaged
+so that a hint on a COMPILER-ACCEPTED file can no longer match.  The refused file in the
+same corpus still lands in the class, and the accepted file is still judged:
+
+  HintNames: the criterion inverted -> the accepted callable is judged WRONG and the
+  refused callable is skipped, in the same run:
+    == files `vm.exe check` refuses, so they are NOT judged ==
+          compiler-refused-the-file  1       
+    COVERAGE: ran 1 / skipped 2 (threw 0, missing-corpus-file 0, check-timed-out 0, no-model-entry-for-this-def 1, too-large 0, compiler-refused-the-file 1) / wrong 1
+    VERDICT: [FAIL] 1 of 1 callable(s) name their parameters differently in the model than in the tree (each one listed above) -- and 1 file(s) the compiler refuses were not judged and are counted as `compiler-refused-the-file` 1 callable(s)
+
+  HintDiff: the oracle drops a declared parameter -> three wrong positions in
+  tests/build/shadow_builtin.vel, a file vm.exe check ACCEPTS (exit 0):
+      tests/build/shadow_builtin.vel:6 `substr` argument 1 is `beta`, but the hint reads `alpha: `   (declared [beta, gamma])
+      tests/build/shadow_builtin.vel:6 `substr` argument 2 is `gamma`, but the hint reads `beta: `   (declared [beta, gamma])
+      tests/build/shadow_builtin.vel:6 `substr` takes 2 parameter(s) [beta, gamma], but a hint `gamma: ` was drawn for argument 3
+    VERDICT: 3 hint position(s) are not right -- and the compiler refused no file with a finding, so nothing was moved out of the verdict
+    COVERAGE: ran 10 / skipped 0 (compiler-cannot-parse 0, arg-boundary-disagreement 0, compiler-refused-the-file 0, check-timed-out 0) / wrong 3
+
+  the UNMUTATED tool on the very same inputs (a refused file with a finding -> its units
+  move to the class, exit 0):
+    == files `vm.exe check` refuses, so they are NOT judged ==
+    VERDICT: every hint names the parameter the compiler declares for that argument, and every declared parameter has a hint (1 file(s) the compiler refuses were not judged and are counted as `compiler-refused-the-file` 6 argument position(s))
+    COVERAGE: ran 4 / skipped 6 (compiler-cannot-parse 0, arg-boundary-disagreement 0, compiler-refused-the-file 6, check-timed-out 0) / wrong 0
+
+  a scratch root with one refused file and one accepted file, unmutated tool:
+    == files `vm.exe check` refuses, so they are NOT judged ==
+    VERDICT: every hint names the parameter the compiler declares for that argument, and every declared parameter has a hint (1 file(s) the compiler refuses were not judged and are counted as `compiler-refused-the-file` 6 argument position(s))
+    COVERAGE: ran 8 / skipped 6 (compiler-cannot-parse 0, arg-boundary-disagreement 0, compiler-refused-the-file 6, check-timed-out 0) / wrong 0
+
+##############################################################################
+# 6. CONTROL B -- a run that judged nothing is not a clean run
+##############################################################################
+Pointed at a path that is not a repo root (which is what an unknown --vm used to do to
+this tool's argument parser: it silently measured 0 files and printed a PASS):
+    COVERAGE: ran 0 / skipped 1 (threw 0, missing-corpus-file 0, check-timed-out 0, nothing-was-judged 1, no-model-entry-for-this-def 0, too-large 0, compiler-refused-the-file 0) / wrong 0
+    VERDICT: [FAIL] nothing was judged at all: not one callable was compared, so `wrong 0` here is the absence of a measurement rather than a clean one (is the repo root the wrong path, or the compiler missing?); the run is not clean either: 0 threw, 0 corpus file(s) missing, 0 file(s) the compiler did not answer about within 30s -- and the compiler refused no file with a disagreement, so nothing was moved out of the verdict
+  exit 3 (a harness/corpus defect, not a wrong answer).
+
+##############################################################################
+# 7. THE FILES THAT ARE STILL NOT DEFECTS, NAMED
+##############################################################################
+Every finding inside a refused file is printed with its file and the compiler's own words,
+and counted in the class.  For HintDiff that is the eight findings the leader reported:
+      their findings, kept as observations rather than defects:
+      tests/accept/nested_fn_called.vel:12 `succ` argument 1 is `n`, argument written `0`, but no hint was drawn at all
+      tests/accept/nested_fn_called.vel:12 `succ` argument 1 is `n`, argument written `1`, but no hint was drawn at all
+      tests/accept/nested_fn_called.vel:13 `succ` argument 1 is `n`, argument written `9`, but no hint was drawn at all
+      tests/accept/nested_fn_capture_refused.vel:16 `add_base` argument 1 is `n`, argument written `1`, but no hint was drawn at all
+      tests/accept/nested_fn_recurse.vel:12 `fact` argument 1 is `n`, argument written `n - 1`, but no hint was drawn at all
+      tests/accept/nested_fn_recurse.vel:14 `fact` argument 1 is `n`, argument written `5`, but no hint was drawn at all
+      tests/accept/nested_fn_sibling_call.vel:13 `succ` argument 1 is `n`, argument written `succ(n)`, but no hint was drawn at all
+      tests/accept/nested_fn_sibling_call.vel:15 `twice_succ` argument 1 is `n`, argument written `0`, but no hint was drawn at all
+
+##############################################################################
+# 8. REVERT / SCOPE PROOF
+##############################################################################
+  idea-plugin\harness.ps1                              sha256 ef032c5fb079499521a61f135389e73ec2a58f54308e39270607e72f9aecd7c1
+  idea-plugin\tools\harness\src\HintNames.java         sha256 0dee59b81b0ea39285c0673b74c57f90747ec02d0a3cac755e261a7d2b2e54fd
+  idea-plugin\tools\harness\src\HintDiff.java          sha256 18ca924bcc68c57a4fc94e24fb969f2f48380f2c85987216bdc5514a69c7f7ca
+
+  the mutant sources live only in %TEMP% and the tree contains no mutant marker:
+    'MUTANT' occurrences in the tree's harness sources: 0
+    HintNames.java identical to the snapshot taken before the controls; HintDiff.java identical to the snapshot taken before the controls; harness.ps1 identical to the snapshot (it is now committed in HEAD, by another agent)
+
+  the four files this agent was told not to touch:
+    idea-plugin\tools\harness\src\SymbolDiff.java                          mtime 2026-09-24 01:53:27
+    idea-plugin\tools\harness\src\FoldDiff.java                            mtime 2026-09-24 01:28:30
+    idea-plugin\tools\harness\src\HoverTruth.java                          mtime 2026-09-24 02:18:43
+    idea-plugin\src\main\kotlin\dev\vela\plugin\VelaDocumentation.kt       mtime 2026-09-24 02:03:40
+
+##############################################################################
+# 9. WHAT THE CLASS DOES NOT COVER (limits, stated rather than implied)
+##############################################################################
+  * a file the compiler cannot PARSE keeps its own existing class (compiler-cannot-parse):
+    HintDiff reports it separately, so 'the parser could not read it' and 'the language does
+    not have this program' never look the same.
+  * a refused file with NO finding is judged rather than skipped -- its units stay on the
+    ran side, which is a stronger statement than not looking at it.
+  * if check does not answer within 30 s the file's findings STAND and the run carries a
+    named check-timed-out defect (exit 3): the one authority could not be asked.
+  * nothing here changes the exit code for a skipped file: the skip side has no vote.
+  * the harness's -Single switch is not passed to HintNames (the tool takes no --single, and
+    an unknown flag used to become the repo root -- see control B).
+
+##############################################################################
+# 10. ADDENDUM (added 03:2x, same day) -- one stray directory, self-caught
+##############################################################################
+The section 8 line "'MUTANT' occurrences in the tree's harness sources: 0" was computed over
+tools\harness\src\*.java, which is non-recursive.  At the time it was written the tree also
+held a stray tools\harness\src\mutant\ directory: an earlier attempt at the control used a
+PowerShell variable named $src, which is the SAME variable as $SRC in that shell (case is not
+significant there), so the mutant copies were written under the harness source directory
+instead of %TEMP%.  That attempt never compiled (its classpath variable had been clobbered
+too), and every mutant run reported in section 5 was built and run from %TEMP%, from the
+corrected script.  The stray directory has been deleted; the tree now holds no mutant copy and
+no control remnant, and the two tool sources are byte-identical to the snapshot taken before
+any control ran (section 8).
