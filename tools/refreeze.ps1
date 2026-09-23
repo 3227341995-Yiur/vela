@@ -149,10 +149,15 @@ if ($fails.Count -gt 0) {
 Say ("      exit code " + $code)
 
 # A build leaves detached helpers behind; see tools\smoke.ps1 for why that
-# matters here.
-foreach ($name in @('vctip', 'mspdbsrv')) {
-    $strays = @(Get-Process -Name $name -ErrorAction SilentlyContinue)
-    if ($strays.Count -gt 0) { $strays | Stop-Process -Force -ErrorAction SilentlyContinue }
+# matters here.  `mspdbsrv` is deliberately not swept: it is a *shared* PDB server,
+# so killing it by image name breaks another checkout's compile with a message that
+# names neither this script nor a PDB server (`tools\_cl-helper-spawn.ps1` measures
+# that our builds never ask for one).  `reap_helpers` in the compiler driver is what
+# reaps the helpers of a build this script ran.
+$strays = @(Get-Process -Name vctip -ErrorAction SilentlyContinue)
+if ($strays.Count -gt 0) {
+    $strays | Stop-Process -Force -ErrorAction SilentlyContinue
+    Say ("      cleaned up $($strays.Count) detached vctip process(es)")
 }
 
 Say ''

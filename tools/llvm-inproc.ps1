@@ -196,17 +196,17 @@ function Invoke-Batch([string[]] $lines, [string] $tag, [string] $envPath) {
     return @{ codes = $results; log = $text }
 }
 
-# `cl.exe` starts detached helpers that outlive it and can wedge the job runner
-# this project is driven by, so this runs after every step that could touch the
-# MSVC toolchain -- not once at the end, because a script killed in between never
-# gets there.
+# `mspdbsrv.exe` is deliberately **not** reaped, and that is a fix: it is a
+# *shared* PDB server, so killing it by image name kills the one another checkout's
+# `cl` is holding open.  Measured 2026-09-24 (`tools\_cl-helper-spawn.ps1`): this
+# project's own `/O2 /std:c11 /utf-8` command line leaves `vctip` and no `mspdbsrv`,
+# so there was never ours to reap.  `vctip.exe` is per-compiler, not shared, and
+# leaving one alive is what wedges the job runner this whole function exists for.
 function Reap-MsvcHelpers {
-    foreach ($name in @('vctip', 'mspdbsrv')) {
-        $strays = @(Get-Process -Name $name -ErrorAction SilentlyContinue)
-        if ($strays.Count -gt 0) {
-            $strays | Stop-Process -Force -ErrorAction SilentlyContinue
-            Say "    reaped $($strays.Count) detached $name process(es)"
-        }
+    $strays = @(Get-Process -Name vctip -ErrorAction SilentlyContinue)
+    if ($strays.Count -gt 0) {
+        $strays | Stop-Process -Force -ErrorAction SilentlyContinue
+        Say "    reaped $($strays.Count) detached vctip process(es)"
     }
 }
 

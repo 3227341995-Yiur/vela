@@ -48,18 +48,51 @@ Say "Vela smoke test — $root"
 Say ("  " + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
 
 # ---------------------------------------------------------------- 0. strays
+#
+# **Ownership, not names.**  This step used to kill every `vctip`, `mspdbsrv`, `cl`
+# and `link` on the machine, which is a sweep that takes a *different* checkout's
+# in-flight compile with it -- and `mspdbsrv` is a *shared* PDB server, so killing
+# it breaks somebody else's `cl` in a way that names neither this script nor a PDB
+# server.  Measured 2026-09-24: a suite run failed on a `build-c` row with stderr
+# truncated before the driver printed its own command line, three times on three
+# different rows, while another agent's `build.ps1` was running.
+#
+# What is left is the part that was ever per-checkout: helpers of *this* checkout's
+# own compiler, identified by where the executable lives.  A process whose `Path`
+# cannot be read is reported and not killed, because the old failure mode was
+# killing too much and an empty path is not evidence of ownership.
 Step 'detached compiler helpers'
-$strays = @(Get-Process -Name vctip, mspdbsrv, cl, link -ErrorAction SilentlyContinue)
-if ($strays.Count -eq 0) {
-    Ok 'none running'
-} else {
-    foreach ($p in $strays) {
-        Say ("    found  " + $p.ProcessName + " pid=" + $p.Id + " started " + $p.StartTime)
+$heres  = @()
+$theirs = @()
+foreach ($name in @('vctip', 'mspdbsrv', 'cl', 'link')) {
+    foreach ($p in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
+        $path = ''
+        try { $path = $p.Path } catch { $path = '' }
+        if ($path -and $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
+            $heres += $p
+        } else {
+            $theirs += [pscustomobject]@{ Name = $p.ProcessName; Id = $p.Id; Path = $path }
+        }
     }
-    $strays | Stop-Process -Force -ErrorAction SilentlyContinue
+}
+if ($heres.Count -eq 0) {
+    Ok 'no helper of this checkout is running'
+} else {
+    foreach ($p in $heres) {
+        Say ("    found  " + $p.ProcessName + " pid=" + $p.Id + " path=" + $p.Path)
+    }
+    $heres | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 300
-    $left = @(Get-Process -Name vctip, mspdbsrv, cl, link -ErrorAction SilentlyContinue)
-    if ($left.Count -eq 0) { Ok "killed $($strays.Count)" } else { Bad "$($left.Count) survived" }
+    Ok "killed $($heres.Count) of this checkout's own"
+}
+if ($theirs.Count -gt 0) {
+    Say ("    left alone: $($theirs.Count) process(es) that are not this checkout's -- a sweep")
+    Say '    by image name would have killed them and their agent''s build with them:'
+    foreach ($t in ($theirs | Select-Object -First 6)) {
+        Say ("      " + $t.Name + "  pid=" + $t.Id + "  " + $(if ($t.Path) { $t.Path } else { '(path not openable)' }))
+    }
+    if ($theirs.Count -gt 6) { Say ("      ... and " + ($theirs.Count - 6) + " more") }
+    Say '    (a `vctip`/`mspdbsrv` left behind is the price; see tools\build.ps1''s sweep)'
 }
 
 # --------------------------------------------------------------- 1. compiler

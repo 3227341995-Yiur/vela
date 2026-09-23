@@ -582,12 +582,30 @@ def msvc_build(self: str, vcv: str, cfile: str, exe: str, obj: str, rt: str,
 # behind, and it is a workaround for a measured environment limitation rather than
 # something a compiler should have to do: `VSCMD_SKIP_SENDTELEMETRY=1` was tried
 # first and did **not** stop the helper appearing (measured: a build with the
-# switch set still left a `vctip`, which `build.ps1`'s cleanup then reported).
-# Both commands are silent and their failure is ignored 鈥?not finding a process
-# that should not exist is not a build error.
+# switch set still left a `vctip`, which `build.ps1`'s cleanup then reported).  The
+# command is silent and its failure is ignored -- not finding a process that should
+# not exist is not a build error.
+#
+# `mspdbsrv.exe` is **not** killed here, and that is a fix rather than an omission.
+# It is a *shared* PDB server: one instance serves every `cl.exe` that asks for it,
+# so a `taskkill /im mspdbsrv.exe` kills the PDB server somebody else's compile is
+# holding open -- and their build then dies with a message that names neither this
+# compiler nor a PDB server.  Measured 2026-09-24 and it cost two false failures: a
+# suite row built by `build-c` failed with `could not be built` and stderr that
+# stopped *before the driver printed its own command line*, three times in three
+# runs on three different rows, each time while another checkout's `build.ps1` was
+# running; every one of those rows passed alone.
+#
+# A PDB server exists only because a compiler asked for one, and this driver's
+# command lines never do: measured with `tools\_cl-helper-spawn.ps1`, one compile of
+# `selfhost\build\vm.c` with exactly the flags `msvc_build` passes (`/O2 /std:c11
+# /utf-8`, no `/Zi`, no `/Fd`) leaves `vctip` and nothing else -- no `mspdbsrv` in
+# the process table before or after.  So the second `taskkill` never had this
+# project's work to do, and deleting it costs nothing this project wanted.  If a
+# debug-info switch is ever added to the C path, `mspdbsrv` becomes ours to reap and
+# this comment is the record of why it was not, and of what to ask first.
 def reap_helpers() -> None {
     run_command("taskkill /f /im vctip.exe >nul 2>&1")
-    run_command("taskkill /f /im mspdbsrv.exe >nul 2>&1")
 }
 
 def run_cc(self: str, vcv: str, c: str, tag: str) -> int {

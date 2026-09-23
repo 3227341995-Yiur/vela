@@ -225,6 +225,16 @@ if (Test-Path -LiteralPath $llvmRuntimeObj) {
     })
 }
 
+# "No C compiler is started" is a claim about a process that is *not* run, and a log
+# that does not mention cl.exe is also what a build that quietly found one somewhere
+# else prints.  So `tools\llvm-no-cl.ps1` disarms the C compiler instead of watching for
+# it -- `CL=/Zs`, which cl.exe reads as its own extra arguments, inside the compiler,
+# where no PATH trick can be walked around by `vcvars64.bat` -- and checks three things:
+# `build` works disarmed, `build-c` fails disarmed, and `build-c` works armed.  The
+# other half of the same claim is `llvm-inproc` above, which strips the C compilers off
+# `PATH`; the two together are the north star on two different axes.
+Invoke-Step -Name 'llvm-no-cl' -Script 'tools\llvm-no-cl.ps1' -SuccessPattern 'RESULT: ok'
+
 # The compiler's own code generator is reached through `extern c` declarations that
 # are generated from the C header, because an interface written twice by hand drifts.
 # The generated file is only honest if it is still what the header says, so the check

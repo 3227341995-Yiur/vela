@@ -18,9 +18,11 @@
 # picked up · 7 the Vela test suite (only with -Suites or -Record) · 8
 # `LLVM-C.dll` and the runtime object beside every `vm.exe` the build wrote,
 # because from step 2 on the compiler is linked against libLLVM and will not load
-# without that DLL.  (The detached `vctip.exe`/`mspdbsrv.exe` reaping happens at
-# the very end of the script and in the compiler's own driver;
-# `VSCMD_SKIP_SENDTELEMETRY=1` does not stop them.)
+# without that DLL.  (The detached `vctip.exe` reaping happens at the very end of
+# the script and in the compiler's own driver; `VSCMD_SKIP_SENDTELEMETRY=1` does not
+# stop it.  Nothing here is killed by image name any more -- see the sweep at the
+# top of this file for why a name-based kill made a gate's verdict depend on what a
+# different checkout was doing.)
 #
 # **Which mode each step drives, and why it is written down here.**  `vm.exe
 # build` is the LLVM path since the LLVM back end was promoted: it builds the
@@ -80,16 +82,88 @@ $ProgressPreference    = 'SilentlyContinue'
 $root = Split-Path -Parent $PSScriptRoot            # the repository root
 Set-Location -LiteralPath $root
 
-# Leftovers first.  Before panic() stopped calling abort(), every program the
-# compiler *refused* was a real Windows crash (0xC0000409), which hands the
-# process to Windows Error Reporting — and a crash handler that never exits holds
-# the job object it was started in, so the shell that ran it cannot start
-# anything afterwards.  Killing them is best-effort and harmless when absent.
+# Leftovers first, and **by ownership**, which this block did not do until
+# 2026-09-24 and which cost another agent two false failures.
+#
+# Before `panic()` stopped calling `abort()`, every program the compiler *refused*
+# was a real Windows crash (0xC0000409), which hands the process to Windows Error
+# Reporting — and a crash handler that never exits holds the job object it was
+# started in, so the shell that ran it cannot start anything afterwards.  Killing
+# *those two* is best-effort and harmless: `WerFault`/`wermgr` are machine-global
+# crash handlers, not per-checkout, so a sweep by name cannot take anything from
+# anyone (it can only take a crash report they wanted).
+#
+# `vm`, `cl` and `link` are a different question, and the old code answered it
+# wrong.  It killed every process with those names **on the machine**, by bare
+# image name.  In a tree with more than one working directory -- a git worktree for
+# a second agent is exactly that, and so is an IDE's language server -- that means:
+#
+#   * another agent's in-flight `cl` dies mid-compile, and the failure arrives as
+#     `could not be built` with stderr truncated *before the driver prints its own
+#     command line*, which is what a compiler killed by a signal looks like and not
+#     what a compiler error looks like.  Measured: a `run-c` row failed that way
+#     three times in three suite runs, on three different rows, while the other
+#     agent's `build.ps1` was running, and every one of them passed alone;
+#   * another agent's running `vm.exe` dies -- including one holding
+#     `selfhost\build\vm.exe` open, which is precisely the hazard
+#     `Clear-LockedTarget` below exists for, and one that may be in the middle of
+#     emitting a fixpoint.
+#
+# So a gate's verdict depended on what a *different* agent happened to be doing,
+# and a gate that lies is worse than no gate.  The rule now: a process is only
+# swept when its own executable path is inside **this checkout**.  `Path` is empty
+# for a process this user cannot open, and an empty path is therefore *not* swept --
+# the failure mode of the old code was killing too much, so the new default is to
+# leave alone what cannot be identified.  A stray `vm.exe` of our own that we
+# cannot open would then survive, and `Clear-LockedTarget` is what handles the
+# consequence (a held output file), which is the honest division: identity decides
+# what may be killed, the lock decides what may be renamed aside.
+function Get-OwnedProcess {
+    param([string] $Name)
+    $mine = @()
+    foreach ($p in @(Get-Process -Name $Name -ErrorAction SilentlyContinue)) {
+        $path = ''
+        try { $path = $p.Path } catch { $path = '' }
+        if ($path -and $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
+            $mine += $p
+        }
+    }
+    return $mine
+}
+
+function Get-ForeignProcess([string[]] $Names) {
+    $theirs = @()
+    foreach ($n in $Names) {
+        foreach ($p in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
+            $path = ''
+            try { $path = $p.Path } catch { $path = '' }
+            if (-not ($path -and $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase))) {
+                $theirs += [pscustomobject]@{ Name = $p.ProcessName; Id = $p.Id; Path = $path }
+            }
+        }
+    }
+    return $theirs
+}
+
 foreach ($name in 'WerFault', 'wermgr') {
     try { Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch { }
 }
+$foreign = Get-ForeignProcess @('vm', 'cl', 'link', 'vctip', 'mspdbsrv')
+$owned = @()
 foreach ($name in 'vm', 'cl', 'link') {
-    try { Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch { }
+    $owned += Get-OwnedProcess $name
+}
+if ($owned.Count -gt 0) {
+    $owned | Stop-Process -Force -ErrorAction SilentlyContinue
+    Write-Host "  swept $($owned.Count) leftover process(es) of this checkout's own"
+}
+if ($foreign.Count -gt 0) {
+    Write-Host "  left alone: $($foreign.Count) process(es) of another checkout -- a sweep by name"
+    Write-Host "  would have killed them, and their agent's build with them:"
+    foreach ($f in ($foreign | Select-Object -First 6)) {
+        Write-Host ("      " + $f.Name + "  pid=" + $f.Id + "  " + $(if ($f.Path) { $f.Path } else { '(path not openable)' }))
+    }
+    if ($foreign.Count -gt 6) { Write-Host ("      ... and " + ($foreign.Count - 6) + " more") }
 }
 
 if (-not $Report) { $Report = Join-Path (Split-Path -Parent $root) 'vela-build-report.txt' }
@@ -412,6 +486,24 @@ function Place-LlvmRuntime([string] $vmPath) {
 # per build; now the build does it, and says so.  (`/selfhost/build/*.held` is ignored, which
 # matters because the file it leaves behind is 867 KB of binary and cannot even be deleted
 # while a process still holds it.)
+#
+# **When the rename itself fails, the build does not.**  That was wrong until 2026-09-24 and
+# the measurement came from `tools\_ownership-probe.ps1`, which takes an exclusive handle and
+# calls this function: the rename is refused, and the old code set `$failed` -- so a *busy*
+# file was reported as a failed build before the linker was asked anything, which is the same
+# mistake this function was written to fix, one level down.  The file is then held the way
+# the linker will report it, and the linker is what reports it.
+#
+# **And the catch does not try to explain why.**  Two versions of a "can this be renamed?"
+# helper were written here and both were wrong in the direction that flatters -- each printed
+# "the file can be renamed" for a file it had just failed to rename -- so the question was
+# measured instead.  `tools\_hold-probe.ps1` prints the table with the disagreement count, and
+# the answer is that **no open-mode test reports a rename**: a rename needs the *holder* to
+# share `FileShare::Delete`, and this function's own probe handle is part of the situation --
+# a `FileShare::None` handle makes the file unrenamable by itself, a `Delete`-only holder
+# lets the rename through while refusing a write-open, and a `ReadWrite|Delete` holder lets
+# it through while refusing a read-write request.  So the sentence is the exception's own,
+# and the verdict belongs to the linker: `LNK1104: cannot open file`, with the path in it.
 function Clear-LockedTarget([string] $path) {
     if (-not (Test-Path -LiteralPath $path)) { return }
     $held = $false
@@ -431,7 +523,8 @@ function Clear-LockedTarget([string] $path) {
         Say ("    {0} is held open by a running process; moved it aside to {1} so the link can write a fresh one" -f (Split-Path $path -Leaf), (Split-Path $aside -Leaf))
     } catch {
         Say ("    !! {0} is held open and could not be moved aside: {1}" -f $path, $_.Exception.Message)
-        $script:failed = $true
+        Say '       (a holder that does not share delete access makes a file unrenamable by'
+        Say '        anybody, so the linker is what reports this one -- a LNK1104 naming it)'
     }
 }
 
@@ -861,7 +954,21 @@ foreach ($b in $vmBins) {
 # the suite cannot: it is killed before it reaches its own cleanup.  This block is
 # the second line of defence, for binaries built before that change and for any
 # other tool in the chain that spawns a helper.
-foreach ($name in @('vctip', 'mspdbsrv')) {
+#
+# **And it is machine-global when the helpers are, which only `vctip` now is.**
+# `mspdbsrv.exe` is a *shared* PDB server -- one instance serves every `cl.exe`
+# that asks for it -- so a sweep that kills it by image name kills the PDB server
+# another checkout's compile is holding open, and their build then dies with a
+# message that names neither this script nor a PDB server.  Measured 2026-09-24: a
+# suite row built by `build-c` failed with `could not be built` and stderr truncated
+# before the driver printed its own command line, three times on three different
+# rows, each time while another checkout's build was running; every row passed
+# alone.  This project's own builds never ask for a PDB server in the first place
+# (`tools\_cl-helper-spawn.ps1` measures it: the driver's `/O2 /std:c11 /utf-8`
+# command line leaves `vctip` and no `mspdbsrv`), so `mspdbsrv` is not swept here by
+# anybody -- and the compiler driver's own `reap_helpers` is where that was fixed,
+# with the same measurement behind it.
+foreach ($name in @('vctip')) {
     $strays = @(Get-Process -Name $name -ErrorAction SilentlyContinue)
     if ($strays.Count -gt 0) {
         $strays | Stop-Process -Force -ErrorAction SilentlyContinue
