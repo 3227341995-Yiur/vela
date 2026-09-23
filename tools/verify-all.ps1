@@ -287,6 +287,33 @@ if ($WithMutation) {
     })
 }
 
+# The other half of the same proof, and the third script this session that nothing
+# called.  `mutation-test.ps1` mutates the plugin; `negative-tests.ps1` mutates the
+# *descriptor* and the compiler's runtime header, and requires the verifier to catch
+# each shape of bug that has actually shipped from this repository.
+#
+# The success pattern is deliberately stricter than the script's own exit code.  That
+# script exits 1 only when a case is MISSED; every case can report VOID -- its target
+# has disappeared from plugin.xml, so the mutation applied to nothing -- and the run
+# still exits 0.  "The verifier can fail" is exactly what a VOID run does not show, so
+# the pattern demands `0 missed; 0 void` and the step fails otherwise.
+$negative = Join-Path $repo 'idea-plugin\tools\negative-tests.ps1'
+if ($WithMutation) {
+    if (Test-Path -LiteralPath $negative) {
+        Invoke-Step -Name 'negative' -Script 'idea-plugin\tools\negative-tests.ps1' -SuccessPattern 'negative tests: \d+/\d+ caught; 0 missed; 0 void'
+    } else {
+        [void]$results.Add([pscustomobject]@{
+            Step = 'negative'; Ok = $false; Code = 1; Seconds = 0;
+            Verdict = "asked for -WithMutation but $negative does not exist"; Out = ''; Err = ''
+        })
+    }
+} else {
+    [void]$results.Add([pscustomobject]@{
+        Step = 'negative'; Ok = $null; Code = 0; Seconds = 0;
+        Verdict = 'skipped (add -WithMutation: proves the verifier can fail)'; Out = ''; Err = ''
+    })
+}
+
 Write-Host ''
 Write-Host '===================================================== summary'
 foreach ($r in $results) {
@@ -296,7 +323,9 @@ foreach ($r in $results) {
 Write-Host ''
 Write-Host '  not covered by this command, and not claimed to be:'
 Write-Host '    * the plugin has never been loaded into a running IDE (needs a booted application)'
-Write-Host '    * the three-path differential for the LLVM backend (tests\run_llvm.vel) does not exist yet'
+Write-Host '    * the corpus is judged on three paths -- interpreter and C by `suite`, LLVM by'
+Write-Host '      `llvm-column` -- but a program the LLVM back end refuses is covered only by its'
+Write-Host '      ledger entry in tests\llvm-refusals.txt, never by an answer'
 Write-Host ''
 
 # `$_`, not a named variable: this line first read `$r.Ok -eq $false`, where `$r` is
