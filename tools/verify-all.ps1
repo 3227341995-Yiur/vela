@@ -55,6 +55,13 @@
                                        named in tests\llvm-refusals.txt with its
                                        reason, and a ledger entry that is no longer
                                        refused fails the run
+      accept-status tools\accept-status.ps1
+                                       the corpus for features that do not exist yet,
+                                       pinned to what it does today.  Red on any
+                                       difference, including one that looks like
+                                       progress; every program runs under a timeout,
+                                       because one that does not return holds the
+                                       compiler open and the next build fails
       suite     tools\refreeze.ps1     record the locks, keep the written
                                        expectations, run all the cases
       bench     tools\bench.ps1        7 repetitions per variant, every answer
@@ -260,6 +267,16 @@ Invoke-Step -Name 'hygiene' -Script 'tools\check-hygiene.ps1' -SuccessPattern 'R
 # that is never pruned stops describing the back end.  It starts no C compiler, so it
 # can run while the build is owned by somebody else.
 Invoke-Step -Name 'llvm-column' -Script 'tools\llvm-column.ps1' -SuccessPattern 'RESULT: ok'
+
+# The acceptance corpus for features the language does not have yet, run for the first time.
+#
+# `tests\accept\` holds 48 programs written for those nine features, and until this step existed
+# nothing ran them: `tests\cases.txt` had no line containing `enum`, and no script mentioned the
+# directory.  They cannot go into the suite -- it would be red until all nine land -- so what is
+# asserted is STABILITY: every one is refused, with this exact diagnostic, until somebody changes
+# it on purpose.  A difference fails the run even when it looks like progress, because the day a
+# feature lands is the day the program moves into `tests\cases.txt` with a golden.
+Invoke-Step -Name 'accept-status' -Script 'tools\accept-status.ps1' -SuccessPattern 'RESULT: ok'
 
 if (-not $SkipSuite) {
     Invoke-Step -Name 'suite' -Script 'tools\refreeze.ps1' -SuccessPattern 'RESULT: green'
