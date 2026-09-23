@@ -117,7 +117,7 @@ object VelaDeclarations {
         // A keyword and a builtin are names the *language* declares; there is no line
         // in this file to navigate to, and inventing one would be a guess.
         if (VelaTokenTypes.KEYWORDS.contains(name)) return null
-        if (VelaModel.BUILTINS.any { it.first == name }) return null
+        if (VelaModel.BUILTINS.any { it.name == name }) return null
 
         // The tree answers this now, and it is the same answer for every caller:
         // `VelaTargets` resolves the name to a *declaration node* -- a field, a

@@ -140,11 +140,20 @@ struct LG {
     contb: int        # ... and its continue block
     term: int         # 1 when `cur` already ends in a terminator
     nstruct: int      # how many structs the program declares
+    # The three runtime symbols the string and math builtins call.  They are
+    # declared beside the others in `ll_declare_rt` and named in a comment there
+    # rather than here; they sit at the *end* of this struct on purpose, because
+    # `ll_zero` builds it positionally and inserting a field in the middle is a
+    # miscount waiting to happen.
+    f_streq: int      # i1(ptr, ptr) -- vela_llvm_str_eq, whose two `str`s cross
+                      # by reference: a 16-byte struct does not fit a register
+    f_sqrt: int       # f64(f64) -- the C library's own sqrt, as `<math.h>` gives it
+    f_fabs: int       # f64(f64) -- likewise
 }
 
 def ll_zero() -> LG {
     return LG(0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 }
 
 # The frame-slot table this back end can address.  A slot is the resolver's own
@@ -497,6 +506,48 @@ def ll_narrow(lg: LG, k: int, v: int) -> int {
     return v
 }
 
+# Every store goes through this, and that is the invariant the two helpers above
+# exist to keep: **a value's IR type is decided by its kind and by nothing else**
+# (`int` is i64, `u8` is i8, `i32` is i32), so a value crossing between a wide and
+# a narrow slot has to be converted, and the conversion is chosen by the pair of
+# kinds rather than by looking at the value.  The C back end has no such step --
+# C converts implicitly on assignment -- and that is the whole reason this is a
+# function: an implicit conversion in C is an *explicit* one here.
+#
+#   * a wide value stored into a narrow slot truncates (`uint8_t vl_b = 200LL`,
+#     and `vl_b = 300LL` is 44 in both back ends);
+#   * a narrow value read into a wide slot widens, unsigned for `u8` and signed
+#     for `i32` (`vela_print_i64(vl_b)` and `vela_print_i64(vl_w)`).
+#
+# A pair that is neither of those is left alone: those are the cases the language
+# already made the two kinds equal for (`int`/`int`, `float`/`float`, `bool`,
+# `str`), and pretending to convert two different kinds that got here by mistake
+# would hide a checker bug instead of reporting it.  The shim's own verifier is
+# what reports it -- a store whose value type does not match the slot's pointee
+# fails verification with a sentence naming the instruction.
+def ll_adapt(lg: LG, dstk: int, srck: int, v: int) -> int {
+    if dstk == K_INT() and ll_iso_wide(srck) {
+        return ll_wide(lg, srck, v)
+    }
+    if ll_iso_wide(dstk) and srck == K_INT() {
+        return ll_narrow(lg, dstk, v)
+    }
+    return v
+}
+
+def ll_adaptable(dstk: int, srck: int) -> bool {
+    if dstk == srck {
+        return True
+    }
+    if dstk == K_INT() and ll_iso_wide(srck) {
+        return True
+    }
+    if ll_iso_wide(dstk) and srck == K_INT() {
+        return True
+    }
+    return False
+}
+
 # `slots` says which alloca a frame slot is, and `slotkind` says which kind was
 # put there.  The second table is not bookkeeping: a frame slot that resolved to
 # another variable's storage would be a silently wrong program, so a reference
@@ -754,6 +805,26 @@ def ll_declare_rt(mut lg: LG, path: str) -> None {
     ps[0] = lg.t_i64
     lg.f_alloc = ll_declare(lg, "vela_llvm_arena_alloc", lg.t_ptr, ps, 1,
                             "declaring vela_llvm_arena_alloc")
+    # `vela_str_eq(a, b)`, which is what the C back end's `a == b` on two `str`s
+    # calls.  Both `str`s are 16-byte structs, so the Microsoft x86-64 ABI passes
+    # them **by reference** -- the same fact `vshim_fn_sret_param` exists for --
+    # and the declaration here is therefore `i1(ptr, ptr)`: the emitter hands it
+    # the addresses of the two slots the operands already live in, exactly as it
+    # hands `vela_llvm_print_str` one.  Measured rather than assumed: the corpus
+    # case `strings` is the differential that says so, and a by-value spelling
+    # here would not link.
+    ps[0] = lg.t_ptr
+    ps[1] = lg.t_ptr
+    lg.f_streq = ll_declare(lg, "vela_llvm_str_eq", lg.t_i1, ps, 2,
+                            "declaring vela_llvm_str_eq")
+    # `sqrt`/`fabs`: the C library's own symbols, under their own names, because
+    # that is what the C back end's `sqrt(...)`/`fabs(...)` resolve to and the
+    # corpus compares the two back ends' output byte for byte.  They are not
+    # `vl_`-prefixed for the same reason an `extern c` function is not: the
+    # symbol is somebody else's library.
+    ps[0] = lg.t_f64
+    lg.f_sqrt = ll_declare(lg, "sqrt", lg.t_f64, ps, 1, "declaring sqrt")
+    lg.f_fabs = ll_declare(lg, "fabs", lg.t_f64, ps, 1, "declaring fabs")
     lg.pfile = ll_path_global(lg, path)
 }
 

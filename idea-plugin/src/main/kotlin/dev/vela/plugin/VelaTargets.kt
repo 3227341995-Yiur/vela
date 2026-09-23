@@ -92,15 +92,7 @@ object VelaTargets {
         val name = identifierAt(src, calleeNameStart) ?: return null
         val tree = VelaSyntaxParser.parse(src)
         val def = declarationOfCallable(tree, name) ?: return null
-        val names = ArrayList<String>()
-        for (c in def.children) {
-            if (c.kind == VelaNodeKind.PARAM) names.add(c.name)
-        }
-        val open = openParenTokenOf(tree, def)
-        val close = closeParenToken(tree, def)
-        if (open < 0 || close < 0) return null
-        val entries = topLevelEntries(src, tree.toks[open].end, tree.toks[close].start)
-        return if (entries == names.size) names else null
+        return VelaSignatures.declaredParameterNames(tree, text, def)
     }
 
     /**
@@ -197,65 +189,32 @@ object VelaTargets {
     /**
      * The parameter names of one of the language's own names, or null.
      *
-     * A builtin has no declaration in the file to read, so the language's own table,
-     * `VelaModel.BUILTINS`, is the declaration -- and this reads its parameter list
-     * out of the entry's *text* the same way a signature is read anywhere else.  Null
-     * for a name the table does not describe, which is what keeps a call to one from
-     * being named by a guess.
+     * A builtin has no declaration in the file, so the language's own table,
+     * `VelaModel.BUILTINS`, is the declaration — and this reads the parameter list out
+     * of that entry's **signature field**, never out of its prose.  The two used to be
+     * one string, and the names were found with `indexOf('(')` over the whole of it:
+     * that worked only because every entry happened to begin with its signature, and a
+     * description that mentioned a parenthesis first would have had every hint for that
+     * builtin named out of prose — with the harness agreeing, because its oracle called
+     * this same function.  Null for a name the table does not describe, and for an entry
+     * whose signature cannot be read, which is what keeps a call to one from being named
+     * by a guess.
      */
     fun builtinParameterNames(name: String): List<String>? {
-        val entry = VelaModel.BUILTINS.firstOrNull { it.first == name } ?: return null
-        val description = entry.second
-        val open = description.indexOf('(')
-        if (open < 0) return null
-        var depth = 0
-        var close = -1
-        var i = open
-        while (i < description.length) {
-            val c = description[i]
-            if (c == '(') depth++
-            if (c == ')') {
-                depth--
-                if (depth == 0) {
-                    close = i
-                    break
-                }
-            }
-            i++
-        }
-        if (close < 0) return null
-        val inner = description.substring(open + 1, close).trim()
-        if (inner.isEmpty()) return emptyList()
-        val out = ArrayList<String>(4)
-        var level = 0
-        val current = StringBuilder()
-        for (c in inner) {
-            when {
-                c == '[' || c == '(' -> {
-                    level++
-                    current.append(c)
-                }
-                c == ']' || c == ')' -> {
-                    level--
-                    current.append(c)
-                }
-                c == ',' && level == 0 -> {
-                    out.add(builtinParamName(current.toString()))
-                    current.setLength(0)
-                }
-                else -> current.append(c)
-            }
-        }
-        out.add(builtinParamName(current.toString()))
-        // `print(...)`: a variadic slot is not a parameter to name an argument with.
-        return out.filter { it.isNotEmpty() && it != "..." && it != "…" }
+        val entry = VelaModel.BUILTINS.firstOrNull { it.name == name } ?: return null
+        return signatureParameterNames(name, entry.signature)
     }
 
-    /** `mut a: Array[int, 4]` -> `a`, and `s` -> `s`. */
-    private fun builtinParamName(parameter: String): String {
-        val beforeColon = parameter.substringBefore(':').trim()
-        return beforeColon.removePrefix("mut ").trim()
-    }
+    /**
+     * The parameter names a *signature* writes, or null when the text is not a signature
+     * of [name].
+     *
+     * Exposed rather than private because it is the rule a harness has to be able to ask
+     * about: `ParamNames` feeds it a builtin's **prose** and requires null, which is what
+     * fails if a parameter list is ever read from anything but a signature again.
+     */
+    fun signatureParameterNames(name: String, signature: String): List<String>? =
+        VelaSignatures.parameterNamesInSignature(name, signature)
 
     /**
      * The declaration the name at [offset] refers to, or null.

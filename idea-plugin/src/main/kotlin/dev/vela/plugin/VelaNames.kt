@@ -84,32 +84,24 @@ fun resolveCall(text: CharSequence, call: VelaCall): VelaSymbol? {
         it.name == call.name && (it.kind == VelaSymbolKind.FUNCTION || it.kind == VelaSymbolKind.METHOD)
     }?.let { return it }
 
-    // The language's own names: their parameter lists are `VelaModel.BUILTINS`'
-    // description text, so the model is reused rather than a second copy of the
-    // builtin table being kept here.
-    val builtin = VelaModel.BUILTINS.firstOrNull { it.first == call.name }
+    // The language's own names: their declaration is the *signature* field of the
+    // builtin table, and both the parameter names and the return type are read from
+    // that signature rather than from the sentence beside it.  A builtin whose
+    // signature cannot be read answers no parameter names, and then completion inserts
+    // `()` rather than names from prose.
+    val builtin = VelaModel.BUILTINS.firstOrNull { it.name == call.name }
     if (builtin != null) {
         return VelaSymbol(
             kind = VelaSymbolKind.FUNCTION,
-            name = builtin.first,
-            detail = builtin.second.substringBefore(" — "),
-            type = returnTypeOf(builtin.second),
+            name = builtin.name,
+            detail = builtin.signature,
+            type = VelaSignatures.returnTypeInSignature(builtin.name, builtin.signature),
             line = 0, // declared by the language, not on a line of this file
             parent = -1,
+            parameters = VelaSignatures.parameterNamesInSignature(builtin.name, builtin.signature),
         )
     }
     return null
-}
-
-/** `len(a: Array[T, N] | str) -> int — ...` -> `int`; empty when not written. */
-private fun returnTypeOf(description: String): String {
-    val arrow = description.indexOf("->")
-    if (arrow < 0) return ""
-    return description.substring(arrow + 2)
-        .substringBefore("—")
-        .trim()
-        .substringBefore(' ')
-        .trim()
 }
 
 /**

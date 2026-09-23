@@ -212,7 +212,7 @@ object VelaSemanticNames {
             }
         }
         val builtins = HashSet<String>(VelaModel.BUILTINS.size * 2)
-        for ((name, _) in VelaModel.BUILTINS) builtins.add(name)
+        for (builtin in VelaModel.BUILTINS) builtins.add(builtin.name)
 
         val tokens = significantTokens(text)
         val opened = declarationBodies(
