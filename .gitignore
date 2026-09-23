@@ -90,6 +90,15 @@
 /idea-plugin/dist/**
 /idea-plugin/out/**
 
+# A git worktree, for the second agent that has to run a build while the first
+# one holds the main tree.  `tools\build.ps1` promotes `selfhost\build\vm.exe`
+# and regenerates the fixpoint C, so two agents running it in one working tree
+# measure each other rather than their own source.  A worktree gives the second
+# agent its own copy of that whole chain; this rule keeps the copy out of the
+# history of the tree it was cut from, which is exactly what `git status` in the
+# main tree would otherwise report as tens of thousands of untracked files.
+/.wt/
+
 # scratch directories agents work in, inside the checkout
 /_probe_lang/**
 /_cwdtest/**
