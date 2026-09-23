@@ -60,6 +60,53 @@ in it and none anywhere in the repository: the harness is a Vela program
 > `622c686` as the commit to check it against — not as a pin on `HEAD`, which is
 > what the `+` was doing.
 
+## Re-measured 2026-09-22, on the committed compiler
+
+The block above is the record of the revision it names.  This is the same harness run
+again against the compiler that is actually committed today, so a reader can tell the two
+apart without checking anything out:
+
+* **Compiler**: `selfhost\build\vm.exe` 809,984 bytes, SHA256
+  `EA303CF7934918845AFC0A2C62B5BDA5DB3C113E96D68FF8635B11D84A86CC9E`.  The fixpoint gate
+  checks C, not the executable: seed / generation 1 / generation 2 were all
+  `49629EADB28978FB…`, 921,504 bytes.  Measured while doing this: the `.exe` is **not**
+  bit-reproducible across link runs — the same sources have linked both to `8756F256…` and
+  to `EA303CF7…` — so the emitted C is the artefact to compare, and a binary hash
+  identifies a build rather than a source revision.
+* **Command**: `powershell -ExecutionPolicy Bypass -File tools\bench.ps1 -Reps 7`.
+
+      variant                    best     median      worst  answer
+      C++ serial             0.219428   0.224054   0.241723  1090512707
+      C++ restrict           0.227140   0.232425   0.236801  1090512707
+      Vela serial            0.542594   0.543302   0.554915  1090512707
+      C++ restrict+omp       0.020099   0.029377   0.031453  1090512707
+      Vela parallel          0.070122   0.082397   0.085824  1090512707
+
+      C++ serial             0.084126   0.084618   0.084938  50187647    mandelbrot 1600×1200
+      C++ omp                0.010849   0.011710   0.014986  50187647
+      Vela parallel          0.011098   0.011805   0.012285  50187647
+
+      C++ unchecked ints     0.013066   0.013152   0.013445  1270607     sieve n = 20×10⁶
+      Vela checked ints      0.019544   0.019680   0.019747  1270607
+
+  Every variant printed the answer it must, so the rows are comparable.
+
+* **Serial matmul**: `0.543302` against C++'s `0.224054` = **2.42× slower** — the same gap
+  the block above records, now on a compiler two revisions later.
+* **Parallel matmul**: **3.49× slower by best-of-7** (`0.070122` against `0.020099`) and
+  **2.80× by median** (`0.082397` against `0.029377`).  The single figure "3.1×" this file
+  used to quote is a ratio that moves by a quarter depending on which statistic is read,
+  so both are written down here instead of one.
+* **mandelbrot 1600×1200**: `0.011805` against `0.011710` = **a tie**, as recorded.
+* **sieve n = 20×10⁶**: `0.019680` against `0.013152` = **1.50× slower**.
+
+**"Faster than C++" is not established on any row**, and this is now the third independent
+run saying so.  The cost has one place: Vela's inner loop keeps its checked index
+arithmetic, and every row prints the answer it must, so the faster variants are not faster
+by being wrong.  Removing that arithmetic by proof is the only lever this project has
+(`selfhost/ELISION_PLAN.md`), and until it moves these numbers the claim stays
+unestablished.
+
 ## Read this before comparing with an older copy of this file
 
 The previous table was **deleted, not edited**.  Its Vela rows were measured while
