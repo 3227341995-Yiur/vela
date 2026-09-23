@@ -1,0 +1,300 @@
+Vela P3 baseline -- where the bounds checks are, and what eliding them would buy
+==============================================================================
+
+PROVENANCE
+
+Measured 2026-09-24 by a measurement subagent which changed no source file, and recorded
+here because a measurement kept in a gitignored scratch directory is not evidence -- this
+project has already paid once for a proof that existed and was never run.
+
+Compiler: selfhost\build\vm.exe, 861,696 bytes,
+sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a.
+
+The leader re-measured the five counts below against that same binary with
+`vm.exe emit-c bench\<b>.vel` and counting tokens (`vela_bounds_check`, `vela_add_range`,
+`vela_mul_range`, `vela_sub_range`) over the whole emitted translation unit.  They agree
+exactly with the report:
+
+  benchmark         lines  bounds  add  mul  sub
+  matmul               90      6     7    3    0
+  matmul_serial        90      6     8    3    0
+  sieve                58      3     4    2    0
+  mandelbrot           71      2     5    1    0
+  run_bench           501      9    29    5   16
+
+ELISION_PLAN.md says matmul is 6 / 10 / 6.  It is not, and the stale numbers are
+reproducible from a 2026-09-19 `bench\matmul.c` -- the second copy of the index
+expression, before the duplication was fixed.  Trust this file's counts, and check
+ELISION_PLAN.md's before quoting it.
+
+CAVEAT ON LINE NUMBERS
+
+Every line number inside the body is pinned to a snapshot of selfhost\parts\check.vel
+whose sha256 is 38BE1B0118B12B1B6EFED7F076A23B04F344B9B5B8E4F930D3949E7CBEB32728
+(120,272 bytes).  That file has moved since, by 81 lines in one function during a single
+measurement run.  Cite FUNCTIONS, not line numbers.  Every line number the plan quotes
+(ck_index:897-936, ck_match_linear:1841-1862) is wrong against that snapshot too.
+
+The body below is the subagent's report, unedited, in Chinese.
+
+==============================================================================
+P3 基线实测 + 检查消除清单（本轮只做测量，未改任何仓库源文件）
+=================================================================
+
+环境
+- 编译器：C:\Users\lu\Downloads\vela\selfhost\build\vm.exe（= selfhost\vm.exe，867328 B，2026-09-24 01:44:25）
+- `vm.exe emit-c` 写到 **stdout**，不落盘 → 绝不污染工作树。PS 5.1 的 `>` 是 UTF-16LE，
+  必须 `Out-File -Encoding ascii`，否则读出来是"binary file"。
+- 全部产物在 %TEMP%\vela_p3\（本机 = C:\Users\lu\AppData\Local\Temp\dsh-3GK4TX\vela_p3）。
+- 本报告副本：_p3_measure\P3_BASELINE.txt（.gitignore 的 `/_*` 覆盖）。
+- 未运行 tools\build.ps1、tools\refreeze.ps1、`vm.exe build`。未改任何仓库文件。
+  注意：selfhost/parts/check.vel、selfhost/build/vm.* 在我开工时**已经**是 dirty，
+  且 check.vel 在我测量期间正在被别的 agent 改写（见 §6.4）。
+
+0. 复现命令
+------------
+    $vm='C:\Users\lu\Downloads\vela\selfhost\build\vm.exe'
+    $t="$env:TEMP\vela_p3"; New-Item -ItemType Directory -Force $t | Out-Null
+    foreach ($b in 'matmul','matmul_serial','sieve','mandelbrot','run_bench') {
+      ((& $vm emit-c "C:\Users\lu\Downloads\vela\bench\$b.vel") -join "`n") + "`n" |
+        Out-File "$t\$b.c" -Encoding ascii
+    }
+
+统计口径
+- token 出现次数（`vela_bounds_check(`、`vela_add_range(`、`vela_mul_range(`、`vela_sub_range(`），
+  在整流文件上数，不是"包含它的行数"。
+- 内层循环 = 花括号配对求出的、**自身体内不再含循环头**的循环；体 = 头行下一行 .. 配对闭括号上一行；
+  在该行区间内数 token。
+
+1. 基线数字表
+--------------
+| benchmark          | 生成 C            | bounds | add | mul | sub | 内层循环（C 行号）                        | 该内层循环 bounds/add/mul |
+|--------------------|-------------------|--------|-----|-----|-----|-------------------------------------------|---------------------------|
+| matmul.vel         | 90 行 /  4885 B   |   6    |  7  |  3  |  0  | while@48，体 49-52（k 循环，P3 目标）      | 2 / 3 / 2                 |
+| matmul_serial.vel  | 90 行 /  5130 B   |   6    |  8  |  3  |  0  | while@47，体 48-51（k 循环）               | 2 / 3 / 2                 |
+| sieve.vel          | 58 行 /  2640 B   |   3    |  4  |  2  |  0  | while@20 体 21-24（筛标记 j，热循环）      | 1 / 1 / 0                 |
+|                    |                   |        |     |     |     | while@35 体 36-40（k 计数循环）            | 1 / 2 / 0                 |
+| mandelbrot.vel     | 71 行 /  3373 B   |   2    |  5  |  1  |  0  | while@30 体 31-34（迭代 it）               | 0 / 1 / 0                 |
+|                    |                   |        |     |     |     | while@50 体 51-53（行 i）                  | 1 / 2 / 0                 |
+| run_bench.vel      | 501 行 / 30018 B  |   9    | 29  |  5  | 16  | while@352 体 353-361（插入排序 j）         | 3 / 1 / 0                 |
+|                    |                   |        |     |     |     | while@375 体 376-399（reps 计时）          | 1 / 3 / 0                 |
+|                    |                   |        |     |     |     | （另有 10 个内层循环，均 0 bounds）        |                           |
+
+matmul 内层循环的行号依据（已用 read 核对）：C 第 48 行
+`while (vl_step_72 > 0 ? vl_k < vl_stop_72 : vl_k > vl_stop_72) {`，第 53 行是它的 `}`，故体 = 49..52。
+P3 验收对应的基线 = **2 个 vela_bounds_check + 3 个 vela_add_range + 2 个 vela_mul_range**。
+5 个基准 `vm.exe check` 全部 exit 0（并行循环都被接受）。
+
+1.1 文档数字 vs 实测（不符，明确给出两边）
+------------------------------------------
+- ELISION_PLAN.md:31-34 写「6 vela_bounds_check 10 vela_add_range 6 vela_mul_range」。
+- 我实测当前 emit-c bench/matmul.vel = **6 / 7 / 3**。
+- 旧数字可由仓库里 2026-09-19 的陈旧产物 bench\matmul.c **精确复现**（我数出 6 / 10 / 6，81 行）。
+  差的 3 add + 3 mul 正是"同一指数表达式写两遍"的第二份拷贝；
+  bench/RESULTS.md:120-124 自己记录了 2026-09-19 修掉重复求值（850572 → 754867 B；
+  matmul serial 1.058 → 0.543 s），但计划里那三个数字没跟着改 → 计划 §"What is true today, measured" 是过期基线。
+- 并行比：任务书写 3.3×；bench/RESULTS.md 自己有两种口径（:96-99「best-of-7 3.49×、median 2.80×，
+  旧单一数字 3.1× 会随统计量动四分之一」；:140-142 又写 3.1×）。
+  我用仓库里 9/19 的 MSVC 预编译产物在本机现跑 7 reps：
+  mm_vela_omp.exe best 0.073979 / median 0.083508 vs mm_cpp_omp.exe best 0.026314 / median 0.03009
+  → **2.81× / 2.78×（两答案都是 1090512707）**。今天本机能复现的是 ≈2.8×，不是 3.3×；
+  这两个 exe 我无法重编（需 vm.exe build / cl.exe，被纪律禁止）。
+
+2. 逐处可消除清单（按"收益最大 / 最好做"排序）+ 判据 + 函数名与行号
+--------------------------------------------------------------------
+行号基准：check.vel 快照 sha256
+38BE1B0118B12B1B6EFED7F076A23B04F344B9B5B8E4F930D3949E7CBEB32728
+（120272 B，3305 行，mtime 2026-09-24 01:47:05；%TEMP%\vela_p3\check_snapshot.vel）
+
+区间设施：
+- `Iv{lo,hi,lok,hik}`              check.vel:1606-1611
+- `ck_clamp`（±2^62，已知端是真界） check.vel:1615-1623
+- `ck_iv_unknown/exact`            1625 / 1632
+- `ck_iv_add / sub / mul / neg / floordiv / mod / pow`
+                                   1639 / 1656 / 1673 / 1696 / 1715 / 1744 / 1771
+- `ck_iv_find / ck_iv_push`         1813 / 1824
+- `ck_lb_find / ck_lb_push`         1842 / 1853
+- `ck_iv_expr`（表达式区间遍历）     1869-1994
+    · 字面量 → 精确区间 1876-1879
+    · 名字 → 查区间环境 1888-1907
+    · `len(name)` → **折叠成精确区间** `ck_iv_exact(out, unpack_len(ck))` 1969-1991（关键行 1981）
+    · 二元 `+ - * / % ^` 1936-1968
+- `ck_range_iv`（`range(a,b,s)`→区间）2325-2392（start/stop 必须是精确点 2356/2368；step 2355-2367）
+- 环境持有者：`ck_parallel` 2850-2909（`mut iv/lb/p` 是**它的局部变量** 2852-2855；
+  并行循环变量压栈 2858-2861，ck_iv_push 在 2860、ck_lb_push 在 2861）
+  `ck_pcol` 2608-2696：递归走并行体里的语句，**嵌套 for 会压循环变量区间**（2679-2689；
+  ck_range_iv 2682、ck_iv_push 2684、ck_lb_push 2685、递归 2687）
+  `ck_pwrite` 2425（写目标的区间/单射判定），`ck_match_linear` 2298-2320，`ck_linear` 2003-…
+- 普通循环没有环境：`ck_stmt` k==12 分支 3019-3042 → 调 `ck_block`（3031）；
+  `ck_block` 2924-2930 不建任何环境。
+
+逐处清单（C 行号 = 我生成的 90 行 matmul.c）
+
+#1 C:23 / 源 matmul.vel:6  `a[i] = ...`（初始化循环）
+   判据：i ∈ [0,262143]（`for i in range(0,262144)`，字面量 → `ck_range_iv` 2325 得精确区间），
+   len(a)=262144（数组类型里的编译期常量，`unpack_len`；ck_index:1250 与 ck_iv_expr:1981 都在用）。
+   可算吗：区间算术能，但**没有环境** —— 普通 for 走 ck_stmt:3031 → ck_block，无 iv。
+   结论：需要 ELISION_PLAN 的 item 1（把区间遍历扩到普通循环）。
+
+#2 C:26 / 源:7  `b[i] = ...`   同上，需要 item 1。
+
+#3 C:51 / 源:14  `a[i * 512 + k]`（读，内层循环）
+   判据：i ∈ [0,511]（并行循环变量，`ck_parallel` 2860 压栈），k ∈ [0,511]（嵌套 for，
+   `ck_pcol` 2684 压栈）；`ck_iv_mul`(1673) 给 i*512 ∈ [0,261632]，`ck_iv_add`(1639) 给
+   +k ∈ [0,262143]；262143 < 262144。
+   **环境已经存在**：生成的 C 里有 `#pragma omp parallel for` 且 check exit 0
+   → 说明 ck_parallel 接受了这个循环、ck_pcol 走过了体、k 的区间已经压进 iv。
+   今天缺的只有"把区间和长度比一下"这一步：check.vel 里**没有任何函数把下标区间与
+   unpack_len 做比较**（unpack_len 只出现在 119、1250/1252、1455、1554、1981、2505；
+   1250 是 ck_index 的**常量**下标拒绝，1981 是 len() 折叠）。
+   结论：**这一处不需要 item 1**，只要"比较 + 置位 + emitter 读位"。
+
+#4 C:51 / 源:14  `b[k * 512 + j]`（读，内层循环）
+   判据：k、j 的区间都由 `ck_pcol` 2684 提供，`ck_iv_mul`+`ck_iv_add` → [0,262143] < 262144。
+   结论：同 #3。
+
+#5 C:51 / 源:14  两处下标算术（2×mul_range + 2×add_range，NF_NO_OVERFLOW）
+   判据：四个端都已知（[0,261632]、[0,262143]），且 `ck_clamp`(1615) 的 ±2^62 保证已知端不是谎；
+   于是结果必然落在 int64 → 判据就是 `lok==1 and hik==1`（加法 1640/1647、乘法 1674-1677
+   都要求端点全知才置 lok/hik）。
+   可算吗：能（环境同上）。结论：同 #3，只需消费。
+
+#6 C:56 / 源:16  `c[i * 512 + j] = s`（写）
+   判据：i,j ∈ [0,511] → [0,262143] < 262144。
+   这个位置的区间**今天就在算**：ck_pcol 把写目标交给 `ck_pwrite`(2425)，
+   它经 `ck_match_linear`(2298) / `ck_linear`(2003，内部 `ck_iv_expr` 在 2016) 求值——
+   这正是 `#pragma omp parallel for` 被允许的原因。
+   结论：区间能算，缺比较 + emitter 读位。
+   注意：`ck_match_linear`(2298-2320) 证的是**单射/宽度**（`a > rest.hi - rest.lo`，2319），
+   与"在界内"是两个问题，绝不能拿它当界内证明。
+
+#7 C:71 / 源:22  `c[i]`（checksum 循环）
+   判据：i ∈ [0,262143] vs len 262144。结论：需要 item 1（普通循环）。
+
+#8 C:28,52,58,72（源 5,13,11,21）循环自增 `i = vela_add_range(i, step)`
+   判据：循环变量 ∈ [0,262143]，step ∈ [1,1] → 和 ∈ [1,262144]，在 int64 内。
+   **⚠ 缺口**：这 4 处由 `emit_for_incr`（emit.vel:1490 起）**凭空生成**，
+   **AST 里没有对应的运算符节点**，而计划里的 `NF_NO_OVERFLOW` 定义在"运算符节点的字 6 的 bit 16"上
+   → 无处可挂。
+   P3 验收要求"内层循环零个 vela_add_range"，而内层循环（C:49-52）的 3 个 add_range 里
+   **有 1 个就是这条自增**（C:52）。所以要么给 emitter 的自增路径单独写一条从 for 节点出发的证明
+   （emitter 手上有循环节点 s，循环变量区间 [start, stop-1] 是可算的），要么这条验收字面上达不成。
+
+排序（收益 / 难度）：
+1. #3#4#5#6（内层循环的 2 个 bounds + 2 个乘除/加法的 range）：区间**今天就有**，
+   只差"比较 + 置位 + emitter 读位"，是 P3 收益的大头，也是最容易做的。
+2. #8 内层循环的自增：同一个循环体内的第三个 add_range，需要 emitter 侧独立证明（无 AST 节点）。
+3. #1#2#7（初始化/校验和循环的 3 个 bounds，以及它们各自的自增）：需要 item 1
+   （普通循环区间环境），工作量最大、收益最小（不在热点内层）。
+4. run_bench.vel / mandelbrot.vel 的内层循环：见 §3 与 §5，今天都不该消。
+
+3. 不该消除的检查（消除就是不安全）
+-----------------------------------
+- 判据纪律：只有 `ck_iv_expr`（1869-1994）能给出**两端都已知**（lok==1 且 hik==1）的区间，
+  且该区间与数组长度（`unpack_len(binding_kind)`，见 ck_index:1250、ck_iv_expr:1981）
+  比较通过，才允许置位；任一端未知就必须保留。绝不能用 `ck_match_linear`(2298-2320) 的单射结论。
+- (a) 需要**条件收紧**才能得出的上界：`while i < 10 { a[i] }` over `Array[int,8]`（我的反例，
+  §4）。i 的区间是 [0,9]，9 ≥ 8，本来就证不出；DESIGN.md §3.1（162-167）的失效规则
+  （循环内被赋值的变量在入口处变未知）就是防"跨回边用陈旧事实"的。
+- (b) sieve 的 `comp[i]`（源 7，C:18）：上界来自非线性条件 `i*i < n`（SPEC §6.1 标"未实现"），
+  且 `n` 是 mut int 局部 —— ck_iv_expr 对名字只查区间环境（1888-1907），**没有常量传播**，
+  既没有 i 的区间也没有 n 的值。保留。
+- (c) sieve 的 `comp[j]`（源 10，C:22，**热循环**）：j 初值 `i*i`，体内 `j += i` →
+  入口失效规则把 j 打成未知；唯一可能的上界来自条件 `j < n`（条件收紧），下界要跨回边做不动点。
+  现在都做不到。**这是最容易被错误消除的一处**：错消后 j 会越界写堆，程序不 panic 而是继续跑（静默）。
+- (d) run_bench 插入排序内层（C:352-362，源 398-408）：`v[j]`(401)、`v[j+1]`(404)、`v[j]`(404)。
+  j+1 的上界要 `j <= i-1 <= n-1`（跨两层循环 + 条件），j 的下界要 `j >= 0`，且 `j -= 1` 在回边上失效。保留。
+- (e) run_bench 计时循环 `v[i]`（C:390，源 433）：`i < reps`，reps 是运行时参数；保留。
+- (f) 常量越界不应"消除"而应**拒绝**（已实现，§4 末尾证据）。
+
+4. 反例：区间分析不能证明的越界，两次运行输出
+--------------------------------------------
+程序 %TEMP%\vela_p3\oob.vel：
+    def main() -> None {
+        mut a: Array[int, 8] = [0]
+        mut i: int = 0
+        while i < 10 {
+            a[i] = i
+            i += 1
+        }
+        mut s: int = 0
+        mut k: int = 0
+        while k < 10 {
+            s += a[k]
+            k += 1
+        }
+        print("sum", s)
+    }
+
+- `vm.exe check oob.vel` → `ok`，exit 0。检查器**接受**它：拒绝只对常量下标做（ck_index:1261-1278），
+  变量下标它什么都不说（1263-1265 直接 return）。
+- 解释器 `vm.exe run oob.vel` → exit 2：
+      vela: panic: index out of range for this array
+        at C:\...\oob.vel:5
+      vela: panic: the interpreted program stopped
+- 编译产物（emit-c → clang-cl 23.1.1 /O2，检查原样）→ exit 2：
+      vela: panic: index 8 out of range for array of length 8 (the compiler could not prove this index in range)
+        at C:\...\oob.vel:5
+  （两边都 panic、都指第 5 行，但**文本不同**：编译器版多一句
+    "the compiler could not prove this index in range"。）
+- 错误消除后（我只把两处 `vela_bounds_check((vl_ix_N = X), 8, "...", L)` 换成 `(vl_ix_N = X)`，
+  其余逐字节相同，diff 只有那两行）→ exit 0：
+      sum 45
+  正确语义是 panic；错答案是 **sum 45**（把不存在的 a[8]、a[9] 也读出来加了）。这就是"静默错误答案"。
+
+对照：常量下标确实会被拒绝（说明"长度是编译期事实"这半已经存在，缺的只是用到变量下标上）：
+`a[8]` over `Array[int, 8]` → `vm.exe check` exit 2：
+    vela: safety error: constant index 8 is out of range for Array[int, 8]
+      at ...\constidx.vel:3
+
+5. 时间：我用 clang-cl 量了一版（与文档结论相反，必须让主人看到）
+------------------------------------------------------------------
+纪律不许 `vm.exe build`（cl.exe），所以我用
+C:\Users\lu\Downloads\llvm\clang+llvm-23.1.1-x86_64-pc-windows-msvc\bin\clang-cl.exe
+（`-openmp`/libomp；vcvars64 只为 CRT 头/库；所有 .obj/.exe 都在 %TEMP%），**未碰仓库里任何 .obj/.exe**。
+机器 16 核，OMP_NUM_THREADS 未设。
+
+- 新鲜 emit-c bench/matmul.vel（检查全在）vs bench/matmul.cpp -DRESTRICT -DUSE_OMP，7 reps：
+    Vela  best 0.024742  median 0.056209   （答案 1090512707）
+    C++   best 0.031196  median 0.059739   （答案 1090512707）
+    → **0.79× / 0.94×，Vela 不输**
+- 同口径串行（matmul_serial.vel vs matmul.cpp -DRESTRICT，无 omp）：
+    Vela best 0.179673 / median 0.181381 ; C++ best 0.211501 / median 0.228869 → Vela 快约 15%
+- 手工删检查再编译（a=原样；b=删边界检查；c=边界+下标算术，内层循环清空；d=全删），9 reps 交叉：
+    a best 0.180477 median 0.182863
+    c best 0.207714 median 0.209775
+    → **删掉检查反而慢 15%**；四个变体答案都是 1090512707。
+      a≠c 说明 clang **没有**替我们删掉检查（否则两者应一样快）；机制我没查（不猜）。
+- 同一台机器、MSVC 预编译产物（9/19）：mm_vela_omp best 0.073979/median 0.083508
+  vs mm_cpp_omp best 0.026314/median 0.03009 → **2.81× / 2.78× 慢**。
+- 第一次编译我用 `-fopenmp`（clang-cl 不认，静默变成串行编译！），得到"Vela 更快"的假象；
+  换成 `-openmp` 才真的并行（两个 exe 都掉到 ~0.025-0.06 s）。这个坑记下来：clang-cl 用 `-openmp`。
+
+结论：**"检查换来的 2.8-3.5× 差距"是 MSVC 特有的**。同一份带检查的 C，clang 已经和 C++ 双生子
+打平甚至更快；在 clang 下删检查没有任何正收益。所以
+(i) P3 的收益数字必须用项目自己的 harness（cl.exe，tools\bench.ps1）量，别用 clang；
+(ii) 如果验收用 clang 量，会得到"已经平/赢"的假象，看不出 P3 的效果。
+
+6. 我测不了的，以及为什么
+-------------------------
+6.1 区间分析的**实际结论**：没有 `vm.exe iv` 探针（usage 只有
+    lex|count|parse|nodes|emit-c|run|check|debug|build|emit-llvm|build-llvm，11 个模式里没有它），
+    check.vel 运行时不打印区间。§2 里"某处区间是多少"是**读代码 + 可观察代理**得出的
+    （`#pragma omp parallel for` 存在 = ck_pcol 走过并行体），不是直接观测。要可证伪必须先做 item 3 的探针。
+6.2 官方 harness 的数字（tools\bench.ps1 / RESULTS.md 重冻）：需要 vm.exe build 或 tools\build.ps1，被禁。
+6.3 MSVC 下"删除检查后"的时间（与 0.543/0.177/0.181 那张阶梯同口径）：同样被禁；clang 给了反向结论，不能替。
+6.4 check.vel 行号不稳定：开工时（01:46:50）116837 B，01:47:05 变成 120272 B；期间我的 grep 与 read
+    拿到**不一致的行号**（同一个函数差 81 行）。本报告所有引用钉在快照
+    sha256 38BE1B01…（120272 B、3305 行、mtime 2026-09-24 01:47:05），20 秒后与收尾两次复核 hash 未变。
+    **ELISION_PLAN.md 的行号与该快照全都对不上**：它写 ck_index:897-936（实际 1233-1279）、
+    ck_match_linear:1841-1862（实际 2298-2320）、ck_parallel 的 iv/lb 局部 ~2400-2447（实际 2852-2855）。
+    → 引用时请用**函数名**，行号以你自己那份为准。
+6.5 `NF_NO_BOUNDS` / `NF_NO_OVERFLOW` 在仓库里**只出现在两份 ELISION_PLAN 文档**里
+    （selfhost\ELISION_PLAN.md:75-76,198-199；ELISION_PLAN.zh-CN.md:47-48,98），
+    AST.md、emit.vel、check.vel 里都没有 → 计划的 item 2/3/4 一行都还没落地。
+
+7. 给下一步的结论（只有数字支撑的）
+----------------------------------
+- P3 验收的字面目标（内层循环 0 bounds + 0 add_range）在**不需要 item 1** 的前提下可以完成 5/6：
+  内层循环的区间今天就算得出来（并行体内）；剩下 1 个 add_range 是循环自增（无 AST 节点，见 #8）。
+- 验收要用 cl.exe 的 harness 量；clang 下测不出收益（甚至相反）。
