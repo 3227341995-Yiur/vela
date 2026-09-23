@@ -1,0 +1,12 @@
+# Refuse-case.  Claim: `for x in <something that is not a sequence>` is refused
+# with a reason.  Today the message is "this front end iterates range(...) only"
+# — a sentence about the front end, recorded in the report as this file's refusal
+# — and after the feature lands the golden must change to a sentence about the
+# program: an `int` has no elements.  A refusal that is right for the wrong
+# reason is what this case exists to catch.
+
+def main() -> None {
+    for x in 5 {
+        print(x)
+    }
+}

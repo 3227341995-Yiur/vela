@@ -1,0 +1,13 @@
+# Refuse-case.  Claim: `?` inside a function that does not return a Result is
+# refused, with the reason in the diagnostic.  The early return `?` performs has
+# nowhere to go here, and a checker that lets it through is promising a
+# ValueError that this language does not have.
+
+def read_it(n: int) -> int {
+    return n
+}
+
+def main() -> None {
+    x: int = read_it(1)?
+    print(x)
+}

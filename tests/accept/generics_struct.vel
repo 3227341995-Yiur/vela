@@ -1,0 +1,22 @@
+# Claim: a struct may take a type parameter, and a generic type is written where
+# any type is written (`Box[int]` as a binding's type) and built where any struct
+# is built (`Box[int](5)`, the positional constructor call Vela 0.1 already has).
+# No method is used here on purpose: a method on a generic struct would need a
+# spelling for `self`'s type, and that is a separate question from generics.
+# Expected stdout, byte for byte:
+#     5
+#     2.500000
+#     True
+
+struct Box[T] {
+    v: T
+}
+
+def main() -> None {
+    a: Box[int] = Box[int](5)
+    b: Box[float] = Box[float](2.5)
+    c: Box[bool] = Box[bool](True)
+    print(a.v)
+    print(b.v)
+    print(c.v)
+}

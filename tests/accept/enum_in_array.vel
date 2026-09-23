@@ -1,0 +1,41 @@
+# Claim: an enum is a fixed-size value type, so it works inside an Array[T, N]
+# as a parameter and with value semantics (writing one element leaves the others
+# alone).  ENUMS_PLAN.md lists "an enum inside an Array[T, N]" as its own case.
+# Expected stdout, byte for byte:
+#     16 4
+#     9
+# The array is declared without an initialiser and all four elements are then
+# written, so nothing here depends on what a zero-filled enum element means.
+
+enum Slot {
+    Vacant
+    Full(n: int)
+}
+
+def total(a: Array[Slot, 4]) -> int {
+    mut s: int = 0
+    mut i: int = 0
+    while i < len(a) {
+        match a[i] {
+            Vacant {
+                pass
+            }
+            Full(n) {
+                s += n
+            }
+        }
+        i += 1
+    }
+    return s
+}
+
+def main() -> None {
+    mut a: Array[Slot, 4]
+    a[0] = Vacant
+    a[1] = Full(7)
+    a[2] = Vacant
+    a[3] = Full(9)
+    print(total(a), len(a))
+    a[1] = Vacant
+    print(total(a))
+}

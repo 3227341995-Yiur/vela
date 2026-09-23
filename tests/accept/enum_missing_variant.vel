@@ -1,0 +1,24 @@
+# Refuse-case.  Claim: a match that omits a variant is refused, and the
+# diagnostic NAMES the missing variant (`Blue`).  The golden records the exact
+# message; a human must check that the name is in it, because a golden cannot.
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+def code(c: Color) -> int {
+    match c {
+        Red {
+            return 1
+        }
+        Green {
+            return 2
+        }
+    }
+}
+
+def main() -> None {
+    print(code(Red))
+}

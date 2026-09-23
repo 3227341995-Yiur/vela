@@ -1,0 +1,23 @@
+# Refuse-case.  Claim: the subject of a match must be an enum.  ENUMS_PLAN.md
+# step 2 lists "the type of a match subject" among what has to be checked; a
+# payload-free arm (`Red`) against an `int` cannot be resolved to anything.
+
+enum Color {
+    Red
+    Green
+}
+
+def code(n: int) -> int {
+    match n {
+        Red {
+            return 1
+        }
+        Green {
+            return 2
+        }
+    }
+}
+
+def main() -> None {
+    print(code(0))
+}

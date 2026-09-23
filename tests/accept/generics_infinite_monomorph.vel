@@ -1,0 +1,18 @@
+# Refuse-case.  Claim: instantiating a generic function with a type built out of
+# its own type parameter does not terminate, and the compiler must SAY so
+# (a diagnostic) rather than loop or die.  Each instantiation here demands the
+# next: int -> Array[int, 1] -> Array[Array[int, 1], 1] -> ...
+#
+# This is the strongest boundary monomorphisation has, and it is deliberately
+# written as a program that looks harmless: `grow` is a one-line identity
+# function.  If the landing design bounds the depth instead of detecting the
+# cycle, the golden records that message and this case still holds — what it
+# forbids is a hang or a crash.
+
+def grow[T](x: T) -> T {
+    return grow[Array[T, 1]]([x])[0]
+}
+
+def main() -> None {
+    print(grow[int](1))
+}

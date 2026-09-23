@@ -1,0 +1,46 @@
+# `?` with the generic Result[int, str] of ROADMAP.md item 3.  Claim: the error
+# path carries a `str` payload out of a function two frames deep, and the caller
+# handles it by matching — no panic, no exit status, which is the acceptance
+# sentence the roadmap writes ("an error propagates and is handled, with no panic
+# and no exit status").
+#
+# This case needs features 1 (enum + match), 4 (generics) and the arrival of a
+# Result type with them; result_question_propagate.vel is the version that needs
+# only 1.  If Result[T, E] is not in the first landing, this line stays out of
+# cases.txt rather than going red for the wrong reason.
+# Expected stdout, byte for byte:
+#     ok 14
+#     err not seven
+
+def parse(s: str) -> Result[int, str] {
+    if s == "7" {
+        return Ok(7)
+    }
+    return Err("not seven")
+}
+
+def doubled(s: str) -> Result[int, str] {
+    n: int = parse(s)?
+    return Ok(n * 2)
+}
+
+def main() -> None {
+    a: Result[int, str] = doubled("7")
+    match a {
+        Ok(v) {
+            print("ok", v)
+        }
+        Err(m) {
+            print("err", m)
+        }
+    }
+    b: Result[int, str] = doubled("8")
+    match b {
+        Ok(v) {
+            print("ok", v)
+        }
+        Err(m) {
+            print("err", m)
+        }
+    }
+}

@@ -1,0 +1,17 @@
+# A module: a file with no `main`.  It is NOT a line in tests/cases.txt — like
+# selfhost/parts/*.vel it is a fragment, and `check` refuses a fragment that has
+# no main (see the no_main case).  It is only a program once a file that imports
+# it is the one being compiled.
+#
+# `import`/`from`/`as` are reserved by documentation in 0.1 (SPEC.md 1.3) rather
+# than by the lexer, which is the spelling a module system is expected to claim.
+# No syntax for a module is written down anywhere in SPEC.md or ROADMAP.md, so
+# this file is a proposal: see section 3 of the report.
+
+def add(a: int, b: int) -> int {
+    return a + b
+}
+
+def scale(a: int, k: int) -> int {
+    return a * k
+}

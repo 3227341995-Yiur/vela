@@ -1,0 +1,18 @@
+# Refuse-case — the boundary ROADMAP.md item 5 writes out in its own words: the
+# arena means an escaping closure is a dangling frame, so a closure that outlives
+# its frame must be refused BY THE TYPE SYSTEM, not by a crash.
+#
+# Claim: returning a closure that captured a local is refused, and the
+# diagnostic names the reason.  A compiler that accepts this prints a dangling
+# value; the interpreter would read a frame that has been released.
+
+def make(n: int) -> fn(int) -> int {
+    return (x: int) -> int {
+        return x + n
+    }
+}
+
+def main() -> None {
+    f: fn(int) -> int = make(10)
+    print(f(1))
+}

@@ -1,0 +1,15 @@
+# Claim: a nested function's own name is in scope inside its own body, so it can
+# call itself.  SPEC.md 4.1 says nested functions do not exist; this is what must
+# be true the day they do.
+# Expected stdout, byte for byte:
+#     120
+
+def main() -> None {
+    def fact(n: int) -> int {
+        if n < 2 {
+            return 1
+        }
+        return n * fact(n - 1)
+    }
+    print(fact(5))
+}

@@ -1,0 +1,17 @@
+# Refuse-case, and the line between two features: nested functions (this one) and
+# closures (ROADMAP.md item 5) are separate, so a nested function that reaches an
+# enclosing LOCAL must be refused with a reason — "hoist it to the top level and
+# pass what it needs as a parameter" is the advice the checker's own plan gives
+# (selfhost/CHECKER_PLAN.md:223, "has no closures").
+#
+# If a landing implements capture here instead, this file becomes a `run` case
+# and its expected stdout is `11`; what must not happen is that it is accepted
+# and then reads a frame that is gone.
+
+def main() -> None {
+    base: int = 10
+    def add_base(n: int) -> int {
+        return base + n
+    }
+    print(add_base(1))
+}

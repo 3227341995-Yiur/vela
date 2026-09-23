@@ -1,0 +1,10 @@
+# Refuse-case.  Claim: the number of type arguments is checked against the number
+# of type parameters.  `first` declares one (`[T]`) and is given two.
+
+def first[T](a: T, b: T) -> T {
+    return a
+}
+
+def main() -> None {
+    print(first[int, bool](1, 2))
+}

@@ -1,0 +1,26 @@
+# Refuse-case.  Claim: `else` is the exhaustiveness escape hatch and must be the
+# LAST arm (ENUMS_PLAN.md step 2).  Here every variant is also named, so the
+# position of `else` is the only thing wrong with the program.
+
+enum Color {
+    Red
+    Green
+}
+
+def code(c: Color) -> int {
+    match c {
+        else {
+            return 0 - 1
+        }
+        Red {
+            return 1
+        }
+        Green {
+            return 2
+        }
+    }
+}
+
+def main() -> None {
+    print(code(Red))
+}

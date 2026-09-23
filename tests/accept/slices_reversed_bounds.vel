@@ -1,0 +1,9 @@
+# Refuse-case.  Claim: an inverted range is refused.  `5:2` has a length of -3,
+# which no `Array[int, 4]` can be; a design that accepts it either wraps or reads
+# the wrong four elements, and SPEC.md 6.4 says indexing is checked.
+
+def main() -> None {
+    mut a: Array[int, 8] = [0, 1, 2, 3, 4, 5, 6, 7]
+    b: Array[int, 4] = a[5:2]
+    print(b[0])
+}

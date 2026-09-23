@@ -1,0 +1,23 @@
+# Claim: the element a `for ... in` binds is a real value of the array's element
+# type, not a scalar-shaped special case — here a struct, with its fields
+# readable.  This is also the case that would catch an iteration that binds an
+# index where a value was asked for.
+# Expected stdout, byte for byte:
+#     21
+
+struct Point {
+    x: int
+    y: int
+}
+
+def main() -> None {
+    mut ps: Array[Point, 3]
+    ps[0] = Point(1, 2)
+    ps[1] = Point(3, 4)
+    ps[2] = Point(5, 6)
+    mut total: int = 0
+    for p in ps {
+        total += p.x + p.y
+    }
+    print(total)
+}

@@ -1,0 +1,14 @@
+# Nested functions (ROADMAP.md item 5 and 6 are separate; this is the one that
+# does NOT need capture).  Claim: a def inside a function body is callable from
+# the rest of that body, and its name is not visible outside it.
+# Expected stdout, byte for byte:
+#     1 2
+#     10
+
+def main() -> None {
+    def succ(n: int) -> int {
+        return n + 1
+    }
+    print(succ(0), succ(1))
+    print(succ(9))
+}

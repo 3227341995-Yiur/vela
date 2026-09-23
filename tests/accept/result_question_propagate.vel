@@ -1,0 +1,51 @@
+# `Result[T, E]` and `?` (ROADMAP.md stream 2 item 3).  Claim: `?` on a
+# Result-valued expression unwraps the success payload and returns the failure
+# variant early, so an error propagates one frame at a time with no panic.
+#
+# The Result type here is written out as a two-variant enum on purpose: this case
+# then needs enum + match (feature 1), which `?` needs anyway, but NOT generics
+# (feature 4).  result_question_generic.vel is the same claim with the generic
+# Result[int, str].
+# Expected stdout, byte for byte — half_of_plus_one(6) succeeds and
+# half_of_plus_one(8) fails on its second call, so both paths print:
+#     ok 2
+#     err 1
+
+enum IntResult {
+    Ok(v: int)
+    Err(code: int)
+}
+
+def half(n: int) -> IntResult {
+    if n % 2 != 0 {
+        return Err(1)
+    }
+    return Ok(n // 2)
+}
+
+def half_of_plus_one(n: int) -> IntResult {
+    a: int = half(n)?
+    b: int = half(a + 1)?
+    return Ok(b)
+}
+
+def main() -> None {
+    r1: IntResult = half_of_plus_one(6)
+    match r1 {
+        Ok(v) {
+            print("ok", v)
+        }
+        Err(c) {
+            print("err", c)
+        }
+    }
+    r2: IntResult = half_of_plus_one(8)
+    match r2 {
+        Ok(v) {
+            print("ok", v)
+        }
+        Err(c) {
+            print("err", c)
+        }
+    }
+}

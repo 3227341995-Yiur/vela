@@ -1,0 +1,10 @@
+# Refuse-case (this file is the case; module_cycle_b.vel is the other half of the
+# cycle).  Claim: two files that import each other are refused with a diagnostic
+# that names the cycle, rather than recursing until the stack ends or looping for
+# ever.  A hang here is the failure mode this case exists to catch.
+
+import module_cycle_b
+
+def main() -> None {
+    print(module_cycle_b.value())
+}

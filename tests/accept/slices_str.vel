@@ -1,0 +1,23 @@
+# Claim: a str slices with the same `[a:b]` spelling an array does, and the
+# result is a str.  The last line pins the new spelling against the builtin that
+# already exists (`substr(s, a, b)`, SPEC.md 8) so the two cannot drift.
+#
+# `str` slicing has no stated design either (SPEC.md 1.5 says there is no
+# slicing in 0.1 and 8 already has substr), so if the landing design decides
+# `s[a:b]` is not str syntax, this file becomes a refuse-case for that spelling
+# and substr keeps the claim — the answer must be recorded either way.
+# Expected stdout, byte for byte:
+#     hello
+#     5
+#     world
+#     True
+
+def main() -> None {
+    s: str = "hello world"
+    t: str = s[0:5]
+    print(t)
+    print(len(t))
+    u: str = s[6:11]
+    print(u)
+    print(s[0:5] == substr(s, 0, 5))
+}

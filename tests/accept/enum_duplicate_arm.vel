@@ -1,0 +1,26 @@
+# Refuse-case.  Claim: two arms for the same variant are refused (ENUMS_PLAN.md
+# step 2: "a duplicate arm is an error"), even though the match is otherwise
+# exhaustive.
+
+enum Color {
+    Red
+    Green
+}
+
+def code(c: Color) -> int {
+    match c {
+        Red {
+            return 1
+        }
+        Red {
+            return 2
+        }
+        Green {
+            return 3
+        }
+    }
+}
+
+def main() -> None {
+    print(code(Red))
+}

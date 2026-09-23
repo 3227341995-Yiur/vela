@@ -1,0 +1,26 @@
+# Refuse-case.  Claim: a pattern naming something the enum does not have is
+# refused, and the diagnostic names `Square`.  Every real variant is matched
+# first, so the only thing wrong with this program is the invented variant.
+
+enum Shape {
+    Circle(radius: float)
+    Empty
+}
+
+def describe(s: Shape) -> int {
+    match s {
+        Circle(r) {
+            return 1
+        }
+        Empty {
+            return 0
+        }
+        Square(x) {
+            return 2
+        }
+    }
+}
+
+def main() -> None {
+    print(describe(Empty))
+}

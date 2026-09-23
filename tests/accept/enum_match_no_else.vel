@@ -1,0 +1,31 @@
+# Claim: a match that names every variant, with no `else`, is exhaustive and runs.
+# ENUMS_PLAN.md step 2: "Without it, a match over an enum must name every variant."
+# Expected stdout, byte for byte:
+#     1 2 3
+#     4
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+def code(c: Color) -> int {
+    match c {
+        Red {
+            return 1
+        }
+        Green {
+            return 2
+        }
+        Blue {
+            return 3
+        }
+    }
+}
+
+def main() -> None {
+    a: Color = Red
+    print(code(a), code(Green), code(Blue))
+    print(code(a) + code(Blue))
+}

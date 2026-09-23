@@ -1,0 +1,24 @@
+# `for x in xs` (ROADMAP.md item 7: "Iteration and slicing: `for x in xs`").
+# Claim: iterating an Array yields its elements in index order, and — unlike a
+# `parallel for`, which SPEC.md 7 refuses when a scalar is shared — the body of
+# an ordinary `for` may accumulate into a local declared outside it.  That
+# difference is the point of this case: `s += x` here must NOT be refused.
+# Expected stdout, byte for byte:
+#     15
+#     1
+#     2
+#     3
+#     4
+#     5
+
+def main() -> None {
+    mut a: Array[int, 5] = [1, 2, 3, 4, 5]
+    mut s: int = 0
+    for x in a {
+        s += x
+    }
+    print(s)
+    for x in a {
+        print(x)
+    }
+}

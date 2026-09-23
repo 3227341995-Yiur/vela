@@ -1,0 +1,17 @@
+# Claim: a function taking a function parameter works — ROADMAP.md item 5's own
+# acceptance sentence.  A named top-level function is passed, so this case does
+# not depend on how a function literal is spelled.
+# Expected stdout, byte for byte:
+#     6
+
+def apply(f: fn(int) -> int, x: int) -> int {
+    return f(x)
+}
+
+def twice(x: int) -> int {
+    return x * 2
+}
+
+def main() -> None {
+    print(apply(twice, 3))
+}

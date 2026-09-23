@@ -1,0 +1,18 @@
+# Claim: a function literal may be an argument, not only a binding's initialiser.
+# Kept separate from closure_fn_parameter.vel because it is the weaker of the
+# two: it needs the argument-list parser to accept a `{ }` block inside `(`,
+# where SPEC.md 1.1 says newlines are insignificant — while the block's own
+# newlines are significant.  If the landing design only admits a literal after
+# `=`, this one line stays out and the other case still holds the claim.
+# Expected stdout, byte for byte:
+#     4
+
+def apply(f: fn(int) -> int, x: int) -> int {
+    return f(x)
+}
+
+def main() -> None {
+    print(apply((x: int) -> int {
+        return x + 1
+    }, 3))
+}

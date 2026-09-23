@@ -1,0 +1,16 @@
+# Claim: a nested function may call a sibling nested function declared before it
+# in the same block.  This is the weaker half of nesting (no capture, no
+# escape): if the landing design only allows a nested def to be called from the
+# enclosing body, this single line stays out of cases.txt and the report says so.
+# Expected stdout, byte for byte:
+#     2
+
+def main() -> None {
+    def succ(n: int) -> int {
+        return n + 1
+    }
+    def twice_succ(n: int) -> int {
+        return succ(succ(n))
+    }
+    print(twice_succ(0))
+}

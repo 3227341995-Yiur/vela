@@ -1,0 +1,14 @@
+# Claim: a two-file program compiles, runs and resolves a name the other file
+# defines (ROADMAP.md stream 2 item 2's acceptance sentence).  `from M import x`
+# is the spelling proposed here; the module is found next to this file.
+# Expected stdout, byte for byte:
+#     5
+#     8
+
+from mathlib import add
+from mathlib import scale
+
+def main() -> None {
+    print(add(2, 3))
+    print(scale(add(1, 1), 4))
+}

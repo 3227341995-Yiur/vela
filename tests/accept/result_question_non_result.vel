@@ -1,0 +1,20 @@
+# Refuse-case.  Claim: `?` on a value that is not a Result is refused.  `f`
+# returns `int`, so there is no failure variant for `?` to propagate.
+
+enum IntResult {
+    Ok(v: int)
+    Err(code: int)
+}
+
+def f(n: int) -> int {
+    return n
+}
+
+def g(n: int) -> IntResult {
+    m: int = f(n)?
+    return Ok(m)
+}
+
+def main() -> None {
+    print(f(1))
+}

@@ -1,0 +1,31 @@
+# The back-end half of the enum claim (ENUMS_PLAN.md step 4): an exhaustive match
+# is emitted as a `switch` with NO `default`, so a variant added to the enum
+# without its arm is caught twice — by the checker's exhaustiveness rule and by
+# cl.exe on the C.  Proposed modes: `dumps` (the emit-c digest changes if a
+# `default` ever appears) and `run` (both paths must print the same bytes).
+# Expected stdout, byte for byte:
+#     5 -7 0
+
+enum Op {
+    Add(a: int, b: int)
+    Neg(a: int)
+    Zero
+}
+
+def apply(op: Op) -> int {
+    match op {
+        Add(a, b) {
+            return a + b
+        }
+        Neg(a) {
+            return 0 - a
+        }
+        Zero {
+            return 0
+        }
+    }
+}
+
+def main() -> None {
+    print(apply(Add(2, 3)), apply(Neg(7)), apply(Zero))
+}

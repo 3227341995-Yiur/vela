@@ -1,0 +1,23 @@
+# Refuse-case.  Claim: a pattern binds exactly the variant's fields, so
+# `Circle(r, q)` for the one-field variant Circle is refused.  This is the
+# boundary the plan calls `enum_binding_arity`.
+
+enum Shape {
+    Circle(radius: float)
+    Empty
+}
+
+def describe(s: Shape) -> int {
+    match s {
+        Circle(r, q) {
+            return 2
+        }
+        Empty {
+            return 0
+        }
+    }
+}
+
+def main() -> None {
+    print(describe(Circle(1.0)))
+}

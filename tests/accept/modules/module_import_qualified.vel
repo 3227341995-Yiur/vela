@@ -1,0 +1,14 @@
+# Claim: `import M` also works, and a name is reachable through the module name.
+# This is a second spelling of the same feature, kept separate on purpose: if
+# only one of the two forms lands first, exactly one of these two cases stays
+# red and the report says which.
+# Expected stdout, byte for byte:
+#     5
+#     9
+
+import mathlib
+
+def main() -> None {
+    print(mathlib.add(2, 3))
+    print(mathlib.scale(3, 3))
+}

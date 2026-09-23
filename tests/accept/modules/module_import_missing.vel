@@ -1,0 +1,10 @@
+# Refuse-case.  Claim: a module that is not there is a diagnostic, not a crash,
+# and the diagnostic names it.  A module system whose answer to a missing file is
+# an empty definition, a silently-undefined name, or a panic has failed the one
+# thing modules are for.
+
+from nosuchmodule import add
+
+def main() -> None {
+    print(add(1, 2))
+}

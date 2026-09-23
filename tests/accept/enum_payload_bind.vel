@@ -1,0 +1,41 @@
+# enum with payloads + match (ENUMS_PLAN.md).  Claim: each variant's payload binds
+# positionally and the bound names are usable in the arm's block.  Today `enum` is
+# an ordinary identifier (SPEC.md 1.3), so this file is a syntax error; the golden
+# recorded when the feature lands must be, on BOTH paths, exactly:
+#     True True
+#     12.000000
+#     0.000000
+#     False
+# (the first line compares instead of printing the float, so no rounding of
+# 3.14159 * 4.0 can decide whether the case passes; the shadow program that
+# produced these bytes is in the report).
+
+enum Shape {
+    Circle(radius: float)
+    Rect(w: float, h: float)
+    Empty
+}
+
+def area(s: Shape) -> float {
+    match s {
+        Circle(r) {
+            return 3.14159 * r * r
+        }
+        Rect(w, h) {
+            return w * h
+        }
+        Empty {
+            return 0.0
+        }
+    }
+}
+
+def main() -> None {
+    c: Shape = Circle(2.0)
+    r: Shape = Rect(3.0, 4.0)
+    e: Shape = Empty
+    print(area(c) > 12.5, area(c) < 12.6)
+    print(area(r))
+    print(area(e))
+    print(area(c) == area(r))
+}

@@ -1,0 +1,20 @@
+# Panic-case (proposed).  The start of the slice is not a constant, so no
+# compile-time proof can place it, and the bound has to be checked at run time —
+# SPEC.md 6.4: "a[i] panics with file, line and reason if i is out of range".
+#
+# The FACT this asserts is that it stops, on both paths, with a reason, instead
+# of reading a[8] and a[9].  The wording is not asserted here: the golden records
+# whatever the implementation says at landing time, as it does for
+# divide_by_mutable_zero_checks_at_runtime.
+#
+# If instead the design refuses a slice whose start is not constant (a
+# "compile-time slice" rule, which is a defensible v1), this line becomes a
+# refuse-case with its own recorded message.  Both answers are acceptable; an
+# unchecked read is not.
+
+def main() -> None {
+    mut a: Array[int, 8] = [0, 1, 2, 3, 4, 5, 6, 7]
+    mut i: int = 6
+    b: Array[int, 4] = a[i:i + 4]
+    print(b[0], b[3])
+}

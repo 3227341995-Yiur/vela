@@ -1,0 +1,19 @@
+# Closures / first-class functions (ROADMAP.md stream 2 item 5).  Claim: a
+# function literal captures an enclosing local and is callable through a binding
+# whose declared type is a function type.  `fn(int) -> int` is the spelling
+# proposed here for a function type — no spelling for one exists anywhere in
+# SPEC.md or ROADMAP.md, so this file is a proposal (report section 3).
+#
+# The lambda is written `(x: int) -> int { ... }`, which is the form today's
+# measured refusal ("expected ')' to close the group") shows a `(params)` group
+# being parsed in expression position.
+# Expected stdout, byte for byte:
+#     11 12
+
+def main() -> None {
+    base: int = 10
+    f: fn(int) -> int = (x: int) -> int {
+        return base + x
+    }
+    print(f(1), f(2))
+}

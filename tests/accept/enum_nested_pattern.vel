@@ -1,0 +1,32 @@
+# Refuse-case.  Claim: `Wrap(Small(n))` — a pattern inside a pattern — is
+# refused in v1 rather than half-working (ENUMS_PLAN.md: "No nested patterns and
+# no guards in v1").  Two enums, neither of them self-referential, so the only
+# reason to refuse this program is the nesting of the pattern.
+
+enum Inner {
+    Small(n: int)
+    Zero
+}
+
+enum Outer {
+    Wrap(inner: Inner)
+    None
+}
+
+def unwrap(o: Outer) -> int {
+    match o {
+        Wrap(Small(n)) {
+            return n
+        }
+        Wrap(Zero) {
+            return 0
+        }
+        None {
+            return 0 - 1
+        }
+    }
+}
+
+def main() -> None {
+    print(unwrap(Wrap(Small(3))))
+}

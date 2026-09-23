@@ -1,0 +1,15 @@
+# Refuse-case — after the feature lands, and it is the one file in this set that
+# `check` ACCEPTS today (measured: exit 0, stdout `ok`).
+#
+# Claim: SPEC.md 1.3 gives `mut import: int = 1` as the example of a legal
+# declaration in 0.1 and says "a program that uses them as names will need
+# renaming the day one arrives".  This case is that day arriving: once `import`
+# (and `from`/`as`) are claimed, this must stop being accepted.  If instead the
+# design keeps them as contextual keywords that are only special at the start of
+# a statement, this case does NOT flip and must be dropped — either way the
+# sentence in SPEC.md gets an answer, which is the point.
+
+def main() -> None {
+    mut import: int = 1
+    print(import)
+}

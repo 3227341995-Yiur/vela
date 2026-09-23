@@ -1,0 +1,14 @@
+# Refuse-case.  Claim: `enum Tree { Node(Tree) }` is refused — a value type
+# cannot contain itself.  ENUMS_PLAN.md names this case explicitly as out of
+# scope for v1, with the reason (it needs a boxed representation or an explicit
+# array).
+
+enum Tree {
+    Node(child: Tree)
+    Leaf
+}
+
+def main() -> None {
+    t: Tree = Leaf
+    print(1)
+}

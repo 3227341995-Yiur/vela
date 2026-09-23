@@ -1,0 +1,28 @@
+# Generics, monomorphised (ROADMAP.md stream 2 item 4).  Claim: one generic
+# function instantiated at three different types produces three correct
+# specialisations — which is the whole acceptance for monomorphisation, and the
+# failure mode it catches is a single instantiation silently reused for another
+# type.
+#
+# `def id[T](x: T) -> T` is exactly the source that today fails with
+# "expected '(' after the function name", recorded in the report.
+# Expected stdout, byte for byte:
+#     7
+#     True
+#     3
+#     a
+
+def id[T](x: T) -> T {
+    return x
+}
+
+def first[T](a: T, b: T) -> T {
+    return a
+}
+
+def main() -> None {
+    print(id[int](7))
+    print(id[bool](True))
+    print(first[int](3, 4))
+    print(first[str]("a", "b"))
+}

@@ -1,0 +1,8 @@
+# Refuse-case.  Claim: `from mathlib import nope` is refused and names `nope`.
+# mathlib.vel exists and is readable, so the only thing wrong here is the name.
+
+from mathlib import nope
+
+def main() -> None {
+    print(1)
+}

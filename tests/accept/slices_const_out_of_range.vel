@@ -1,0 +1,10 @@
+# Refuse-case.  Claim: a constant slice whose end is past the array's length is
+# refused before the program runs, exactly as a constant index is (SPEC.md 6.7,
+# "A constant index that is provably out of range is a compile error").  A slice
+# rule that leaves this to cl.exe, or to the interpreter, is not the rule.
+
+def main() -> None {
+    mut a: Array[int, 8] = [0, 1, 2, 3, 4, 5, 6, 7]
+    b: Array[int, 4] = a[0:9]
+    print(b[0])
+}

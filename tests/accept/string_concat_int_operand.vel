@@ -1,0 +1,9 @@
+# Refuse-case.  Claim: `str + int` is still refused.  SPEC.md 3.1 compares both
+# operands of every operator, and nothing in the language converts a number to
+# text; a `+` that started doing it would be a silent toString in the one place
+# the language promised there is none.
+
+def main() -> None {
+    s: str = "n="
+    print(s + 7)
+}

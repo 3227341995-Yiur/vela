@@ -1,0 +1,12 @@
+# Claim: importing a module twice imports it once.  A module is a unit, not a
+# text to be spliced twice (which is what tools/link_selfhost.vel does today, and
+# the reason the linker has to be careful about duplicate definitions).
+# Expected stdout, byte for byte:
+#     9
+
+import mathlib
+import mathlib
+
+def main() -> None {
+    print(mathlib.add(4, 5))
+}

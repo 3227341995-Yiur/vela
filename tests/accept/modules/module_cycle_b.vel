@@ -1,0 +1,8 @@
+# The other half of the cycle.  Not a case on its own: it has no main, and it is
+# only ever loaded because module_cycle_a.vel asks for it.
+
+import module_cycle_a
+
+def value() -> int {
+    return 3
+}
