@@ -128,9 +128,17 @@ def new_node(mut nd: Array[int, 1310720], mut cx: Ctx, kind: int, line: int) -> 
     # `parse selfhost/vm.vel` first refused at line 18 663 of 18 966).  The
     # *node table*, which is indexed by this same number, moved into the arena's
     # unallocated middle at the same time -- see `MEM_NT` in vm_state.vel.
+    #
+    # The refusal then *stops*: `panic`, not a bare `return -1`.  Returning -1 is
+    # what the callers cannot survive -- `nd[n4 * 10 + 1] = nm` with n4 == -1 is
+    # `nd[-9]`, and the measured behaviour of that is not a crash and not an exit:
+    # the compiler prints this diagnostic and then blocks forever with no exit
+    # code (a small generated file that trips the ceiling reproduces it in
+    # seconds).  A refusal that hangs is worse than a refusal that stops, because
+    # nothing reading the exit code can tell it from work still in progress.
     if n >= 131072 {
         perr(cx, "this file has too many syntax nodes", line)
-        return -1
+        panic("this file has too many syntax nodes")
     }
     i: int = n * 10
     nd[i] = kind

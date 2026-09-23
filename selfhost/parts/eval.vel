@@ -2708,6 +2708,24 @@ def dbg_walk_body(mut recs: Array[int, 8192], mut n: int,
         if k == 11 {
             dbg_walk_body(recs, n, mem, nd, nd[s * 10 + 2], upto)
         }
+        if k == 37 {
+            # A match's binding names are locals of their arm's block, and a walk
+            # that stopped at the `match` node would leave them out of `vars`
+            # silently: the debugger would report a frame missing the only names
+            # that arm can see.  Each arm's block is walked, and the binding nodes
+            # are marked the way a declaration is, because the resolver gave them a
+            # frame slot exactly as it gives a declaration one.
+            mut a: int = nd[s * 10 + 2]
+            while a > 0 {
+                mut b: int = nd[a * 10 + 2]
+                while b > 0 {
+                    dbg_mark(recs, n, b, nt_get(mem, b, NT_SLOT()), mem, nd)
+                    b = nd_nx(nd, b)
+                }
+                dbg_walk_body(recs, n, mem, nd, nd[a * 10 + 4], upto)
+                a = nd_nx(nd, a)
+            }
+        }
         s = nd_nx(nd, s)
     }
 }

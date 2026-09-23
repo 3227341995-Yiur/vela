@@ -86,6 +86,10 @@ def ck_kind_name(k: int) -> str {
     if k == K_U8() { return "u8" }
     if k == K_I32() { return "i32" }
     if k == K_ST() { return "struct" }
+    # an enum cannot be spelled by *name* here (this helper is given a kind, not a
+    # row), but "?" in a diagnostic is worse than a phrase: it reads as a compiler
+    # that does not know what it is looking at
+    if k == K_ENUM() { return "an enum value" }
     return "?"
 }
 
