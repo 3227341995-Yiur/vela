@@ -51,6 +51,11 @@
 # kind 32 attr        a=value  b=name handle
 # kind 33 list        a=first elem  b=elem count
 # kind 34 slice       a=value  b=lower(-1)  c=upper(-1)
+# kind 35 enum        a=name  b=first variant  c=variant count
+# kind 36 variant     a=name  b=first field  c=field count      (fields = kind 3)
+# kind 37 match       a=subject  b=first arm  c=arm count
+# kind 38 arm         a=pattern name(-1 = else)  b=first binding  c=binding count
+#                     d=body first  e=body count   (bindings = kind 25)
 #
 # ---------------------------------------------------------------------------
 # Type record — 4 ints per type, ty[i * 4 + k]:
@@ -474,6 +479,12 @@ def parse_stmt(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
         }
         return parse_for(src, tk, tkf, nd, ty, flt, cx, 1)
     }
+    if at_kw(tk, cx, 24) {
+        return parse_enumdef(src, tk, tkf, nd, ty, flt, cx)
+    }
+    if at_kw(tk, cx, 25) {
+        return parse_match(src, tk, tkf, nd, ty, flt, cx)
+    }
     if at_kw(tk, cx, 2) {
         cx.ti += 1
         n: int = new_node(nd, cx, 9, line)
@@ -630,6 +641,141 @@ def parse_structdef(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
     return n
 }
 
+# `enum Shape { Circle(radius: float) Rect(w: float, h: float) Empty }`
+#
+# One variant per statement, which is why this is a loop of its own instead of
+# `parse_body`: a struct's body is ordinary statements (a field is a declaration
+# and a method is a `def`), but an enum's body has exactly one statement shape,
+# and letting `parse_stmt` see `Circle(radius: float)` would parse it as a *call*
+# and then fail on the `:`.
+#
+# A payload field reuses the parameter node (kind 3: name and type), so the two
+# places a "name: type" pair is parsed stay the same shape.
+def parse_enumdef(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                  mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                  mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    line: int = ti_line(tk, cx)
+    cx.ti += 1
+    if not at_name(tk, cx) {
+        perr(cx, "expected an enum name", line)
+        return -1
+    }
+    nm: int = name_id(src, tk, cx)
+    cx.ti += 1
+    if not at_op(tk, cx, 33) {
+        perr(cx, concat(concat("expected '{' to open the enum body, found '",
+                               tok_text(src, tk, cx)), "'"), ti_line(tk, cx))
+        return -1
+    }
+    cx.ti += 1
+    mut head: int = -1
+    mut tail: int = -1
+    mut count: int = 0
+    while cx.err == 0 and not at_close(tk, cx) {
+        if at_nl(tk, cx) {
+            cx.ti += 1
+            continue
+        }
+        v: int = parse_variant(src, tk, tkf, nd, ty, flt, cx)
+        if v >= 0 {
+            if head < 0 {
+                head = v
+            } else {
+                nd[tail * 10 + 7] = v
+            }
+            tail = v
+            count += 1
+        }
+        if cx.err != 0 {
+            break
+        }
+        end_of_stmt(src, tk, cx)
+    }
+    if cx.err != 0 {
+        return -1
+    }
+    if at_eof(tk, cx) {
+        perr(cx, "missing '}': an enum body is never closed", ti_line(tk, cx))
+        return -1
+    }
+    if count == 0 {
+        perr(cx, "an enum needs at least one variant", line)
+        return -1
+    }
+    cx.ti += 1
+    n: int = new_node(nd, cx, 35, line)
+    nd[n * 10 + 1] = nm
+    nd[n * 10 + 2] = head
+    nd[n * 10 + 3] = count
+    return n
+}
+
+def parse_variant(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                  mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                  mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    line: int = ti_line(tk, cx)
+    if not at_name(tk, cx) {
+        perr(cx, concat(concat("expected a variant name, found '",
+                               tok_text(src, tk, cx)), "'"), line)
+        return -1
+    }
+    nm: int = name_id(src, tk, cx)
+    cx.ti += 1
+    mut head: int = -1
+    mut tail: int = -1
+    mut count: int = 0
+    if at_op(tk, cx, 9) {
+        cx.ti += 1
+        if not at_op(tk, cx, 10) {
+            while cx.err == 0 {
+                fl: int = ti_line(tk, cx)
+                if not at_name(tk, cx) {
+                    perr(cx, concat(concat("expected a payload field name, found '",
+                                           tok_text(src, tk, cx)), "'"), fl)
+                    return -1
+                }
+                fn: int = name_id(src, tk, cx)
+                cx.ti += 1
+                if not at_op(tk, cx, 12) {
+                    perr(cx, concat(concat(concat("payload field '", interned(fn)),
+                                           "'"), " has no type annotation"), fl)
+                    return -1
+                }
+                cx.ti += 1
+                ft: int = parse_type(src, tk, ty, cx)
+                if cx.err != 0 {
+                    return -1
+                }
+                fnd: int = new_node(nd, cx, 3, fl)
+                nd[fnd * 10 + 1] = fn
+                nd[fnd * 10 + 2] = ft
+                if head < 0 {
+                    head = fnd
+                } else {
+                    nd[tail * 10 + 7] = fnd
+                }
+                tail = fnd
+                count += 1
+                if at_op(tk, cx, 11) {
+                    cx.ti += 1
+                    continue
+                }
+                break
+            }
+        }
+        if not at_op(tk, cx, 10) {
+            perr(cx, "expected ')' to close the payload", ti_line(tk, cx))
+            return -1
+        }
+        cx.ti += 1
+    }
+    n: int = new_node(nd, cx, 36, line)
+    nd[n * 10 + 1] = nm
+    nd[n * 10 + 2] = head
+    nd[n * 10 + 3] = count
+    return n
+}
+
 def parse_if(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
              mut nd: Array[int, 655360], mut ty: Array[int, 262144],
              mut flt: Array[float, 65536], mut cx: Ctx) -> int {
@@ -756,6 +902,144 @@ def parse_for(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
     nd[n * 10 + 6] = par
     nd[n * 10 + 8] = body
     nd[n * 10 + 9] = bcount
+    return n
+}
+
+# `match s { Circle(r) { ... } else { ... } }`
+#
+# A statement, not an expression (ENUMS_PLAN.md's decision, and the same rule the
+# rest of Vela already keeps: a value-producing expression cannot be a statement,
+# so an expression-producing `match` would be the one exception).  `else` is the
+# exhaustiveness escape hatch and takes no binding; which arm is legal where -- a
+# duplicate arm, an arm after `else`, a missing variant -- is the checker's
+# question, not the parser's, because the answer needs the enum's variant list.
+def parse_match(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+                mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    line: int = ti_line(tk, cx)
+    cx.ti += 1
+    subj: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+    if cx.err != 0 {
+        return -1
+    }
+    if not at_op(tk, cx, 33) {
+        perr(cx, concat(concat("expected '{' to open the match body, found '",
+                               tok_text(src, tk, cx)), "'"), ti_line(tk, cx))
+        return -1
+    }
+    cx.ti += 1
+    mut head: int = -1
+    mut tail: int = -1
+    mut count: int = 0
+    while cx.err == 0 and not at_close(tk, cx) {
+        if at_nl(tk, cx) {
+            cx.ti += 1
+            continue
+        }
+        a: int = parse_arm(src, tk, tkf, nd, ty, flt, cx)
+        if a >= 0 {
+            if head < 0 {
+                head = a
+            } else {
+                nd[tail * 10 + 7] = a
+            }
+            tail = a
+            count += 1
+        }
+        if cx.err != 0 {
+            break
+        }
+        end_of_stmt(src, tk, cx)
+    }
+    if cx.err != 0 {
+        return -1
+    }
+    if at_eof(tk, cx) {
+        perr(cx, "missing '}': a match body is never closed", ti_line(tk, cx))
+        return -1
+    }
+    cx.ti += 1
+    if count == 0 {
+        perr(cx, "a match needs at least one arm", line)
+        return -1
+    }
+    n: int = new_node(nd, cx, 37, line)
+    nd[n * 10 + 1] = subj
+    nd[n * 10 + 2] = head
+    nd[n * 10 + 3] = count
+    return n
+}
+
+# `Circle(r) { ... }`, `Empty { ... }` or `else { ... }`.
+#
+# v1 binds positionally, so a pattern is a variant name and a parenthesised list
+# of plain names — no nested patterns and no guards.  A nested pattern is caught
+# here rather than left to the checker because it is a *shape*: `Wrap(Small(n))`
+# has a call where a binding belongs, and the closing-token check below refuses it
+# with a message that names what it saw.  The binding's *arity* is deliberately
+# not judged here — that needs the variant's field count, which is the checker's.
+def parse_arm(src: str, tk: Array[int, 786432], tkf: Array[float, 65536],
+              mut nd: Array[int, 655360], mut ty: Array[int, 262144],
+              mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+    line: int = ti_line(tk, cx)
+    mut pat: int = -1
+    mut bhead: int = -1
+    mut btail: int = -1
+    mut bcount: int = 0
+    if at_kw(tk, cx, 5) {
+        cx.ti += 1
+    } else if at_name(tk, cx) {
+        pat = name_id(src, tk, cx)
+        cx.ti += 1
+        if at_op(tk, cx, 9) {
+            cx.ti += 1
+            if not at_op(tk, cx, 10) {
+                while cx.err == 0 {
+                    bl: int = ti_line(tk, cx)
+                    if not at_name(tk, cx) {
+                        perr(cx, concat(concat("expected a binding name, found '",
+                                               tok_text(src, tk, cx)), "'"), bl)
+                        return -1
+                    }
+                    bn: int = name_id(src, tk, cx)
+                    cx.ti += 1
+                    bnd: int = new_node(nd, cx, 25, bl)
+                    nd[bnd * 10 + 1] = bn
+                    if bhead < 0 {
+                        bhead = bnd
+                    } else {
+                        nd[btail * 10 + 7] = bnd
+                    }
+                    btail = bnd
+                    bcount += 1
+                    if at_op(tk, cx, 11) {
+                        cx.ti += 1
+                        continue
+                    }
+                    break
+                }
+            }
+            if not at_op(tk, cx, 10) {
+                perr(cx, concat(concat(
+                    "nested patterns are not supported in Vela 0.1; a pattern binds plain names, and '",
+                    tok_text(src, tk, cx)), "' is where one would start"), ti_line(tk, cx))
+                return -1
+            }
+            cx.ti += 1
+        }
+    } else {
+        perr(cx, concat(concat("expected a variant name or 'else' to open a match arm, found '",
+                               tok_text(src, tk, cx)), "'"), line)
+        return -1
+    }
+    body: int = parse_body(src, tk, tkf, nd, ty, flt, cx)
+    bodyc: int = cx.rslot
+    n: int = new_node(nd, cx, 38, line)
+    nd[n * 10 + 1] = pat
+    nd[n * 10 + 2] = bhead
+    nd[n * 10 + 3] = bcount
+    nd[n * 10 + 4] = body
+    nd[n * 10 + 8] = bodyc
     return n
 }
 

@@ -2139,6 +2139,19 @@ def param_packed(nd: Array[int, 655360], ty: Array[int, 262144],
         }
         return pack_kind(K_ST(), sid)
     }
+    if k == K_ENUM() {
+        # An enum parameter is packed like a struct one -- the kind byte says what
+        # the value is, the payload word says which row describes it -- and it has
+        # to be spelled out here, because the fall-through below would pack
+        # `K_ENUM` with `ty_len`, which is `-1` for anything that is not an array
+        # and would make the packed kind negative.  A negative packed kind is not
+        # an error the reader sees: it is a wrong answer later.
+        row: int = shape_of_type(ty, t, mem, vm)
+        if (nd[p * 10 + 6] & 1) == 1 {
+            return pack_ptr(pack_kind(K_ENUM(), row))
+        }
+        return pack_kind(K_ENUM(), row)
+    }
     return pack_kind(k, ty_len(ty, t))
 }
 

@@ -222,6 +222,21 @@ def keyword_id(src: str, off: int, ln: int) -> int {
     if name_eq(src, off, ln, "extern") {
         return 23
     }
+    # 24 and 25 are `enum` and `match`, claimed by ENUMS_PLAN.md.  A decision, and
+    # not an inherited accident: until this line both spellings lexed as ordinary
+    # NAMEs, and a statement-position NAME could be recognised as a `match` only by
+    # guessing (`match(x)` is a call and `match = 1` is an assignment, and both are
+    # legal programs).  A keyword takes the ambiguity out of the parser and moves it
+    # into the language, where it belongs: `enum` and `match` are reserved words now,
+    # the way `struct` already was, and a program that used either as a name is
+    # refused by name rather than parsed into something else.  Nothing in this tree
+    # did -- checked across every `.vel` file before the change.
+    if name_eq(src, off, ln, "enum") {
+        return 24
+    }
+    if name_eq(src, off, ln, "match") {
+        return 25
+    }
     return 0
 }
 

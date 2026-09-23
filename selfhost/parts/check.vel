@@ -164,24 +164,24 @@ def ck_seen(mem: Array[int, 3741696], vm: VM, name: int, mark: int) -> bool {
 }
 
 def ck_push(mut mem: Array[int, 3741696], mut vm: VM, name: int,
-            ck: int, is_mut: bool) -> None {
+            ck: int, is_mut: bool, shape: int) -> None {
     mut packed: int = ck
     if is_mut {
         packed = pack_mut(ck)
     }
-    sc_push(mem, vm, name, SYM_LOCAL(), 0, packed)
+    sc_push(mem, vm, name, SYM_LOCAL(), 0, packed, shape)
 }
 
 # The same push, for a parameter: identical in every respect but the bit that
 # says "this one arrived from the caller, so it may be an alias of something
 # else".
 def ck_push_par(mut mem: Array[int, 3741696], mut vm: VM, name: int,
-                ck: int, is_mut: bool) -> None {
+                ck: int, is_mut: bool, shape: int) -> None {
     mut packed: int = ck
     if is_mut {
         packed = pack_mut(ck)
     }
-    sc_push(mem, vm, name, SYM_LOCAL(), 0, pack_param(packed))
+    sc_push(mem, vm, name, SYM_LOCAL(), 0, pack_param(packed), shape)
 }
 
 def ck_bound(mut mem: Array[int, 3741696], vm: VM, name: int) -> int {
@@ -1116,7 +1116,8 @@ def ck_has_break(nd: Array[int, 655360], head: int) -> bool {
     return False
 }
 
-def ck_always_returns(nd: Array[int, 655360], head: int) -> bool {
+def ck_always_returns(nd: Array[int, 655360], mem: Array[int, 3741696],
+                      vm: VM, head: int) -> bool {
     mut s: int = head
     while s > 0 {
         k: int = nd_kind(nd, s)
@@ -1126,8 +1127,8 @@ def ck_always_returns(nd: Array[int, 655360], head: int) -> bool {
         if k == 10 {
             e: int = nd[s * 10 + 4]
             if e > 0 {
-                if ck_always_returns(nd, nd[s * 10 + 2]) {
-                    if ck_always_returns(nd, e) {
+                if ck_always_returns(nd, mem, vm, nd[s * 10 + 2]) {
+                    if ck_always_returns(nd, mem, vm, e) {
                         return True
                     }
                 }
@@ -1142,9 +1143,195 @@ def ck_always_returns(nd: Array[int, 655360], head: int) -> bool {
                 }
             }
         }
+        if k == 37 {
+            # A match is a return path twice over: every arm has to return, *and*
+            # the arms have to cover the enum -- an arm set that misses a variant
+            # is not exhaustive, so there is a value that falls out of the bottom.
+            # The second half is `ck_match`'s own rule, asked again here because
+            # this walk is the one that decides what a function may do.
+            if ck_arms_return(nd, mem, vm, nd[s * 10 + 2]) {
+                if ck_match_complete(nd, mem, vm, s) {
+                    return True
+                }
+            }
+        }
         s = nd_nx(nd, s)
     }
     return False
+}
+
+def ck_arms_return(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+                   head: int) -> bool {
+    if head <= 0 {
+        return False
+    }
+    mut a: int = head
+    while a > 0 {
+        if not ck_always_returns(nd, mem, vm, nd[a * 10 + 4]) {
+            return False
+        }
+        a = nd_nx(nd, a)
+    }
+    return True
+}
+
+# ------------------------------------------------------------------ match
+#
+# `match` is the one rule in this file that needs to know *which* enum a value
+# belongs to, and the answer is the shape row the resolver wrote: a name node
+# carries the row of its binding (`NT_ROW`), and an index carries its base's row,
+# because an array's row is already the row of its elements.
+def ck_row_of(nd: Array[int, 655360], mem: Array[int, 3741696], e: int) -> int {
+    if e <= 0 {
+        return -1
+    }
+    k: int = nd_kind(nd, e)
+    if k == 25 {
+        return nt_get(mem, e, NT_ROW())
+    }
+    if k == 31 {
+        return ck_row_of(nd, mem, nd[e * 10 + 1])
+    }
+    if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        if nd_kind(nd, callee) == 25 {
+            if nt_get(mem, callee, NT_SYM()) == SYM_VARIANT() {
+                vi: int = nt_get(mem, callee, NT_VAL())
+                return enb_get(mem, vrb_get(mem, vi, VRB_ENUM()), ENB_SID())
+            }
+        }
+    }
+    return -1
+}
+
+# Does this match cover the enum it is over?  An `else` arm always does; without
+# one, every variant must have an arm, and since `ck_match` has already refused a
+# duplicate arm and an arm naming a variant of some *other* enum, counting is
+# enough.
+def ck_match_complete(nd: Array[int, 655360], mem: Array[int, 3741696], vm: VM,
+                      s: int) -> bool {
+    eid: int = enum_of_row(mem, vm, ck_row_of(nd, mem, nd[s * 10 + 1]))
+    if eid < 0 {
+        return False
+    }
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        if nd[a * 10 + 1] < 0 {
+            return True
+        }
+        a = nd_nx(nd, a)
+    }
+    return nd[s * 10 + 3] >= enb_get(mem, eid, ENB_NVAR())
+}
+
+def ck_arm_covers(nd: Array[int, 655360], s: int, name: int) -> bool {
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        if nd[a * 10 + 1] == name {
+            return True
+        }
+        a = nd_nx(nd, a)
+    }
+    return False
+}
+
+# One arm's binding node becomes a checker-scope local for the arm's body, the
+# same way a declaration does; the resolver has already given it a frame slot, a
+# packed kind and a shape, because it had to -- the interpreter reads the slot and
+# the back ends read the kind.
+def ck_match_arms(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+                  path: str, mut vm: VM, s: int) -> None {
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        mark: int = vm.scn
+        mut b: int = nd[a * 10 + 2]
+        while b > 0 {
+            ck_push(mem, vm, nd[b * 10 + 1], nt_get(mem, b, NT_LIT()), False,
+                    nt_get(mem, b, NT_ROW()))
+            b = nd_nx(nd, b)
+        }
+        ck_block(nd, mem, path, vm, nd[a * 10 + 4])
+        vm.scn = mark
+        a = nd_nx(nd, a)
+    }
+}
+
+def ck_match(nd: Array[int, 655360], mut mem: Array[int, 3741696],
+             path: str, mut vm: VM, s: int) -> None {
+    subj: int = nd[s * 10 + 1]
+    ck_expr(nd, mem, path, vm, subj)
+    eid: int = enum_of_row(mem, vm, ck_row_of(nd, mem, subj))
+    if eid < 0 {
+        ck_type(path, nd_line(nd, s),
+                "the subject of a match must be an enum value, and this one is not")
+        return
+    }
+    mut has_else: int = 0
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        pat: int = nd[a * 10 + 1]
+        nxt: int = nd_nx(nd, a)
+        if pat < 0 {
+            if has_else == 1 {
+                ck_type(path, nd_line(nd, a),
+                        "this match already has an else arm")
+                return
+            }
+            if nxt > 0 {
+                ck_type(path, nd_line(nd, a),
+                        "an else arm must be the last arm of a match")
+                return
+            }
+            has_else = 1
+        } else {
+            vi: int = find_variant(mem, vm, pat)
+            if vi < 0 {
+                ck_type(path, nd_line(nd, a),
+                        ck_quoted("no variant named '", pat, "'"))
+                return
+            }
+            if vrb_get(mem, vi, VRB_ENUM()) != eid {
+                ck_type(path, nd_line(nd, a),
+                        concat(concat(concat(concat(concat(
+                                   "variant '", interned(pat)),
+                                   "' belongs to enum '"),
+                                   interned(enb_get(mem, vrb_get(mem, vi, VRB_ENUM()),
+                                                    ENB_NAME()))),
+                                   "', and the subject of this match is '"),
+                               concat(interned(enb_get(mem, eid, ENB_NAME())), "'")))
+                return
+            }
+            mut p2: int = nd[s * 10 + 2]
+            while p2 != a {
+                if nd[p2 * 10 + 1] == pat {
+                    ck_type(path, nd_line(nd, a),
+                            concat(concat("variant '", interned(pat)),
+                                   "' already has an arm in this match"))
+                    return
+                }
+                p2 = nd_nx(nd, p2)
+            }
+        }
+        a = nxt
+    }
+    if has_else == 0 {
+        mut i: int = 0
+        while i < enb_get(mem, eid, ENB_NVAR()) {
+            vi2: int = enb_get(mem, eid, ENB_VOFF()) + i
+            if not ck_arm_covers(nd, s, vrb_get(mem, vi2, VRB_NAME())) {
+                ck_type(path, nd_line(nd, s),
+                        concat(concat(concat(concat(
+                                   "this match does not handle variant '",
+                                   interned(vrb_get(mem, vi2, VRB_NAME()))),
+                                   "' of enum '"),
+                                   interned(enb_get(mem, eid, ENB_NAME()))),
+                               "': name it, or add an else arm"))
+                return
+            }
+            i += 1
+        }
+    }
+    ck_match_arms(nd, mem, path, vm, s)
 }
 
 def ck_callee_impure(nd: Array[int, 655360], mem: Array[int, 3741696],
@@ -2961,7 +3148,7 @@ def ck_stmt(nd: Array[int, 655360], mut mem: Array[int, 3741696],
             # the binding joins the scope so the rest of the block sees it
             ck_narrow_store(nd, mem, path, vm, s, nt_get(mem, s, NT_LIT()), v)
             ck_push(mem, vm, name, nt_get(mem, s, NT_LIT()),
-                    (nd[s * 10 + 6] & 1) == 1)
+                    (nd[s * 10 + 6] & 1) == 1, nt_get(mem, s, NT_VAL()))
         } else {
             ck_store(nd, mem, path, vm, s)
         }
@@ -3027,7 +3214,7 @@ def ck_stmt(nd: Array[int, 655360], mut mem: Array[int, 3741696],
                               "' is already declared in this scope"))
         }
         m2: int = vm.scn
-        ck_push(mem, vm, name, K_INT(), False)
+        ck_push(mem, vm, name, K_INT(), False, -1)
         ck_block(nd, mem, path, vm, nd[s * 10 + 8])
         # The proof runs here, and *here* is the point: the body's own bindings
         # have just gone out of scope again, while the loop variable has not.  A
@@ -3039,6 +3226,15 @@ def ck_stmt(nd: Array[int, 655360], mut mem: Array[int, 3741696],
             ck_parallel(nd, mem, path, vm, s)
         }
         vm.scn = m2
+        return
+    }
+    if k == 37 {
+        ck_match(nd, mem, path, vm, s)
+        return
+    }
+    if k == 35 {
+        ck_type(path, nd_line(nd, s),
+                "an enum is declared at the top level, not inside a block")
         return
     }
     # 13 break, 14 continue, 15 pass: nothing to say about them yet
@@ -3290,7 +3486,8 @@ def ck_function(nd: Array[int, 655360], ty: Array[int, 262144],
         }
         # a parameter's type is not in the node table: the emitter asks the type
         # pool for it (`param_packed`), and so does this, so that the two agree
-        ck_push_par(mem, vm, name, pk, (nd[p * 10 + 6] & 1) == 1)
+        ck_push_par(mem, vm, name, pk, (nd[p * 10 + 6] & 1) == 1,
+                    shape_of_type(ty, nd[p * 10 + 2], mem, vm))
         p = nd_nx(nd, p)
     }
     body: int = ft_get(mem, f, FT_BODY())
@@ -3298,7 +3495,7 @@ def ck_function(nd: Array[int, 655360], ty: Array[int, 262144],
         ck_block(nd, mem, path, vm, body)
     }
     if unpack_kind(retp) != K_NONE() and not ext {
-        if not ck_always_returns(nd, body) {
+        if not ck_always_returns(nd, mem, vm, body) {
             ck_type(path, nd_line(nd, d),
                     ck_quoted("function '", nd[d * 10 + 1],
                               concat("' may finish without returning ",
