@@ -56,7 +56,17 @@ class VelaParameterInfoHandler : ParameterInfoHandler<PsiElement, ParameterHint>
         val declared = VelaTargets.declaredParameterNames(text, calleeAt)
             ?: (if (VelaTargets.declaresFunction(text, calleeAt)) null
                 else VelaTargets.builtinParameterNames(call.name))
-        val hint = ParameterHint(sym, text.argumentIndex(call.openParen, offset), declared)
+        // A METHOD WITH A RECEIVER DROPS ITS LEADING PARAMETER, for the same reason
+        // `VelaInlayHints.parameterHints` does: `p.dot(q)` writes the receiver's argument
+        // before the dot, so the parentheses' arguments are the parameters *after* it.  The
+        // list and the index have to count the same things, and they did not: the popup
+        // drew `self, o -> float` and emphasised `self` for the caret in `q`, which the
+        // compiler binds to `o`.  Measured by `PlatformEntry` over the corpus -- every
+        // method call with a receiver, and `p.manhattan()` emphasising `self` when the call
+        // has no argument at all.
+        val shown = if (call.receiver == null) declared
+        else declared?.drop(1)
+        val hint = ParameterHint(sym, text.argumentIndex(call.openParen, offset), shown, call.openParen)
         // Anchored to the `(` of the call being read, not to the caret: with the
         // caret deep in an argument list that is where a reader looks.  This leaf is
         // what `findElementForUpdatingParameterInfo` finds again by identity.
@@ -95,8 +105,27 @@ class VelaParameterInfoHandler : ParameterInfoHandler<PsiElement, ParameterHint>
     override fun updateParameterInfo(parameterOwner: PsiElement, context: UpdateParameterInfoContext) {
         val hint = parameterOwner.getUserData(HINT) ?: return
         val text = fileText(context.file) ?: return
+        // THE INDEX IS COUNTED FROM THE CALL'S OWN `(` AND WRITTEN BACK ON THE ITEM.
+        //
+        // Two defects lived in the one line this replaces, and both are measured by
+        // `PlatformEntry`:
+        //
+        //  * `callAt(context.offset)` reads the caret's *own line*, so on the second line
+        //    of a call whose argument list spans lines -- `cap(a,\n  b)` -- it answers
+        //    nothing, and the index was then left at whatever it was when the popup
+        //    opened (0).  The `(` the popup was opened on travels on the item now, and
+        //    counting from it works on every line, because the scan itself does not care
+        //    about newlines.
+        //  * `updateUI` draws from `hint.index`, which only `findElementForParameterInfo`
+        //    ever set -- so the popup emphasised the parameter the caret was in *when it
+        //    opened*, for the rest of the call.  `setCurrentParameter` told the platform
+        //    the new index and nothing told the item.  The item is the same object the
+        //    platform hands back to `updateUI`, so writing it here is what makes the
+        //    emphasis follow the caret.
         val call = text.callAt(context.offset)
-        val index = if (call == null) hint.index else text.argumentIndex(call.openParen, context.offset)
+        val open = call?.openParen ?: hint.openParen
+        val index = if (open < 0) hint.index else text.argumentIndex(open, context.offset)
+        hint.index = index
         context.setCurrentParameter(index)
     }
 
@@ -185,9 +214,17 @@ class VelaParameterInfoHandler : ParameterInfoHandler<PsiElement, ParameterHint>
  *
  * [params] is null when the declaration's parameter list cannot be trusted, and
  * then the popup is disabled rather than drawn with names that are not there.
+ *
+ * [index] is the argument the caret is in, and it is a `var` because the popup has to
+ * keep up with the caret: `updateParameterInfo` recomputes it and writes it back here,
+ * and `updateUI` — which the platform calls with this same object — draws from it.
+ * [openParen] is the `(` the popup was opened on, which is where the index is counted
+ * from when the caret has moved onto another line of a multi-line argument list.
  */
 class ParameterHint(
     val sym: VelaSymbol,
-    val index: Int,
+    var index: Int,
     val params: List<String>?,
+    /** Offset of the `(`, or -1 for a hint that did not come from a call. */
+    val openParen: Int = -1,
 )

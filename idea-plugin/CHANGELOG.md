@@ -23,6 +23,60 @@ action registered as a group, and three extension points that were never
 registered (or registered under the wrong attribute name). An entry that says
 "added X, unverified" is worth more than one that says "added X".
 
+## 0.1.7 — the platform's own entry points, driven (rows 7, 9 and 19)
+
+**What changed.** Three defects, all three found by *driving* the platform object the row is
+about rather than by reading it, and all three are fixes to shipped behaviour:
+
+* **The completion offered the language's builtin instead of the file's own declaration.**
+  `VelaCompletion.offer` walked `VelaModel.BUILTINS` *before* the file's own symbols, so a file
+  that declares `extern c def abs(x: float)` was offered the builtin `abs(n)` first and the
+  dedupe then suppressed the file's own `abs` — and accepting that entry inserted `abs(n)`, a
+  parameter that declaration does not have.  The rule was already written down twice in this
+  plugin (`VelaTargets.declaredParameterNames` consults the language's table only for a name the
+  file does not write, and `VelaInlayHints.parameterHints` follows it); the completion did not.
+  A builtin whose name the file declares as a function, method or struct is now skipped.
+  Measured: 4 positions of 2089 in the corpus, `template (n) names [n], and the declaration names
+  [x]`; 0 after the fix.
+
+* **The parameter-info popup emphasised the parameter the caret was in when it opened.**  The
+  popup draws from `ParameterHint.index`, and only `findElementForParameterInfo` ever set it:
+  `updateParameterInfo` computed the new index, told the platform through `setCurrentParameter`,
+  and told the drawn string nothing — so the highlighted parameter never moved while the caret
+  did.  And the index was recomputed from `callAt(context.offset)`, which reads the caret's *own
+  line*, so on the second line of a multi-line argument list (`cap(a,\n  b)`) it answered nothing
+  and the index stayed where the popup opened.  The call's `(` now travels on the item, the index
+  is counted from it on every update, and it is written back on the item the platform hands to
+  `updateUI`.  Measured: 690 emphasis and 23 index wrong positions of 2678 before, 0 after.
+
+* **A method call's receiver parameter was drawn and emphasised.**  The popup drew the
+  declaration's parameter list *as written*, including a method's leading `self`, while the index
+  counts the parentheses' arguments — so every method call with a receiver was one parameter off
+  (`p.moved(10, 1)` emphasised `self` for the argument the compiler binds to `dx`) and a call with
+  no argument at all still emphasised `self` (`p.manhattan()`).  `VelaInlayHints.parameterHints`
+  had already solved this (`declared.drop(1)`); the popup had not.  Measured: 5 emphasis and 3
+  draw wrong positions, 0 after.
+
+**What this does not prove, and what measured it.**  `PlatformEntry` — the 15th tool under
+`tools\harness\src`, wired into `harness.ps1` as `-Tool PlatformEntry` — instantiates all three of
+the objects rows 7, 9 and 19 are about and calls the method the platform calls: the completion
+contributor with the platform's own `CompletionParameters` and a recording `CompletionResultSet`,
+its `LookupElement.handleInsert` in a real `InsertionContext` over a real `OffsetMap`; the
+parameter-info handler's five steps; and `charTyped` / `postProcessEnter` with an editor stood in
+for.  One run over the corpus: **13096 positions judged, 1900 skipped in 23 named classes, 0
+wrong** — `ran 2089 / wrong 0` for row 7, `ran 2678 / wrong 0` for row 9, `ran 8329 / wrong 0`
+for row 19 — and every comparator is asked to fire on a real corpus position before its zeros are
+read (a member dropped from the answer, a name invented, the argument index moved by one, a
+handler that wrote nothing, an Enter one character short), or the tool exits 3.  **No IDE was
+started**: what is measured is the decision — which characters are written and where, what the
+caret and selection become, what the contributor offers and writes, what the popup is given and
+what it draws — with the `Document`, the `Editor`, the PSI and the three parameter-info context
+interfaces stood in for, and every stand-in is named in the evidence file.  The full raw run, the
+before/after numbers for all three defects, and the four defects this harness had *itself* and
+fixed on the way (a caret placed inside a string literal, a shadowed closer judged as a missing
+one, a one-element list "reversed" by its own control, and a constructor looked up by the wrong
+arity) are in `evidence\platform-entry-0.1.7-20260924-0520.txt`.
+
 ## 0.1.6 — the first inspections, and a highlight check that can fail
 
 **What changed.**

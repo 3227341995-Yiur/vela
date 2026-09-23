@@ -29,6 +29,12 @@
                    of the old `s: s: s:`).
       SymbolDiff   VelaModel.symbols from the parser vs the token scan it replaced.
       FoldDiff     fold ranges from the tree vs the ranges the brace matcher built.
+      PlatformEntry  the platform's own entry points, driven with stand-ins where the
+                   platform demands an object: VelaCompletionContributor (row 7),
+                   VelaParameterInfoHandler's five steps (row 9), and
+                   VelaTypedHandlerDelegate / VelaEnterHandlerDelegate (row 19).  One
+                   coverage triple and one verdict per row, with the comparators asked
+                   to fire on purpose before their zeros are read.
       AstDiff / PsiTreeDiff  (see ast-diff.ps1 and psi-tree-diff.ps1 instead.)
 
     THE COMPILER IS FROZEN FIRST.  Another agent rebuilds
@@ -156,7 +162,7 @@ foreach ($t in @($java, $javac)) { if (-not (Test-Path -LiteralPath $t)) { Die "
 
 $TOOLS = @('GotoOracle', 'HintDiff', 'HintNames', 'HintShapes', 'HintDupes', 'SymbolDiff', 'FoldDiff',
            'FeatureProbe', 'ParamNames', 'HintTruth', 'HoverTruth', 'RenameOracle', 'InspectionProbe',
-           'RenameWriteback')
+           'RenameWriteback', 'PlatformEntry')
 if ($Tool -eq 'All') { $run = $TOOLS }
 else {
     if ($TOOLS -notcontains $Tool) { Die "-Tool must be one of: $($TOOLS -join ', '), All" }
@@ -388,6 +394,17 @@ foreach ($t in $run) {
             $a += '--control'
             if ($Single) { $a += @('--single', $Single) }
             if ($HarnessDebug) { $a += '--debug' }
+        }
+        'PlatformEntry' {
+            # The platform's own entry points, driven.  `--vm` is not optional: the
+            # compiler's own `parse`, `lex` and `check` are the oracle for every position
+            # it judges (parameter names, member lists, whether a character is code at
+            # all, and whether the text without the written character is still a program).
+            # `--control` asks every comparator to fire on a real corpus position before
+            # its zeros are read; the controls always run, and the flag is what says so.
+            $a += @('--vm', $FrozenVm, '--control')
+            if ($Single)        { $a += @('--single', $Single) }
+            if ($HarnessDebug)  { $a += '--explain' }
         }
         'HintShapes' {
             if ($Shapes) { $a = @($t, '--shapes') }

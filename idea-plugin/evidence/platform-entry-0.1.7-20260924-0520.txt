@@ -1,0 +1,947 @@
+PlatformEntry -- rows 7, 9 and 19 of FEATURE_PARITY.md, driven through the platform's own
+entry points   (0.1.7, 2026-09-24 05:20)
+
+WHAT THIS FILE IS
+=================
+
+Rows 7 (code completion), 9 (parameter info) and 19 (typed handler / Enter auto-indent) were
+the last three `partial` rows in `FEATURE_PARITY.md`.  All three were `partial` for the same
+reason: the row is about an object the *platform* instantiates, and no harness in this plugin
+had ever instantiated one.  `PlatformEntry` (the 15th tool under `tools\harness\src`, wired
+into `harness.ps1` as `-Tool PlatformEntry`) instantiates all three and calls the exact
+method the platform calls:
+
+  row 7   VelaCompletionContributor.fillCompletionVariants(CompletionParameters,
+          CompletionResultSet)              -- and LookupElement.handleInsert(InsertionContext)
+  row 9   VelaParameterInfoHandler.findElementForParameterInfo -> showParameterInfo ->
+          findElementForUpdatingParameterInfo -> updateParameterInfo -> updateUI
+  row 19  VelaTypedHandlerDelegate.charTyped(char, Project, Editor, PsiFile) and
+          VelaEnterHandlerDelegate.postProcessEnter(PsiFile, Editor, DataContext)
+
+WHAT WAS MEASURED AGAINST (pinned)
+==================================
+
+this run's plugin
+    version       0.1.7                (src\main\resources\META-INF\plugin.xml line 52)
+    jar           dist\vela\lib\vela-idea-plugin.jar
+                  392,458 bytes  sha256 f8413a0ffca5b7541b9f03a0ae41e97232b581135374297a70605c5b526eb1db
+    dist zip      dist\vela-idea-plugin-0.1.7.zip
+                  368,716 bytes  sha256 9dfc7b0762b06a474914238db9c1ef5b60bad8d275ff5e9c663550f74d3f1bb6
+    classes       build\classes (171 class files), the same build the jar was packed from;
+                  harness.ps1 snapshots them before running, so a concurrent build cannot
+                  disturb the run
+
+the frozen compiler (the oracle for every name, member, parameter and verdict below)
+    vm.exe        803,840 bytes  sha256 b69557cfc573f5daee77974366a700295f76cd30fb794c2970239f0ebff4c7c6
+    LLVM-C.dll   74,159,616 bytes  sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe
+    taken from selfhost\build\vm.exe at 2026-09-24 04:53 into %TEMP%\vela-plugin-drive\ and used
+    from there, because the tree's copy is rebuilt by another track while this round runs
+    (vm.exe does not start at all without LLVM-C.dll beside it)
+
+the corpus
+    318 .vel files: tests/, examples/, ide-demo/, selfhost/parts/, bench/ and selfhost/vela.vel.
+    Each file is *copied* to %TEMP% before anything is written or edited, and the copy is what
+    the compiler is asked about; nothing outside %TEMP% is written by the tool.
+
+THE COMMAND
+===========
+
+powershell -NoProfile -ExecutionPolicy Bypass -File idea-plugin\harness.ps1 -Tool PlatformEntry `
+    -FrozenVm %TEMP%\vela-plugin-drive\vm.exe
+
+and the same tool run directly, for the before/after pairs below:
+
+java -cp <build\tools\harness\classes;build\classes;src\main\resources;platform-classpath> `
+     PlatformEntry C:\Users\lu\Downloads\vela --vm %TEMP%\vela-plugin-drive\vm.exe --threads 4
+
+THE RESULT -- three sections, three verdicts, exit 0
+====================================================
+
+  row 7    COVERAGE: ran 2089 / skipped 167 (compiler-refused-file 0, too-large 0,
+           missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0,
+           receiver-type-not-written 0, receiver-not-a-struct 0, receiver-is-a-local 29,
+           insert-not-a-callable 0, template-names-not-in-spec 138, contributor-threw 0) / wrong 0
+           VERDICT: ... [PASS]
+
+  row 9    COVERAGE: ran 2678 / skipped 626 (compiler-refused-file 0, too-large 0,
+           missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0,
+           callee-not-a-declared-def 599, receiver-is-a-local 6, receiver-on-a-function 0,
+           method-call-without-receiver 0, spec-row-documents-no-names 0,
+           plugin-claims-no-names 0, parameter-list-untrusted 0,
+           struct-constructor-popup-closed 21) / wrong 0
+           VERDICT: ... [PASS]
+
+  row 19   COVERAGE: ran 8329 / skipped 1107 (compiler-refused-file 0, too-large 0,
+           missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0,
+           closer-not-required 0, prefix-not-a-complete-program 40,
+           indent-not-the-corpus-step 35, first-line 347, line-ends-with-brace 685) / wrong 0
+           VERDICT: ... [PASS]
+
+  combined COVERAGE: ran 13096 / skipped 1900 (...) / wrong 0
+  harness.ps1 exit 0; its own coherence check printed
+      "(none: each tool's verdict, exit code and wrong count agree)"
+
+WHAT EACH SECTION DRIVES, AND WHAT IT DOES NOT CLAIM
+====================================================
+
+Row 7 -- three families, each with the compiler as the oracle:
+
+  `bare-end`    138 positions (the caret at the end of every file the compiler accepts): every
+                keyword SPEC.md section 1.3 lists, every builtin whose section 8 row documents
+                parameter names, and every module-level name `vm.exe parse` declares must be
+                offered -- and every offered name must be one of those, a name the file declares
+                anywhere, or a name in the plugin's builtin table.  This is the fabrication axis.
+  `after-dot`   166 positions `<receiver>.` where the receiver is `self`, a parameter with a
+                written struct type, or a struct's own name: the offer set must be exactly the
+                members the compiler's dump lists for that struct -- no member missing, no name
+                invented.
+  `insert`      1785 positions: `LookupElement.handleInsert` in a real `InsertionContext` over a
+                real `OffsetMap`, writing into a recording document.  The written template's
+                parameter names must be the declaration's own, in order, and the caret must land
+                inside the text it wrote.
+
+  NOT CLAIMED.  The IDE's popup: the recording `CompletionResultSet` records the plugin's own
+  `result.addElement(...)` calls and does not filter by prefix, sort, or draw.  What is claimed
+  is what the contributor offers and what its insert handler writes.
+
+Row 9 -- the platform's five steps, in the platform's order, on every call the file writes:
+
+  a call whose callee is a `def` this file declares, or a builtin SPEC.md section 8 documents:
+    * `findElementForParameterInfo` must return a leaf and put exactly one item in
+      `context.itemsToShow` -- a call the compiler binds to a declaration this file writes, for
+      which nothing opens, is the popup failing to appear (that was 93 positions in the first
+      run; 0 now);
+    * `showParameterInfo` must set that same leaf as the highlighted element;
+    * `findElementForUpdatingParameterInfo` must find that leaf again by identity;
+    * `updateParameterInfo` must call `setCurrentParameter(i)` for the caret in the i-th
+      argument, and that index must name the parameter the *compiler* binds that argument to
+      (the receiver expression is the first parameter of a method, the parentheses' arguments
+      are the rest -- the binding `vm.exe parse` prints);
+    * `updateUI` must draw the declaration's own parameter names in order plus the return type,
+      and the emphasised (start, end) range must cover exactly that parameter.
+
+  NOT CLAIMED.  The platform's own `ParameterInfoControllerBase` was not run: this tool calls
+  the five methods it calls, in its order, with stand-ins for the three context interfaces.  The
+  fallback half of `findElementForUpdatingParameterInfo` -- the leaf was rebuilt, so the anchor is
+  looked for among `objectsToView`, which holds `ParameterHint` items and not PSI elements -- is
+  not exercised by the identity path below; it is written down here rather than fixed in this
+  round.  `getCurrentParameterIndex()` on the UI context is answered with the index
+  `setCurrentParameter` recorded, which is what the real context does, so a handler that read it
+  and one that carries the index itself are both measured the same way.
+
+Row 19 -- two handlers, families per family, with the compiler and the corpus as oracles:
+
+  `charTyped`   the compiler's own `vm.exe lex` decides which family a position belongs to: a
+                real bracket is a one-character punctuation token starting exactly there, a
+                character inside a string is covered by a string token's contents, and a `{`
+                inside a comment or a closing quote is covered by no token at all.
+                  `close-typed`  3037 positions: exactly one write, the matching closer, at the
+                                 caret, and nothing else;
+                  `close-restore` 184 positions where the corpus writes the pair adjacently
+                                 (`()`): the closer is deleted from the copy, and the text read
+                                 back must be the corpus file byte for byte;
+                  `closer-refused-without-it` 138 of those: `vm.exe check` refuses the text
+                                 without the closer -- the falsification, so a handler that wrote
+                                 nothing could not pass;
+                  `must-not-close` 1351 positions where nothing may be written (the closer is
+                                 already the next character, the character is inside a string or
+                                 a comment, or the file is not a `.vel` file).
+  `postProcessEnter`
+                  `enter-block-open` 723 positions: the document is the file's prefix up to and
+                                 including the `{` plus the line feed the platform wrote; the
+                                 handler must write the body line's indentation, a line feed and
+                                 the closing brace, and put the caret on the body line -- computed
+                                 here from the corpus's own line, not from the plugin's arithmetic;
+                                 `enter-input-refused` 138: the compiler refuses the input (the
+                                 brace is unclosed) and accepts the result;
+                  `enter-indent` 2758 positions: a new empty line above a real line, expecting the
+                                 indentation that line itself has.  Indentation is not semantic in
+                                 Vela, so the compiler has no opinion about it: the language's own
+                                 source is the authority, and its step was measured first -- 4
+                                 spaces, 3450 of 4244 positive deltas in the corpus.
+
+  NOT CLAIMED.  No IDE was started.  The editor is a stand-in (a document, a caret that moves
+  when the plugin moves it, a recorded selection), the same stand-in `RenameWriteback` uses for
+  `Document` and for the same measured reason (`DocumentImpl` refuses to write without an
+  application, a command processor, a `FileDocumentManager` and a `ProgressManager`).  What is
+  claimed is the decision -- which characters are written, where, and what the caret becomes --
+  not that a keystroke on screen produces it, and not the platform's own `EnterHandlerDelegate`
+  chain or the code-style setting for the indent step (the handler uses `VelaFormatRules.INDENT_SIZE`,
+  as its own documentation says).
+
+THE MEASUREMENT SHOWN TO FAIL, AND THE THREE DEFECTS IT FOUND
+=============================================================
+
+Every section asks its own comparators to fire, on a real corpus position, before their zeros
+are read: a member of the compiler's list dropped from the answer and a name nothing declares
+added to it (row 7); the item's argument index moved by one, the drawn parameter list corrupted
+and the return type replaced (row 9); a handler that wrote nothing and one that wrote one
+unrelated character, an Enter one character short and one that left the caret out (row 19).
+All of them are caught; the raw lines are in the log below, and `PlatformEntry` exits 3 if any
+one of them is not.
+
+Running it found three real defects, all three in the plugin, and all three are fixed in 0.1.7:
+
+  1. ROW 7 -- THE BUILTIN TABLE OUTRANKED THE FILE'S OWN DECLARATION.
+     `tests/build/extern/extern_c_probe.vel` and three more files declare `extern c def abs(x: float)`.
+     At the end of those files the offered `abs` was the *language's* builtin entry, whose
+     template is `abs(n)`, and the dedupe then suppressed the file's own `abs`, so the inserted
+     call named a parameter that declaration does not have:
+
+         0.1.6, same tool, same corpus, harness already correct:
+           4 position(s) of 2089 judged are wrong
+           tests/build/extern/extern_c_probe.vel: `abs` template `(n)` names [n], and the
+             declaration names [x]
+           ... and the same row for tests/probes/extern_calls_as_declared.vel,
+               extern_constant_fits_declared_kind.vel, extern_declared_after_the_call.vel
+         0.1.7: 0.
+
+     The rule was already written down twice in this plugin (`VelaTargets.declaredParameterNames`
+     consults the language's table only for a name the file does not write, and
+     `VelaInlayHints.parameterHints` follows it); the completion did not.  `VelaCompletion.offer`
+     now skips a builtin whose name the file declares as a function, method or struct.
+
+  2. ROW 9 -- THE POPUP EMPHASISED THE PARAMETER THE CARET WAS IN WHEN IT OPENED.
+     `updateUI` draws from `hint.index`, and only `findElementForParameterInfo` ever set it, so
+     moving the caret inside an open call told the platform a new index (`setCurrentParameter`)
+     and told the drawn string nothing:
+
+         0.1.6: emphasis 690 wrong, index 23 wrong of 2678 judged, e.g.
+           tests/llvm-shapes/str_two_params.vel:6 `f(` argument 1 is bound to `b` by the compiler
+             and the popup emphasises `a` in `a, b -> None`
+           tests/probes/capture_probe.vel:46 `cap(` argument 1 is bound to `out` ... emphasises `cmd`
+           tests/probes/capture_probe.vel:60 `cap(` caret at argument 1 (offset 2289) and
+             setCurrentParameter was given 0
+         0.1.7: 0.
+
+     Two things were wrong in one line.  `callAt(context.offset)` reads the caret's *own line*, so
+     on the second line of a call whose argument list spans lines (`cap(a,\n  b)`) it answers
+     nothing and the index stayed at 0 -- the call's `(` now travels on the item, and counting
+     from it works on every line.  And the item's index was never refreshed; it is now written
+     back in `updateParameterInfo`, which is what makes the emphasis follow the caret.
+
+  3. ROW 9 -- A METHOD'S RECEIVER PARAMETER WAS DRAWN AND EMPHASISED.
+     The popup drew the declaration's parameter list *as written*, including a method's leading
+     `self`, while the index counts the parentheses' arguments -- so every method call with a
+     receiver was one parameter off:
+
+         0.1.6 (after defect 2 was fixed, so this is the residual): 5 emphasis and 3 draw wrongs
+           ide-demo/tour.vel:40 `moved(` argument 0 is bound to `dx` ... emphasises `self`
+           ide-demo/tour.vel:32 `manhattan(` argument 0 emphasises `self` and there is no
+             argument there
+           tests/probes/mut_struct_parameter.vel:48 `bump(` argument 0 is bound to `k` ...
+             emphasises `self` in `self, k -> None`
+         0.1.7: 0.
+
+     `p.dot(q)` writes the receiver's argument before the dot, so the parentheses' arguments are
+     the parameters *after* it; `VelaInlayHints` already dropped it (`declared.drop(1)`), and the
+     popup now does too -- including the declaration whose only parameter is the receiver, where
+     the honest list is empty and `p.manhattan()` no longer emphasises `self`.
+
+WHAT THE FIRST RUNS OF THIS TOOL GOT WRONG (the harness's own defects, found and fixed)
+=======================================================================================
+
+Written down because a tool whose own numbers moved is the reason to trust the last ones:
+
+  * THE FIRST RUN REPORTED 648 OF 1009 ROW-9 WRONGS BECAUSE THE HARNESS PUT THE CARET ONE
+    CHARACTER TOO FAR RIGHT.  A string literal's node covers its contents (`"a"` starts at `a`),
+    so a caret placed there is *inside a string* -- and `callAt` answers null for that by design
+    ("the caret is inside text, not code"), so no popup opened and the harness blamed the plugin.
+    The caret is now placed on the literal's opening quote, which is the argument's own start.
+    `HintDiff` makes the same distinction for the same reason.
+  * THE FIRST RUN REPORTED 22 ROW-19 WRONGS FOR `print(argc())`: deleting the *inner* `)` leaves
+    the *outer* one as the next character, and the honest answer there is "write nothing" --
+    which is a different family of this same tool, not a wrong answer.  The shadowed case is now
+    judged by that family's criterion.
+  * THE FIRST VERSION OF ROW 9's CONTROL DID NOT FIRE: it "corrupted" a one-parameter declaration
+    by reversing the list, and a reversed one-element list is the same list.  The control now
+    replaces a name (and reverses when there are two or more).
+  * AND ONE AFTER THE FIX: `ParameterHint` gained a field in 0.1.7, the control could no longer
+    construct one, and it reported "A COMPARATOR CANNOT FIRE" -- the control's reflection was
+    wrong, not the comparator.  It looks the constructor up by arity now.
+
+WHAT THIS FILE DOES NOT PROVE
+=============================
+
+  * No IDE was started.  Nothing here is evidence that the plugin loads, that a popup is drawn on
+    screen, that a tool window appears, or that a keystroke produces these writes.  Three of the
+    objects the platform supplies were stood in for and every one is named above.
+  * The 318-file corpus belongs to another track and was being added to while this round ran; the
+    numbers above are one run over the tree as it was at 05:20, with the compiler pinned.
+  * `PlatformEntry` judges what the plugin *decides*, at positions the harness chooses.  A
+    position it never chooses (a caret inside a multi-line string, a call inside a `parallel for`
+    header) is a position it does not claim.
+
+THE RAW OUTPUT
+==============
+
+Below is the raw log of the `harness.ps1 -Tool PlatformEntry` run quoted above, followed by the
+raw per-row output of the 0.1.6 run that produced the three "before" numbers -- the same tool, the
+same corpus, the same frozen compiler, the only difference being the plugin build.
+
+------------------------------------------------------------------------------
+raw: harness.ps1 -Tool PlatformEntry -FrozenVm %TEMP%\vela-plugin-drive\vm.exe
+     (re-run against the final artifact after the verifying build: 0.1.7, jar
+     392,458 bytes sha256 f8413a0ffca5b7541b9f03a0ae41e97232b581135374297a70605c5b526eb1db,
+     frozen vm.exe 803,840 bytes sha256 b69557cfc573f5daee77974366a700295f76cd30fb794c2970239f0ebff4c7c6;
+     build-offline.ps1 printed "RESULT: PASS - all structural, bytecode, platform,
+     registration, linkage and behavioural checks passed")
+------------------------------------------------------------------------------
+
+=== Preconditions
+    repo root     : C:\Users\lu\Downloads\vela
+    JDK           : D:\JetBrains\IntelliJ IDEA 2026.2.1
+    tools         : PlatformEntry
+    using the frozen compiler already at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-plugin-drive\vm.exe (-Refreeze to replace it)
+    frozen compiler: 803840 bytes  sha256 b69557cfc573f5daee77974366a700295f76cd30fb794c2970239f0ebff4c7c6
+    tree   compiler: 803840 bytes  sha256 bd24326bf3438e74724268125b205f22b542f681a2cf782b927c97dd5fa5b50f
+
+=== Compile the harness against the plugin classes
+    plugin classes snapshotted: 171 file(s) -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\classes-snapshot-4032 (a concurrent build-offline.ps1 cannot disturb this run)
+powershell : javac.exe : C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:601: ����: [remo
+val] Inspecti
+At line:5 char:1
++ powershell -NoProfile -ExecutionPolicy Bypass -File idea-plugin\harne ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (javac.exe : C:\...moval] Inspecti:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+onManager �е� createNewGlobalContext(boolean) �ѹ�ʱ, �ұ��Ϊ��ɾ��
+At C:\Users\lu\Downloads\vela\idea-plugin\harness.ps1:308 char:1
++ & $javac ('@' + $javacArgsFile) 2>&1 | Tee-Object -FilePath (Join-Pat ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\lu\Dow...ѹ�ʱ, �ұ��Ϊ��ɾ��:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+        public com.intellij.codeInspection.GlobalInspectionContext createNewGlobalContext(boolean b) {
+                                                                   ^
+C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:624: ����: [removal] InspectionManager �е
+� createProblemDescriptor(@org.jetbrains.annotations.NotNull PsiElement,@org.jetbrains.annotations.NotNull @com.intelli
+j.codeInspection.util.InspectionMessage String,@org.jetbrains.annotations.NotNull LocalQuickFix @org.jetbrains.annotati
+ons.Nullable [],@org.jetbrains.annotations.NotNull ProblemHighlightType,boolean) �ѹ�ʱ, �ұ��Ϊ��ɾ��
+        public com.intellij.codeInspection.ProblemDescriptor createProblemDescriptor(
+                                                             ^
+C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:618: ����: [removal] InspectionManager �е
+� createProblemDescriptor(@org.jetbrains.annotations.NotNull PsiElement,@org.jetbrains.annotations.NotNull @com.intelli
+j.codeInspection.util.InspectionMessage String,@org.jetbrains.annotations.NotNull LocalQuickFix @org.jetbrains.annotati
+ons.Nullable [],@org.jetbrains.annotations.NotNull ProblemHighlightType) �ѹ�ʱ, �ұ��Ϊ��ɾ��
+        public com.intellij.codeInspection.ProblemDescriptor createProblemDescriptor(
+                                                             ^
+ע: C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.javaʹ�û򸲸����ѹ�ʱ�� API��
+ע: �й���ϸ��Ϣ, ��ʹ�� -Xlint:deprecation ���±��롣
+3 ������
+    22 source file(s) -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes (98 class file(s))
+    javac driven from an @argfile (1783 bytes, over the 32 767-character limit)
+
+=== PlatformEntry
+== PlatformEntry: the platform's own entry points, driven ==
+driver 1 : VelaCompletionContributor.fillCompletionVariants +
+           LookupElement.handleInsert            (row 7)
+driver 2 : VelaParameterInfoHandler.findElementForParameterInfo ->
+           showParameterInfo -> findElementForUpdatingParameterInfo ->
+           updateParameterInfo -> updateUI        (row 9)
+driver 3 : VelaTypedHandlerDelegate.charTyped +
+           VelaEnterHandlerDelegate.postProcessEnter (row 19)
+compiler: C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-plugin-drive\vm.exe (803840 bytes, sha256 b69557cfc573f5daee77974366a700295f76cd30fb794c2970239f0ebff4c7c6)
+control : the comparators are asked to fire on purpose in every section
+platform: com.intellij.mock.MockApplication (MockApplication) + com.intellij.mock.MockProject
+          PsiDocumentManager.getInstance(project) is this tool's own: true
+          the document, the editor and the PSI leaves are stand-ins; every range and string written below is the plugin's own
+oracle 4: SPEC.md keywords 23, builtins with documented parameter names 11
+corpus  : 318 file(s); each is copied before it is edited, and the copy is what the compiler is asked about
+          files over 4194304 bytes are skipped, by class
+oracle 5: the corpus's own indentation step is 4 space(s) (3450 of 4244 positive deltas)
+
+=== row 7: VelaCompletionContributor through fillCompletionVariants ===
+entry    : CompletionContributor.fillCompletionVariants(CompletionParameters,
+           CompletionResultSet) -- the method the platform's completion
+           service calls -- and LookupElement.handleInsert(InsertionContext)
+oracle   : `vm.exe parse` for every declared name, member and parameter;
+           SPEC.md 1.3 (keywords) and section 8 (builtin parameter names)
+  family                     judged  wrong
+  -------------------------  ------  -----
+  bare-end                   138     0
+  insert                     1785    0
+  after-dot                  166     0
+  not judged, by class: compiler-refused-file 0  too-large 0  missing-corpus-file 0  dump-unavailable 0  lex-unavailable 0  crashed 0  receiver-type-not-written 0  receiver-not-a-struct 0  receiver-is-a-local 29  insert-not-a-callable 0  template-names-not-in-spec 138  contributor-threw 0
+    receiver-is-a-local:
+      tests/build/struct_and_methods.vel:18 `p.` is a local of type `Vec2`
+      tests/build/struct_and_methods.vel:19 `p.` is a local of type `Vec2`
+      tests/build/struct_and_methods.vel:20 `p.` is a local of type `Vec2`
+      tests/build/struct_and_methods.vel:20 `p.` is a local of type `Vec2`
+      tests/build/struct_value_semantics.vel:8 `a.` is a local of type `P`
+      tests/build/struct_value_semantics.vel:9 `a.` is a local of type `P`
+      tests/build/struct_value_semantics.vel:9 `b.` is a local of type `P`
+      tests/llvm-shapes/inplace_field_update.vel:11 `c.` is a local of type `Counter`
+      (21 more of this kind, not printed)
+    template-names-not-in-spec:
+      tests/accept/modules/module_import_reserved_name.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/arith_basics.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/arrays_and_len_folding.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/array_zero_filled.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/bom_first_byte.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/bool_logic.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/check_cases/divide_by_mutable_zero_checks_at_runtime.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/control_flow.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      (130 more of this kind, not printed)
+  every wrong position, in full:
+    (none)
+== control: the comparators asked to fire, on a real position ==
+  position: tests/build/struct_and_methods.vel:6 self.; the compiler declares [x, y, dot, scale] and the plugin offered [x, y, dot, scale]
+  one member the compiler declares, dropped from the answer : caught: not offered [x]
+  one name no declaration gives, added to the answer        : caught: offered but not a member [zzq_not_a_member]
+  template: tests/accept/modules/module_import_reserved_name.vel name len wrote `(a)` for the declaration's [a]
+  one parameter name in the template replaced by an invented one: caught: the template would name [zzq_not_a_parameter] and the declaration names [a]
+  control verdict: every comparator fires in both directions, so its zeros above are a measurement
+
+COVERAGE: ran 2089 / skipped 167 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, receiver-type-not-written 0, receiver-not-a-struct 0, receiver-is-a-local 29, insert-not-a-callable 0, template-names-not-in-spec 138, contributor-threw 0) / wrong 0
+VERDICT: for every judged position the offer set is exactly the names the compiler declares (after-dot: the struct's members; bare: the file's own module names, every keyword of SPEC.md 1.3 and every builtin section 8 names), no name is offered that nothing declares, and the insert handler writes the declaration's own parameter names [PASS]
+
+=== row 9: VelaParameterInfoHandler, all five platform steps ===
+entry    : findElementForParameterInfo -> showParameterInfo ->
+           findElementForUpdatingParameterInfo -> updateParameterInfo
+           (setCurrentParameter) -> updateUI
+oracle   : `vm.exe parse` -- the declaration's own `param name=` list and
+           `ret=`, and the compiler's binding of a receiver expression to
+           the first parameter; SPEC.md section 8 for builtins
+measured : the argument index the popup is given, and the string it draws
+           with the parameter emphasised -- the axis this row was
+           `partial` for, because nothing had ever instantiated the handler
+  family                     judged  wrong
+  -------------------------  ------  -----
+  find                       678     0
+  show                       657     0
+  update                     1343    0
+  not judged, by class: compiler-refused-file 0  too-large 0  missing-corpus-file 0  dump-unavailable 0  lex-unavailable 0  crashed 0  callee-not-a-declared-def 599  receiver-is-a-local 6  receiver-on-a-function 0  method-call-without-receiver 0  spec-row-documents-no-names 0  plugin-claims-no-names 0  parameter-list-untrusted 0  struct-constructor-popup-closed 21
+    callee-not-a-declared-def:
+      tests/accept/modules/module_import_reserved_name.vel:14 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arith_basics.vel:4 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arith_basics.vel:5 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arith_basics.vel:5 `to_float(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arith_basics.vel:5 `to_float(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arith_basics.vel:6 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arrays_and_len_folding.vel:10 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/array_zero_filled.vel:3 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      (591 more of this kind, not printed)
+    receiver-is-a-local:
+      tests/build/struct_and_methods.vel:18 `p.dot(` is a local of type `Vec2`
+      tests/build/struct_and_methods.vel:19 `p.scale(` is a local of type `Vec2`
+      tests/llvm-shapes/inplace_field_update.vel:12 `c.bump(` is a local of type `Counter`
+      tests/llvm-shapes/two_structs.vel:19 `p.add(` is a local of type `Box`
+      tests/llvm-shapes/two_structs.vel:20 `q.add(` is a local of type `Box`
+      tests/safety/cases/concurrency_pure_method_legal.vel:15 `b.get(` is a local of type `Box`
+    struct-constructor-popup-closed:
+      tests/build/struct_and_methods.vel:16 `Vec2(` declares [x, y] (the struct's fields) and no popup opens
+      tests/build/struct_and_methods.vel:17 `Vec2(` declares [x, y] (the struct's fields) and no popup opens
+      tests/build/struct_value_semantics.vel:6 `P(` declares [x] (the struct's fields) and no popup opens
+      tests/llvm-shapes/inplace_field_update.vel:10 `Counter(` declares [n] (the struct's fields) and no popup opens
+      tests/llvm-shapes/struct_by_value.vel:9 `P(` declares [x, y] (the struct's fields) and no popup opens
+      tests/llvm-shapes/struct_return.vel:5 `P(` declares [x] (the struct's fields) and no popup opens
+      tests/llvm-shapes/str_in_struct.vel:6 `P(` declares [name, n] (the struct's fields) and no popup opens
+      tests/llvm-shapes/two_structs.vel:17 `Box(` declares [n, m] (the struct's fields) and no popup opens
+      (13 more of this kind, not printed)
+  every wrong position, in full:
+    (none)
+  what this section does not claim:
+    the platform's own ParameterInfoControllerBase was not run: this tool calls the five methods it calls, in its order, with the contexts it passes
+    the fallback half of findElementForUpdatingParameterInfo -- the leaf was rebuilt, so the anchor is looked for among `objectsToView`, which holds ParameterHint items and not PSI elements -- is not exercised by the identity path above
+== control: the comparators asked to fire, on a real call ==
+  call: tests/build/arrays_and_len_folding.vel:3 `len`, the compiler's parameter list is [a], this argument binds `a`
+  the item's argument index moved by one                    : caught: the index moved by one is bound to `a` by the compiler and the popup emphasises `` in `a -> int`
+  the drawn parameter list corrupted                       : caught: draws the parameters as [zzq_not_a_parameter] and the call's arguments name [a]
+  the declaration's return type replaced by `zzq`            : caught: draws the return type as ` -> int` and the declaration spells ` -> zzq`
+  control verdict: every comparator fires in both directions, so its zeros above are a measurement
+
+COVERAGE: ran 2678 / skipped 626 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, callee-not-a-declared-def 599, receiver-is-a-local 6, receiver-on-a-function 0, method-call-without-receiver 0, spec-row-documents-no-names 0, plugin-claims-no-names 0, parameter-list-untrusted 0, struct-constructor-popup-closed 21) / wrong 0
+VERDICT: for every judged call the popup opens, the index it sets names the parameter the compiler binds that argument to, the drawn string is the declaration's own parameter names in order, and the emphasis covers exactly that parameter [PASS]
+
+=== row 19: the typed handler and the Enter handler, with an editor ===
+entry    : VelaTypedHandlerDelegate.charTyped(char, Project, Editor, PsiFile)
+           VelaEnterHandlerDelegate.postProcessEnter(PsiFile, Editor,
+           DataContext)
+editor   : the platform's Editor interface, stood in for: a document, a caret
+           that moves when the plugin moves it, and a recorded selection --
+           the same stand-in RenameWriteback uses for Document, for the same
+           reason (DocumentImpl refuses to write without an application)
+oracle   : `vm.exe check` on the text without the closer and on the text with
+           it; `vm.exe lex` decides whether a position is code at all; and
+           the corpus's own indentation (4 space(s), measured over 3450 deltas) for Enter
+  family                     judged  wrong
+  -------------------------  ------  -----
+  must-not-close             1351    0
+  close-restore              184     0
+  closer-refused-without-it  138     0
+  close-typed                3037    0
+  enter-block-open           723     0
+  enter-input-refused        138     0
+  enter-indent               2758    0
+  not judged, by class: compiler-refused-file 0  too-large 0  missing-corpus-file 0  dump-unavailable 0  lex-unavailable 0  crashed 0  closer-not-required 0  prefix-not-a-complete-program 40  indent-not-the-corpus-step 35  first-line 347  line-ends-with-brace 685
+    prefix-not-a-complete-program:
+      tests/build/control_flow.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry868141968131620413\edit-101\enter-out.vel:1 vela: panic: th...
+      tests/build/pure_call_inside_parallel.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry868141968131620413\edit-113\enter-out.vel:1 vela: panic: th...
+      tests/build/recursion_fib.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry868141968131620413\edit-115\enter-out.vel:1 vela: panic: th...
+      tests/build/struct_and_methods.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry868141968131620413\edit-118\enter-out.vel:1 vela: panic: th...
+      tests/build/struct_value_semantics.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry868141968131620413\edit-119\enter-out.vel:1 vela: panic: th...
+      tests/llvm-shapes/array_in_recursion.vel:24 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 25 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry868141968131620413\edit-123\enter-out.vel:1 vela: panic: th...
+      tests/llvm-shapes/array_param.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: 'extern c' parameter 'a' has type Array[int, 3] at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry868141968131620413\edit-126\en...
+      tests/llvm-shapes/float_param.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry868141968131620413\edit-129\enter-out.vel:1 vela: panic: th...
+      (32 more of this kind, not printed)
+    indent-not-the-corpus-step:
+      tests/build/extern/extern_c_probe.vel:22 no statement line of this file sits at depth 2 indented by 8 space(s)
+      tests/build/parallel_nested_2d.vel:4 no statement line of this file sits at depth 2 indented by 8 space(s)
+      tests/build/parallel_nested_2d.vel:5 no statement line of this file sits at depth 3 indented by 12 space(s)
+      tests/build/pure_call_inside_parallel.vel:8 no statement line of this file sits at depth 2 indented by 8 space(s)
+      tests/llvm-shapes/array_in_recursion.vel:29 no statement line of this file sits at depth 2 indented by 8 space(s)
+      tests/llvm-shapes/inplace_field_update.vel:5 no statement line of this file sits at depth 2 indented by 8 space(s)
+      tests/llvm-shapes/len_of_str.vel:2 no statement line of this file sits at depth 1 indented by 4 space(s)
+      tests/llvm-shapes/recursive_str.vel:3 no statement line of this file sits at depth 2 indented by 8 space(s)
+      (27 more of this kind, not printed)
+    first-line:
+      tests/accept/modules/module_import_reserved_name.vel:1 has no previous line for Enter to indent against
+      tests/accept/modules/module_import_reserved_name.vel:12 is preceded by an empty line
+      tests/build/arith_basics.vel:1 has no previous line for Enter to indent against
+      tests/build/arrays_and_len_folding.vel:1 has no previous line for Enter to indent against
+      tests/build/array_zero_filled.vel:1 has no previous line for Enter to indent against
+      tests/build/bom_first_byte.vel:1 has no previous line for Enter to indent against
+      tests/build/bom_first_byte.vel:25 is preceded by an empty line
+      tests/build/bool_logic.vel:1 has no previous line for Enter to indent against
+      (339 more of this kind, not printed)
+    line-ends-with-brace:
+      tests/accept/modules/module_import_reserved_name.vel:13 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/arith_basics.vel:2 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/arrays_and_len_folding.vel:2 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/arrays_and_len_folding.vel:4 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/arrays_and_len_folding.vel:8 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/array_zero_filled.vel:2 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/bom_first_byte.vel:26 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/bool_logic.vel:2 is preceded by a line that ends with `{`: the other branch, judged above
+      (677 more of this kind, not printed)
+  every wrong position, in full:
+    (none)
+  what this section does not claim:
+    no IDE was started: the editor is a stand-in, so what is claimed is the decision (which characters are written, where, and what the caret/selection becomes), not that a keystroke on screen produces it
+    `enter-indent` judges the indentation the file itself uses, because indentation is not semantic in Vela and the compiler has no opinion about it
+== control: the comparators asked to fire, on a real position ==
+  position: tests/accept/modules/module_import_reserved_name.vel:12 -- the closer deleted, caret at 679, expecting `)`
+  a handler that wrote nothing                        : caught: charTyped wrote nothing where the text needs `)` at 679
+  a handler that also wrote one unrelated character   : caught: the document has 2 write(s): [replaceString(679, 679, `)`), replaceString(0, 0, `q`)]
+  position: tests/accept/modules/module_import_reserved_name.vel:12 after the opening brace -- the expected text with one character dropped
+  an Enter that wrote one character less              : caught: the document is `# Refuse-case ??? after the feature lands, and it is the one file in this set that\n# `check` ACCEPTS today (measured: ex...` and the handler's own rule says `# Refuse-case ??? after the feature lands, and it is the one file in this set that\n# `check` ACCEPTS today (measured: ex...`
+  an Enter that left the caret one character out      : caught: the caret is at 696 and it belongs at 695
+  control verdict: every comparator fires in both directions, so its zeros above are a measurement
+
+COVERAGE: ran 8329 / skipped 1107 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, closer-not-required 0, prefix-not-a-complete-program 40, indent-not-the-corpus-step 35, first-line 347, line-ends-with-brace 685) / wrong 0
+VERDICT: the typed handler writes exactly one matching closer, at the caret, for every position the compiler's own token stream calls code, writes nothing where the character is inside a string or a comment or the closer is already there, and the Enter handler writes the body of an opened brace or the indentation the file itself uses at that depth [PASS]
+
+frozen compiler: b69557cfc573f5daee77974366a700295f76cd30fb794c2970239f0ebff4c7c6
+compiler processes: 1008 (8 s, 4 thread(s))
+
+COVERAGE: ran 13096 / skipped 1900 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, receiver-type-not-written 0, receiver-not-a-struct 0, receiver-is-a-local 35, insert-not-a-callable 0, template-names-not-in-spec 138, contributor-threw 0, callee-not-a-declared-def 599, receiver-on-a-function 0, method-call-without-receiver 0, spec-row-documents-no-names 0, plugin-claims-no-names 0, parameter-list-untrusted 0, struct-constructor-popup-closed 21, closer-not-required 0, prefix-not-a-complete-program 40, indent-not-the-corpus-step 35, first-line 347, line-ends-with-brace 685) / wrong 0   [rows 7, 9, 19 in one run]
+--- stderr
+java.exe : WARN: Attempt to load key 'psi.sleep.in.validity.check' for not yet loaded registry
+At C:\Users\lu\Downloads\vela\idea-plugin\harness.ps1:439 char:5
++     & $java ('@' + $runArgsFile) 1> $log 2> "$log.err"
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (WARN: Attempt t...loaded registry:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\PlatformEntry.log
+
+=== Coverage
+    the measurement behind every verdict above, one line per tool:
+  PlatformEntry  exit 0   COVERAGE: ran 13096 / skipped 1900 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, receiver-type-not-written 0, receiver-not-a-struct 0, receiver-is-a-local 35, insert-not-a-callable 0, template-names-not-in-spec 138, contributor-threw 0, callee-not-a-declared-def 599, receiver-on-a-function 0, method-call-without-receiver 0, spec-row-documents-no-names 0, plugin-claims-no-names 0, parameter-list-untrusted 0, struct-constructor-popup-closed 21, closer-not-required 0, prefix-not-a-complete-program 40, indent-not-the-corpus-step 35, first-line 347, line-ends-with-brace 685) / wrong 0   [rows 7, 9, 19 in one run]
+
+    the verdict each tool reached:
+  PlatformEntry  VERDICT: the typed handler writes exactly one matching closer, at the caret, for every position the compiler's own token stream calls code, writes nothing where the character is inside a string or a comment or the closer is already there, and the Enter handler writes the body of an opened brace or the indentation the file itself uses at that depth [PASS]  [exit 0, wrong 0]
+
+=== Verdict vs exit vs coverage
+    the three things a reader has to reconcile, per tool; only disagreements are shown:
+      (none: each tool's verdict, exit code and wrong count agree)
+
+=== Done
+    frozen compiler : C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-plugin-drive\vm.exe (803840 bytes, sha256 b69557cfc573f5daee77974366a700295f76cd30fb794c2970239f0ebff4c7c6)
+    logs            : C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes
+
+------------------------------------------------------------------------------
+raw: the same tool on the 0.1.6 build -- the three "before" numbers
+     (java PlatformEntry <repo> --vm %TEMP%\vela-plugin-drive\vm.exe --threads 4)
+------------------------------------------------------------------------------
+== PlatformEntry: the platform's own entry points, driven ==
+driver 1 : VelaCompletionContributor.fillCompletionVariants +
+           LookupElement.handleInsert            (row 7)
+driver 2 : VelaParameterInfoHandler.findElementForParameterInfo ->
+           showParameterInfo -> findElementForUpdatingParameterInfo ->
+           updateParameterInfo -> updateUI        (row 9)
+driver 3 : VelaTypedHandlerDelegate.charTyped +
+           VelaEnterHandlerDelegate.postProcessEnter (row 19)
+compiler: C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-plugin-drive\vm.exe (803840 bytes, sha256 b69557cfc573f5daee77974366a700295f76cd30fb794c2970239f0ebff4c7c6)
+control : the comparators are asked to fire on purpose in every section (--control is accepted; they always run)
+platform: com.intellij.mock.MockApplication (MockApplication) + com.intellij.mock.MockProject
+          PsiDocumentManager.getInstance(project) is this tool's own: true
+          the document, the editor and the PSI leaves are stand-ins; every range and string written below is the plugin's own
+oracle 4: SPEC.md keywords 23, builtins with documented parameter names 11
+corpus  : 318 file(s); each is copied before it is edited, and the copy is what the compiler is asked about
+          files over 4194304 bytes are skipped, by class
+oracle 5: the corpus's own indentation step is 4 space(s) (3450 of 4244 positive deltas)
+
+=== row 7: VelaCompletionContributor through fillCompletionVariants ===
+entry    : CompletionContributor.fillCompletionVariants(CompletionParameters,
+           CompletionResultSet) -- the method the platform's completion
+           service calls -- and LookupElement.handleInsert(InsertionContext)
+oracle   : `vm.exe parse` for every declared name, member and parameter;
+           SPEC.md 1.3 (keywords) and section 8 (builtin parameter names)
+  family                     judged  wrong
+  -------------------------  ------  -----
+  bare-end                   138     0
+  insert                     1785    4
+  after-dot                  166     0
+  not judged, by class: compiler-refused-file 0  too-large 0  missing-corpus-file 0  dump-unavailable 0  lex-unavailable 0  crashed 0  receiver-type-not-written 0  receiver-not-a-struct 0  receiver-is-a-local 29  insert-not-a-callable 0  template-names-not-in-spec 138  contributor-threw 0
+    receiver-is-a-local:
+      tests/build/struct_and_methods.vel:18 `p.` is a local of type `Vec2`
+      tests/build/struct_and_methods.vel:19 `p.` is a local of type `Vec2`
+      tests/build/struct_and_methods.vel:20 `p.` is a local of type `Vec2`
+      tests/build/struct_and_methods.vel:20 `p.` is a local of type `Vec2`
+      tests/build/struct_value_semantics.vel:8 `a.` is a local of type `P`
+      tests/build/struct_value_semantics.vel:9 `a.` is a local of type `P`
+      tests/build/struct_value_semantics.vel:9 `b.` is a local of type `P`
+      tests/llvm-shapes/inplace_field_update.vel:11 `c.` is a local of type `Counter`
+      (21 more of this kind, not printed)
+    template-names-not-in-spec:
+      tests/accept/modules/module_import_reserved_name.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/arith_basics.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/arrays_and_len_folding.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/array_zero_filled.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/bom_first_byte.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/bool_logic.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/check_cases/divide_by_mutable_zero_checks_at_runtime.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      tests/build/control_flow.vel: 23 builtin(s) this plugin's table holds and SPEC.md section 8 documents no parameter names for: print, emit_str, emit_int, emit_float, emit_nl, warn_str, warn_int, warn_nl, to_float, to_int, sqrt, fabs, ...
+      (130 more of this kind, not printed)
+  every wrong position, in full:
+  tests/build/extern/extern_c_probe.vel: `abs` template `(n)` names [n], and the declaration names [x]
+  tests/probes/extern_calls_as_declared.vel: `abs` template `(n)` names [n], and the declaration names [x]
+  tests/probes/extern_constant_fits_declared_kind.vel: `abs` template `(n)` names [n], and the declaration names [x]
+  tests/probes/extern_declared_after_the_call.vel: `abs` template `(n)` names [n], and the declaration names [x]
+== control: the comparators asked to fire, on a real position ==
+  position: tests/build/struct_and_methods.vel:6 self.; the compiler declares [x, y, dot, scale] and the plugin offered [x, y, dot, scale]
+  one member the compiler declares, dropped from the answer : caught: not offered [x]
+  one name no declaration gives, added to the answer        : caught: offered but not a member [zzq_not_a_member]
+  template: tests/accept/modules/module_import_reserved_name.vel name len wrote `(a)` for the declaration's [a]
+  one parameter name in the template replaced by an invented one: caught: the template would name [zzq_not_a_parameter] and the declaration names [a]
+  control verdict: every comparator fires in both directions, so its zeros above are a measurement
+
+COVERAGE: ran 2089 / skipped 167 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, receiver-type-not-written 0, receiver-not-a-struct 0, receiver-is-a-local 29, insert-not-a-callable 0, template-names-not-in-spec 138, contributor-threw 0) / wrong 4
+VERDICT: 4 position(s) of 2089 judged are wrong: the offer set is not the one the compiler's own declarations describe [FAIL]
+
+=== row 9: VelaParameterInfoHandler, all five platform steps ===
+entry    : findElementForParameterInfo -> showParameterInfo ->
+           findElementForUpdatingParameterInfo -> updateParameterInfo
+           (setCurrentParameter) -> updateUI
+oracle   : `vm.exe parse` -- the declaration's own `param name=` list and
+           `ret=`, and the compiler's binding of a receiver expression to
+           the first parameter; SPEC.md section 8 for builtins
+measured : the argument index the popup is given, and the string it draws
+           with the parameter emphasised -- the axis this row was
+           `partial` for, because nothing had ever instantiated the handler
+  family                     judged  wrong
+  -------------------------  ------  -----
+  find                       678     0
+  show                       657     0
+  update                     1343    0
+  emphasis                   0       690
+  index                      0       23
+  draw                       0       3
+  not judged, by class: compiler-refused-file 0  too-large 0  missing-corpus-file 0  dump-unavailable 0  lex-unavailable 0  crashed 0  callee-not-a-declared-def 599  receiver-is-a-local 6  receiver-on-a-function 0  method-call-without-receiver 0  spec-row-documents-no-names 0  plugin-claims-no-names 0  struct-constructor-popup-closed 21
+    callee-not-a-declared-def:
+      tests/accept/modules/module_import_reserved_name.vel:14 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arith_basics.vel:4 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arith_basics.vel:5 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arith_basics.vel:5 `to_float(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arith_basics.vel:5 `to_float(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arith_basics.vel:6 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/arrays_and_len_folding.vel:10 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      tests/build/array_zero_filled.vel:3 `print(` is not a `def` this file declares and SPEC.md section 8 documents no names for it
+      (591 more of this kind, not printed)
+    receiver-is-a-local:
+      tests/build/struct_and_methods.vel:18 `p.dot(` is a local of type `Vec2`
+      tests/build/struct_and_methods.vel:19 `p.scale(` is a local of type `Vec2`
+      tests/llvm-shapes/inplace_field_update.vel:12 `c.bump(` is a local of type `Counter`
+      tests/llvm-shapes/two_structs.vel:19 `p.add(` is a local of type `Box`
+      tests/llvm-shapes/two_structs.vel:20 `q.add(` is a local of type `Box`
+      tests/safety/cases/concurrency_pure_method_legal.vel:15 `b.get(` is a local of type `Box`
+    struct-constructor-popup-closed:
+      tests/build/struct_and_methods.vel:16 `Vec2(` declares [x, y] (the struct's fields) and no popup opens
+      tests/build/struct_and_methods.vel:17 `Vec2(` declares [x, y] (the struct's fields) and no popup opens
+      tests/build/struct_value_semantics.vel:6 `P(` declares [x] (the struct's fields) and no popup opens
+      tests/llvm-shapes/inplace_field_update.vel:10 `Counter(` declares [n] (the struct's fields) and no popup opens
+      tests/llvm-shapes/struct_by_value.vel:9 `P(` declares [x, y] (the struct's fields) and no popup opens
+      tests/llvm-shapes/struct_return.vel:5 `P(` declares [x] (the struct's fields) and no popup opens
+      tests/llvm-shapes/str_in_struct.vel:6 `P(` declares [name, n] (the struct's fields) and no popup opens
+      tests/llvm-shapes/two_structs.vel:17 `Box(` declares [n, m] (the struct's fields) and no popup opens
+      (13 more of this kind, not printed)
+  every wrong position, in full:
+tests/llvm-shapes/recursive_str.vel:5 `f(` argument 1 is bound to `n` by the compiler and the popup emphasises `s` in `s, n -> str`
+tests/llvm-shapes/recursive_str.vel:8 `f(` argument 1 is bound to `n` by the compiler and the popup emphasises `s` in `s, n -> str`
+tests/llvm-shapes/str_two_params.vel:6 `f(` argument 1 is bound to `b` by the compiler and the popup emphasises `a` in `a, b -> None`
+tests/probes/capture_probe.vel:46 `cap(` argument 1 is bound to `out` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:46 `cap(` argument 2 is bound to `err` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:47 `show(` argument 1 is bound to `rc` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:47 `show(` argument 2 is bound to `out` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:47 `show(` argument 3 is bound to `err` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:52 `cap(` argument 1 is bound to `out` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:52 `cap(` argument 2 is bound to `err` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:53 `show(` argument 1 is bound to `rc` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:53 `show(` argument 2 is bound to `out` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:53 `show(` argument 3 is bound to `err` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:54 `cap(` argument 1 is bound to `out` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:54 `cap(` argument 2 is bound to `err` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:55 `show(` argument 1 is bound to `rc` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:55 `show(` argument 2 is bound to `out` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:55 `show(` argument 3 is bound to `err` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:56 `cap(` argument 1 is bound to `out` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:56 `cap(` argument 2 is bound to `err` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:57 `show(` argument 1 is bound to `rc` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:57 `show(` argument 2 is bound to `out` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:57 `show(` argument 3 is bound to `err` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+  tests/probes/capture_probe.vel:60 `cap(` caret at argument 1 (offset 2289) and setCurrentParameter was given 0
+tests/probes/capture_probe.vel:60 `cap(` argument 1 is bound to `out` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+  tests/probes/capture_probe.vel:60 `cap(` caret at argument 2 (offset 2311) and setCurrentParameter was given 0
+tests/probes/capture_probe.vel:60 `cap(` argument 2 is bound to `err` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:62 `show(` argument 1 is bound to `rc` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:62 `show(` argument 2 is bound to `out` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:62 `show(` argument 3 is bound to `err` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:63 `cap(` argument 1 is bound to `out` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:63 `cap(` argument 2 is bound to `err` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:64 `show(` argument 1 is bound to `rc` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:64 `show(` argument 2 is bound to `out` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:64 `show(` argument 3 is bound to `err` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+  tests/probes/capture_probe.vel:67 `cap(` caret at argument 1 (offset 2769) and setCurrentParameter was given 0
+tests/probes/capture_probe.vel:67 `cap(` argument 1 is bound to `out` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+  tests/probes/capture_probe.vel:67 `cap(` caret at argument 2 (offset 2791) and setCurrentParameter was given 0
+tests/probes/capture_probe.vel:67 `cap(` argument 2 is bound to `err` by the compiler and the popup emphasises `cmd` in `cmd, out, err -> int`
+tests/probes/capture_probe.vel:69 `show(` argument 1 is bound to `rc` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:69 `show(` argument 2 is bound to `out` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+tests/probes/capture_probe.vel:69 `show(` argument 3 is bound to `err` by the compiler and the popup emphasises `what` in `what, rc, out, err -> None`
+  tests/probes/capture_probe.vel:72 `cap(` caret at argument 1 (offset 3053) and setCurrentParameter was given 0
+  tests/probes/mut_struct_parameter.vel:48 `bump(` draws the parameters as [self, k] and the call's arguments name [k] (declared [self, k])
+tests/probes/mut_struct_parameter.vel:48 `bump(` argument 0 is bound to `k` by the compiler and the popup emphasises `self` in `self, k -> None`
+tests/run_tests.vel:125 `cap_file(` argument 1 is bound to `step` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+tests/run_tests.vel:125 `cap_file(` argument 2 is bound to `ext` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+tests/run_tests.vel:126 `cap_file(` argument 1 is bound to `step` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+tests/run_tests.vel:126 `cap_file(` argument 2 is bound to `ext` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+tests/run_tests.vel:313 `line_at(` argument 1 is bound to `k` by the compiler and the popup emphasises `s` in `s, k -> str`
+tests/run_tests.vel:315 `starts_with(` argument 1 is bound to `p` by the compiler and the popup emphasises `s` in `s, p -> bool`
+tests/run_tests.vel:340 `line_at(` argument 1 is bound to `k` by the compiler and the popup emphasises `s` in `s, k -> str`
+tests/run_tests.vel:342 `starts_with(` argument 1 is bound to `p` by the compiler and the popup emphasises `s` in `s, p -> bool`
+tests/run_tests.vel:404 `ok_line(` argument 1 is bound to `note` by the compiler and the popup emphasises `name` in `name, note -> None`
+tests/run_tests.vel:408 `fail_line(` argument 1 is bound to `why` by the compiler and the popup emphasises `name` in `name, why -> None`
+tests/run_tests.vel:446 `run_capture(` argument 1 is bound to `cmd` by the compiler and the popup emphasises `t` in `t, cmd, step -> int`
+  tests/run_tests.vel:446 `run_capture(` caret at argument 2 (offset 15436) and setCurrentParameter was given 0
+tests/run_tests.vel:446 `run_capture(` argument 2 is bound to `step` by the compiler and the popup emphasises `t` in `t, cmd, step -> int`
+tests/run_tests.vel:449 `scored(` argument 1 is bound to `good` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:449 `scored(` argument 2 is bound to `name` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:449 `scored(` argument 3 is bound to `note` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:449 `scored(` argument 4 is bound to `why` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:449 `cap_file(` argument 1 is bound to `step` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+tests/run_tests.vel:449 `cap_file(` argument 2 is bound to `ext` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+tests/run_tests.vel:455 `scored(` argument 1 is bound to `good` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:455 `scored(` argument 2 is bound to `name` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:455 `scored(` argument 3 is bound to `note` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+  tests/run_tests.vel:455 `scored(` caret at argument 4 (offset 15839) and setCurrentParameter was given 0
+tests/run_tests.vel:455 `scored(` argument 4 is bound to `why` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:460 `run_capture(` argument 1 is bound to `cmd` by the compiler and the popup emphasises `t` in `t, cmd, step -> int`
+tests/run_tests.vel:460 `run_capture(` argument 2 is bound to `step` by the compiler and the popup emphasises `t` in `t, cmd, step -> int`
+tests/run_tests.vel:461 `cap_file(` argument 1 is bound to `step` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+tests/run_tests.vel:461 `cap_file(` argument 2 is bound to `ext` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+tests/run_tests.vel:463 `scored(` argument 1 is bound to `good` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:463 `scored(` argument 2 is bound to `name` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:463 `scored(` argument 3 is bound to `note` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:463 `scored(` argument 4 is bound to `why` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:463 `cap_file(` argument 1 is bound to `step` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+tests/run_tests.vel:463 `cap_file(` argument 2 is bound to `ext` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+tests/run_tests.vel:467 `golden(` argument 1 is bound to `ext` by the compiler and the popup emphasises `name` in `name, ext -> str`
+tests/run_tests.vel:468 `scored(` argument 1 is bound to `good` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:468 `scored(` argument 2 is bound to `name` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:468 `scored(` argument 3 is bound to `note` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:468 `scored(` argument 4 is bound to `why` by the compiler and the popup emphasises `t` in `t, good, name, note, why -> None`
+tests/run_tests.vel:468 `golden(` argument 1 is bound to `ext` by the compiler and the popup emphasises `name` in `name, ext -> str`
+ide-demo/tour.vel:32 `scale(` argument 1 is bound to `factor` by the compiler and the popup emphasises `v` in `v, factor -> int`
+ide-demo/tour.vel:32 `manhattan(` argument 0 emphasises `self` and there is no argument there
+ide-demo/tour.vel:38 `manhattan(` argument 0 emphasises `self` and there is no argument there
+  ide-demo/tour.vel:40 `moved(` draws the parameters as [self, dx, dy] and the call's arguments name [dx, dy] (declared [self, dx, dy])
+ide-demo/tour.vel:40 `moved(` argument 0 is bound to `dx` by the compiler and the popup emphasises `self` in `self, dx, dy -> Point`
+  ide-demo/tour.vel:40 `moved(` draws the parameters as [self, dx, dy] and the call's arguments name [dx, dy] (declared [self, dx, dy])
+ide-demo/tour.vel:40 `moved(` argument 1 is bound to `dy` by the compiler and the popup emphasises `self` in `self, dx, dy -> Point`
+bench/run_bench.vel:77 `cap(` argument 1 is bound to `step` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+bench/run_bench.vel:77 `cap(` argument 2 is bound to `ext` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+bench/run_bench.vel:78 `cap(` argument 1 is bound to `step` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+bench/run_bench.vel:78 `cap(` argument 2 is bound to `ext` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+bench/run_bench.vel:90 `cap(` argument 1 is bound to `step` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+bench/run_bench.vel:90 `cap(` argument 2 is bound to `ext` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+bench/run_bench.vel:94 `cap(` argument 1 is bound to `step` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+bench/run_bench.vel:94 `cap(` argument 2 is bound to `ext` by the compiler and the popup emphasises `n` in `n, step, ext -> str`
+bench/run_bench.vel:155 `find(` argument 1 is bound to `needle` by the compiler and the popup emphasises `s` in `s, needle -> int`
+bench/run_bench.vel:185 `find(` argument 1 is bound to `needle` by the compiler and the popup emphasises `s` in `s, needle -> int`
+bench/run_bench.vel:323 `run_capture(` argument 1 is bound to `cmd` by the compiler and the popup emphasises `r` in `r, cmd, step -> int`
+bench/run_bench.vel:323 `run_capture(` argument 2 is bound to `step` by the compiler and the popup emphasises `r` in `r, cmd, step -> int`
+bench/run_bench.vel:326 `captured_err(` argument 1 is bound to `step` by the compiler and the popup emphasises `r` in `r, step -> str`
+bench/run_bench.vel:356 `run_capture(` argument 1 is bound to `cmd` by the compiler and the popup emphasises `r` in `r, cmd, step -> int`
+bench/run_bench.vel:356 `run_capture(` argument 2 is bound to `step` by the compiler and the popup emphasises `r` in `r, cmd, step -> int`
+bench/run_bench.vel:358 `captured_err(` argument 1 is bound to `step` by the compiler and the popup emphasises `r` in `r, step -> str`
+bench/run_bench.vel:420 `run_capture(` argument 1 is bound to `cmd` by the compiler and the popup emphasises `r` in `r, cmd, step -> int`
+bench/run_bench.vel:420 `run_capture(` argument 2 is bound to `step` by the compiler and the popup emphasises `r` in `r, cmd, step -> int`
+bench/run_bench.vel:421 `captured(` argument 1 is bound to `step` by the compiler and the popup emphasises `r` in `r, step -> str`
+bench/run_bench.vel:423 `captured_err(` argument 1 is bound to `step` by the compiler and the popup emphasises `r` in `r, step -> str`
+bench/run_bench.vel:427 `micros_after(` argument 1 is bound to `key` by the compiler and the popup emphasises `text` in `text, key -> int`
+bench/run_bench.vel:434 `number_after(` argument 1 is bound to `key` by the compiler and the popup emphasises `text` in `text, key -> int`
+bench/run_bench.vel:436 `number_after(` argument 1 is bound to `key` by the compiler and the popup emphasises `text` in `text, key -> int`
+bench/run_bench.vel:443 `sort_ins(` argument 1 is bound to `n` by the compiler and the popup emphasises `v` in `v, n -> None`
+bench/run_bench.vel:447 `pad(` argument 1 is bound to `w` by the compiler and the popup emphasises `s` in `s, w -> str`
+bench/run_bench.vel:448 `padl(` argument 1 is bound to `w` by the compiler and the popup emphasises `s` in `s, w -> str`
+bench/run_bench.vel:449 `padl(` argument 1 is bound to `w` by the compiler and the popup emphasises `s` in `s, w -> str`
+bench/run_bench.vel:450 `padl(` argument 1 is bound to `w` by the compiler and the popup emphasises `s` in `s, w -> str`
+bench/run_bench.vel:486 `build_cpp(` argument 1 is bound to `name` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+bench/run_bench.vel:486 `build_cpp(` argument 2 is bound to `src` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+bench/run_bench.vel:486 `build_cpp(` argument 3 is bound to `restrict` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+bench/run_bench.vel:486 `build_cpp(` argument 4 is bound to `omp` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+bench/run_bench.vel:489 `build_cpp(` argument 1 is bound to `name` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+bench/run_bench.vel:489 `build_cpp(` argument 2 is bound to `src` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+bench/run_bench.vel:489 `build_cpp(` argument 3 is bound to `restrict` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+bench/run_bench.vel:489 `build_cpp(` argument 4 is bound to `omp` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+bench/run_bench.vel:492 `build_cpp(` argument 1 is bound to `name` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+bench/run_bench.vel:492 `build_cpp(` argument 2 is bound to `src` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+bench/run_bench.vel:492 `build_cpp(` argument 3 is bound to `restrict` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+bench/run_bench.vel:492 `build_cpp(` argument 4 is bound to `omp` by the compiler and the popup emphasises `r` in `r, name, src, restrict, omp -> bool`
+selfhost/vela.vel:156 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:156 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:156 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:159 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:159 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:159 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:162 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:162 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:162 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:165 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:165 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:165 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:168 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:168 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:168 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:171 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:171 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:171 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:174 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:174 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:174 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:177 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:177 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:177 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:180 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:180 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:180 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:183 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:183 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:183 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:186 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:186 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:186 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:189 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:189 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:189 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:192 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:192 `name_eq(` argument 2 is bound to `ln` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:192 `name_eq(` argument 3 is bound to `lit` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+selfhost/vela.vel:195 `name_eq(` argument 1 is bound to `off` by the compiler and the popup emphasises `src` in `src, off, ln, lit -> bool`
+  what this section does not claim:
+    the platform's own ParameterInfoControllerBase was not run: this tool calls the five methods it calls, in its order, with the contexts it passes
+    the fallback half of findElementForUpdatingParameterInfo -- the leaf was rebuilt, so the anchor is looked for among `objectsToView`, which holds ParameterHint items and not PSI elements -- is not exercised by the identity path above
+== control: the comparators asked to fire, on a real call ==
+  call: tests/build/arrays_and_len_folding.vel:3 `len`, the compiler's parameter list is [a], this argument binds `a`
+  the item's argument index moved by one                    : caught: the index moved by one is bound to `a` by the compiler and the popup emphasises `` in `a -> int`
+  the drawn parameter list corrupted                       : caught: draws the parameters as [zzq_not_a_parameter] and the call's arguments name [a]
+  the declaration's return type replaced by `zzq`            : caught: draws the return type as ` -> int` and the declaration spells ` -> zzq`
+  control verdict: every comparator fires in both directions, so its zeros above are a measurement
+
+COVERAGE: ran 2678 / skipped 626 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, callee-not-a-declared-def 599, receiver-is-a-local 6, receiver-on-a-function 0, method-call-without-receiver 0, spec-row-documents-no-names 0, plugin-claims-no-names 0, struct-constructor-popup-closed 21) / wrong 716
+VERDICT: 716 position(s) of 2678 judged are wrong: the popup does not name the parameter the compiler binds the caret's argument to [FAIL]
+
+=== row 19: the typed handler and the Enter handler, with an editor ===
+entry    : VelaTypedHandlerDelegate.charTyped(char, Project, Editor, PsiFile)
+           VelaEnterHandlerDelegate.postProcessEnter(PsiFile, Editor,
+           DataContext)
+editor   : the platform's Editor interface, stood in for: a document, a caret
+           that moves when the plugin moves it, and a recorded selection --
+           the same stand-in RenameWriteback uses for Document, for the same
+           reason (DocumentImpl refuses to write without an application)
+oracle   : `vm.exe check` on the text without the closer and on the text with
+           it; `vm.exe lex` decides whether a position is code at all; and
+           the corpus's own indentation (4 space(s), measured over 3450 deltas) for Enter
+  family                     judged  wrong
+  -------------------------  ------  -----
+  must-not-close             1351    0
+  close-restore              184     0
+  closer-refused-without-it  138     0
+  close-typed                3037    0
+  enter-block-open           723     0
+  enter-input-refused        138     0
+  enter-indent               2758    0
+  not judged, by class: compiler-refused-file 0  too-large 0  missing-corpus-file 0  dump-unavailable 0  lex-unavailable 0  crashed 0  closer-not-required 0  prefix-not-a-complete-program 40  indent-not-the-corpus-step 35  first-line 347  line-ends-with-brace 685
+    prefix-not-a-complete-program:
+      tests/build/control_flow.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry15233784987752750422\edit-101\enter-out.vel:1 vela: panic: ...
+      tests/build/pure_call_inside_parallel.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry15233784987752750422\edit-113\enter-out.vel:1 vela: panic: ...
+      tests/build/recursion_fib.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry15233784987752750422\edit-115\enter-out.vel:1 vela: panic: ...
+      tests/build/struct_and_methods.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry15233784987752750422\edit-118\enter-out.vel:1 vela: panic: ...
+      tests/build/struct_value_semantics.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry15233784987752750422\edit-119\enter-out.vel:1 vela: panic: ...
+      tests/llvm-shapes/array_in_recursion.vel:24 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 25 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry15233784987752750422\edit-123\enter-out.vel:1 vela: panic: ...
+      tests/llvm-shapes/array_param.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: 'extern c' parameter 'a' has type Array[int, 3] at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry15233784987752750422\edit-126\...
+      tests/llvm-shapes/float_param.vel:1 the prefix is not a program on its own: vela: syntax error: missing '}': a block is never closed at line 2 vela: panic: the front end stopped after an error / after: vela: type error: no 'main' function at C:\Users\lu\AppData\Local\Temp\dsh-gpFty5\vela-platform-entry15233784987752750422\edit-129\enter-out.vel:1 vela: panic: ...
+      (32 more of this kind, not printed)
+    indent-not-the-corpus-step:
+      tests/build/extern/extern_c_probe.vel:22 no statement line of this file sits at depth 2 indented by 8 space(s)
+      tests/build/parallel_nested_2d.vel:4 no statement line of this file sits at depth 2 indented by 8 space(s)
+      tests/build/parallel_nested_2d.vel:5 no statement line of this file sits at depth 3 indented by 12 space(s)
+      tests/build/pure_call_inside_parallel.vel:8 no statement line of this file sits at depth 2 indented by 8 space(s)
+      tests/llvm-shapes/array_in_recursion.vel:29 no statement line of this file sits at depth 2 indented by 8 space(s)
+      tests/llvm-shapes/inplace_field_update.vel:5 no statement line of this file sits at depth 2 indented by 8 space(s)
+      tests/llvm-shapes/len_of_str.vel:2 no statement line of this file sits at depth 1 indented by 4 space(s)
+      tests/llvm-shapes/recursive_str.vel:3 no statement line of this file sits at depth 2 indented by 8 space(s)
+      (27 more of this kind, not printed)
+    first-line:
+      tests/accept/modules/module_import_reserved_name.vel:1 has no previous line for Enter to indent against
+      tests/accept/modules/module_import_reserved_name.vel:12 is preceded by an empty line
+      tests/build/arith_basics.vel:1 has no previous line for Enter to indent against
+      tests/build/arrays_and_len_folding.vel:1 has no previous line for Enter to indent against
+      tests/build/array_zero_filled.vel:1 has no previous line for Enter to indent against
+      tests/build/bom_first_byte.vel:1 has no previous line for Enter to indent against
+      tests/build/bom_first_byte.vel:25 is preceded by an empty line
+      tests/build/bool_logic.vel:1 has no previous line for Enter to indent against
+      (339 more of this kind, not printed)
+    line-ends-with-brace:
+      tests/accept/modules/module_import_reserved_name.vel:13 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/arith_basics.vel:2 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/arrays_and_len_folding.vel:2 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/arrays_and_len_folding.vel:4 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/arrays_and_len_folding.vel:8 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/array_zero_filled.vel:2 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/bom_first_byte.vel:26 is preceded by a line that ends with `{`: the other branch, judged above
+      tests/build/bool_logic.vel:2 is preceded by a line that ends with `{`: the other branch, judged above
+      (677 more of this kind, not printed)
+  every wrong position, in full:
+    (none)
+  what this section does not claim:
+    no IDE was started: the editor is a stand-in, so what is claimed is the decision (which characters are written, where, and what the caret/selection becomes), not that a keystroke on screen produces it
+    `enter-indent` judges the indentation the file itself uses, because indentation is not semantic in Vela and the compiler has no opinion about it
+== control: the comparators asked to fire, on a real position ==
+  position: tests/accept/modules/module_import_reserved_name.vel:12 -- the closer deleted, caret at 679, expecting `)`
+  a handler that wrote nothing                        : caught: charTyped wrote nothing where the text needs `)` at 679
+  a handler that also wrote one unrelated character   : caught: the document has 2 write(s): [replaceString(679, 679, `)`), replaceString(0, 0, `q`)]
+  position: tests/accept/modules/module_import_reserved_name.vel:12 after the opening brace -- the expected text with one character dropped
+  an Enter that wrote one character less              : caught: the document is `# Refuse-case ??? after the feature lands, and it is the one file in this set that\n# `check` ACCEPTS today (measured: ex...` and the handler's own rule says `# Refuse-case ??? after the feature lands, and it is the one file in this set that\n# `check` ACCEPTS today (measured: ex...`
+  an Enter that left the caret one character out      : caught: the caret is at 696 and it belongs at 695
+  control verdict: every comparator fires in both directions, so its zeros above are a measurement
+
+COVERAGE: ran 8329 / skipped 1107 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, closer-not-required 0, prefix-not-a-complete-program 40, indent-not-the-corpus-step 35, first-line 347, line-ends-with-brace 685) / wrong 0
+VERDICT: the typed handler writes exactly one matching closer, at the caret, for every position the compiler's own token stream calls code, writes nothing where the character is inside a string or a comment or the closer is already there, and the Enter handler writes the body of an opened brace or the indentation the file itself uses at that depth [PASS]
+
+frozen compiler: b69557cfc573f5daee77974366a700295f76cd30fb794c2970239f0ebff4c7c6
+compiler processes: 1008 (8 s, 4 thread(s))
+
+COVERAGE: ran 13096 / skipped 1900 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, receiver-type-not-written 0, receiver-not-a-struct 0, receiver-is-a-local 35, insert-not-a-callable 0, template-names-not-in-spec 138, contributor-threw 0, callee-not-a-declared-def 599, receiver-on-a-function 0, method-call-without-receiver 0, spec-row-documents-no-names 0, plugin-claims-no-names 0, struct-constructor-popup-closed 21, closer-not-required 0, prefix-not-a-complete-program 40, indent-not-the-corpus-step 35, first-line 347, line-ends-with-brace 685) / wrong 720   [rows 7, 9, 19 in one run]

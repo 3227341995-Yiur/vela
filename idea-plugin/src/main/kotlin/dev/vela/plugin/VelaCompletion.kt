@@ -85,8 +85,27 @@ class VelaCompletionContributor : CompletionContributor() {
                     .withTypeText("keyword", true)
             )
         }
+        // THE FILE'S OWN DECLARATION WINS OVER THE LANGUAGE'S TABLE.
+        //
+        // A name this file writes is answered by that declaration, and the language's
+        // table is consulted only for a name the file does not write -- the rule
+        // `VelaTargets.declaredParameterNames` states and `VelaInlayHints.parameterHints`
+        // follows.  The completion did not follow it: for `extern c def abs(x: float)` in
+        // a file, the builtin entry `abs(n)` was offered *first* and the dedupe below then
+        // suppressed the file's own `abs`, so the inserted template named `n` -- a
+        // parameter that declaration does not have.  Measured by `PlatformEntry` on the
+        // corpus (4 positions, `template (n) names [n], and the declaration names [x]`).
+        val declaredCallables = VelaModel.symbols(text)
+            .filter {
+                it.kind == VelaSymbolKind.FUNCTION ||
+                    it.kind == VelaSymbolKind.METHOD ||
+                    it.kind == VelaSymbolKind.STRUCT
+            }
+            .mapTo(HashSet()) { it.name }
+
         for (builtin in VelaModel.BUILTINS) {
             val name = builtin.name
+            if (declaredCallables.contains(name)) continue
             // `range` is both a builtin and a keyword; the keyword spelling above
             // is the one the lexer produces, so offering it twice would be two
             // identical entries.

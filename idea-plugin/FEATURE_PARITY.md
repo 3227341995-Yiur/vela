@@ -91,9 +91,9 @@ harness run, in `build\evidence\`).
 | 4 | semantic highlighting | 14 `<annotator>` entries in `ce-plugin.xml` (e.g. `PyKeywordHighlightingAnnotator`, `PySyntaxAnnotator`) plus the type system (`Pythonid.typeProvider`, `pyClassMembersProvider`, `pyModuleMembersProvider` — extension points the plugin *declares* for others) | implemented | `VelaSemanticHighlighting.kt` | `[harness]` `FeatureProbe` §4: **15,994 name uses** classified across 7 kinds (FIELD 898, FUNCTION_CALL 4967, FUNCTION_DECLARATION 1049, PARAMETER 2805, STRUCT_DECLARATION 28, STRUCT_USE 236, TYPE 6011), 0 unclassified, and the per-offset lookup `classify(text, offset)` agrees with `classifyAll` on **all 15,994**. `[registration]` `<annotator>` |
 | 5 | real PSI parser | `<lang.parserDefinition language="Python" implementationClass="com.jetbrains.python.PythonParserDefinition" />`; plus `<lang.ast.factory language="Python" …PythonASTFactory />` and `<stubElementTypeHolder class="com.jetbrains.python.PyStubElementTypes" externalIdPrefix="py." />` | implemented | `VelaParserDefinition.kt`, `VelaSyntax.kt`, `VelaNodeTypes.kt` | `[harness]` `ast-diff.ps1`: **114 files identical to `vm.exe parse`, 127,318 node lines**, exact string equality line for line, `VERDICT: PASS` with 0 different / 0 suspect / 0 missing / 0 crashed and 12 files the compiler refuses (all 12 of which this parser also refuses); plus a self-test that rejects a wrong tree (`6 cross pairs, 6 detected as different, 0 missed`). `[harness]` `psi-tree-diff.ps1`: **126 of 126 files** replayed through the platform's own `PsiBuilderImpl`, `failed 0`, `VERDICT : PASS`, `COVERAGE: ran 126 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0) / wrong 0`. The single FAIL this row was `partial` for — `tests/build/lexer_error.vel`, an unterminated string — is fixed at its root: the scanner's closing newline claimed a character it had never read and is now zero-width at the failure offset (0.1.5 entry, item 1). **What is still not measured**: nothing drove this parser from a running IDE, so the row rests on those two headless differentials and not on an editor |
 | 6 | syntax error highlighting | `<annotator language="Python" implementationClass="com.jetbrains.python.validation.PySyntaxAnnotator" />` | implemented | `VelaParserDefinition.kt` (`PsiBuilder.error` during the replay), `VelaAnnotator.kt` | `[harness]` `psi-tree-diff.ps1` asserts that a parser problem produces an error element in the platform tree (`VELA_ERROR` / `ERROR_ELEMENT`); files where the parser reported a problem: 12 (recovery is exercised, not avoided). `[harness]` VerifyPlugin §9: problems parsed out of the compiler's own output with kind, message and line |
-| 7 | code completion (incl. after `.`) | 28 `<completion.contributor language="Python" …>` in `ce-plugin.xml`; member completion after `.` comes from `PyClassMembersProvider` / `pyModuleMembersProvider` | partial | `VelaCompletion.kt` | `[registration]` `<completion.contributor language="Vela">`. **No behavioural measurement exists**: nothing in `idea-plugin\` drives the completion contributor headlessly. This row is registered and compiled, and that is all that is claimed |
+| 7 | code completion (incl. after `.`) | 28 `<completion.contributor language="Python" …>` in `ce-plugin.xml`; member completion after `.` comes from `PyClassMembersProvider` / `pyModuleMembersProvider` | implemented | `VelaCompletion.kt` | `[registration]` `<completion.contributor language="Vela">`. `[harness]` **`PlatformEntry` §row 7**, 0.1.7, same frozen compiler (`evidence\platform-entry-0.1.7-20260924-0520.txt`): it calls `VelaCompletionContributor.fillCompletionVariants` with the platform's own `CompletionParameters` and a recording `CompletionResultSet`, and `LookupElement.handleInsert` in a real `InsertionContext` over a real `OffsetMap` — **2089 positions judged, wrong 0**, `COVERAGE: ran 2089 / skipped 167 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, receiver-type-not-written 0, receiver-not-a-struct 0, receiver-is-a-local 29, insert-not-a-callable 0, template-names-not-in-spec 138, contributor-threw 0) / wrong 0`. Three families, each held to the compiler's own dump: `bare-end` (138 files — every keyword `SPEC.md` 1.3 lists, every builtin whose section 8 row documents parameter names, and every module-level name `vm.exe parse` declares must be offered, and no offered name may be one nothing declares), `after-dot` (166 positions — exactly the members the dump lists for that struct, for the three receiver kinds the model resolves), `insert` (1785 — the written template names the declaration's own parameters in order, and the caret lands inside what it wrote). **The measurement found one defect and it is fixed in 0.1.7**: a file declaring `extern c def abs(x: float)` was offered the language's builtin `abs(n)` *first* and the dedupe then suppressed the file's own declaration, so the inserted call named `n` — 4 positions against 0.1.6; `VelaCompletion.offer` now skips a builtin whose name the file declares as a function, method or struct, which is the rule `VelaTargets.declaredParameterNames` and `VelaInlayHints` already followed. **Counted rather than called wrong**: 29 positions where the receiver is a *local with a written type* (`q: Vec2 = …` then `q.`) — the model resolves no struct for it, the same limit row 9 counts — and 138 files where the plugin's builtin table holds a name section 8 documents no parameter names for. **What is still not measured: the popup itself** — the recording result set does not filter by prefix, sort or draw — so this row claims what the contributor offers and what its insert handler writes, not how the popup looks |
 | 8 | hover documentation | `<lang.documentationProvider language="Python" id="pythonDocumentationProvider" implementationClass="com.jetbrains.python.documentation.PythonDocumentationProvider" />` (4 entries), plus `pythonDocumentationQuickInfoProvider` | implemented | `VelaDocumentation.kt` | `[registration]` `<lang.documentationProvider language="Vela">`. `[harness]` `HoverTruth`: **11,830 row(s) judged, wrong 0**, over 311 corpus files — every struct, field, `def` and parameter hovered at its declaration and compared against the compiler's own `parse` dump (names, `mut`, types, return types, nesting) and its `lex` dump for the line number; every builtin name against SPEC.md §8; and every identifier in the token stream that neither the file nor the language declares must hover as **nothing**, which is the axis that catches invented content (an earlier defect in this area copied parameter names out of the parentheses and produced `s: s: s:`). A parameter list the model cannot read prints no names at all rather than guessing. Falsification is part of the evidence: `--demand-hover <a name that does not exist>` fails and says the demand failed, and `--swap-params` reports exactly the declaration whose parameter order it reversed. What is still not measured: a running IDE's popup — the harness calls `documentationAt(text, offset)`, which is the PSI-free entry point the popup itself calls, so the rendering is not driven |
-| 9 | parameter info | `<codeInsight.parameterInfo language="Python" implementationClass="com.jetbrains.python.PyParameterInfoHandler" />`; pro adds `keywordArgumentProvider` and `Pythonid.pyBddParametersInspection` | **partial** | `VelaParameterInfo.kt`, `VelaLanguage.kt` (`callAt`), `VelaTargets.kt` | `[harness]` `HintDiff` / `HintShapes` / `HintDupes` measure the same declaration reader the popup calls: `VelaParameterInfo.kt:56` and `VelaHints.parameterHints` both go through `VelaTargets.declaredParameterNames` / `builtinParameterNames`. `HintDiff`: **11,441 hints drawn, 11,441 correct, 0 wrong, 0 beyond the declared list**, `COVERAGE: ran 31188 / skipped 14 (compiler-cannot-parse 2, arg-boundary-disagreement 12) / wrong 0`; `HintDupes`: 0 callables with a repeated parameter name (the old `s: s: s:`), 0 empty names. **The row stays `partial`, and not for the 30 positions it used to be `partial` for**: that finding is not in the current run — which is not the same corpus either (29,006 argument positions then, 31,188 now), and what removed it is not recorded in the evidence I have. **What keeps the row `partial` is the one axis no harness reaches**: no harness has ever instantiated `VelaParameterInfoHandler`, so the popup's own two decisions — the argument index the caret is in (`updateParameterInfo` → `setCurrentParameter`) and the string `updateUI` draws with the parameter emphasised — have never been driven, while `HintDiff` measures only the parameter-name reader the popup shares with the inlay hints (`VelaTargets.declaredParameterNames` / `builtinParameterNames`) |
+| 9 | parameter info | `<codeInsight.parameterInfo language="Python" implementationClass="com.jetbrains.python.PyParameterInfoHandler" />`; pro adds `keywordArgumentProvider` and `Pythonid.pyBddParametersInspection` | implemented | `VelaParameterInfo.kt`, `VelaLanguage.kt` (`callAt`), `VelaTargets.kt` | `[harness]` `HintDiff` / `HintShapes` / `HintDupes` measure the declaration reader the popup shares with the inlay hints (`VelaTargets.declaredParameterNames` / `builtinParameterNames`): `HintDiff` **11,441 hints drawn, 11,441 correct, 0 wrong, 0 beyond the declared list**, `COVERAGE: ran 31188 / skipped 14 … / wrong 0`. `[harness]` **`PlatformEntry` §row 9** now drives the handler itself (`evidence\platform-entry-0.1.7-20260924-0520.txt`, 0.1.7): `findElementForParameterInfo` → `showParameterInfo` → `findElementForUpdatingParameterInfo` → `updateParameterInfo` (`setCurrentParameter`) → `updateUI`, with stand-ins for the three context interfaces — **2678 positions judged, wrong 0**, `COVERAGE: ran 2678 / skipped 626 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, callee-not-a-declared-def 599, receiver-is-a-local 6, receiver-on-a-function 0, method-call-without-receiver 0, spec-row-documents-no-names 0, plugin-claims-no-names 0, parameter-list-untrusted 0, struct-constructor-popup-closed 21) / wrong 0`. The two axes the row was `partial` for are the ones it judges: the index `setCurrentParameter` is given (1343 update steps) must name the parameter the *compiler* binds that argument to (a receiver expression is a method's first parameter; the parentheses' arguments are the rest, which is what `vm.exe parse` prints), and the string `updateUI` draws must be the declaration's own names in order with the emphasis covering exactly that argument. **The measurement found two defects, both fixed in 0.1.7**: (1) the drawn list and the index counted different things for a method call — the popup drew `self, o -> float` and emphasised `self` for the caret in `q`, which the compiler binds to `o`, and `p.manhattan()` emphasised `self` for a call with no argument at all (5 emphasis and 3 draw wrongs of 2678 once the other defect was fixed); the receiver's parameter is now dropped exactly as `VelaInlayHints.parameterHints` drops it. (2) the emphasis never followed the caret at all — `updateUI` drew from an index only `findElementForParameterInfo` had set, while `updateParameterInfo` told the platform the new one (690 emphasis and 23 index wrongs); and `callAt(caret)` reads the caret's own line, so on the second line of a multi-line argument list it answered nothing and the index stayed 0; the call's `(` now travels on the item, the index is counted from it, and it is written back so the drawing sees it. **Counted rather than called wrong**: 599 positions whose callee is not a `def` this file declares and not a builtin section 8 documents (`print(`, `to_float(` — no oracle writes a parameter list for it), 21 `Vec2(…)` struct-constructor calls (the model opens no popup for a struct's own name, printed with the field list the compiler declares), 6 method calls on a local receiver, and any position whose parameter list the item carries as null, where the popup is disabled by design rather than drawn with names that are not there. **What is still not measured**: the platform's own `ParameterInfoControllerBase` (this tool calls the five methods it calls, in its order, with stand-ins for `CreateParameterInfoContext`, `UpdateParameterInfoContext` and `ParameterInfoUIContext`), and the fallback half of `findElementForUpdatingParameterInfo` — the leaf was rebuilt, so it looks for the anchor among `objectsToView`, which holds `ParameterHint` items and not PSI elements, so that branch is unreachable as written and is reported rather than exercised |
 | 10 | go to declaration | `<gotoDeclarationHandler implementation="com.jetbrains.python.psi.impl.PyGotoDeclarationHandler" />` + `PyBreakContinueGotoProvider`; the resolution itself is `pyReferenceResolveProvider` with `PyForwardReferenceResolveProvider` | implemented | `VelaGotoDeclaration.kt`, `VelaTargets.kt` | `[harness]` `GotoOracle` (one `vm.exe check` per declaration rename, the binding set verified by the file compiling again): **26,077 references judged, 0 WRONG**, and the skip side is categorised rather than dropped. The shadowing case of the same resolver — Ctrl+Click on an inner `x` jumping to the outer one — is measured separately in `evidence\inner-first-scope-0.1.6.txt`: `VelaTargets.declarationFor` case 3 now walks the ancestor chain inner-first, and that file states its own limit (the case could not be made to exit non-zero, because the inner `x` is itself compile-silent, so the row disappears instead of turning red) |
 | 11 | find usages / references | `<lang.findUsagesProvider language="Python" implementationClass="com.jetbrains.python.findUsages.PythonFindUsagesProvider" />`; `usageTypeProvider` in `py-plugin.xml` | implemented | `VelaFindUsages.kt`, `VelaReferenceContributor` in `VelaGotoDeclaration.kt` | `[registration]` `<lang.findUsagesProvider language="Vela">`, `<psi.referenceContributor implementation="…VelaReferenceContributor">` (the attribute is `implementation`, proven in `PLUGIN_SURFACE.md`). `[harness]` **Two independent measurements of the same table, on 0.1.6 and the same frozen compiler** (`vm.exe` 905,216 bytes, sha256 `feeb0271…`). `RenameOracle` asks the compiler about one occurrence at a time — rename the declaration and every candidate *except* that one, and a refusal means the compiler binds it: **853 declarations judged, 2,855 bound uses, 0 MISSED, 0 WRONG-SCOPE, 4 claimed-but-unprovable, wrong 0**, `COVERAGE: ran 853 / skipped 5543 (compiler-refused 5363, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 151, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0`; the same run holds the results view's own decisions to the compiler (`canSearchAt` on every bound use and on the declaration's own name, and the label `typeAt` returns — the `NOT-SEARCHABLE` and `LABEL` findings, 0). `RenameWriteback` (`evidence\rename-writeback-0.1.6-20260924-0445.txt`) drives the provider **itself** over copies of real corpus files: 782 declarations, 1,675 claimed references, and **leaving any one of them unwritten is refused by `vm.exe check` for 1,667** of the 1,675 — the other 8 being compile-silent positions that are counted and printed rather than called wrong (`b: P = a` is one shape, a shadowed inner declaration whose use would rebind to the outer same-typed one is the other). The shadowing half of the same table has its own measurement, `evidence\inner-first-scope-0.1.6.txt` (case 3 of `VelaTargets.declarationFor` now walks the ancestor chain inner-first; `NOT-REQUIRED` 5 → 4 and the `scope_shadow_across_blocks_ok.vel:5 'x'` row gone). **What is still not measured: the usages window's own rendering** — no IDE was launched — which is the same limit row 8 states for the hover popup |
 | 12 | rename refactoring | Python relies on PSI references; `py-plugin.xml` adds `vetoRenameCondition` and `customUsageSearcher` | implemented | `VelaLeafManipulator` in `VelaGotoDeclaration.kt`, reference from `VelaReferenceContributor` | `[registration]` `<lang.elementManipulator forClass="com.intellij.psi.PsiElement" implementationClass="…VelaLeafManipulator">`. `[harness]` **`RenameWriteback`, which renames and reads the file back from disk** (`evidence\rename-writeback-0.1.6-20260924-0445.txt`): it drives the plugin's own write path — `VelaReferenceProvider` → `VelaReference.resolve()` → `VelaReference.handleElementRename` for every usage, `VelaLeafManipulator.handleContentChange` for the declaration, in the platform's reverse-document order — over a *copy* of each real corpus file, through the plugin's own `document.replaceString(start, end, newName)` calls, and then asks the compiler about the file it produced. **782 declarations, 1,675 claimed references, 2,457 writes landed of 2,457 attempted, the file read back compiles for 782 of 782, the two write paths agree for 782 of 782, `wrong 0`**; the recorded write log *is* the write set (every range a whole identifier leaf of the right length, every replacement the new name, nothing else written), the file read back is the original with exactly those ranges replaced, and the token-by-token comparison over both texts (plugin lexer) finds no token outside the write set that changed. **The falsification is measured rather than asserted**: renaming the *declaration alone* through the same write path is refused by the compiler for 781 of the 782 — and the tool exits 3 if that count is ever 0, so a rename that silently wrote nothing could not pass. Making the rename *set* the same test (leave one reference out and the compiler must refuse) holds for 1,667 of the 1,675; the 8 that compile anyway are the same compile-silent positions row 11 counts. **What is still not measured**: the platform's rename dialog and its processor (`vetoRenameCondition`, the search-in-comments options) and the undo step — the `CommandProcessor` is a stand-in that runs the command inline — so the plugin's write is measured end to end and the IDE around it is not |
@@ -103,7 +103,7 @@ harness run, in `build\evidence\`).
 | 16 | code folding | `<lang.foldingBuilder language="Python" implementationClass="com.jetbrains.python.PythonFoldingBuilder" />` | implemented | `VelaFolding.kt` | `[harness]` `FoldDiff` over 126 files: 64 identical, 38 differing only in granularity and 24 disagreeing about content, against the **retired** brace-matching reference (`[29,103)` the whole function body vs `[44,66)` an inner block). See "the two regression detectors" below — this is a comparison against this plugin's own predecessor, not against an authority |
 | 17 | commenter | `<lang.commenter language="Python" implementationClass="com.jetbrains.python.PythonCommenter" />` | implemented | `VelaCommenter.kt` | `[harness]` `FeatureProbe` §3: the prefix is `#` and **all 3,805 comment tokens** in the corpus start with it, so `Ctrl+/` writes what the lexer reads. `[registration]` `<lang.commenter>` |
 | 18 | brace matcher | `<lang.braceMatcher language="Python" implementationClass="com.jetbrains.python.PyBraceMatcher" />` | implemented | `VelaBraceMatcher.kt` | `[harness]` `FeatureProbe` §2: `getPairs()` declares `{}`(structural) `()` `[]`, and **every delimiter in the corpus** (`{` 3617, `}` 3616, `(` 8271, `)` 8270, `[` 2628, `]` 2628) is one of those types; 0 unmatched. `[registration]` `<lang.braceMatcher>` |
-| 19 | typed handler / Enter auto-indent | `<typedHandler implementation="com.jetbrains.python.codeInsight.PyKeywordTypedHandler" id="pyCommaAfterKwd" />` and `<typedHandler implementation="com.jetbrains.python.editor.PythonSpaceHandler" />` (4 in `ce-plugin.xml`); Enter indentation is in the formatter | partial | `VelaTypedHandler.kt` | `[registration]` `<typedHandler implementation="…VelaTypedHandlerDelegate">` and `<enterHandlerDelegate implementation="…VelaEnterHandlerDelegate" order="first">`, both **not** language-keyed (they test the file name themselves, which is why `velaIsVelaFile` exists). Not measured headlessly: the code is a document edit and needs an editor |
+| 19 | typed handler / Enter auto-indent | `<typedHandler implementation="com.jetbrains.python.codeInsight.PyKeywordTypedHandler" id="pyCommaAfterKwd" />` and `<typedHandler implementation="com.jetbrains.python.editor.PythonSpaceHandler" />` (4 in `ce-plugin.xml`); Enter indentation is in the formatter | implemented | `VelaTypedHandler.kt` | `[registration]` `<typedHandler implementation="…VelaTypedHandlerDelegate">` and `<enterHandlerDelegate implementation="…VelaEnterHandlerDelegate" order="first">`, both **not** language-keyed (they test the file name themselves, which is why `velaIsVelaFile` exists). `[harness]` **`PlatformEntry` §row 19** (`evidence\platform-entry-0.1.7-20260924-0520.txt`, 0.1.7) drives both handlers with an editor stood in for (a document that records every write, a caret the plugin moves, a recorded selection — the same stand-in `RenameWriteback` uses for `Document`, and for the same measured reason): **8329 positions judged, wrong 0**, `COVERAGE: ran 8329 / skipped 1107 (compiler-refused-file 0, too-large 0, missing-corpus-file 0, dump-unavailable 0, lex-unavailable 0, crashed 0, closer-not-required 0, prefix-not-a-complete-program 40, indent-not-the-corpus-step 35, first-line 347, line-ends-with-brace 685) / wrong 0`. `charTyped`: the compiler's own `vm.exe lex` decides which family a position is — a real bracket is a one-character punctuation token starting exactly there, a character inside a string is covered by a string token's contents, and a `{` inside a comment or a closing quote is covered by no token at all — giving 3037 positions where exactly one closer must be written at the caret, 184 where the corpus's own closer was deleted and the text read back had to be the corpus file byte for byte, 138 of those where `vm.exe check` refuses the text without it (the falsification: a handler that wrote nothing cannot pass), and 1351 where nothing may be written (the closer is already next, the character is inside a string or a comment, or the file is not a `.vel` file). `postProcessEnter`: 723 block-open positions (the document is the file's prefix up to the `{` plus the line feed the platform wrote; the written body line, closing brace and caret are computed from the corpus's own line, and the compiler refuses the input and accepts the result for 138 of them) and 2758 positions on a new empty line above a real one, where the indentation written must be the indentation that line itself has — indentation is not semantic in Vela, so the compiler cannot judge it, and the corpus's own step was measured first (4 spaces, 3450 of 4244 positive deltas). **No defect was found in this row.** **What is not measured**: no IDE was started, so the claim is the decision (which characters, where, and what the caret/selection becomes) and not that a keystroke on screen produces it; the platform's own `EnterHandlerDelegate` chain is not run, and the indent step is `VelaFormatRules.INDENT_SIZE` rather than the reader's code-style setting, as the class's own documentation says |
 | 20 | colour settings page | `<colorSettingsPage implementation="com.jetbrains.python.highlighting.PythonColorsPage" />` | implemented | `VelaColorsAndFontsPage.kt`, `VelaColorSettingsPage.kt`, `VelaHighlighting.kt` | `[registration]` `<colorSettingsPage implementation="…VelaColorsAndFontsPage">`; `[harness]` the keys it exposes are the same 14 `TextAttributesKey`s `FeatureProbe` §1 proves are actually used, because it reads them out of `VelaColors` rather than listing strings |
 | 21 | live templates | `<defaultLiveTemplates file="liveTemplates/Python.xml" />` and 3 `<liveTemplateContext contextId="Python" …>` | implemented | `VelaLiveTemplates.kt`, `src\main\resources\liveTemplates\Vela.xml` | `[harness]` `FeatureProbe` §6: `liveTemplates/Vela.xml` is present **inside the built artifact** (`dist\vela\lib\vela-idea-plugin.jar`, 5,050 bytes, read back out of the zip), declares its templates, and every one is in the `VELA` context. `[registration]` `<defaultLiveTemplates>`, `<liveTemplateContext implementation="…VelaTemplateContextType">` |
 | 22 | run configuration (+ Run action) | `<configurationType implementation="com.jetbrains.python.run.PythonConfigurationType" />` (8 in `ce-plugin.xml`), `<runConfigurationProducer implementation="com.jetbrains.python.run.PythonRunConfigurationProducer" />` (4 in `ce-plugin.xml`, 4 in `py-plugin.xml`), plus `runnerFactory` and `programRunner` | implemented | `VelaRunConfig.kt`, `VelaRunConfigurationProducer.kt` | `[registration]` `<configurationType implementation="…VelaRunConfigurationType">`, `<runConfigurationProducer implementation="…VelaRunConfigurationProducer">` — this is what makes IDEA's *own* Run menu offer a `.vel` file, instead of a private submenu. `[harness]` VerifyPlugin §10 builds and runs `examples/hello.vel` (exit 0, both fixed lines printed) and §11 reads the run path out of the class constant pool (no private console) |
@@ -129,11 +129,11 @@ should do, and each says plainly how far it actually goes.
 
 | state | rows | which |
 |---|---|---|
-| `implemented` | **23** | 1, 2, 3, 4, 5, 6, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 21, 22, 24, 25, 26, 27 |
-| `partial` | **3** | 7 completion, 9 parameter info, 19 typed/enter handler |
+| `implemented` | **26** | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27 |
+| `partial` | **0** | — |
 | `missing` | **0** | — |
 | `refused-deliberately` | **1** | 23 debugger |
-| total | **27** | `23 + 3 + 1 + 0 = 27` |
+| total | **27** | `26 + 0 + 1 + 0 = 27` |
 
 Row 5 moved from `implemented` to `partial` when its own verifier went red (`psi-tree-diff`
 125 of 126, one FAIL) and moved back to `implemented` when that verifier went green —
@@ -144,41 +144,49 @@ they were `partial`: the registration and the *resolution* were measured and not
 ever renamed anything and read the file back, so `RenameWriteback` now drives the plugin's
 own write path over copies of real corpus files and reads them back from disk, with the
 compiler's own refusal of a declaration-only rename as the falsification (row 12's evidence
-column). Row 9's reason is the
-same one axis in its own row and here: **no harness ever instantiates
-`VelaParameterInfoHandler`**, so the argument index the popup highlights
-(`updateParameterInfo` → `setCurrentParameter`) and the string `updateUI` draws are
-unmeasured, and the 30 mis-hinted positions it was once `partial` for are not what keeps
-it `partial` — they are not in the current run, on a corpus that is not the same either. A
-row is not
-`implemented` while its own verifier is red; a green verifier is not by itself enough when
-the capability's own surface was never driven.
+column). Rows 7, 9 and 19 were the last three `partial` rows, and their reason was the same one
+axis three times: the row is about an object the *platform* instantiates, and no harness had ever
+instantiated one. The round that closed them is the one that did: `PlatformEntry` calls
+`fillCompletionVariants` and `handleInsert` for row 7, the handler's five steps for row 9, and
+`charTyped` / `postProcessEnter` for row 19, with stand-ins only where the platform demands an
+object a headless run cannot have. Row 9 in particular is measured on the two decisions it was
+`partial` for — the index `setCurrentParameter` is given and the string `updateUI` draws with the
+emphasis — and the 30 mis-hinted positions it was once `partial` for stay out of it: they are not
+in the current run, on a corpus that is not the same either. **The measurement was red when it
+first ran** (4 wrong positions in row 7, 1009 in row 9), and the three defects it found are fixed
+in 0.1.7 rather than restated as an expectation — the before/after lines are in
+`evidence\platform-entry-0.1.7-20260924-0520.txt` and in the `## Open defects` entry 8 below. A
+row is not `implemented` while its own verifier is red; a green verifier is not by itself enough
+when the capability's own surface was never driven; and a surface that *is* driven is not
+`implemented` until the defects it finds are fixed or named.
 
 ### Rows backed by a harness vs by a registration only
 
 | evidence behind the row | rows | which |
 |---|---|---|
-| `[registration]` **and** `[harness]` | **18** | 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 25 |
-| `[registration]` only | **8** | 1, 7, 8, 19, 23, 24, 26, 27 |
+| `[registration]` **and** `[harness]` | **20** | 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 25 |
+| `[registration]` only | **6** | 1, 8, 23, 24, 26, 27 |
 | `[harness]` only, no registration | **0** | — |
 
-**18** rows have both, **8** have a registration only, and row 23 is the
+**20** rows have both, **6** have a registration only, and row 23 is the
 `refused-deliberately` one whose evidence is the registration of the *suppression*:
-`18 + 8 + 1 = 27`. Rows 11 and 12 were in the second group and are in the first one now,
+`20 + 6 + 1 = 27`. Rows 11 and 12 were in the second group and are in the first one now,
 because the harness that moved them (`RenameWriteback`) drives the capability's own code —
 the provider, the reference and the manipulator — rather than a reader the capability
-happens to share.
+happens to share. Rows 7 and 19 left that group this round for the same reason and by the
+same standard: `PlatformEntry` instantiates the contributor and the two handlers and calls the
+methods the platform calls, with stand-ins for the `Editor`, the `Document` and the PSI.
 
-The eight registration-only rows are honest omissions, not oversights, and each has its own
-reason rather than a shared one: completion (7) and the typed/enter handlers (19) are
-document-and-editor features whose behaviour only exists with an editor attached; hover (8)
-and the PSI tree window (24) have their *decisions* measured (the hover text by
-`HoverTruth`, the tree format by `ast-diff.ps1`) and the surface that draws them is not; the
+The six registration-only rows are honest omissions, not oversights, and each has its own
+reason rather than a shared one: hover (8) and the PSI tree window (24) have their *decisions*
+measured (the hover text by `HoverTruth`, the tree format by `ast-diff.ps1`) and the surface
+that draws them is not — a green number about a *decision* is not a measurement of a popup,
+which is the distinction this round had to hold for rows 7, 9 and 19 as well; the
 file type (1), the settings page (26) and the New → Vela File action (27) are registrations
 the verifier reads back, and the debugger (23) is a refusal. The
 `FeatureProbe` harness added in an earlier round was written specifically to move rows 3, 17,
-18, 15, 4 and 21 out of that group, and it did; `RenameWriteback` is the harness this round
-wrote to move 11 and 12 out of it, and it did.
+18, 15, 4 and 21 out of that group, and it did; `RenameWriteback` moved 11 and 12 out of it,
+and `PlatformEntry` is the harness this round wrote to move 7 and 19 out of it, and it did.
 
 ## The two regression detectors, and what their non-zero numbers mean
 
@@ -253,6 +261,10 @@ bottom of this table are what makes them current.
 | `FeatureProbe` | 0 | `ran 976 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) / wrong 0` | clean -- six features that had only a registration (0.1.5) |
 | `RenameOracle` | 0 | `ran 853 / skipped 5543 (compiler-refused 5363, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 151, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0` | clean -- the reference table names exactly the 2,855 uses the compiler binds and nothing else, 0 MISSED, 0 WRONG-SCOPE, 4 unprovable (**0.1.6**) |
 | `RenameWriteback` | 0 | `ran 782 / skipped 5614 (compiler-refused-file 5363, too-large 0, missing-corpus-file 0, no-references-and-silent 28, not-attributable 138, new-name-refused 0, new-name-collides 0, too-many-references 85, crashed 0, contradiction 0) / wrong 0` | clean -- the plugin's write-back wrote its own write set into the file it read back, which the compiler accepts for 782 of 782, and the control fired (**0.1.6**) |
+| `PlatformEntry` row 7 | 0 | `ran 2089 / skipped 167 (receiver-is-a-local 29, template-names-not-in-spec 138, …) / wrong 0` | clean -- the offer set is the compiler's own declarations, and the insert handler writes their parameter names (**0.1.7**) |
+| `PlatformEntry` row 9 | 0 | `ran 2678 / skipped 626 (callee-not-a-declared-def 599, struct-constructor-popup-closed 21, receiver-is-a-local 6, …) / wrong 0` | clean -- the index the popup is given names the parameter the compiler binds, and the drawn string is the declaration's own (**0.1.7**) |
+| `PlatformEntry` row 19 | 0 | `ran 8329 / skipped 1107 (line-ends-with-brace 685, first-line 347, prefix-not-a-complete-program 40, indent-not-the-corpus-step 35) / wrong 0` | clean -- the closer is written exactly where the compiler's token stream says a bracket is, and Enter writes the indentation the corpus itself uses (**0.1.7**) |
+| `PlatformEntry` (all three) | 0 | `ran 13096 / skipped 1900 (23 named classes) / wrong 0` | clean -- one run, three verdicts, every comparator asked to fire first (**0.1.7**) |
 
 Two notes on the two 0.1.6 rows, because they are the ones a reader will check. The corpus is
 **not the same corpus** the 0.1.5 rows above were measured on: `tests\` belongs to another track
@@ -350,7 +362,7 @@ tiling the text, say nothing about an editor rendering it — no IDE was launche
 Note the shape of this one: the file was a `missing-corpus-file` defect an hour before the
 FAIL, and the FAIL is what a corpus entry pointing at nothing had been hiding.
 
-### 2. `HintDiff`: 30 argument positions got no parameter-name hint — gone from the 0.1.5 run (row 9 keeps `partial` for the undriven `VelaParameterInfoHandler`)
+### 2. `HintDiff`: 30 argument positions got no parameter-name hint — gone from the 0.1.5 run (row 9 was `partial` for the undriven `VelaParameterInfoHandler`, and that is now driven: see entry 8)
 
 ```
 0.1.5 pass (`idea-plugin\evidence\harness-0.1.5.txt`):
@@ -429,10 +441,12 @@ A hint *for this call*, carrying a name *this callee declares*, sits a few chara
 from where the parser puts the argument — so the two sides disagree about where a
 complex argument begins, or how many arguments there are, and the harness cannot say
 whether the position's own hint is present. It is counted rather than dropped
-(`arg-boundary-disagreement 125` then, `12` now), and it is no longer why row 9 is
-`partial` — no harness ever instantiates `VelaParameterInfoHandler`, so the argument index the
-popup highlights and the string `updateUI` draws are the unmeasured axis. What keeps this
-entry is that 12 is not 0.
+(`arg-boundary-disagreement 125` then, `12` now), and it was never why row 9 was
+`partial` — that reason was that no harness instantiated `VelaParameterInfoHandler`, so the
+argument index the popup highlights and the string `updateUI` draws were unmeasured. `PlatformEntry`
+drives those two now (row 9's evidence cell, and entry 8 below for the two defects it found there).
+What keeps this entry is that 12 is not 0, and the class is still printed by `HintDiff` alone --
+`PlatformEntry` counts the positions it cannot judge under its own names and does not re-count this one.
 
 **Why this is not just the harness.** The first version of this check compared
 offsets exactly and reported 3,073 findings — those were the harness being wrong
@@ -547,6 +561,73 @@ unprovable class rows 11 and 12 count (4 of them in `RenameOracle`'s 0.1.6 run, 
 `RenameWriteback`'s), and it is why both of those rows say the class is counted and printed
 rather than called either way.
 
+### 8. Three defects the platform's own entry points found, and what the numbers were before
+
+Rows 7, 9 and 19 were the last three `partial` rows, all for one reason: no harness had ever
+instantiated the platform object the row is about. `PlatformEntry` instantiated all three, and
+the first full-corpus run came back red in two of them. All three defects below were found by
+driving the row's own entry point, and all three are fixed in 0.1.7; the raw before/after output
+is in `idea-plugin\evidence\platform-entry-0.1.7-20260924-0520.txt`, and each "before" number is
+the *same tool over the same corpus with the same frozen compiler*, differing only in the plugin
+build (0.1.6 vs 0.1.7).
+
+```
+ROW 7  --  the builtin table outranked the file's own declaration
+0.1.6 RAW:  4 position(s) of 2089 judged are wrong
+            tests/build/extern/extern_c_probe.vel: `abs` template `(n)` names [n], and the
+              declaration names [x]
+            (the same row for tests/probes/extern_calls_as_declared.vel,
+             extern_constant_fits_declared_kind.vel, extern_declared_after_the_call.vel)
+0.1.7 RAW:  COVERAGE: ran 2089 / skipped 167 (...) / wrong 0
+```
+A file that declares `extern c def abs(x: float)` was offered the *language's* builtin `abs(n)`
+first, and the dedupe then suppressed the file's own `abs`, so the inserted call named `n` — a
+parameter that declaration does not have. The rule was already written twice in this plugin
+(`VelaTargets.declaredParameterNames` consults the language's table only for a name the file does
+not write, and `VelaInlayHints.parameterHints` follows it); the completion did not.
+
+```
+ROW 9  --  the popup emphasised the parameter the caret was in when it opened
+0.1.6 RAW:  emphasis 690 wrong, index 23 wrong of 2678 judged
+            tests/llvm-shapes/str_two_params.vel:6 `f(` argument 1 is bound to `b` by the
+              compiler and the popup emphasises `a` in `a, b -> None`
+            tests/probes/capture_probe.vel:60 `cap(` caret at argument 1 (offset 2289) and
+              setCurrentParameter was given 0
+0.1.7 RAW:  COVERAGE: ran 2678 / skipped 626 (...) / wrong 0
+```
+`updateUI` draws from `hint.index`, and only `findElementForParameterInfo` ever set it: moving the
+caret inside an open call told the platform a new index through `setCurrentParameter` and told the
+drawn string nothing. And `callAt(context.offset)` reads the caret's *own line*, so on the second
+line of a multi-line argument list it answered nothing and the index stayed where it opened. The
+call's `(` now travels on the item, the index is counted from it on every update, and it is
+written back on the item the platform hands to `updateUI`.
+
+```
+ROW 9 (residual, after the two above were fixed)
+0.1.6 RAW:  draw 3 wrong, emphasis 5 wrong
+            ide-demo/tour.vel:40 `moved(` argument 0 is bound to `dx` by the compiler and the
+              popup emphasises `self` in `self, dx, dy -> Point`
+            ide-demo/tour.vel:32 `manhattan(` argument 0 emphasises `self` and there is no
+              argument there
+            tests/probes/mut_struct_parameter.vel:48 `bump(` argument 0 is bound to `k` ... and
+              the popup emphasises `self` in `self, k -> None`
+0.1.7 RAW:  COVERAGE: ran 2678 / skipped 626 (...) / wrong 0
+```
+The drawn list was the declaration *as written*, including a method's leading `self`, while the
+index counts the parentheses' arguments — so every method call with a receiver was one parameter
+off, and a call with no argument at all still emphasised `self`. `VelaInlayHints` had already
+solved this (`declared.drop(1)`); the popup had not.
+
+This entry stays here because it is the record of a red measurement, not because anything is open:
+all three are closed, and rows 7, 9 and 19 are `implemented` on the strength of the green run
+above. What the round did **not** do is fix the two limits those same runs count and print rather
+than call wrong — a receiver that is a local with a written type (`q: Vec2 = …` then `q.`, 29 + 6
+positions, `VelaNames.structTypeOf` resolves `self`, a parameter and a struct's name only) and the
+`objectsToView` fallback in `findElementForUpdatingParameterInfo`, which cannot return the anchor
+as written because `itemsToShow` holds `ParameterHint` items and not PSI leaves. Both are named in
+the rows' evidence cells; neither is a wrong answer in this run's terms.
+
+
 ## What this table does not prove
 
 * **No IDE was launched.** No IntelliJ instance can be started in this session, so
@@ -558,7 +639,25 @@ rather than called either way.
   labelled as such in every row that uses it.
 * `implemented` means "the platform will call this, and the decision function behind
   it was measured where a harness could reach it". It does not mean "seen working".
-* Rows 7 and 19 have **no behaviour measurement at all**. Row 8's hover *text* is measured by
+* **No IDE was launched.** No IntelliJ instance can be started in this session, so
+  nothing here is evidence that the plugin loads, that a tool window appears, that a
+  menu entry is where it should be, or that any of these features looks right on
+  screen. The strongest evidence available is the platform-registration read-back
+  (the platform's own descriptor says which attribute it reads, and `VerifyPlugin`
+  reads the class back out of the jar) plus the headless differentials — and it is
+  labelled as such in every row that uses it.
+* `implemented` means "the platform will call this, and the decision function behind
+  it was measured where a harness could reach it". It does not mean "seen working".
+* Rows 7, 9 and 19 were the three rows with **no behaviour measurement at all**
+  until this round: each was a registration plus compiled code, because the row is
+  about an object the *platform* instantiates. `PlatformEntry` now instantiates all
+  three and calls the platform's own methods, with stand-ins for the objects a
+  headless run cannot have (the `Document`, the `Editor`, the PSI, and the three
+  parameter-info context interfaces), and every stand-in is named in the evidence
+  file. Row 8's hover *text* is measured by `HoverTruth` and its popup is not;
+  the debugger row is a refusal; rows 11 and 12 were moved by `RenameWriteback`.
+  What none of them has is a running IDE, and that sentence is unchanged.
+
   `HoverTruth` and its popup is not; row 9's parameter-name reader is measured by `HintDiff`
   and its popup is not; the debugger row is a refusal. Rows 11 and 12 had no behaviour
   measurement either until this round, and the harness built for exactly that reason
