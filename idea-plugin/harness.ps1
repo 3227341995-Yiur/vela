@@ -153,7 +153,7 @@ $javac = Join-Path $best 'jbr\bin\javac.exe'
 foreach ($t in @($java, $javac)) { if (-not (Test-Path -LiteralPath $t)) { Die "missing: $t" } }
 
 $TOOLS = @('GotoOracle', 'HintDiff', 'HintNames', 'HintShapes', 'HintDupes', 'SymbolDiff', 'FoldDiff',
-           'FeatureProbe', 'ParamNames', 'HintTruth')
+           'FeatureProbe', 'ParamNames', 'HintTruth', 'HoverTruth')
 if ($Tool -eq 'All') { $run = $TOOLS }
 else {
     if ($TOOLS -notcontains $Tool) { Die "-Tool must be one of: $($TOOLS -join ', '), All" }
@@ -276,6 +276,13 @@ foreach ($t in $run) {
             # Takes the repo root only; it reads no compiler.  The six features it
             # measures are decided inside the plugin, which is the point: nothing it
             # reports depends on a process starting successfully.
+        }
+        'HoverTruth' {
+            # The hover's own claims against the compiler's dumps (`vm.exe parse` and
+            # `lex`), so a hover that invents a signature is caught by the front end
+            # rather than by somebody reading it.
+            $a += @('--vm', $FrozenVm)
+            if ($Single) { $a += @('--single', $Single) }
         }
         'HintShapes' {
             if ($Shapes) { $a = @($t, '--shapes') }
