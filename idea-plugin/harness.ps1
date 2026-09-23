@@ -153,7 +153,7 @@ $javac = Join-Path $best 'jbr\bin\javac.exe'
 foreach ($t in @($java, $javac)) { if (-not (Test-Path -LiteralPath $t)) { Die "missing: $t" } }
 
 $TOOLS = @('GotoOracle', 'HintDiff', 'HintNames', 'HintShapes', 'HintDupes', 'SymbolDiff', 'FoldDiff',
-           'FeatureProbe', 'ParamNames', 'HintTruth', 'HoverTruth')
+           'FeatureProbe', 'ParamNames', 'HintTruth', 'HoverTruth', 'RenameOracle')
 if ($Tool -eq 'All') { $run = $TOOLS }
 else {
     if ($TOOLS -notcontains $Tool) { Die "-Tool must be one of: $($TOOLS -join ', '), All" }
@@ -283,6 +283,15 @@ foreach ($t in $run) {
             # rather than by somebody reading it.
             $a += @('--vm', $FrozenVm)
             if ($Single) { $a += @('--single', $Single) }
+        }
+        'RenameOracle' {
+            # The reference table against the compiler, as a DIFFERENTIAL oracle: the
+            # compiler prints only line numbers, so each candidate use is isolated by
+            # renaming every other candidate and asking `vm.exe check` about the result.
+            # Its own cache file, so that re-running it does not invalidate GotoOracle's.
+            $a += @('--vm', $FrozenVm, '--cache', (Join-Path $pluginRoot 'build\tools\harness\rename-oracle.txt'))
+            if ($RebuildOracle) { $a += '--rebuild-oracle' }
+            if ($Single)        { $a += @('--single', $Single) }
         }
         'HintShapes' {
             if ($Shapes) { $a = @($t, '--shapes') }

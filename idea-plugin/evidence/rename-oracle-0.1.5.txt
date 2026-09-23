@@ -1,0 +1,478 @@
+# RenameOracle -- find usages and rename, measured against the compiler
+#
+#   plugin version : 0.1.5
+#   written        : 2026-09-24T02:24+08:00
+#   git HEAD       : 7826942  Correction: seventeen evidence files were re-encoded, not three
+#
+#   compiler       : %TEMP%\vela-plugin-parse\vm.exe   861,696 bytes
+#                    sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a
+#                    (frozen by this track, with LLVM-C.dll beside it, 74,159,616 bytes
+#                     sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe)
+#                    `vm.exe` does not start without the DLL, and the tree's own copy is
+#                    rebuilt by other tracks during this round, so every number below is
+#                    against this frozen pair and nothing else.
+#
+#   jar under test : idea-plugin\build\rename-negative\vela-rename-oracle-0.1.5.jar
+#                    390,593 bytes, 175 entries,
+#                    sha256 19c5662d14199271bb44ece7765fa4e82d27a24582a55cdf968a368e8dc2be1d
+#                    (packed by the plugin's own JarTool from the class directory below plus
+#                     src\main\resources; this is NOT dist\vela-idea-plugin-0.1.5.zip, which
+#                     build-offline.ps1 owns -- building that would have replaced the shared
+#                     build\classes other tracks measure from)
+#   plugin classes measured : idea-plugin\build\classes-rename, 171 files,
+#                    tree digest 5395f42c9d4abc087e09d30585944eabd8d72e7e5f27567fd98e2be236159669
+#                    compiled from src\main\kotlin (39 .kt files, the whole tree including the
+#                    other tracks' new files) with `build\compile-rename.ps1`; the digest is a
+#                    sha256 over `path|sha256(file)` lines, sorted, so it pins the exact bytes
+#                    judged.  `build\classes` was NOT touched: other tracks measure from it.
+#   mutated control classes : idea-plugin\build\classes-rename-neg, 171 files,
+#                    tree digest 41ae165d5ba797fedc61ed284cb65c5c52ae8a0e4be3cdbe6931c35d05bd4081
+#
+#   tool           : idea-plugin\tools\harness\src\RenameOracle.java   59,740 bytes
+#                    sha256 d291d6f07da3336dfe7f570f65b38bde5385e005d8379177d388efd1ad766cfe
+#   fixture        : idea-plugin\evidence\rename-scopes.vel   1,039 bytes
+#                    sha256 f94f8e6aca2c1be94985cf5efab3c479ea85c0caabd73cfc348c5aca82e44d36
+#
+#   sources changed by this track (the two files the mandate allows)
+#     idea-plugin\src\main\kotlin\dev\vela\plugin\VelaGotoDeclaration.kt  46,575 bytes
+#                    sha256 63a337c36d3caeffece37b444ecd26ac95c58d70ad0fdce1a3ed6f060c4fda71
+#     idea-plugin\src\main\kotlin\dev\vela\plugin\VelaFindUsages.kt       17,135 bytes
+#                    sha256 55734dd4509ac956a8f10db6307f3647c1af5efbfab9a103e050bcaeb630e303
+#
+#   how to reproduce
+#     powershell -ExecutionPolicy Bypass -File idea-plugin\build\compile-rename.ps1
+#     powershell -ExecutionPolicy Bypass -File idea-plugin\build\run-rename-oracle.ps1
+#     powershell -ExecutionPolicy Bypass -File idea-plugin\build\run-rename-oracle.ps1 `
+#         -Args @('--single','idea-plugin/evidence/rename-scopes.vel','--show','--control')
+#     powershell -ExecutionPolicy Bypass -File idea-plugin\build\make-negative.ps1
+#     powershell -ExecutionPolicy Bypass -File idea-plugin\build\compile-rename.ps1 `
+#         -Out idea-plugin\build\classes-rename-neg -Src idea-plugin\build\rename-negative\src
+#     powershell -ExecutionPolicy Bypass -File idea-plugin\build\run-rename-oracle.ps1 `
+#         -PluginClasses idea-plugin\build\classes-rename-neg `
+#         -Args @('--single','idea-plugin/evidence/rename-scopes.vel','--show','--explain')
+#
+#   (the plugin build lock %TEMP%\vela-plugin-build.lock is held across each build AND the
+#    harness run it feeds, because harness.ps1 recompiles tools\harness\src against
+#    build\classes on every run and a concurrent plugin rebuild breaks that compile)
+#
+# Full logs (gitignored, written by the driver): idea-plugin\build\logs\rename-oracle.log
+# (the corpus run), rename-fixture-baseline.log, rename-negative-fixture.log,
+# rename-negative-recursion.log, goto-oracle-with-rename.log.
+
+================================================================================
+WHAT THE ORACLE IS, IN ONE PARAGRAPH
+================================================================================
+
+"Which occurrences are uses of declaration D, and which characters must a rename of D
+write?" has one authority: the compiler.  `vm.exe check` prints a line number and never a
+column, so the protocol uses the compiler as a *difference* oracle rather than reading its
+messages: rename D's declaration alone and run `check`; rename the first remaining
+occurrence of the name on each line the compiler names and run again, until the file
+compiles (that verified line set bounds the candidates); then rename D and every candidate
+and require the file to compile (the basis guard); then, one candidate at a time, rename D
+and every candidate EXCEPT that one -- the file is refused exactly when the compiler binds
+the old name there to D.  That last step is what makes the binding set offset-by-offset
+rather than line-by-line, and it is a measurement rather than an inference: with the basis
+compiling, renaming candidates introduces no error of its own, so a refusal can only be an
+occurrence that had to be renamed.
+
+Three verdict classes, and only two of them are decided by the compiler:
+
+  MISSED        the compiler requires the occurrence, the reference table has nothing
+                there.  A defect: the rename built from that table leaves it behind.
+  WRONG-SCOPE   the table claims the occurrence for D and the compiler binds it to a
+                *different* declaration of the same name.  A defect, and the one the tool
+                exists for -- another scope's same-named variable being renamed.
+  NOT-REQUIRED  the table claims it, D does not require it, no other declaration does
+                either.  UNPROVABLE, counted and printed, never called wrong: the
+                compiler does not resolve that position at all, or cannot see the
+                difference.  Measured example, `tests/build/struct_value_semantics.vel`:
+                `mut a: P = P(1)` -- both the annotation and the constructor must be
+                renamed or `check` refuses the file; `b: P = a` -- the same annotation on
+                an immutable binding is not resolved, and renaming the struct while
+                leaving that `P` behind still exits 0.  This is GotoOracle's "the
+                compiler's silence is not a denial", the same fact about the same binary.
+
+The plugin's answer is `VelaReferences.referenceTargetAt(text, leafStart, leafEnd)`, asked
+once per `IDENTIFIER` leaf -- the exact candidate set `VelaReferenceContributor` registers
+the provider over and the words scanner indexes, and the same call the provider makes.
+`claimed(D)` is the set of leaves that answer D, and the rename the platform performs is
+the declaration element plus `claimed(D)`.
+
+================================================================================
+1. THE CORPUS RUN (shipped plugin, `--control`)
+================================================================================
+
+corpus  : tests + examples + ide-demo + selfhost/parts + bench + selfhost/vela.vel
+          = 310 files (selfhost/vm.vel is excluded, as GotoOracle excludes it: the 631 KB
+          concatenation of the parts, and one `check` per candidate over it is a second each)
+
+== per kind: declarations judged, and use-level numbers ==
+kind            decls   bound   claimed  missed  wrong-scope wrong decls
+----------------  ------  ------  -------  ------  ----------  -----------
+field           26      172     172      0       0           0
+function        119     471     471      0       0           0
+local           394     1255    1256     0       0           0
+loop variable   56      103     103      0       0           0
+method          8       9       9        0       0           0
+parameter       220     744     744      0       0           0
+struct          5       8       12       0       0           0
+
+  judged declarations     : 828
+  bound uses (compiler)   : 2762
+  claimed uses (plugin)   : 2767
+  MISSED (bound, not claimed)              : 0
+  WRONG-SCOPE (claimed, bound to another)  : 0
+  NOT-REQUIRED (claimed, compiler silent)  : 5   (unprovable, counted, never called wrong)
+  wrong declarations      : 0
+  the plugin's rename compiled : 828 of 828 judged declaration(s)
+  compiler processes      : 1138 in this run, 999 declaration(s) answered from the cache (29 s, 8 threads)
+
+== every declaration that is not judged, and why (the counters; the rows are in the log) ==
+  compiler-refused 5294, too-large 0, missing-corpus-file 0, compiler-silent 29,
+  not-attributable 141, unverified-lines 1, unverifiable-basis 0, too-many-candidates 0,
+  new-name-refused 0, crashed 0, contradiction 0
+
+  compiler-refused 5294 of 5465 skips is the same limit GotoOracle reports: those files are
+  one piece of a linked program (`selfhost/parts/*`), or a deliberate error case
+  (`tests/accept/*`, `tests/build/check_cases/*`), so `check` refuses them and no edit can
+  be attributed.  not-attributable 141 is the `main` case: renaming `main` gives "no 'main'
+  function", a complaint about the program rather than about a use.
+  unverified-lines 1 is `tests/build/recursion_fib.vel:8 main`, the same case.
+
+== claimed references the compiler never requires (unprovable, 5 rows in full) ==
+  tests/build/struct_value_semantics.vel:1 `P` (struct): line 7 (offset 73)
+  tests/llvm-shapes/struct_return.vel:1 `P` (struct): line 4 (offset 35), line 8 (offset 85)
+  tests/llvm-shapes/str_in_struct.vel:1 `P` (struct): line 6 (offset 66)
+  tests/safety/cases/scope_shadow_across_blocks_ok.vel:5 `x` (local): line 8 (offset 292)
+
+  The first three are the `b: P = a` shape above -- a type annotation the compiler does not
+  resolve, which a rename SHOULD update.  The fourth is the shadowing case discussed in
+  section 4: `print(x)` inside the inner block, which the language's shadowing rule binds to
+  the inner `x` and the compiler cannot see, because renaming either declaration leaves the
+  program compiling (both are `int`).
+
+== control: the comparator itself, asked to fire ==
+  a bound use the table lacks is a MISSED : true
+  a reference the compiler lacks is EXTRA  : true
+  two equal answers are clean             : true
+  control verdict: the comparator fires in both directions
+
+VERDICT: for every one of the 828 judged declaration(s), the reference table names exactly
+the 2762 use(s) the compiler binds and nothing else, and renaming them produces a program
+the compiler accepts
+COVERAGE: ran 828 / skipped 5465 (compiler-refused 5294, too-large 0, missing-corpus-file 0,
+compiler-silent 29, not-attributable 141, unverified-lines 1, unverifiable-basis 0,
+too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+exit 0
+
+================================================================================
+2. WHAT THE TOOL FOUND, AND WHAT WAS FIXED (the same run, before the fixes)
+================================================================================
+
+The first full run over this corpus reported 15 wrong declarations.  Two of the classes were
+real defects of the plugin; one was a defect of this harness.  All three were read from the
+raw rows rather than guessed at, and the fixes are in the two files this track owns.
+
+--- 2a. A struct's constructor call had no reference (real, fixed) -------------
+
+  tests/build/struct_value_semantics.vel:1 `P` (struct)
+      NOT-SEARCHABLE: the usage on line 6 (offset 61) cannot be searched for from its own name
+      LABEL: the usage on line 6 is a struct but the results view would call it `name`
+      MISSED 1 bound use(s): the compiler binds line 6 (offset 61) to this struct and the
+        reference table has nothing there
+      EXTRA 1 reference(s): the compiler does not bind line 7 (offset 73) to this struct ...
+      RENAME-REFUSED: renaming this declaration and every reference the table has produces a
+        program the compiler refuses: vela: type error: undeclared name 'P'
+
+  The file is `mut a: P = P(1)` / `b: P = a`.  `VelaTargets` resolves a call through
+  `fileFunction` alone, so `P(1)` -- a struct's constructor -- resolved to nothing; the
+  model path this file used to run did resolve it (`if (afterChar == '(') ... structNamed`).
+  Five struct declarations in the corpus had that shape, and the rename built from the table
+  left the call behind, which the compiler refuses.
+  FIX: `VelaDeclarations.fallbackTarget` in VelaGotoDeclaration.kt returns the struct's own
+  name for `Name(`, asked only when the tree path answers nothing, so go-to-declaration,
+  the reference provider and find-usages cannot disagree.
+  The LABEL row was the same fact seen from the results view: `VelaUsageSearch.typeAt` asked
+  `VelaTargets.declarationFor` directly, so a constructor call was a reference labelled
+  `name`.  FIX: `typeAt` asks `VelaDeclarations.declarationTarget` (the same resolution) and
+  reads the kind off the answer.
+
+--- 2b. A method call on a nested receiver had no reference (real, fixed) -------
+
+  tests/safety/cases/hole_parallel_impure_method_nested_receiver.vel:10 `bump` (method)
+      NOT-SEARCHABLE: the usage on line 25 (offset 826) ...
+      MISSED 1 bound use(s): the compiler binds line 25 (offset 826) to this method ...
+      RENAME-REFUSED: ... vela: type error: Inner has no method 'bump'
+
+  Line 25 is `o.inner.bump()`: the receiver's type is not written down (`o.inner` is a field),
+  and `VelaTargets.structFor` reads a receiver's type from a parameter, a binding, `self` or a
+  capitalised name -- none of which is `o.inner` -- so the call resolved to nothing.
+  FIX: the second half of `fallbackTarget`, which uses the rule this file already states for a
+  receiver-less method call: *exactly one* declaration of that name in the file, or nothing.
+  One method named `bump` anywhere in the file means a `...bump()` call can only be to it;
+  with two, the target is ambiguous and the answer stays null.
+
+--- 2c. Two shape rules this harness had wrong (harness defect, fixed) ---------
+
+  * a `mut`-declared struct member is a DECL node, not a FIELD node, and the plugin's own
+    `velaIsFieldMember` says so (`kind == FIELD || (kind == DECL && typeText.isNotEmpty())`).
+    The inventory called it a `local`, so it expected the label `variable` for `t.ncap` while
+    the plugin said `field`: 9 declarations in `tests/run_tests.vel` were reported wrong for
+    that reason and none of them was wrong.  FIX: the inventory asks the same rule (a DECL
+    whose *parent* is the struct is a field).
+  * the EXTRA direction was judged against the compiler's silence.  It is now the
+    WRONG-SCOPE / NOT-REQUIRED split of section 1's header, which needs a *second* pass:
+    every declaration in the file is measured before any declaration is judged, because
+    "the compiler binds this offset to another declaration of that name" is a fact about two
+    declarations and cannot be decided from one.
+  * the candidate set was restricted to the lines the repair loop named, which is where the
+    `b: P = a` annotation was never judged at all and read as an EXTRA.  The basis guard plus
+    the NOT-REQUIRED class replaced that, and the unprovable rows are now printed with their
+    offsets.
+
+--- 2d. After the fixes ---------------------------------------------------------
+
+  The three states of the same corpus run, in order, raw:
+
+    run 1 (the EXTRA rule, before either fix):
+      VERDICT: 15 declaration(s) of 828 judged are wrong: 6 bound use(s) missed,
+      6 reference(s) claimed that the compiler does not bind
+      COVERAGE: ran 828 / skipped 5465 (compiler-refused 5294, too-large 0,
+      missing-corpus-file 0, compiler-silent 29, not-attributable 141, unverified-lines 1,
+      unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0,
+      contradiction 0) / wrong 15
+
+    run 2 (harness fixed: WRONG-SCOPE/NOT-REQUIRED split, field-vs-local rule; plugin
+    still unfixed -- 4 struct labels, `bump` MISSED, 1 more struct label):
+      VERDICT: 6 declaration(s) of 828 judged are wrong: 1 bound use(s) missed and
+      0 reference(s) claimed for a declaration the compiler binds elsewhere
+      COVERAGE: ran 828 / skipped 5465 (compiler-refused 5294, too-large 0,
+      missing-corpus-file 0, compiler-silent 29, not-attributable 141, unverified-lines 1,
+      unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0,
+      contradiction 0) / wrong 6
+
+    run 3 (this file's section 1, both fixes in): / wrong 0, `verdict` clean, exit 0.
+
+  So WRONG 15 -> 6 -> 0, with the same corpus, the same frozen compiler and the same tool
+  binary throughout; runs 1 and 2 differ only in the harness's verdict classes, runs 2 and 3
+  only in the plugin's two Kotlin files.
+  The same tool, unchanged, also measures that go-to-declaration did not regress: GotoOracle
+  driven against this track's classes reports
+  `VERDICT: no reference goes to a declaration the compiler does not bind it to, over 27244
+  judged reference(s)` and `COVERAGE: ran 27244 / skipped 23942 (crashed-file 0,
+  compiler-refused 23932, invisible-member 10, ambiguous 0) / wrong 0`, with every kind row
+  clean (field 61/61, function 479/479, local 1267/1267, loop variable 103/103,
+  parameter 599/599, struct 5/5).  The numbers differ from the 0.1.5 baseline in
+  `harness-0.1.5.txt` (24683 / 21566) because the corpus grew by 28 `tests/accept/*` files
+  during this round and because the classes under test changed; what matters is `wrong 0`
+  and `struct 5/5`, where the five constructor references used to be "no target".
+
+================================================================================
+3. THE NEGATIVE CONTROL: TWO DELIBERATE DEFECTS, AND THE TOOL NAMING THEM
+================================================================================
+
+`build\make-negative.ps1` copies the plugin's Kotlin sources to
+`build\rename-negative\src\` and injects two defects into `referenceTargetAt`, one line each
+plus a helper.  The real sources are read, never written; the defects live only in the copy,
+which is the technique `tools\negative-tests.ps1` and `tools\mutation-test.ps1` already use.
+The mutated copy compiled (171 class files, exit 0) and was run through the same tool with
+the same corpus, cache and frozen compiler.
+
+  DROP-ARGUMENT-REFS   a name written in argument position (right after `(`) is not a
+                       reference -- the table loses uses the compiler binds -> MISSED.
+  FIRST-OCCURRENCE     every occurrence of a name is credited to the FIRST occurrence of
+                       that name in the file, whatever declaration that is -- another
+                       scope's same-named variable -> WRONG-SCOPE.
+
+--- BEFORE: the mutated plugin, on the fixture ---------------------------------
+
+  == every declaration: file, line, kind, name, bound uses, claimed uses, verdict ==
+    idea-plugin/evidence/rename-scopes.vel  13    function     f                 1      1        correct
+    idea-plugin/evidence/rename-scopes.vel  13    parameter    n                 1      2        WRONG (2 finding(s))
+    idea-plugin/evidence/rename-scopes.vel  17    function     g                 1      1        correct
+    idea-plugin/evidence/rename-scopes.vel  17    parameter    n                 1      0        WRONG (2 finding(s))
+    idea-plugin/evidence/rename-scopes.vel  21    function     h                 1      1        correct
+    idea-plugin/evidence/rename-scopes.vel  21    parameter    m                 1      1        correct
+    idea-plugin/evidence/rename-scopes.vel  26    local        total             2      1        WRONG (3 finding(s))
+    idea-plugin/evidence/rename-scopes.vel  27    loop variable  i                 3      0        WRONG (5 finding(s))
+
+  kind            decls   bound   claimed  missed  wrong-scope wrong decls
+  ----------------  ------  ------  -------  ------  ----------  -----------
+  function        3       3       3        0       0           0
+  local           1       2       1        1       0           1
+  loop variable   1       3       0        3       0           1
+  parameter       3       3       3        1       1           2
+
+    judged declarations     : 8
+    bound uses (compiler)   : 11
+    claimed uses (plugin)   : 7
+    MISSED (bound, not claimed)              : 5
+    WRONG-SCOPE (claimed, bound to another)  : 1
+    NOT-REQUIRED (claimed, compiler silent)  : 0
+    wrong declarations      : 4
+    the plugin's rename compiled : 4 of 8 judged declaration(s)
+
+  == every wrong declaration, in full ==
+    idea-plugin/evidence/rename-scopes.vel:13 `n` (parameter)
+        WRONG-SCOPE 1 reference(s): the table claims line 18 (offset 850) for this parameter,
+          and the compiler binds each of them to a DIFFERENT declaration of the same name --
+          a rename would rewrite another scope's variable
+        RENAME-REFUSED: renaming this declaration and every reference the table has produces
+          a program the compiler refuses: vela: type error: undeclared name 'nzzq'
+        [explain] the compiler on the plugin's own rename: vela: type error: undeclared name 'nzzq'
+    idea-plugin/evidence/rename-scopes.vel:17 `n` (parameter)
+        MISSED 1 bound use(s): the compiler binds line 18 (offset 850) to this parameter and
+          the reference table has nothing there
+        RENAME-REFUSED: ... vela: type error: undeclared name 'n'
+    idea-plugin/evidence/rename-scopes.vel:26 `total` (local)
+        NOT-SEARCHABLE: the usage on line 30 (offset 1030) cannot be searched for from its own name
+        MISSED 1 bound use(s): the compiler binds line 30 (offset 1030) to this local ...
+        RENAME-REFUSED: ... vela: type error: undeclared name 'total'
+    idea-plugin/evidence/rename-scopes.vel:27 `i` (loop variable)
+        NOT-SEARCHABLE: the usage on line 28 (offset 997) ...
+        NOT-SEARCHABLE: the usage on line 28 (offset 1004) ...
+        NOT-SEARCHABLE: the usage on line 28 (offset 1011) ...
+        MISSED 3 bound use(s): the compiler binds line 28 (offset 997), line 28 (offset 1004),
+          line 28 (offset 1011) to this loop variable ...
+        RENAME-REFUSED: ... vela: type error: undeclared name 'i'
+
+  VERDICT: 4 declaration(s) of 8 judged are wrong: 5 bound use(s) missed and 1 reference(s)
+  claimed for a declaration the compiler binds elsewhere
+  COVERAGE: ran 8 / skipped 1 (compiler-refused 0, too-large 0, missing-corpus-file 0,
+  compiler-silent 0, not-attributable 1, unverified-lines 0, unverifiable-basis 0,
+  too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 4
+  exit 1
+
+  The WRONG-SCOPE row is the one that matters: offset 850 is g's `n` on line 18, and the
+  tool says it belongs to g while the table, mutated, credits it to f -- the defect a
+  "does the renamed file still compile" test would call clean if the two parameters had the
+  same type.  Here it happens not to (the rename is also refused), which is why the row
+  carries both findings.
+
+--- BEFORE: the same mutated plugin on a REAL corpus file ----------------------
+
+  COVERAGE: ran 4 / skipped 1 (compiler-refused 0, too-large 0, missing-corpus-file 0,
+  compiler-silent 0, not-attributable 0, unverified-lines 1, unverifiable-basis 0,
+  too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 3
+  (tests/build/recursion_fib.vel: `n` MISSED 2 bound uses, `s` MISSED 1, `i` MISSED 1 --
+  every one of them a name in argument position, which is exactly the injected defect)
+
+--- AFTER: the shipped plugin, on the same fixture -----------------------------
+
+  == every declaration: file, line, kind, name, bound uses, claimed uses, verdict ==
+    idea-plugin/evidence/rename-scopes.vel  13    function     f                 1      1        correct
+    idea-plugin/evidence/rename-scopes.vel  13    parameter    n                 1      1        correct
+    idea-plugin/evidence/rename-scopes.vel  17    function     g                 1      1        correct
+    idea-plugin/evidence/rename-scopes.vel  17    parameter    n                 1      1        correct
+    idea-plugin/evidence/rename-scopes.vel  21    function     h                 1      1        correct
+    idea-plugin/evidence/rename-scopes.vel  21    parameter    m                 1      1        correct
+    idea-plugin/evidence/rename-scopes.vel  26    local        total             2      2        correct
+    idea-plugin/evidence/rename-scopes.vel  27    loop variable  i                 3      3        correct
+
+    judged declarations     : 8      bound uses 11      claimed uses 11
+    MISSED 0   WRONG-SCOPE 0   NOT-REQUIRED 0   wrong declarations 0
+    the plugin's rename compiled : 8 of 8 judged declaration(s)
+
+  VERDICT: for every one of the 8 judged declaration(s), the reference table names exactly
+  the 11 use(s) the compiler binds and nothing else, and renaming them produces a program
+  the compiler accepts
+  COVERAGE: ran 8 / skipped 1 (compiler-refused 0, too-large 0, missing-corpus-file 0,
+  compiler-silent 0, not-attributable 1, unverified-lines 0, unverifiable-basis 0,
+  too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+  exit 0
+
+  The fixture is the same file and the same two `n` declarations in two scopes; only the
+  classpath under test differs.  Same compiler, same cache, same arguments.
+
+================================================================================
+4. THE MEASURED DEFECT THIS TRACK CANNOT FIX (handed over, not hidden)
+================================================================================
+
+`tests/safety/cases/scope_shadow_across_blocks_ok.vel`:
+
+  5  x: int = 1          <- outer binding
+  6  if x == 1 {
+  7      x: int = 2      <- inner binding, a DIFFERENT declaration
+  8      print(x)
+  9  }
+ 10  print(x)
+
+`vm.exe parse` for this file (the tree `ast-diff.ps1` holds the plugin's parser to) puts the
+inner `decl` inside the nested block, so the two declarations are distinct nodes.
+
+The reference table credits `print(x)` on line 8 to the OUTER `x` (offset 292 is in the
+outer's claimed set and in no measured binding set), so a rename of the outer `x` rewrites
+the inner block's use.  The cause is `VelaTargets.declarationFor` case 3: it walks the
+ancestor chain from the OUTSIDE IN and returns at the first block that holds a matching
+declaration, so the outer binding wins over the inner one -- against its own header comment
+("a local binding that precedes this use, innermost block first ... so an inner binding
+shadows an outer one") and against the language's shadowing rule (`SPEC.md` 6.2, the file's
+own comment).
+
+The tool cannot call this wrong, and says so rather than guessing: renaming EITHER
+declaration leaves the program compiling (with the inner declaration renamed, `x` on line 8
+resolves to the outer one; with the outer renamed, the inner block is untouched), so
+`vm.exe check` cannot see the difference.  It is therefore the NOT-REQUIRED row of section 1.
+What made the *other* half of the same defect visible was this track's own fix: before it,
+the inner declaration's own name (offset 267) was ALSO credited to the outer `x`, and a
+declaration's own name is not a reference by the plugin's own token-shape rule -- so
+`declarationTarget` now answers null there.  The remaining half needs a change in
+`VelaTargets.kt` (walk the chain innermost-first, one line of ordering), which is outside
+this track's file list and changes what `GotoOracle` measures, so it is reported instead:
+the row-10 owner should re-run `GotoOracle` after it.
+
+A next step that WOULD decide it, recorded here as a proposal and not as a claim: `vm.exe
+run` on a program whose two same-named bindings hold different values, comparing the output
+before and after the plugin's rename.  A rename that changes a program's output is wrong
+whatever the type checker thinks.  It is not implemented because running the corpus means
+running `tests/run_tests.vel` and `bench/*`, which shell out and take minutes, and a
+behavioural oracle needs per-file judgement about whether a file is runnable at all.
+
+================================================================================
+5. WHAT THIS EVIDENCE DOES NOT COVER
+================================================================================
+
+* No IDE was launched.  `canFindUsagesFor`, `getType` and the results view are measured as
+  the pure functions behind them (`VelaUsageSearch.canSearchAt` / `typeAt`, one line each in
+  `VelaFindUsagesProvider`), not by opening a Find Usages window; the same limit applies to
+  every other feature in this plugin and is stated the same way.
+* The write-back itself is measured as the character ranges the platform replaces
+  (`claimed(D)` plus the declaration, applied as `document.replaceString` does), not by
+  driving `VelaLeafManipulator` through a live document: a `PsiElement` needs an editor.
+  `VelaReferences.isWritableName` -- the pure half of `canWrite` -- is the part that IS
+  measured, because the oracle refuses to run on a name the write-back would refuse.
+* Undo granularity, the rename dialog, conflict validation and rename of a name in a string
+  or a comment are not measured.
+* The corpus is the worktree's current state, including files other tracks are editing.  The
+  oracle cache is keyed by (compiler sha256, file hash, declaration), so an edited file is
+  re-measured rather than reused; a file's *hash* is what makes that true, and it is why the
+  cache can be shared between the shipped and the mutated classpath (the oracle's answers
+  are properties of the compiler and the file, not of the plugin).
+* `selfhost/vm.vel` (631 KB) is not in the corpus, for the reason GotoOracle gives.
+* The tool is not yet in `harness.ps1`'s `$TOOLS` list -- that file belongs to another track.
+  The two-line change it needs:
+
+      $TOOLS = @('GotoOracle', 'HintDiff', 'HintNames', 'HintShapes', 'HintDupes', 'SymbolDiff',
+                 'FoldDiff', 'FeatureProbe', 'ParamNames', 'HintTruth', 'RenameOracle')
+
+      'RenameOracle' {
+          $a += @('--vm', $FrozenVm, '--cache', $oracleCache)
+          if ($RebuildOracle) { $a += '--rebuild-oracle' }
+          if ($Single)        { $a += @('--single', $Single) }
+      }
+
+  (a separate cache file is better: `rename-oracle.txt`, so the two oracles cannot invalidate
+  each other's entries -- they are keyed by the same compiler and file hashes but store
+  different shapes.)
+* NO `plugin.xml` change is needed.  Find Usages and rename are already registered
+  (`<lang.findUsagesProvider language="Vela">`, `<psi.referenceContributor>`,
+  `<lang.elementManipulator forClass="com.intellij.psi.PsiElement">`); this track changed no
+  registration, added no extension point, and touched no version number.
+* `tools\harness\src` was verified to compile as a whole directory (all 20 sources,
+  including the other tracks' `HoverTruth.java` and `InspectionProbe.java`) against this
+  track's classes before this file was written: exit 0, 3 deprecation warnings.  The
+  whole-directory compile is what `harness.ps1` does on every run, so a tool that does not
+  compile there stops all ten other tools -- this one does compile, and it is `RenameOracle`
+  alone that the driver compiles by default so that a half-finished neighbour cannot break
+  this track's runs.
