@@ -6,6 +6,30 @@ A snapshot of a working session, not a substitute for running the command it
 names.  Every "verified" line below was measured on this machine; every "written"
 line is source that has not been through the tool it needs, and says so.
 
+## 0.1 Current state, 2026-09-24 — read this first; everything below is the 2026-09-20 boundary
+
+The dated block in §0 and the tables in §2 are the **2026-09-20** session
+snapshot.  They are kept because that is the record of that boundary, and one line
+in them is now actively misleading: §0 says the gate is *red* at `187 passed, 3
+failed of 190`.  It is green.  Today's state, measured by running each command
+rather than by reading this file:
+
+| what | command | today |
+|---|---|---|
+| the suite | `tools\refreeze.ps1` | `RESULT: green` — **196 passed, 0 failed (of 196 cases, 251 captures)**.  Six `refuse` cases with hand-written goldens were added after this file was written; that is where 190 → 196 comes from |
+| the three-way differential | `powershell -ExecutionPolicy Bypass -File _llvmdiff.ps1` | **now a tool, not a hand-run**: `cases: 23  match: 14  REFUSED: 9  DIVERGE: 0`.  The nine are the 7 deliberate `parallel for` refusals plus `struct` parameter and `struct` local.  §0's "7 match, 16 refused" is two rounds of closure ago |
+| self-hosting | `tools\build.ps1` | `RESULT: ok`, and the fixpoint is judged by the **C**, not by `.exe` bytes: `selfhost\build\vm.c` == `selfhost\vm.c` == `selfhost\build\_fixpoint_gen2.c`, `CF2F0B76…`, 944 784 bytes.  Two builds of one source produce different `.exe` hashes (PE timestamps), so the emitted C is the artefact to compare |
+| the checker | `vm.exe check` on the six exhausted hole cases | six holes closed, each refused with the documented wording.  Of the 70 safety rows the two still open are recorded rather than hidden: `hole_mut_scalar_parameter` (`SPEC.md` §3.2 says this implementation does not keep that promise for a scalar) and `hole_narrowing_binding_{u8,i32}`, the **diverge** rows where the interpreter and the compiled paths answer differently (`300` against `44`).  That divergence is now decided: all three paths will check representability at the narrowing store and refuse with one message, rather than one of them silently keeping a wider value |
+| the IDEA plugin | `idea-plugin\build-offline.ps1` | **0.1.4**: `dist\vela-idea-plugin-0.1.4.zip` 324 186 B, `RESULT: PASS` (154 OK / 0 FAIL), 98 concrete top-level classes, **0 dead**.  The capability ledger is `idea-plugin\FEATURE_PARITY.md`: 27 rows, **18 `implemented`, 8 `partial`, 1 `refused-deliberately`, 0 missing**, and the parameter-name defect the owner reported is closed with before/after evidence in `idea-plugin\evidence\` |
+| the benchmarks | `tools\bench.ps1 -Reps 7` | re-measured and recorded in `bench/RESULTS.md` in its own dated section: serial matmul **2.42× slower**, parallel **3.49× by best-of-7 / 2.80× by median**, mandelbrot a tie, sieve 1.50× slower.  **"Faster than C++" is still not established**, and §4's ladders remain the argument for the only lever that could change that |
+
+Unchanged by any of the above, and still the shape of the work: `build` sends C to
+`cl.exe`, so north star ① holds **only** on the `build-llvm` path; and the language
+is missing enums with payloads and `match`, modules/`import`, `Result`/`?`,
+generics, closures, nested functions, string concatenation, slices and
+iteration/traits — nine features with **zero** lines of code.  A dated list of what
+each of those needs is in the goal this session is running against.
+
 ## 0. Where this session left the tree (2026-09-20, 02:1x)
 
 **And one thing about the gate itself, because it was broken.**  `tools\build.ps1`
