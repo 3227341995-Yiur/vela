@@ -1,0 +1,9 @@
+def g(a: int, b: int, c: int) -> int {
+    return a
+}
+
+def main() -> None {
+    print(g(1,
+             2,
+             3))
+}

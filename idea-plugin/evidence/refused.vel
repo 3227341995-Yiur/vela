@@ -1,0 +1,7 @@
+def f(s, s, s) -> int {
+    return 1
+}
+
+def main() -> None {
+    print(f(1, 2, 3))
+}
