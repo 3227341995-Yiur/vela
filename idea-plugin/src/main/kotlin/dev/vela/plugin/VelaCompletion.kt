@@ -219,45 +219,22 @@ data class VelaCall(
 /** The parameters a `VelaSymbol` declares, in order; empty for a non-callable. */
 /** A parameter list that cannot be trusted answers nothing, never a guess. */
 internal fun symbolParameters(sym: VelaSymbol): List<String> {
-    // The form check matters as much as the split: a symbol whose `detail` does not
-    // begin with its own name and `(`, or whose text does not close the list, is not
-    // a signature at all, and splitting it would name arguments out of prose.  The
-    // hint engine and the parameter-info popup no longer come through here at all --
-    // they read the declaration out of the tree (`VelaTargets.declaredParameterNames`)
-    // -- so what is left is the completion template, where a wrong name would be
-    // inserted into the document rather than merely drawn.
+    // The answer is the declaration's own parameters -- read from the tree for a
+    // definition in the file, from the declared signature for one of the language's own
+    // names -- or nothing at all.
+    //
+    // THIS FUNCTION USED TO READ `sym.detail` AS TEXT: it checked that the detail began
+    // with `name(`, then took the text between its first `(` and its first `)` and
+    // split it on commas.  `detail` is documented as "the signature as written", sliced
+    // out of the source, so for a declaration the compiler refuses -- `def f(s, s, s) ->
+    // int`, whose parameters have no annotations -- that slice is `s, s, s` and this
+    // returned `["s", "s", "s"]`.  Completion then wrote `(s, s, s)` into the user's
+    // document: the same defect as the `s: s: s: ` hint, in the one path no hint harness
+    // looks at.  A stronger string check would not have fixed it; not reading text
+    // does.  `VelaSymbol.parameters` is null when the declaration's parameter list
+    // cannot be read, and empty means "offer `()`", which is honest.
     if (!sym.isCallable) return emptyList()
-    if (!sym.detail.startsWith(sym.name + "(")) return emptyList()
-    val open = sym.detail.indexOf('(')
-    if (open < 0) return emptyList()
-    val close = sym.detail.indexOf(')', open + 1)
-    if (close < 0) return emptyList()
-    val inner = sym.detail.substring(open + 1, close).trim()
-    if (inner.isEmpty()) return emptyList()
-    val out = ArrayList<String>()
-    var depth = 0
-    val current = StringBuilder()
-    for (c in inner) {
-        when {
-            c == '[' || c == '(' -> depth++
-            c == ']' || c == ')' -> depth--
-            c == ',' && depth == 0 -> {
-                out.add(parameterName(current.toString()))
-                current.setLength(0)
-            }
-            else -> current.append(c)
-        }
-    }
-    out.add(parameterName(current.toString()))
-    // `print(...)` and `emit_str(s: str)`: a variadic slot is not a parameter to
-    // offer, so it is dropped rather than inserted as a literal "...".
-    return out.filter { it.isNotEmpty() && it != "..." && it != "…" }
-}
-
-/** `mut x: Array[int, 4]` -> `x`: the name the user would type beside. */
-private fun parameterName(parameter: String): String {
-    val beforeColon = parameter.substringBefore(':').trim()
-    return beforeColon.removePrefix("mut ").trim()
+    return sym.parameters ?: emptyList()
 }
 
 /*

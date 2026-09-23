@@ -41,9 +41,46 @@ data class VelaSymbol(
     val line: Int,
     /** Index of the enclosing declaration in the same list, or -1. */
     val parent: Int,
+    /**
+     * The parameter names this callable declares, **read from a declaration** — the
+     * tree for a definition in the file ([VelaSignatures.declaredParameterNames]), the
+     * declared signature for one of the language's own names
+     * ([VelaSignatures.parameterNamesInSignature]).
+     *
+     * Null means the parameter list could not be read, and the answer to "which name
+     * goes with this argument?" is then **nothing**: completion inserts `()`, which is
+     * honest, rather than a name taken out of [detail].  This field exists because
+     * reading [detail] did exactly that — `def f(s, s, s) -> int` is refused by the
+     * compiler for its unannotated parameters, its `detail` is the text `f(s, s, s)`,
+     * and splitting that text gave `["s", "s", "s"]`, which completion wrote into the
+     * user's document as `(s, s, s)`.
+     */
+    val parameters: List<String>? = null,
 ) {
     val isCallable: Boolean
         get() = kind == VelaSymbolKind.FUNCTION || kind == VelaSymbolKind.METHOD
+}
+
+/**
+ * One of the language's own functions, as *data* rather than as one prose string.
+ *
+ * [signature] is the declaration — `substr(s: str, from: int, to: int) -> str` — and
+ * it is the only thing a parameter list for a builtin may be read from.  [prose] is
+ * the sentence a hover shows, and it is deliberately a *separate field*: the table used
+ * to be `name to "signature — prose"`, and `builtinParameterNames` found the parameter
+ * list with `indexOf('(')` over that whole string.  It worked only because every entry
+ * happened to begin with its signature; one description that mentions a parenthesis
+ * first would have had names read out of prose, and no harness would have noticed
+ * because the oracle called the same function.
+ */
+class VelaBuiltin(
+    val name: String,
+    val signature: String,
+    val prose: String,
+) {
+    /** The signature and the sentence together, which is what a hover or a tail shows. */
+    val description: String
+        get() = if (prose.isEmpty()) signature else "$signature — $prose"
 }
 
 private data class Tok(
@@ -59,45 +96,54 @@ object VelaModel {
 
     /**
      * Names the language provides, with the arity the compiler enforces in
-     * `selfhost/parts/resolve.vel`.  Kept as data rather than as prose so
-     * completion can offer them and hover can explain them.
+     * `selfhost/parts/resolve.vel`, held as [VelaBuiltin]s.
+     *
+     * Each entry separates the two things the table used to hold in one string: the
+     * **signature**, which is the declaration a parameter name is read from, and the
+     * **prose**, which is what a hover says about it.  Keeping them apart is a
+     * correction, not a tidy-up: `builtinParameterNames` found the parameter list with
+     * `indexOf('(')` over the combined string and worked only because every entry began
+     * with its signature.  A description that mentioned a parenthesis before the
+     * signature would have named arguments out of prose, and the harness would not have
+     * seen it — its oracle called the same function.
      */
-    val BUILTINS: List<Pair<String, String>> = listOf(
-        "print" to "print(...) -> None — write values, separated by spaces",
-        "emit_str" to "emit_str(s: str) -> None — write a string, no newline",
-        "emit_int" to "emit_int(n: int) -> None — write an integer",
-        "emit_float" to "emit_float(x: float) -> None — write a float",
-        "emit_nl" to "emit_nl() -> None — write a newline",
-        "warn_str" to "warn_str(s: str) -> None — write a string to stderr",
-        "warn_int" to "warn_int(n: int) -> None — write an integer to stderr",
-        "warn_nl" to "warn_nl() -> None — write a newline to stderr",
-        "len" to "len(a: Array[T, N] | str) -> int — the length, a constant for arrays",
-        "to_float" to "to_float(n: int) -> float",
-        "to_int" to "to_int(x: float) -> int — truncates toward zero",
-        "sqrt" to "sqrt(x: float) -> float",
-        "fabs" to "fabs(x: float) -> float",
-        "floor" to "floor(x: float) -> float",
-        "pow" to "pow(b: float, e: float) -> float",
-        "abs" to "abs(n: int) -> int",
-        "min_int" to "min_int(a: int, b: int) -> int",
-        "max_int" to "max_int(a: int, b: int) -> int",
-        "min_float" to "min_float(a: float, b: float) -> float",
-        "max_float" to "max_float(a: float, b: float) -> float",
-        "bytes_at" to "bytes_at(s: str, i: int) -> int — one byte, checked",
-        "substr" to "substr(s: str, from: int, to: int) -> str — a slice, not a copy",
-        "concat" to "concat(a: str, b: str) -> str — the only way to join strings",
-        "unescape" to "unescape(s: str) -> str",
-        "intern" to "intern(s: str) -> int — a stable handle for a string",
-        "interned" to "interned(h: int) -> str",
-        "argc" to "argc() -> int — the program's argument count",
-        "arg" to "arg(i: int) -> str — argument i, checked",
-        "read_text" to "read_text(path: str) -> str — the whole file, or empty",
-        "write_text" to "write_text(path: str, body: str) -> bool",
-        "panic" to "panic(msg: str) -> None — stop the program, with the message",
-        "now" to "now() -> float — seconds, for timing",
-        "run_command" to "run_command(cmd: str) -> int — exit status, -1 if the line is too long",
-        "env" to "env(name: str) -> str — an environment variable, empty when unset",
-        "range" to "range(from: int, to: int) — the only loop range; step 1",
+    val BUILTINS: List<VelaBuiltin> = listOf(
+        VelaBuiltin("print", "print(...) -> None", "write values, separated by spaces"),
+        VelaBuiltin("emit_str", "emit_str(s: str) -> None", "write a string, no newline"),
+        VelaBuiltin("emit_int", "emit_int(n: int) -> None", "write an integer"),
+        VelaBuiltin("emit_float", "emit_float(x: float) -> None", "write a float"),
+        VelaBuiltin("emit_nl", "emit_nl() -> None", "write a newline"),
+        VelaBuiltin("warn_str", "warn_str(s: str) -> None", "write a string to stderr"),
+        VelaBuiltin("warn_int", "warn_int(n: int) -> None", "write an integer to stderr"),
+        VelaBuiltin("warn_nl", "warn_nl() -> None", "write a newline to stderr"),
+        VelaBuiltin("len", "len(a: Array[T, N] | str) -> int", "the length, a constant for arrays"),
+        VelaBuiltin("to_float", "to_float(n: int) -> float", ""),
+        VelaBuiltin("to_int", "to_int(x: float) -> int", "truncates toward zero"),
+        VelaBuiltin("sqrt", "sqrt(x: float) -> float", ""),
+        VelaBuiltin("fabs", "fabs(x: float) -> float", ""),
+        VelaBuiltin("floor", "floor(x: float) -> float", ""),
+        VelaBuiltin("pow", "pow(b: float, e: float) -> float", ""),
+        VelaBuiltin("abs", "abs(n: int) -> int", ""),
+        VelaBuiltin("min_int", "min_int(a: int, b: int) -> int", ""),
+        VelaBuiltin("max_int", "max_int(a: int, b: int) -> int", ""),
+        VelaBuiltin("min_float", "min_float(a: float, b: float) -> float", ""),
+        VelaBuiltin("max_float", "max_float(a: float, b: float) -> float", ""),
+        VelaBuiltin("bytes_at", "bytes_at(s: str, i: int) -> int", "one byte, checked"),
+        VelaBuiltin("substr", "substr(s: str, a: int, b: int) -> str", "a slice, not a copy"),
+        VelaBuiltin("concat", "concat(a: str, b: str) -> str", "the only way to join strings"),
+        VelaBuiltin("unescape", "unescape(s: str) -> str", ""),
+        VelaBuiltin("intern", "intern(s: str) -> int", "a stable handle for a string"),
+        VelaBuiltin("interned", "interned(h: int) -> str", ""),
+        VelaBuiltin("argc", "argc() -> int", "the program's argument count"),
+        VelaBuiltin("arg", "arg(i: int) -> str", "argument i, checked"),
+        VelaBuiltin("read_text", "read_text(path: str) -> str", "the whole file, or empty"),
+        VelaBuiltin("write_text", "write_text(path: str, s: str) -> bool", ""),
+        VelaBuiltin("panic", "panic(msg: str) -> None", "stop the program, with the message"),
+        VelaBuiltin("now", "now() -> float", "seconds, for timing"),
+        VelaBuiltin("run_command", "run_command(cmd: str) -> int",
+            "exit status, -1 if the line is too long"),
+        VelaBuiltin("env", "env(name: str) -> str", "an environment variable, empty when unset"),
+        VelaBuiltin("range", "range(from: int, to: int)", "the only loop range; step 1"),
     )
 
     /** Tokenising is the only cost here, and files are re-lexed on every keystroke. */
@@ -205,7 +251,12 @@ object VelaModel {
         } else {
             n.name + " -> " + ret
         }
-        out.add(VelaSymbol(kind, n.name, sig, ret, line, parent))
+        // The parameter names come from the tree -- the same reader the hint and the
+        // popup use -- and are null when the declaration's parameter list cannot be
+        // read.  Null is what stops completion writing `(s, s, s)` into the document;
+        // nothing here reads `sig`, which is display text.
+        val declared = VelaSignatures.declaredParameterNames(tree, text, n)
+        out.add(VelaSymbol(kind, n.name, sig, ret, line, parent, declared))
         for (p in params) {
             val pName = firstPlainNameToken(tree, p)
             val pLine = if (pName >= 0) lineOfOffset(text, tree.toks[pName].start)
@@ -579,7 +630,12 @@ object VelaModel {
         }
         val sig = text.subSequence(nameTok.start, toks[close].end).toString()
             .replace('\n', ' ').replace(Regex(" +"), " ") + " -> " + ret
-        out.add(VelaSymbol(kind, name, sig, ret, nameLine, parent))
+        // THE LEGACY PATH KEEPS THE LEGACY READING, deliberately.  This token scan is
+        // what 0.1.3 shipped and `HintDupes --old` measures it against the tree; its
+        // parameter names come from its own token scan, which is exactly the reading
+        // that produced `(s, s, s)`.  Filling this field with the tree's answer here
+        // would make the old path look fixed, and the comparison would measure nothing.
+        out.add(VelaSymbol(kind, name, sig, ret, nameLine, parent, params.map { it.name }))
         for (p in params) out.add(p.copy(parent = me))
         // skip to the end of the body, so a nested `def` is not read as a second one
         var k = close
