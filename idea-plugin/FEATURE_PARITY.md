@@ -133,7 +133,7 @@ should do, and each says plainly how far it actually goes.
 | `partial` | **5** | 7 completion, 9 parameter info, 11 find usages, 12 rename, 19 typed/enter handler |
 | `missing` | **0** | — |
 | `refused-deliberately` | **1** | 23 debugger |
-| total | **27** | `19 + 7 + 1 + 0 = 27` |
+| total | **27** | `21 + 5 + 1 + 0 = 27` |
 
 Row 5 moved from `implemented` to `partial` when its own verifier went red (`psi-tree-diff`
 125 of 126, one FAIL) and moved back to `implemented` when that verifier went green —

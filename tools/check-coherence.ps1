@@ -100,6 +100,35 @@ foreach ($f in @($inTree, $inBuild, $byVela)) {
 $distinct = @($sizes.Values | Select-Object -Unique)
 if ($distinct.Count -eq 1) {
     Pass ("all {0} binaries are the same size ({1} bytes)" -f $sizes.Count, $distinct[0])
+    # Size alone cannot tell "the same program, built twice" from "two different programs that
+    # happen to be the same length" -- and the first version of this check said `ok` for a tree
+    # whose `selfhost\vm.exe` was 868,352 bytes of a NEWER compiler than the promoted one, which
+    # is the exact condition it exists to catch.  So a size match is followed by a deterministic
+    # comparison: the same program emits the same C for the same input, byte for byte, and
+    # `emit-c` needs no C compiler, so this costs two runs.
+    $probe = Join-Path $root 'tests\build\arith_basics.vel'
+    if (Test-Path -LiteralPath $probe) {
+        $emitted = @{}
+        foreach ($f in @($inTree, $inBuild, $byVela)) {
+            if (-not (Test-Path -LiteralPath $f)) { continue }
+            $outFile = Join-Path $env:TEMP ("coh-{0}.c" -f (Split-Path $f -Leaf))
+            Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
+            & cmd /c ("`"{0}`" emit-c `"{1}`" 1> `"{2}`" 2> nul" -f $f, $probe, $outFile) | Out-Null
+            if (Test-Path -LiteralPath $outFile) {
+                $emitted[$f] = (Get-FileHash -LiteralPath $outFile -Algorithm SHA256).Hash.Substring(0, 12)
+            }
+        }
+        $eDistinct = @($emitted.Values | Select-Object -Unique)
+        if ($emitted.Count -ge 2 -and $eDistinct.Count -eq 1) {
+            Pass ("and they are the same program: all of them emit the same C for tests\build\arith_basics.vel (sha256 {0})" -f $eDistinct[0])
+        } elseif ($emitted.Count -lt 2) {
+            Pass 'emit-c comparison skipped: fewer than two binaries could be run'
+        } else {
+            Fail ("the binaries are the same SIZE but different PROGRAMS -- they emit different C for the same input: " +
+                  (($emitted.GetEnumerator() | ForEach-Object { "$(Split-Path $_.Key -Leaf)=$($_.Value)" }) -join ', ') +
+                  ".  A rebuild that only moved the PE timestamp would emit identical C, so this is a compiler that was not promoted")
+        }
+    }
 } else {
     Fail ("the compiler in the tree and the one the tests use are DIFFERENT PROGRAMS: " +
           (($sizes.GetEnumerator() | ForEach-Object { "$(Split-Path $_.Key -Leaf)=$($_.Value)" }) -join ', ') +
@@ -151,6 +180,38 @@ foreach ($b in @($inTree, $inBuild, $byVela)) {
     $dll = Join-Path (Split-Path $b -Parent) 'LLVM-C.dll'
     if (Test-Path -LiteralPath $dll) { Pass ("LLVM-C.dll is beside " + (Split-Path $b -Leaf)) }
     else { Fail ("no LLVM-C.dll beside " + $b + " -- that vm.exe does not load at all") }
+}
+
+Say ''
+Say '== 4. no corpus harness is frozen on a stale compiler'
+# The same defect as claim 1, one level up, and it was found the same way -- by a number that
+# did not fit.  `tools\safety.ps1` does not copy the compiler per run: it CACHES one at
+# `%TEMP%\vela-safety\frozen\vm.exe`, and if a run ever happened before a rebuild, every later
+# run measures the old binary while printing a perfectly normal report.  Measured by the
+# compiler agent on 2026-09-24: after the promotion the tree was `42E5D5EE` / 868,352 bytes and
+# the cached copy was still `501B6CBB` / 867,840, so a newly wired corpus row reported
+# `check exit=-1` (the stale compiler hangs on it) with the old hash in the same log.  The hash
+# line is the only thing that says which compiler was measured, and nothing compares it.
+#
+# A deliberately pinned copy is a legitimate thing to have -- that is what `-FrozenVm` is for --
+# so this claim is about the CACHE, whose whole purpose is to be the tree's compiler.
+$caches = @(
+    (Join-Path $env:TEMP 'vela-safety\frozen\vm.exe')
+)
+$treeSize = -1
+if (Test-Path -LiteralPath $inBuild) { $treeSize = (Get-Item -LiteralPath $inBuild).Length }
+foreach ($c in $caches) {
+    if (-not (Test-Path -LiteralPath $c)) {
+        Say ("  ok    no cached compiler at " + $c)
+        continue
+    }
+    $cs = (Get-Item -LiteralPath $c).Length
+    $ch = (Get-FileHash -LiteralPath $c -Algorithm SHA256).Hash.Substring(0, 12)
+    if ($cs -eq $treeSize) {
+        Pass ("the cached compiler matches the tree's size ({0} bytes, sha256 {1})" -f $cs, $ch)
+    } else {
+        Fail ("a corpus harness is frozen on a stale compiler: $c is $cs bytes (sha256 $ch) while the tree's is $treeSize -- every run that uses the cache measures the previous source.  Delete $c (and rerun), or pass -FrozenVm explicitly to say which compiler you mean")
+    }
 }
 
 Say ''
