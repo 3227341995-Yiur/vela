@@ -31,6 +31,16 @@
                                        through generated `extern c` declarations;
                                        this is the check that they are still what
                                        the C header says
+      docs-zh   tools\docs-zh-check.ps1
+                                       every `<stem>.md` has a `<stem>.zh-CN.md`
+                                       twin in the house layout, and the twin is not
+                                       stale.  Nothing ran this until now: it was
+                                       named nineteen times in prose and invoked by
+                                       no script, which is how a stale twin survived
+      hygiene   tools\check-hygiene.ps1
+                                       refuse to push something enormous, or to keep
+                                       tracking one.  Also never invoked by anything
+                                       until now
       suite     tools\refreeze.ps1     record the locks, keep the written
                                        expectations, run all the cases
       bench     tools\bench.ps1        7 repetitions per variant, every answer
@@ -196,6 +206,20 @@ if (Test-Path -LiteralPath $shimHeader) {
         Verdict = 'skipped (no runtime\vela_llvm_shim.h yet)'; Out = ''; Err = ''
     })
 }
+
+# Two whole-tree obligations that used to be nobody's job.
+#
+# Both of these scripts existed, and nothing ran them.  An audit of every script in
+# the tree against every reference to its name (32 scripts, 553 files) found
+# `docs-zh-check.ps1` named nineteen times across the documentation and invoked by
+# no script at all, and `check-hygiene.ps1` likewise.  A rule that is written down
+# and never checked is a rule that is already broken somewhere -- which is precisely
+# the state this commit finds the documentation pair in, and the reason the audit was
+# worth running rather than trusting.  Both are cheap (they read files and ask git;
+# neither starts a compiler), so they go before the slow steps, where a failure is
+# cheapest to diagnose.
+Invoke-Step -Name 'docs-zh' -Script 'tools\docs-zh-check.ps1' -SuccessPattern 'RESULT: ok'
+Invoke-Step -Name 'hygiene' -Script 'tools\check-hygiene.ps1' -SuccessPattern 'RESULT: ok'
 
 if (-not $SkipSuite) {
     Invoke-Step -Name 'suite' -Script 'tools\refreeze.ps1' -SuccessPattern 'RESULT: green'
