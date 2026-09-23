@@ -32,6 +32,17 @@ run python_floor_semantics                   tests/build/python_floor_semantics.
 run recursion_fib                            tests/build/recursion_fib.vel
 run struct_and_methods                       tests/build/struct_and_methods.vel
 run struct_value_semantics                   tests/build/struct_value_semantics.vel
+# The permanent guard for three operators that were WRONG IN THE INTERPRETER for as long as
+# nobody used them.  `parts/eval.vel`'s `combine` answered op 17 with `a ^ b`, 18 with `a & b`
+# and 19 with `a | b`, while `dump.vel`'s own `op_name` and the C back end say 17 = `&`,
+# 18 = `|`, 19 = `^` -- so the reference implementation computed a different operator than
+# both compiled paths, for all three.  Nothing in this corpus used `&`, `|` or `^`, which is
+# why a three-way differential could not see it: two paths agreed and the third was never
+# asked.  Found by the LLVM back end's new arms disagreeing with the interpreter on a program
+# written for another purpose (2026-09-24).  The program is `tests/llvm-shapes/bitwise_ops.vel`
+# and it also covers `~`, `u8` shifts and a `u8` comparison, because the mixed-width and
+# promotion paths were being fixed in the same batch.
+run bitwise_ops                              tests/llvm-shapes/bitwise_ops.vel
 run arrays_and_len_folding                   tests/build/arrays_and_len_folding.vel
 run array_zero_filled                        tests/build/array_zero_filled.vel
 run parallel_for_correct                     tests/build/parallel_for_correct.vel
