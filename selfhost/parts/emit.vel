@@ -90,26 +90,212 @@ def emit_fn_ret_ctype(nd: Array[int, 1310720], ty: Array[int, 262144],
 
 # The struct definitions come first: C needs the complete type before any function
 # that mentions it, and the field order is declaration order.
-def emit_struct_defs(mem: Array[int, 3741696], vm: VM) -> None {
+#
+# An enum owns a row of this table too (its values' layout), and that row must NOT
+# be emitted here: `emit_enum_defs` writes the tagged definition for it, and a
+# second `struct vl_Shape {...}` would be a redefinition.  The row is recognised by
+# being some enum's `ENB_SID()`.
+def emit_struct_defs(mem: Array[int, 3741696], vm: VM, path: str) -> None {
     mut s: int = 0
     while s < vm.nstruct {
-        emit_str("struct vl_")
-        emit_str(interned(stb_get(mem, s, STB_NAME())))
-        emit_str(" {")
-        n: int = stb_get(mem, s, STB_NFIELD())
-        off: int = stb_get(mem, s, STB_FOFF())
-        mut i: int = 0
-        while i < n {
-            emit_packed_ctype(mem, vm, "<struct field>", 0,
-                              sfl_get(mem, off + i * 2 + 1))
-            emit_str(" ")
-            emit_field_name(mem, sfl_get(mem, off + i * 2))
-            emit_str("; ")
-            i += 1
+        if enum_of_row(mem, vm, s) < 0 {
+            emit_str("struct vl_")
+            emit_str(interned(stb_get(mem, s, STB_NAME())))
+            emit_str(" {")
+            n: int = stb_get(mem, s, STB_NFIELD())
+            off: int = stb_get(mem, s, STB_FOFF())
+            mut i: int = 0
+            while i < n {
+                fk: int = unpack_kind(sfl_get(mem, off + i * 2 + 1))
+                if fk == K_ENUM() {
+                    # Refused rather than emitted as an incomplete type: structs
+                    # are defined before enums here, because an enum's payload may
+                    # be a struct (`union` members must be complete types), and C
+                    # has no order in which both hold.  This is the side of that
+                    # trade the back end does not take, and it says so by name.
+                    trap(path, 0,
+                         "a struct field of enum type is not compiled by the C back end yet: structs are defined before enums, and C needs a complete type for a by-value field")
+                }
+                emit_packed_ctype(mem, vm, "<struct field>", 0,
+                                  sfl_get(mem, off + i * 2 + 1))
+                emit_str(" ")
+                emit_field_name(mem, sfl_get(mem, off + i * 2))
+                emit_str("; ")
+                i += 1
+            }
+            emit_str("};\n\n")
         }
-        emit_str("};\n\n")
         s += 1
     }
+}
+
+# One C definition per enum, after the struct definitions (an enum's payload may
+# be a struct, and a union member has to be a complete type).
+#
+# The tag is the variant's record index **+ 1**, the same number the interpreter
+# writes into the first payload cell, so a zero-initialised value means "no
+# variant" in the compiled program too -- which is exactly what an array element
+# nobody wrote is.
+#
+# The switch in `emit_match` is emitted with no `default` arm when the match is
+# exhaustive.  That is a *second* net under the checker's exhaustiveness rule and
+# not a promise that `cl` will warn: the tag is an `int64_t`, so C has no way to
+# know a case is missing (measured, not assumed -- see the report).  The net that
+# fires is the checker's, and the `dumps` case pins the absence of `default` in
+# the emitted text.
+def emit_enum_defs(mem: Array[int, 3741696], vm: VM, path: str) -> None {
+    mut e: int = 0
+    while e < vm.nenum {
+        emit_struct_name(mem, enb_get(mem, e, ENB_SID()))
+        emit_str(" {\n    int64_t vl_tag;\n")
+        if enb_get(mem, e, ENB_NMAX()) > 0 {
+            emit_str("    union {\n")
+            mut i: int = 0
+            while i < enb_get(mem, e, ENB_NVAR()) {
+                vi: int = enb_get(mem, e, ENB_VOFF()) + i
+                nf: int = vrb_get(mem, vi, VRB_NFIELD())
+                if nf > 0 {
+                    emit_str("        struct {")
+                    mut f: int = 0
+                    while f < nf {
+                        fk: int = unpack_kind(vfl_get(mem, vrb_get(mem, vi, VRB_FOFF()) + f * 2 + 1))
+                        if is_array(fk) {
+                            trap(path, 0,
+                                 "an enum payload field of array type is not compiled by the C back end yet (a payload field is one value, and a C array member is not)")
+                        }
+                        emit_str(" ")
+                        emit_packed_ctype(mem, vm, "<enum payload>", 0,
+                                          vfl_get(mem, vrb_get(mem, vi, VRB_FOFF()) + f * 2 + 1))
+                        emit_str(" ")
+                        emit_field_name(mem, vfl_get(mem, vrb_get(mem, vi, VRB_FOFF()) + f * 2))
+                        emit_str(";")
+                        f += 1
+                    }
+                    emit_str(" } ")
+                    emit_variant_name(mem, vrb_get(mem, vi, VRB_NAME()))
+                    emit_str(";\n")
+                }
+                i += 1
+            }
+            emit_str("    } vl_u;\n")
+        }
+        emit_str("};\n\n")
+        e += 1
+    }
+}
+
+# A variant's union member: the same prefix rule a field gets, with `v_` because
+# a variant name and a field name are two different namespaces inside the tagged
+# block (`Rect(w, h)` is a variant `v_Rect` holding fields `f_w`, `f_h`).
+def emit_variant_name(mem: Array[int, 3741696], h: int) -> None {
+    emit_str("v_")
+    emit_str(interned(h))
+}
+
+# The shape row of a match subject, -1 when this back end cannot name one.  The
+# same walk the checker does, for the same reason: an array's row is its
+# elements', so `match a[i]` reads the row the resolver left on the name `a`.
+def emit_row_of(nd: Array[int, 1310720], mem: Array[int, 3741696], e: int) -> int {
+    if e <= 0 {
+        return -1
+    }
+    k: int = nd_kind(nd, e)
+    if k == 25 {
+        return nt_get(mem, e, NT_ROW())
+    }
+    if k == 31 {
+        return emit_row_of(nd, mem, nd[e * 10 + 1])
+    }
+    if k == 26 {
+        callee: int = nd[e * 10 + 1]
+        if nd_kind(nd, callee) == 25 {
+            if nt_get(mem, callee, NT_SYM()) == SYM_VARIANT() {
+                vi: int = nt_get(mem, callee, NT_VAL())
+                return enb_get(mem, vrb_get(mem, vi, VRB_ENUM()), ENB_SID())
+            }
+        }
+    }
+    return -1
+}
+
+# `match` in C: the subject is evaluated once into a temporary of the enum's own
+# type, and its tag drives a `switch`.  Each arm is a case block that declares the
+# arm's bindings from the union member named by its variant and then runs the arm's
+# body; the trailing `break` is emitted, not written by the program, because in C
+# a case without one falls into the next case -- which would run two arms.
+#
+# The temporary's name comes from the statement's node id, the same rule the index
+# and for-loop temporaries use (`vl_subj_<node>`), and it is declared in the block
+# that holds the statement: a temporary hoisted any further would be shared between
+# two matches, and one of them would read the other's value.
+def emit_match(nd: Array[int, 1310720], ty: Array[int, 262144],
+               flt: Array[float, 65536], src: str, path: str,
+               mem: Array[int, 3741696], mut vm: VM, s: int,
+               indent: int) -> None {
+    subj: int = nd[s * 10 + 1]
+    row: int = emit_row_of(nd, mem, subj)
+    if row < 0 {
+        trap(path, nd_line(nd, s),
+             "the subject of a match must be an enum value, and this back end cannot name its type")
+    }
+    emit_struct_name(mem, row)
+    emit_str(" vl_subj_")
+    emit_int(s)
+    emit_str(" = ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, subj)
+    emit_str(";\n")
+    emit_indent(indent)
+    emit_str("switch (vl_subj_")
+    emit_int(s)
+    emit_str(".vl_tag) {\n")
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        pat: int = nd[a * 10 + 1]
+        emit_indent(indent + 1)
+        mut vi: int = -1
+        if pat < 0 {
+            # `else`: the catch-all.  It is the one arm that emits `default:`, so
+            # an exhaustive match has no default at all.
+            emit_str("default: {\n")
+        } else {
+            vi = find_variant(mem, vm, pat)
+            emit_str("case ")
+            emit_int(vi + 1)
+            emit_str(": { /* ")
+            emit_str(interned(pat))
+            emit_str(" */\n")
+        }
+        mut b: int = nd[a * 10 + 2]
+        mut i: int = 0
+        while b > 0 {
+            emit_indent(indent + 2)
+            emit_binding_ctype(nd, ty, mem, vm, path, nt_get(mem, b, NT_LIT()),
+                               nd_line(nd, b))
+            emit_str(" ")
+            emit_cname(nd[b * 10 + 1])
+            emit_str(" = vl_subj_")
+            emit_int(s)
+            emit_str(".vl_u.")
+            emit_variant_name(mem, pat)
+            emit_str(".")
+            emit_field_name(mem, vfl_get(mem, vrb_get(mem, vi, VRB_FOFF()) + i * 2))
+            emit_str(";\n")
+            i += 1
+            b = nd_nx(nd, b)
+        }
+        if ck_has_break(nd, nd[a * 10 + 4]) {
+            trap(path, nd_line(nd, a),
+                 "`break` inside a match arm is not compiled by the C back end: in C a break inside a switch leaves the switch, and in Vela it leaves the loop")
+        }
+        emit_body(nd, ty, flt, src, path, mem, vm, nd[a * 10 + 4], indent + 2)
+        emit_indent(indent + 2)
+        emit_str("break;\n")
+        emit_indent(indent + 1)
+        emit_str("}\n")
+        a = nd_nx(nd, a)
+    }
+    emit_indent(indent)
+    emit_str("}\n")
 }
 
 # A C string literal for the bytes of a Vela string.  Bytes outside printable
@@ -249,7 +435,20 @@ def emit_array_ctype(kind: int, path: str, line: int) -> None {
 # length, selfhost/AST.md 6).
 def emit_ty_ctype(ty: Array[int, 262144], t: int, mem: Array[int, 3741696],
                   vm: VM, path: str, line: int) -> None {
-    emit_ctype(type_kind(ty, t, mem, vm), path, line)
+    k: int = type_kind(ty, t, mem, vm)
+    if k == K_AX() {
+        # `Array[E, N]` where E is an enum: refused by name, because the message
+        # below would otherwise say "an array of structs", and an array of enum
+        # values is a different construct with a different reason (a C array of
+        # the tagged struct is a *value* array, and Vela's array semantics are the
+        # interpreter's copy-on-assign, which this slice does not emit for any
+        # aggregate element yet -- struct or enum alike).
+        if enum_of_type(ty, ty_elem(ty, t), mem, vm) >= 0 {
+            trap(path, line,
+                 "an array of enum values is not compiled by the C back end yet (Array[E, N] has no C spelling in this slice)")
+        }
+    }
+    emit_ctype(k, path, line)
 }
 
 def is_ptr_ctype(kind: int) -> bool {
@@ -660,8 +859,61 @@ def emit_call(nd: Array[int, 1310720], ty: Array[int, 262144],
         # the constructor's own struct, not struct 0
         return pack_kind(K_ST(), sv)
     }
+    if sk == SYM_VARIANT() {
+        return emit_variant_literal(nd, ty, flt, src, path, mem, vm, sv,
+                                    nd[e * 10 + 2])
+    }
     trap(path, nd_line(nd, e), "this is not something that can be called")
     return K_NONE()
+}
+
+# A variant value in C, with or without a payload: one spelling for a construction
+# (`Circle(1.0)`, `args` = the call's argument chain) and for a bare name (`Empty`,
+# `Red`, `args` = -1, which is how "no arguments" is spelled all through this front
+# end).
+#
+# A compound literal, and *designated*: the union's members are in declaration
+# order and a program may build any variant, so `{ 3.0, 4.0 }` would fill the first
+# member and silently build the wrong variant.  A payload-free variant has no union
+# member to name at all (there is no member for it), which is why the initializer
+# stops after the tag.
+def emit_variant_literal(nd: Array[int, 1310720], ty: Array[int, 262144],
+                         flt: Array[float, 65536], src: str, path: str,
+                         mem: Array[int, 3741696], mut vm: VM, vi: int,
+                         args: int) -> int {
+    emit_str("(")
+    emit_struct_name(mem, shape_of_type_row(mem, vm, vi))
+    emit_str("){ .vl_tag = ")
+    emit_int(vi + 1)
+    nf: int = vrb_get(mem, vi, VRB_NFIELD())
+    if nf > 0 {
+        emit_str(", .vl_u.")
+        emit_variant_name(mem, vrb_get(mem, vi, VRB_NAME()))
+        emit_str(" = { ")
+        mut a: int = args
+        mut i: int = 0
+        while a > 0 {
+            if i > 0 {
+                emit_str(", ")
+            }
+            emit_str(".f_")
+            emit_str(interned(vfl_get(mem, vrb_get(mem, vi, VRB_FOFF()) + i * 2)))
+            emit_str(" = ")
+            emit_expr(nd, ty, flt, src, path, mem, vm, a)
+            a = nd_nx(nd, a)
+            i += 1
+        }
+        emit_str(" }")
+    }
+    emit_str(" }")
+    return pack_kind(K_ENUM(), enb_get(mem, vrb_get(mem, vi, VRB_ENUM()),
+                                       ENB_SID()))
+}
+
+# The enum's layout row, from a variant record: the row that describes the whole
+# enum's values, which is the row `shape_of_type` gives for an enum-typed binding.
+def shape_of_type_row(mem: Array[int, 3741696], vm: VM, vi: int) -> int {
+    return enb_get(mem, vrb_get(mem, vi, VRB_ENUM()), ENB_SID())
 }
 
 # `recv.name(args)`: the receiver becomes argument 0, and it is a pointer exactly
@@ -1070,6 +1322,17 @@ def emit_print(nd: Array[int, 1310720], ty: Array[int, 262144],
             emit_indent(indent)
         }
         k: int = expr_kind(nd, ty, mem, vm, a)
+        if k == K_ENUM() or k == K_ST() {
+            # `print` of an aggregate is out of scope in 0.1 for structs and for
+            # enums alike (the interpreter traps on both), and the honest spelling
+            # of that here is a refusal that names the construct.  The emitted C
+            # used to fall through to `vela_print_i64` and be rejected by `cl`
+            # with "cannot convert vl_E to int64_t" -- loud, but the reader is
+            # sent to a C error for a decision this compiler made, and a *refusal*
+            # is what the language promised.
+            trap(path, nd_line(nd, a),
+                 "an enum or struct value cannot be printed in Vela 0.1")
+        }
         if k == K_STR() {
             emit_str("vela_print_str(")
             emit_expr(nd, ty, flt, src, path, mem, vm, a)
@@ -1727,6 +1990,10 @@ def emit_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
         emit_str(";\n")
         return
     }
+    if k == 37 {
+        emit_match(nd, ty, flt, src, path, mem, vm, s, indent)
+        return
+    }
     trap(path, nd_line(nd, s), "this statement has no C spelling yet")
 }
 
@@ -1848,6 +2115,14 @@ def emit_index_decls(nd: Array[int, 1310720], s: int, indent: int) -> None {
         emit_index_decls_expr(nd, nd[s * 10 + 2], indent)
         emit_index_decls_expr(nd, nd[s * 10 + 3], indent)
         emit_index_decls_expr(nd, nd[s * 10 + 4], indent)
+        return
+    }
+    if k == 37 {
+        # the match *subject* is evaluated in this block, in front of the switch;
+        # the arms are bodies, and every statement inside them declares its own
+        # (they are emitted inside their own `case` block, which is where their
+        # declarations belong)
+        emit_index_decls_expr(nd, nd[s * 10 + 1], indent)
         return
     }
     # break, continue and the empty statement hold no expressions
@@ -1975,6 +2250,12 @@ def emit_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
         return K_NONE()
     }
     if k == 25 {
+        if nt_get(mem, e, NT_SYM()) == SYM_VARIANT() {
+            # a bare variant name is a value: `Empty`, `Red`.  It is a compound
+            # literal like any other construction, with no payload to name.
+            return emit_variant_literal(nd, ty, flt, src, path, mem, vm,
+                                        nt_get(mem, e, NT_VAL()), -1)
+        }
         return emit_name(nd, mem, path, vm, e)
     }
     if k == 26 {
@@ -2103,6 +2384,12 @@ def expr_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
             # `Box(1)`: a struct call is a value of that very struct
             return pack_kind(K_ST(), sv2)
         }
+        if sk2 == SYM_VARIANT() {
+            # `Circle(1.0)`: a value of the enum the variant belongs to
+            return pack_kind(K_ENUM(),
+                             enb_get(mem, vrb_get(mem, sv2, VRB_ENUM()),
+                                     ENB_SID()))
+        }
         return K_NONE()
     }
     if k == 27 {
@@ -2198,6 +2485,20 @@ def emit_packed_ctype(mem: Array[int, 3741696], vm: VM, path: str, line: int,
         }
         return
     }
+    if k == K_ENUM() {
+        # An enum value is one C struct: the tag and the union.  Its row is the
+        # enum's own layout row, so the C name is spelled exactly the way
+        # `emit_enum_defs` spelled the definition.
+        row: int = unpack_len(packed)
+        if row < 0 {
+            trap(path, line, "this enum binding has no layout row")
+        }
+        emit_struct_name(mem, row)
+        if is_ptr_binding(packed) {
+            emit_str("*")
+        }
+        return
+    }
     emit_ctype(k, path, line)
 }
 
@@ -2252,7 +2553,8 @@ def emit_program(nd: Array[int, 1310720], ty: Array[int, 262144],
     emit_str(" * emitted deliberately: consuming them is ELISION_PLAN.md's work. */\n")
     emit_str("#include \"vela_runtime.h\"\n")
     emit_str("#include <stdbool.h>\n\n")
-    emit_struct_defs(mem, vm)
+    emit_struct_defs(mem, vm, path)
+    emit_enum_defs(mem, vm, path)
     if find_main(mem, vm, nd) < 0 {
         fail(path, 1, "this program has no `def main() -> None` to compile")
     }

@@ -525,7 +525,13 @@ def add_enum_names(nd: Array[int, 1310720],
     stb_put(mem, sid, STB_SIZE(), widest + 1)
     enb_put(mem, eid, ENB_NAME(), name)
     enb_put(mem, eid, ENB_NVAR(), nd[s * 10 + 3])
-    enb_put(mem, eid, ENB_VOFF(), vm.nvr)
+    # -1, because the variants are pass 1b's work and `vm.nvr` here is the cursor
+    # from *before* any of them exists.  Writing it in this pass is a mistake this
+    # file has already made once, and a two-enum probe caught it: every enum after
+    # the first then pointed at variant record 0 -- some *other* enum's variant --
+    # so the exhaustiveness rule judged the wrong variant list and refused a
+    # program that names every variant it has.  Pass (a2) writes the real cursor.
+    enb_put(mem, eid, ENB_VOFF(), -1)
     enb_put(mem, eid, ENB_SID(), sid)
     enb_put(mem, eid, ENB_STRIDE(), widest + 1)
     enb_put(mem, eid, ENB_NMAX(), widest)
@@ -540,6 +546,9 @@ def add_enum_variants(nd: Array[int, 1310720], ty: Array[int, 262144],
         # records for an enum that is not in the table
         panic("vela: compiler: an enum went missing between its two passes")
     }
+    # where this enum's variants begin: the cursor as it stands *now*, which is what
+    # lets two enums in one file describe their own variants and not each other's
+    enb_put(mem, eid, ENB_VOFF(), vm.nvr)
     mut tag: int = 0
     mut v: int = nd[s * 10 + 2]
     while v > 0 {
