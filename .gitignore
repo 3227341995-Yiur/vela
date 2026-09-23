@@ -157,8 +157,13 @@ desktop.ini
 #
 # Windows will not let a build overwrite a running executable, which is how
 # `selfhost\build\vm.exe` ends up one generation behind the source while every gate measures
-# the old program (see `tools\check-coherence.ps1`).  Moving the held file aside is the way
-# out, and the file that leaves behind is 867 KB of binary that nothing was ignoring, so a
-# single `git add -A` would have committed it.  It cannot even be deleted while a process
-# still holds it, which is exactly when it is most likely to be sitting there.
-/selfhost/build/*.held
+# the old program (see `tools\check-coherence.ps1`).  Moving the held file aside is what
+# `Clear-LockedTarget` in `tools\build.ps1` now does by itself, and the file it leaves behind is
+# 867 KB of binary that nothing was ignoring, so a single `git add -A` would have committed it.
+# It cannot even be deleted while a process still holds it, which is exactly when it is most
+# likely to be sitting there.
+#
+# The pattern is `*.held*` and not `*.held` because the first version of this rule was `*.held`
+# and the very next build produced `vm.exe.held1` -- a second rename of a file that was still
+# there.  A rule written for exactly the names one has seen is a rule with a hole in it.
+/selfhost/build/*.held*
