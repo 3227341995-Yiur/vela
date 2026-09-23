@@ -1,0 +1,220 @@
+# RenameOracle -- find-usages and rename, held to the compiler one occurrence at a time
+#
+#   plugin version : 0.1.6   (src\main\resources\META-INF\plugin.xml `<version>0.1.6</version>`,
+#                    unchanged by this track; this file is the same tool re-run, not a new one)
+#   written        : 2026-09-24T04:45+08:00
+#   git HEAD       : e119a8a  llvm: every local array was allocated with a size of zero
+#
+#   WHY IT WAS RE-RUN
+#     `evidence\rename-oracle-0.1.5.txt` measured this tool against `vm.exe` 861,696 bytes
+#     sha256 3768a180...  The compiler has been rebuilt since (the tree's was rebuilt at 04:20
+#     while this round ran), and a measurement of a reference table against a compiler that no
+#     longer exists is a measurement of a different pair.  So it was re-run on 0.1.6 against one
+#     frozen copy, and the row it is quoted in (`FEATURE_PARITY.md` row 11) cites these numbers.
+#     Its own cache is keyed by (compiler sha256, file hash, declaration), so a new compiler
+#     re-measures rather than replaying: 1,356 compiler processes this run, 1,011 of them
+#     answered from the cache because an earlier run in this round already used this compiler
+#     and the files it answers about had not changed.
+#
+#   THE ARTIFACT MEASURED
+#     plugin classes : idea-plugin\build\classes   171 file(s)
+#                      tree digest 0398d046675732c7784b281611aff6df5fea0d41ca0fe64c4c8e17047e175ca3
+#     the jar        : idea-plugin\dist\vela\lib\vela-idea-plugin.jar   391,263 bytes
+#                      sha256 3ff8091cfec5a8936f38f4ca62e41396799a528177b8075adec4b067250435a7
+#
+#   the compiler -- FROZEN, the same copy `rename-writeback-0.1.6-*.txt` used
+#     %TEMP%\vela-writeback-vm\vm.exe            905,216 bytes
+#       sha256 feeb0271a3249dc61b7010ffea5b10e8dad826f63d93bd3b77f8eeb7d2e3e0ca
+#     %TEMP%\vela-writeback-vm\LLVM-C.dll     74,159,616 bytes
+#       sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe
+#
+#   the corpus -- the same moving corpus, stated rather than smoothed over
+#     318 files over tests, examples, ide-demo, selfhost/parts, bench and selfhost/vela.vel;
+#     `tests\` belongs to another track and was being added to while this round ran, so this
+#     run judged 853 declarations where the 0.1.5 run judged 828.  The corpus digest taken
+#     immediately after the run is
+#       2bde0dd2cff129ac5ae2217787481faa2b109f894bd1e6664f81bd250e121e42
+#
+#   the tool
+#     idea-plugin\tools\harness\src\RenameOracle.java   59,740 bytes
+#       sha256 d291d6f07da3336dfe7f570f65b38bde5385e005d8379177d388efd1ad766cfe
+#       (unchanged this round: `git status -- idea-plugin/tools` lists only the NEW
+#        `RenameWriteback.java`, so these numbers are the committed tool's)
+#     WHAT IT IS: it never reads a diagnostic to decide what it means.  `vm.exe check` prints a
+#     line number and no column, so each occurrence is isolated by renaming the declaration and
+#     every candidate *except* that one: with the basis guard having proved that renaming the
+#     whole set compiles, a refusal can only be an occurrence the compiler binds.  That is the
+#     authority for the two directions `FEATURE_PARITY.md` rows 11 and 12 need -- MISSED (a
+#     bound use the table lacks) and WRONG-SCOPE (a claim that belongs to another declaration of
+#     the same name).
+#
+#   how to reproduce
+#     powershell -ExecutionPolicy Bypass -File idea-plugin\harness.ps1 -Tool RenameOracle `
+#         -FrozenVm <the 905,216-byte vm.exe above>
+#     (the tool's own log: idea-plugin\build\tools\harness\classes\RenameOracle.log)
+#
+#   the verdict, verbatim, and the coverage triple
+#     judged declarations : 853
+#     bound uses (compiler) : 2,855      claimed uses (plugin) : 2,859
+#     MISSED (bound, not claimed) : 0    WRONG-SCOPE (claimed, bound to another) : 0
+#     NOT-REQUIRED (claimed, compiler silent) : 4   (unprovable, counted, never called wrong)
+#     wrong declarations  : 0
+#     VERDICT: for every one of the 853 judged declaration(s), the reference table names exactly
+#     the 2855 use(s) the compiler binds and nothing else, and renaming them produces a program
+#     the compiler accepts
+#     COVERAGE: ran 853 / skipped 5543 (compiler-refused 5363, too-large 0, missing-corpus-file 0,
+#     compiler-silent 29, not-attributable 151, unverified-lines 0, unverifiable-basis 0,
+#     too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+#     exit 0
+#
+#   ONE THING THIS FILE DOES NOT SHOW, because it is about the tool rather than the plugin
+#     `NOT-REQUIRED 4` is the unprovable class: the table claims an occurrence, the compiler
+#     requires nothing there, and no other declaration of that name is required at it either.
+#     Two shapes are inside it, and both are printed in the log rather than counted away: a
+#     struct's name in an immutable binding's annotation (`b: P = a`, which `check` does not
+#     resolve at all) and a shadowed inner declaration's own use (where renaming the inner
+#     declaration alone leaves the use rebinding to the outer, same-typed one -- so the compiler
+#     cannot see the difference).  This tool counts those and does not call them wrong, which
+#     means it cannot tell a correct claim of that shape from an incorrect one.  That limit is
+#     inherited by every row that cites this file.
+#
+#   the raw log of the run, verbatim, from here down
+# ---------------------------------------------------------------------------------------------
+
+
+=== Preconditions
+    repo root     : C:\Users\lu\Downloads\vela
+    JDK           : D:\JetBrains\IntelliJ IDEA 2026.2.1
+    tools         : RenameOracle
+    using the frozen compiler already at C:\Users\lu\AppData\Local\Temp\dsh-8YjBG0\vela-writeback-vm\vm.exe (-Refreeze to replace it)
+    frozen compiler: 905216 bytes  sha256 feeb0271a3249dc61b7010ffea5b10e8dad826f63d93bd3b77f8eeb7d2e3e0ca
+    tree   compiler: 906240 bytes  sha256 7cd79c64a5086e44803f4bd27330cec4d8fc4282aba721d5ae90a2bc0b0681a4
+
+=== Compile the harness against the plugin classes
+    plugin classes snapshotted: 171 file(s) -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\classes-snapshot-35304 (a concurrent build-offline.ps1 cannot disturb this run)
+powershell.exe : javac.exe : C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:601: ����: [
+removal] Inspecti
+At line:1 char:493
++ ... TEXITCODE"; & powershell -NoProfile -ExecutionPolicy Bypass -File (Jo ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (javac.exe : C:\...moval] Inspecti:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+onManager �е� createNewGlobalContext(boolean) �ѹ�ʱ, �ұ��Ϊ��ɾ��
+At C:\Users\lu\Downloads\vela\idea-plugin\harness.ps1:302 char:1
++ & $javac ('@' + $javacArgsFile) 2>&1 | Tee-Object -FilePath (Join-Pat ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\lu\Dow...ѹ�ʱ, �ұ��Ϊ��ɾ��:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+        public com.intellij.codeInspection.GlobalInspectionContext createNewGlobalContext(boolean b) {
+                                                                   ^
+C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:624: ����: [removal] InspectionManager �е
+� createProblemDescriptor(@org.jetbrains.annotations.NotNull PsiElement,@org.jetbrains.annotations.NotNull @com.intelli
+j.codeInspection.util.InspectionMessage String,@org.jetbrains.annotations.NotNull LocalQuickFix @org.jetbrains.annotati
+ons.Nullable [],@org.jetbrains.annotations.NotNull ProblemHighlightType,boolean) �ѹ�ʱ, �ұ��Ϊ��ɾ��
+        public com.intellij.codeInspection.ProblemDescriptor createProblemDescriptor(
+                                                             ^
+C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:618: ����: [removal] InspectionManager �е
+� createProblemDescriptor(@org.jetbrains.annotations.NotNull PsiElement,@org.jetbrains.annotations.NotNull @com.intelli
+j.codeInspection.util.InspectionMessage String,@org.jetbrains.annotations.NotNull LocalQuickFix @org.jetbrains.annotati
+ons.Nullable [],@org.jetbrains.annotations.NotNull ProblemHighlightType) �ѹ�ʱ, �ұ��Ϊ��ɾ��
+        public com.intellij.codeInspection.ProblemDescriptor createProblemDescriptor(
+                                                             ^
+ע: C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.javaʹ�û򸲸����ѹ�ʱ�� API��
+ע: �й���ϸ��Ϣ, ��ʹ�� -Xlint:deprecation ���±��롣
+3 ������
+    21 source file(s) -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes (74 class file(s))
+    javac driven from an @argfile (1704 bytes, over the 32 767-character limit)
+
+=== RenameOracle
+== RenameOracle: find-usages and rename, against the compiler ==
+oracle   : one `vm.exe check` per candidate occurrence, so which occurrence
+           the compiler binds is measured rather than inferred from the line
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-8YjBG0\vela-writeback-vm\vm.exe (905216 bytes, sha256 feeb0271a3249dc61b7010ffea5b10e8dad826f63d93bd3b77f8eeb7d2e3e0ca)
+plugin   : VelaReferences.referenceTargetAt(text, leafStart, leafEnd), asked once
+           per IDENTIFIER leaf -- the same call the reference provider makes
+corpus   : 318 file(s); skipped if over 2097152 bytes
+threads  : 8
+cache    : C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\rename-oracle.txt
+
+== per kind: declarations judged, and use-level numbers ==
+kind            decls   bound   claimed  missed  wrong-scope wrong decls
+----------------  ------  ------  -------  ------  ----------  -----------
+field           29      183     183      0       0           0
+function        120     473     473      0       0           0
+local           408     1324    1324     0       0           0
+loop variable   56      103     103      0       0           0
+method          10      12      12       0       0           0
+parameter       225     752     752      0       0           0
+struct          5       8       12       0       0           0
+
+  judged declarations     : 853
+  bound uses (compiler)   : 2855
+  claimed uses (plugin)   : 2859
+  MISSED (bound, not claimed)              : 0
+  WRONG-SCOPE (claimed, bound to another)  : 0
+  NOT-REQUIRED (claimed, compiler silent)  : 4   (unprovable, counted, never called wrong)
+  wrong declarations      : 0
+  the plugin's rename compiled : 853 of 853 judged declaration(s)
+  compiler processes      : 1356 in this run, 1011 declaration(s) answered from the cache (36 s, 8 threads)
+
+== every declaration that is not judged, and why ==
+  compiler-refused 5363, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 151, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0
+  tests/accept/closure_escaping_refused.vel: `vm.exe check` refuses this file, so its 4 declaration(s) are not judged: vela: syntax error: expected '{' to open a block, found '('
+  tests/accept/closure_fn_parameter.vel: `vm.exe check` refuses this file, so its 5 declaration(s) are not judged: vela: syntax error: expected ')' after the parameters
+  tests/accept/closure_lambda_as_argument.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: expected ')' after the parameters
+  tests/accept/closure_lambda_local.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found '('
+  tests/accept/enum_binding_arity.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Shape'
+  tests/accept/enum_duplicate_arm.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Color'
+  tests/accept/enum_else_not_last.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Color'
+  tests/accept/enum_exhaustive_switch.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Op'
+  tests/accept/enum_in_array.vel: `vm.exe check` refuses this file, so its 6 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Slot'
+  tests/accept/enum_match_non_enum.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Color'
+  tests/accept/enum_match_no_else.vel: `vm.exe check` refuses this file, so its 4 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Color'
+  tests/accept/enum_missing_variant.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Color'
+  tests/accept/enum_nested_pattern.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Inner'
+  tests/accept/enum_payload_bind.vel: `vm.exe check` refuses this file, so its 6 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Shape'
+  tests/accept/enum_self_payload.vel: `vm.exe check` refuses this file, so its 2 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Tree'
+  tests/accept/enum_unknown_variant.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'Shape'
+  tests/accept/generics_identity.vel: `vm.exe check` refuses this file, so its 1 declaration(s) are not judged: vela: syntax error: expected '(' after the function name
+  tests/accept/generics_infinite_monomorph.vel: `vm.exe check` refuses this file, so its 1 declaration(s) are not judged: vela: syntax error: expected '(' after the function name
+  tests/accept/generics_struct.vel: `vm.exe check` refuses this file, so its 6 declaration(s) are not judged: vela: syntax error: expected '{' to open a block, found '['
+  tests/accept/generics_type_arg_arity.vel: `vm.exe check` refuses this file, so its 1 declaration(s) are not judged: vela: syntax error: expected '(' after the function name
+  tests/accept/iterate_forin_array.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: this front end iterates range(...) only
+  tests/accept/iterate_forin_array_of_structs.vel: `vm.exe check` refuses this file, so its 6 declaration(s) are not judged: vela: syntax error: this front end iterates range(...) only
+  tests/accept/iterate_forin_not_iterable.vel: `vm.exe check` refuses this file, so its 1 declaration(s) are not judged: vela: syntax error: this front end iterates range(...) only
+  tests/accept/modules/mathlib.vel: `vm.exe check` refuses this file, so its 6 declaration(s) are not judged: vela: type error: no 'main' function
+  tests/accept/modules/module_cycle_a.vel: `vm.exe check` refuses this file, so its 1 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'module_cycle_b'
+  tests/accept/modules/module_cycle_b.vel: `vm.exe check` refuses this file, so its 1 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'module_cycle_a'
+  tests/accept/modules/module_import_from.vel: `vm.exe check` refuses this file, so its 1 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'mathlib'
+  tests/accept/modules/module_import_missing.vel: `vm.exe check` refuses this file, so its 1 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'nosuchmodule'
+  tests/accept/modules/module_import_qualified.vel: `vm.exe check` refuses this file, so its 1 declaration(s) are not judged: vela: syntax error: expected a newline between statements, found 'mathlib'
+  tests/accept/modules/module_import_reserved_name.vel:12 `main` (function): not judged [not-attributable]
+
+== every wrong declaration, in full ==
+  (none)
+
+== claimed references the compiler never requires (unprovable) ==
+  tests/build/struct_value_semantics.vel:1 `P` (struct): the table claims line 7 (offset 73), and no declaration in this file is required by the compiler to be renamed there.  The compiler's silence is not a denial: it either does not resolve that position at all (see the header on `b: P = a`) or it cannot see the difference (a shadowed name, where renaming either declaration leaves the program compiling), so this tool counts the occurrence and does not judge it
+  tests/llvm-shapes/struct_return.vel:1 `P` (struct): the table claims line 4 (offset 35), line 8 (offset 85), and no declaration in this file is required by the compiler to be renamed there.  The compiler's silence is not a denial: it either does not resolve that position at all (see the header on `b: P = a`) or it cannot see the difference (a shadowed name, where renaming either declaration leaves the program compiling), so this tool counts the occurrence and does not judge it
+  tests/llvm-shapes/str_in_struct.vel:1 `P` (struct): the table claims line 6 (offset 66), and no declaration in this file is required by the compiler to be renamed there.  The compiler's silence is not a denial: it either does not resolve that position at all (see the header on `b: P = a`) or it cannot see the difference (a shadowed name, where renaming either declaration leaves the program compiling), so this tool counts the occurrence and does not judge it
+
+VERDICT: for every one of the 853 judged declaration(s), the reference table names exactly the 2855 use(s) the compiler binds and nothing else, and renaming them produces a program the compiler accepts
+COVERAGE: ran 853 / skipped 5543 (compiler-refused 5363, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 151, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\RenameOracle.log
+
+=== Coverage
+    the measurement behind every verdict above, one line per tool:
+  RenameOracle   exit 0   COVERAGE: ran 853 / skipped 5543 (compiler-refused 5363, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 151, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+
+    the verdict each tool reached:
+  RenameOracle   VERDICT: for every one of the 853 judged declaration(s), the reference table names exactly the 2855 use(s) the compiler binds and nothing else, and renaming them produces a program the compiler accepts  [exit 0, wrong 0]
+
+=== Verdict vs exit vs coverage
+    the three things a reader has to reconcile, per tool; only disagreements are shown:
+      (none: each tool's verdict, exit code and wrong count agree)
+
+=== Done
+    frozen compiler : C:\Users\lu\AppData\Local\Temp\dsh-8YjBG0\vela-writeback-vm\vm.exe (905216 bytes, sha256 feeb0271a3249dc61b7010ffea5b10e8dad826f63d93bd3b77f8eeb7d2e3e0ca)
+    logs            : C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes

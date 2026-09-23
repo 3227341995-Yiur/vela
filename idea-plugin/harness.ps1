@@ -155,7 +155,8 @@ $javac = Join-Path $best 'jbr\bin\javac.exe'
 foreach ($t in @($java, $javac)) { if (-not (Test-Path -LiteralPath $t)) { Die "missing: $t" } }
 
 $TOOLS = @('GotoOracle', 'HintDiff', 'HintNames', 'HintShapes', 'HintDupes', 'SymbolDiff', 'FoldDiff',
-           'FeatureProbe', 'ParamNames', 'HintTruth', 'HoverTruth', 'RenameOracle', 'InspectionProbe')
+           'FeatureProbe', 'ParamNames', 'HintTruth', 'HoverTruth', 'RenameOracle', 'InspectionProbe',
+           'RenameWriteback')
 if ($Tool -eq 'All') { $run = $TOOLS }
 else {
     if ($TOOLS -notcontains $Tool) { Die "-Tool must be one of: $($TOOLS -join ', '), All" }
@@ -372,6 +373,21 @@ foreach ($t in $run) {
             # compiler itself refuses on that line.
             $a += @('--vm', $FrozenVm)
             if ($Single) { $a += @('--single', $Single) }
+        }
+        'RenameWriteback' {
+            # The rename write-back, read back from disk: it drives the plugin's own
+            # `VelaReferenceContributor` -> `VelaReference.handleElementRename` path and
+            # `VelaLeafManipulator.handleContentChange`, writes into a real document, reads
+            # the file back and holds it to the compiler.  `--vm` is not optional for the
+            # same reason it is not for `InspectionProbe`: the compiler is the falsification.
+            $a += @('--vm', $FrozenVm)
+            # `--control` ALWAYS, because a comparator that cannot fire says nothing with its
+            # zeros: it asks the same comparison to catch a reference deliberately left
+            # unwritten and an unrelated identifier deliberately rewritten, on a real corpus
+            # declaration, and exits 3 if either is missed.
+            $a += '--control'
+            if ($Single) { $a += @('--single', $Single) }
+            if ($HarnessDebug) { $a += '--debug' }
         }
         'HintShapes' {
             if ($Shapes) { $a = @($t, '--shapes') }

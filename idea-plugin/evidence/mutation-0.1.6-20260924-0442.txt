@@ -1,0 +1,201 @@
+# mutation-test.ps1 against the 0.1.6 jar -- the proof that VerifyPlugin CAN fail
+#
+#   plugin version : 0.1.6   (src\main\resources\META-INF\plugin.xml `<version>0.1.6</version>`)
+#   written        : 2026-09-24T04:50+08:00   (the run's own timestamp is 2026-09-24T04:42:29+08:00)
+#   git HEAD       : e119a8a  llvm: every local array was allocated with a size of zero
+#
+#   THE JAR TESTED, named with the three things that identify it
+#     name : idea-plugin\dist\vela\lib\vela-idea-plugin.jar
+#     size : 391,263 bytes
+#     hash : sha256 3ff8091cfec5a8936f38f4ca62e41396799a528177b8075adec4b067250435a7
+#     (the install file around it is idea-plugin\dist\vela-idea-plugin-0.1.6.zip, 367,630 bytes)
+#     It was built from the current sources by `build-offline.ps1` at 04:40 that same day, which
+#     ended `RESULT: PASS`, and the class tree it produced
+#     (`build\classes`, 171 files, digest 0398d046675732c7784b281611aff6df5fea0d41ca0fe64c4c8e17047e175ca3)
+#     is byte-identical to the tree every other measurement in this round used.  So "the jar
+#     built from the current source" is not a claim here: it is the same bytes the rename
+#     write-back, the negative control and the build's own verifier each looked at.
+#
+#   why this file is dated 0.1.6 and not 0.1.5
+#     `evidence\mutation-0.1.5-raw.txt` describes the 0.1.5 jar, and the tree has said 0.1.6
+#     since the inspections round.  A mutation result whose version disagrees with the
+#     descriptor is a result about an artifact nobody can name, so it was re-run rather than
+#     relabelled -- the point of a mutation test is *which* artifact it broke.
+#
+#   the command
+#     powershell -NoProfile -ExecutionPolicy Bypass -File idea-plugin\mutation-test.ps1
+#     (default jar; the published report and the 13 per-mutant verifier logs are in
+#      idea-plugin\build\verify\mutation-0.1.6\, whose report header carries the version, the
+#      jar's sha256 and the run's time)
+#
+#   the result, verbatim
+#     baseline (no mutation)             : RESULT: PASS - all structural, bytecode, platform,
+#                                          registration, linkage and behavioural checks passed
+#     baseline environment failures      : 0 (smoke/parity/contract: the C toolchain, flaky
+#                                          under concurrent builds)
+#     mutants: 13   caught: 12   holes: 0   controls correct: 1   script/verdict problems: 0
+#     exit 0
+#     A HOLE would be a mutant the verifier did not catch; the single mutant that produced no
+#     failure at all (`equivalent_xmlComment`) is the control, which is required not to fail.
+#     THE KNOWN HOLE IS STILL THE SAME ONE AND IS STILL OPEN: `classRegisteredNowhere` is caught
+#     for the contract families the verifier knows (it reads the installed platform's own
+#     descriptors), and a class implementing a contract no installed extension point declares
+#     and registered nowhere has no list to be checked against.  The count of such classes in
+#     this build is 0 -- which is a fact about this build, not about the check.
+#
+#   the raw output of the run, verbatim, from here down
+# ---------------------------------------------------------------------------------------------
+
+
+=== Toolchain
+    plugin jar   : C:\Users\lu\Downloads\vela\idea-plugin\dist\vela\lib\vela-idea-plugin.jar
+    repo root    : C:\Users\lu\Downloads\vela
+    scratch root : C:\Users\lu\AppData\Local\Temp\dsh-8YjBG0\vela-mutation
+    JDK          : D:\JetBrains\IntelliJ IDEA 2026.2.1\jbr
+    classpath    : C:\Users\lu\Downloads\vela\idea-plugin\build\args\platform-classpath.txt
+
+=== 1/4  Compile the verifier from the tree (not from a stale class file)
+    VerifyPlugin + JarTool -> C:\Users\lu\AppData\Local\Temp\dsh-8YjBG0\vela-mutation\tools
+    plugin version: 0.1.6
+    descriptor encoding round-trips byte-for-byte through UTF-8 (mutations are exact)
+
+=== 2/4  Baseline (no mutation): the verifier must reproduce its verdict on the tree as built
+    verdict   : RESULT: PASS - all structural, bytecode, platform, registration, linkage and behavioural checks passed
+    log       : C:\Users\lu\AppData\Local\Temp\dsh-8YjBG0\vela-mutation\logs\baseline.log
+
+=== 3/4  Mutants
+
+  --- wrongAttribute_referenceContributor
+    why: psi.referenceContributor spelled implementationClass instead of implementation (the silent no-op the verifier once accepted)
+      FAIL plugin.xml registers <psi.referenceContributor implementationClass="dev.vela.plugin.VelaReferenceContributor"/> but the platform's declaration of com.intellij.psi.referenceContributor names the class with [implementation], not "implementationClass" [check registrationAttributes].  The attribute is not bound to anything, so the class is never read: the extension loads, does nothing, and reports no error.
+      -> CAUGHT
+    also failed, beyond the baseline: plugin.xml registers <psi.referenceContributor implementationClass="dev.vela.plugin.VelaReferenceContributor"/> but the platform's declaration of com.intellij.psi.referenceContributor names the class with [implementation], not "implementationClass" [check registrationAttributes].  The attribute is not bound to anything, so the class is never read: the extension loads, does nothing, and reports no error.
+
+  --- wrongAttribute_liveTemplateContext
+    why: liveTemplateContext (beanClass point, binds implementation) spelled implementationClass
+      FAIL plugin.xml registers <liveTemplateContext implementationClass="dev.vela.plugin.VelaTemplateContextType"/> but the platform's declaration of com.intellij.liveTemplateContext names the class with [implementation], not "implementationClass" [check registrationAttributes].  The attribute is not bound to anything, so the class is never read: the extension loads, does nothing, and reports no error.
+      -> CAUGHT
+    also failed, beyond the baseline: plugin.xml registers <liveTemplateContext implementationClass="dev.vela.plugin.VelaTemplateContextType"/> but the platform's declaration of com.intellij.liveTemplateContext names the class with [implementation], not "implementationClass" [check registrationAttributes].  The attribute is not bound to anything, so the class is never read: the extension loads, does nothing, and reports no error.
+
+  --- classNotInJar
+    why: a registration names a class that is in no class file
+      FAIL plugin.xml lang.findUsagesProvider/implementationClass -> dev.vela.plugin.VelaFindUsagesProviderTypo : NO CLASS FILE (dev/vela/plugin/VelaFindUsagesProviderTypo.class)
+      FAIL dev.vela.plugin.VelaFindUsagesProviderTypo did not load: java.lang.ClassNotFoundException: dev.vela.plugin.VelaFindUsagesProviderTypo
+      FAIL the parity program does not build: vela: build: runtime C:\Users\lu\Downloads\vela\selfhost\build/../../runtime (vela_runtime.h found)  [check parity: the fixture is subtraction, indexing and a += loop]
+      FAIL dev.vela.plugin.VelaFindUsagesProvider implements com.intellij.lang.findUsages.FindUsagesProvider, a contract the installed platform's own extension points register, and no registration and no class file names it other than itself [check unregisteredImplementations].  The class compiles, it ships in the jar, and nothing can call it: the feature it implements never runs and the platform reports nothing.  This is the failure this plugin has already shipped three times -- VelaSemanticAnnotator, VelaReferenceContributor and VelaParameterNameInlayHintsProvider were each finished, correct and left unreferenced until a registration line was added.
+      -> CAUGHT
+    also failed, beyond the baseline: plugin.xml lang.findUsagesProvider/implementationClass -> dev.vela.plugin.VelaFindUsagesProviderTypo : NO CLASS FILE (dev/vela/plugin/VelaFindUsagesProviderTypo.class) ;; dev.vela.plugin.VelaFindUsagesProviderTypo did not load: java.lang.ClassNotFoundException: dev.vela.plugin.VelaFindUsagesProviderTypo ;; dev.vela.plugin.VelaFindUsagesProvider implements com.intellij.lang.findUsages.FindUsagesProvider, a contract the installed platform's own extension points register, and no registration and no class file names it other than itself [check unregisteredImplementations].  The class compiles, it ships in the jar, and nothing can call it: the feature it implements never runs and the platform reports nothing.  This is the failure this plugin has already shipped three times -- VelaSemanticAnnotator, VelaReferenceContributor and VelaParameterNameInlayHintsProvider were each finished, correct and left unreferenced until a registration line was added.
+    environment/flaky failures: 1 (not used as evidence)
+
+  --- classRegisteredNowhere
+    why: the inlay provider compiles and is registered nowhere (the inert feature, third time)
+      FAIL dev.vela.plugin.VelaParameterNameInlayHintsProvider implements com.intellij.codeInsight.hints.InlayHintsProvider, a contract the installed platform's own extension points register, and no registration and no class file names it other than itself [check unregisteredImplementations].  The class compiles, it ships in the jar, and nothing can call it: the feature it implements never runs and the platform reports nothing.  This is the failure this plugin has already shipped three times -- VelaSemanticAnnotator, VelaReferenceContributor and VelaParameterNameInlayHintsProvider were each finished, correct and left unreferenced until a registration line was added.
+      -> CAUGHT
+    also failed, beyond the baseline: dev.vela.plugin.VelaParameterNameInlayHintsProvider implements com.intellij.codeInsight.hints.InlayHintsProvider, a contract the installed platform's own extension points register, and no registration and no class file names it other than itself [check unregisteredImplementations].  The class compiles, it ships in the jar, and nothing can call it: the feature it implements never runs and the platform reports nothing.  This is the failure this plugin has already shipped three times -- VelaSemanticAnnotator, VelaReferenceContributor and VelaParameterNameInlayHintsProvider were each finished, correct and left unreferenced until a registration line was added.
+
+  --- fileTypeLosesVel
+    why: the file type stops claiming the .vel suffix (exactly what 0.1.0 shipped)
+      FAIL <fileType extensions="vela"> does not claim "vel".  Every Vela file in this repository ends in .vel, so the plugin does nothing on a real file  --  this is exactly what shipped in 0.1.0 (extensions="vela" only).
+      -> CAUGHT
+    also failed, beyond the baseline: <fileType extensions="vela"> does not claim "vel".  Every Vela file in this repository ends in .vel, so the plugin does nothing on a real file  --  this is exactly what shipped in 0.1.0 (extensions="vela" only).
+
+  --- addToGroupUnknownGroup
+    why: add-to-group names a group id that does not exist
+      FAIL add-to-group group-id="NewGroupNoSuch" is not an action or group id the installed platform defines, and this plugin does not declare it: the platform resolves it to an ActionStub, which is what 0.1.0 did with "Vela.BuildAndRun".
+      -> CAUGHT
+    also failed, beyond the baseline: add-to-group group-id="NewGroupNoSuch" is not an action or group id the installed platform defines, and this plugin does not declare it: the platform resolves it to an ActionStub, which is what 0.1.0 did with "Vela.BuildAndRun".
+
+  --- addToGroupNamesAnAction
+    why: add-to-group group-id names an <action> in this plugin.xml (the 0.1.0 SEVERE)
+      FAIL add-to-group group-id="Vela.NewFile" names an <action> in this plugin.xml, not a <group>.  The platform resolves it to an ActionStub and logs "SEVERE ... should be instance of DefaultActionGroup", and the action never reaches a menu  --  the 0.1.0 bug, exactly.
+      -> CAUGHT
+    also failed, beyond the baseline: add-to-group group-id="Vela.NewFile" names an <action> in this plugin.xml, not a <group>.  The platform resolves it to an ActionStub and logs "SEVERE ... should be instance of DefaultActionGroup", and the action never reaches a menu  --  the 0.1.0 bug, exactly.
+
+  --- extensionPointUnknownId
+    why: a registration uses an extension point id no installed descriptor declares (silent no-op)
+      FAIL plugin.xml registers <lang.commenterX> (extension point "com.intellij.lang.commenterX"), which no installed descriptor declares or uses. Registration is a silent no-op.
+      -> CAUGHT
+    also failed, beyond the baseline: plugin.xml registers <lang.commenterX> (extension point "com.intellij.lang.commenterX"), which no installed descriptor declares or uses. Registration is a silent no-op.
+
+  --- parserDefinitionWithoutLangPrefix
+    why: lang.parserDefinition written without the lang. prefix, which names a point that does not exist
+      FAIL plugin.xml registers <parserDefinition> but the installed platform declares that extension point as "com.intellij.lang.parserDefinition"  --  <parserDefinition> names the id "com.intellij.parserDefinition", which no installed descriptor declares.  Registration is a silent no-op: the IDE logs nothing useful and the feature never fires.
+      -> CAUGHT
+    also failed, beyond the baseline: plugin.xml registers <parserDefinition> but the installed platform declares that extension point as "com.intellij.lang.parserDefinition"  --  <parserDefinition> names the id "com.intellij.parserDefinition", which no installed descriptor declares.  Registration is a silent no-op: the IDE logs nothing useful and the feature never fires.
+
+  --- versionDriftsFromGradle
+    why: build.gradle.kts disagrees with plugin.xml about the version
+      FAIL version drift [check versionDiscipline]: plugin.xml says "0.1.6" and build.gradle.kts says "9.9.9".  The rule is one number, bumped in every place it appears.
+      -> CAUGHT
+    also failed, beyond the baseline: version drift [check versionDiscipline]: plugin.xml says "0.1.6" and build.gradle.kts says "9.9.9".  The rule is one number, bumped in every place it appears.
+
+  --- versionBumpedOnlyInDescriptor
+    why: the version in plugin.xml is bumped and nothing else follows (dist zip and changelog left behind)
+      FAIL version drift [check versionDiscipline]: plugin.xml says "9.9.9" and build.gradle.kts says "0.1.6".  The rule is one number, bumped in every place it appears.
+      FAIL no dist file named for this version [check versionDiscipline]: expected vela-idea-plugin-9.9.9.zip and dist holds [vela-idea-plugin-0.1.1.zip, vela-idea-plugin-0.1.3.zip, vela-idea-plugin-0.1.4.zip, vela-idea-plugin-0.1.5.zip, vela-idea-plugin-0.1.6.zip].  A zip whose name disagrees with <version> is one someone installs believing it is a different build.
+      FAIL CHANGELOG.md has no heading for version 9.9.9 [check versionDiscipline]: the bump is recorded nowhere, which is the entry the user asked for.
+      -> CAUGHT
+    also failed, beyond the baseline: version drift [check versionDiscipline]: plugin.xml says "9.9.9" and build.gradle.kts says "0.1.6".  The rule is one number, bumped in every place it appears. ;; no dist file named for this version [check versionDiscipline]: expected vela-idea-plugin-9.9.9.zip and dist holds [vela-idea-plugin-0.1.1.zip, vela-idea-plugin-0.1.3.zip, vela-idea-plugin-0.1.4.zip, vela-idea-plugin-0.1.5.zip, vela-idea-plugin-0.1.6.zip].  A zip whose name disagrees with <version> is one someone installs believing it is a different build. ;; CHANGELOG.md has no heading for version 9.9.9 [check versionDiscipline]: the bump is recorded nowhere, which is the entry the user asked for.
+
+  --- changelogHasNoSection
+    why: the changelog has no entry for the version plugin.xml carries
+      FAIL CHANGELOG.md has no heading for version 0.1.6 [check versionDiscipline]: the bump is recorded nowhere, which is the entry the user asked for.
+      -> CAUGHT
+    also failed, beyond the baseline: CHANGELOG.md has no heading for version 0.1.6 [check versionDiscipline]: the bump is recorded nowhere, which is the entry the user asked for.
+
+  --- equivalent_xmlComment
+    why: CONTROL: a comment inside <extensions> changes no behaviour, so the verifier must NOT fail
+      -> NOT-CAUGHT (correct: equivalent)
+
+=== 4/4  The table
+mutant                              | expected failure                                         | actual verdict              | log
+------------------------------------+----------------------------------------------------------+-----------------------------+----
+wrongAttribute_referenceContributor | names the class with & \[check registrationAttributes... | CAUGHT                      | wrongAttribute_referenceContributor.log
+wrongAttribute_liveTemplateContext  | names the class with & \[check registrationAttributes... | CAUGHT                      | wrongAttribute_liveTemplateContext.log
+classNotInJar                       | NO CLASS FILE & VelaFindUsagesProviderTypo               | CAUGHT                      | classNotInJar.log
+classRegisteredNowhere              | \[check unregisteredImplementations\] & VelaParameter... | CAUGHT                      | classRegisteredNowhere.log
+fileTypeLosesVel                    | does not claim "vel" & extensions="vela"                 | CAUGHT                      | fileTypeLosesVel.log
+addToGroupUnknownGroup              | is not an action or group id the installed platform d... | CAUGHT                      | addToGroupUnknownGroup.log
+addToGroupNamesAnAction             | names an <action> in this plugin.xml, not a & Vela\.N... | CAUGHT                      | addToGroupNamesAnAction.log
+extensionPointUnknownId             | which no installed descriptor declares or uses & lang... | CAUGHT                      | extensionPointUnknownId.log
+parserDefinitionWithoutLangPrefix   | declares that extension point as "com\.intellij\.lang... | CAUGHT                      | parserDefinitionWithoutLangPrefix.log
+versionDriftsFromGradle             | version drift & 9\.9\.9 & build\.gradle\.kts             | CAUGHT                      | versionDriftsFromGradle.log
+versionBumpedOnlyInDescriptor       | version drift & no dist file named for this version &... | CAUGHT                      | versionBumpedOnlyInDescriptor.log
+changelogHasNoSection               | has no heading for version & \[check versionDiscipline\] | CAUGHT                      | changelogHasNoSection.log
+equivalent_xmlComment               | (none: control)                                          | NOT-CAUGHT (correct: equivalent) | equivalent_xmlComment.log
+
+the message each mutant used:
+  wrongAttribute_referenceContributor
+      plugin.xml registers <psi.referenceContributor implementationClass="dev.vela.plugin.VelaReferenceContributor"/> but the platform's declaration of com.intellij.psi.referenceContributor names the class with [implementation], not "implementationClass" [check registrationAttributes]. The attribute is not bound to anything, so the class is never read: the extension loads, does nothing, and reports no error.
+  wrongAttribute_liveTemplateContext
+      plugin.xml registers <liveTemplateContext implementationClass="dev.vela.plugin.VelaTemplateContextType"/> but the platform's declaration of com.intellij.liveTemplateContext names the class with [implementation], not "implementationClass" [check registrationAttributes]. The attribute is not bound to anything, so the class is never read: the extension loads, does nothing, and reports no error.
+  classNotInJar
+      plugin.xml lang.findUsagesProvider/implementationClass -> dev.vela.plugin.VelaFindUsagesProviderTypo : NO CLASS FILE (dev/vela/plugin/VelaFindUsagesProviderTypo.class) ;; dev.vela.plugin.VelaFindUsagesProviderTypo did not load: java.lang.ClassNotFoundException: dev.vela.plugin.VelaFindUsagesProviderTypo ;; dev.vela.plugin.VelaFindUsagesProvider implements com.intellij.lang.findUsages.FindUsagesProvider, a contract the installed platform's own extension points register, and no registration and no class file names it other than itself [check unregisteredImplementations]. The class compiles, it ships in the jar, and nothing can call it: the feature it implements never runs and the platform reports nothing. This is the failure this plugin has already shipped three times -- VelaSemanticAnnotator, VelaReferenceContributor and VelaParameterNameInlayHintsProvider were each finished, correct and left unreferenced until a registration line was added.
+  classRegisteredNowhere
+      dev.vela.plugin.VelaParameterNameInlayHintsProvider implements com.intellij.codeInsight.hints.InlayHintsProvider, a contract the installed platform's own extension points register, and no registration and no class file names it other than itself [check unregisteredImplementations]. The class compiles, it ships in the jar, and nothing can call it: the feature it implements never runs and the platform reports nothing. This is the failure this plugin has already shipped three times -- VelaSemanticAnnotator, VelaReferenceContributor and VelaParameterNameInlayHintsProvider were each finished, correct and left unreferenced until a registration line was added.
+  fileTypeLosesVel
+      <fileType extensions="vela"> does not claim "vel". Every Vela file in this repository ends in .vel, so the plugin does nothing on a real file -- this is exactly what shipped in 0.1.0 (extensions="vela" only).
+  addToGroupUnknownGroup
+      add-to-group group-id="NewGroupNoSuch" is not an action or group id the installed platform defines, and this plugin does not declare it: the platform resolves it to an ActionStub, which is what 0.1.0 did with "Vela.BuildAndRun".
+  addToGroupNamesAnAction
+      add-to-group group-id="Vela.NewFile" names an <action> in this plugin.xml, not a <group>. The platform resolves it to an ActionStub and logs "SEVERE ... should be instance of DefaultActionGroup", and the action never reaches a menu -- the 0.1.0 bug, exactly.
+  extensionPointUnknownId
+      plugin.xml registers <lang.commenterX> (extension point "com.intellij.lang.commenterX"), which no installed descriptor declares or uses. Registration is a silent no-op.
+  parserDefinitionWithoutLangPrefix
+      plugin.xml registers <parserDefinition> but the installed platform declares that extension point as "com.intellij.lang.parserDefinition" -- <parserDefinition> names the id "com.intellij.parserDefinition", which no installed descriptor declares. Registration is a silent no-op: the IDE logs nothing useful and the feature never fires.
+  versionDriftsFromGradle
+      version drift [check versionDiscipline]: plugin.xml says "0.1.6" and build.gradle.kts says "9.9.9". The rule is one number, bumped in every place it appears.
+  versionBumpedOnlyInDescriptor
+      version drift [check versionDiscipline]: plugin.xml says "9.9.9" and build.gradle.kts says "0.1.6". The rule is one number, bumped in every place it appears. ;; no dist file named for this version [check versionDiscipline]: expected vela-idea-plugin-9.9.9.zip and dist holds [vela-idea-plugin-0.1.1.zip, vela-idea-plugin-0.1.3.zip, vela-idea-plugin-0.1.4.zip, vela-idea-plugin-0.1.5.zip, vela-idea-plugin-0.1.6.zip]. A zip whose name disagrees with <version> is one someone installs believing it is a different build. ;; CHANGELOG.md has no heading for version 9.9.9 [check versionDiscipline]: the bump is recorded nowhere, which is the entry the user asked for.
+  changelogHasNoSection
+      CHANGELOG.md has no heading for version 0.1.6 [check versionDiscipline]: the bump is recorded nowhere, which is the entry the user asked for.
+  equivalent_xmlComment
+      (no failure at all, as required)
+
+baseline (no mutation)             : RESULT: PASS - all structural, bytecode, platform, registration, linkage and behavioural checks passed
+baseline environment failures      : 0 (smoke/parity/contract: the C toolchain, flaky under concurrent builds)
+mutants: 13   caught: 12   holes: 0   controls correct: 1   script/verdict problems: 0
+
+    full report: C:\Users\lu\AppData\Local\Temp\dsh-8YjBG0\vela-mutation\logs\mutation-report.txt
+    per-mutant verifier logs: C:\Users\lu\AppData\Local\Temp\dsh-8YjBG0\vela-mutation\logs
+    published          : C:\Users\lu\Downloads\vela\idea-plugin\build\verify\mutation-0.1.6 (mutation-report-0.1.6.txt + 13 per-mutant verifier log(s))

@@ -1,0 +1,278 @@
+# RenameWriteback -- the rename write-back, and find-usages with it, read back from disk
+#
+#   plugin version : 0.1.6   (src\main\resources\META-INF\plugin.xml `<version>0.1.6</version>`,
+#                    unchanged by this track: the measurement found no defect in the plugin)
+#   written        : 2026-09-24T04:45+08:00
+#   git HEAD       : e119a8a  llvm: every local array was allocated with a size of zero
+#                    (the plugin sources are committed; `git status -- idea-plugin/src` is clean)
+#
+#   THE ARTIFACT MEASURED, AND WHY IT IS THE JAR'S OWN CLASSES
+#
+#     plugin classes : idea-plugin\build\classes   171 file(s)
+#                      tree digest 0398d046675732c7784b281611aff6df5fea0d41ca0fe64c4c8e17047e175ca3
+#                      (sha256 over `path|sha256(file)` lines, sorted)
+#     the jar        : idea-plugin\dist\vela\lib\vela-idea-plugin.jar   391,263 bytes
+#                      sha256 3ff8091cfec5a8936f38f4ca62e41396799a528177b8075adec4b067250435a7
+#     install file   : idea-plugin\dist\vela-idea-plugin-0.1.6.zip      367,630 bytes
+#
+#     `build-offline.ps1` was re-run against the current sources (04:40, `RESULT: PASS`) and it
+#     produced classes with the SAME digest (0398d046...) and a jar with the SAME sha256
+#     (3ff8091c...).  The run below was then repeated against that rebuilt tree, so the classes
+#     these numbers were measured on are, byte for byte, the classes inside the jar the
+#     mutation run and the negative control then broke on purpose.
+#
+#   the compiler -- FROZEN, one copy for every number in this file
+#     %TEMP%\vela-writeback-vm\vm.exe            905,216 bytes
+#       sha256 feeb0271a3249dc61b7010ffea5b10e8dad826f63d93bd3b77f8eeb7d2e3e0ca
+#     %TEMP%\vela-writeback-vm\LLVM-C.dll     74,159,616 bytes
+#       sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe
+#     `vm.exe` does not start without the DLL beside it, and the tree's own
+#     selfhost\build\vm.exe was rebuilt by the compiler track at 04:20 while this round ran,
+#     so it was copied out once, up front, and every `check` below is against this one pair.
+#
+#   the corpus, AND WHY ITS SIZE MOVED DURING THE ROUND
+#     tests, examples, ide-demo, selfhost/parts, bench, selfhost/vela.vel
+#     318 files, digest 2bde0dd2cff129ac5ae2217787481faa2b109f894bd1e6664f81bd250e121e42
+#       (sha256 over `path|sha256(file)` lines, sorted; computed 2026-09-24T04:48+08:00,
+#        immediately after the run below)
+#     ANOTHER TRACK OWNS `tests\` AND WAS ADDING TO IT WHILE THIS TRACK RAN.  That is said
+#     rather than smoothed over, because it is visible in this tool's own numbers: three runs
+#     of the same tool over the same tree judged 768, then 770, then 782 declarations, and the
+#     corpus went 315 -> 318 files (`tests/safety/cases/_tmp_inner_first_probe.vel` appeared
+#     between the first two).  The numbers below are the THIRD run's, the one made after the
+#     jar was rebuilt; the digest above pins the corpus that run actually walked.
+#     Every edit happens to a COPY under %TEMP%: nothing under `tests\` or `selfhost\` is
+#     written by this track, and each copy's sha256 is compared with the bytes read before
+#     anything is edited.
+#
+#   the tool
+#     idea-plugin\tools\harness\src\RenameWriteback.java    95,758 bytes
+#       sha256 a66a0c94511d6557e73df5e5e586f1ef1140e655a70845ad3a2a486888b6e12e
+#     New in this round, and registered in `harness.ps1` as a fourteenth tool (it passes
+#     `--control` on every run).  WHAT IT DRIVES, PRECISELY:
+#     `VelaReferenceContributor` -> `VelaReferenceProvider` -> `VelaReference.resolve()` (which
+#     leaf is a usage of which declaration) and `VelaReference.handleElementRename` /
+#     `VelaLeafManipulator.handleContentChange` (the writes, in the platform's reverse-document
+#     order).  What the platform contributes is its *interfaces*: `PsiElement`, `PsiFile`,
+#     `Project` and `Document` are interfaces and are stood in for by `java.lang.reflect.Proxy`
+#     handlers, and `PsiDocumentManager` / `CommandProcessor` are abstract classes and are
+#     stood in for by subclasses.  Nothing in `dev.vela.plugin` is reimplemented.
+#     WHY THE DOCUMENT IS A STAND-IN, measured rather than assumed: the platform's own
+#     `DocumentImpl` refuses to write without a write-access guard extension point
+#     (`com.intellij.documentWriteAccessGuard`, declared by the core plugin, which a mock
+#     application does not load), then a `CommandProcessor`, then a `FileDocumentManager`, then
+#     a `ProgressManager` -- each one a NullPointerException inside the platform, not a result.
+#     WHAT THAT COSTS: the undo grouping is not exercised either.  Every range and every
+#     replacement character IS the plugin's, and each write is recorded with the range the
+#     plugin asked for, which is the sharper statement ("these characters at these ranges, once
+#     each") rather than "the file looks right".
+#
+#   how to reproduce
+#     powershell -ExecutionPolicy Bypass -File idea-plugin\harness.ps1 -Tool RenameWriteback `
+#         -FrozenVm <the 905,216-byte vm.exe above>
+#     (a single file: add -Single <path>; the tool's own log of the run below is
+#      idea-plugin\build\tools\harness\classes\RenameWriteback.log)
+#
+#   WHAT EACH ASSERTION IS
+#
+#     (a) every reference to the symbol in that file changed
+#           the write log: 2,457 writes for 782 declarations and 1,675 references -- the exact
+#           write set, once each, every range a whole identifier leaf of the declaration's name
+#           length (`WRONG-RANGE` / `WRONG-WRITE-SET` / `SILENT-WRITE` did not fire), and the
+#           file read back from disk is the original with exactly those ranges replaced.
+#           The compiler's own direction on the same set: leaving any ONE claimed reference
+#           unwritten is refused by `vm.exe check` for 1,667 of the 1,675.
+#     (b) no other identifier in the file changed
+#           both texts are lexed with the plugin's own lexer and the token lists must match in
+#           length and in kind, with a token's text allowed to differ exactly where its original
+#           offset is in the write set.  `OTHER-IDENTIFIER-CHANGED` did not fire.
+#     (c) the renamed file still passes the compiler
+#           `vm.exe check` on the copy read back after the write-back: exit 0 for 782 of 782.
+#     THE FALSIFICATION (a measurement that cannot fail is not a measurement)
+#           renaming the DECLARATION ALONE, through the same write path, is refused by the
+#           compiler for 781 of the 782 -- and the tool exits 3 if that count is ever 0.  The
+#           one row it is accepted for is a declaration the compiler binds no use of.
+#           `--control` asks the comparator itself to fire on a real corpus declaration: one
+#           claimed reference deliberately left unwritten (`UNCHANGED-REFERENCE`, caught, and the
+#           compiler refuses that file with `vela: type error: undeclared name 'import'`) and
+#           one unrelated identifier deliberately rewritten (`WRONG-CHARACTERS`, caught).  The
+#           tool exits 3 if either is not caught.
+#
+#   WHAT IS STILL NOT MEASURED, SAID HERE RATHER THAN LEFT TO THE READER
+#     * no IDE was launched.  Nothing here shows the rename dialog, the Find Usages window, the
+#       in-place rename template, the refactoring processor or the undo step.
+#     * 5,614 of the corpus's 6,396 declarations were not judged, and the split matters: 5,363 of
+#       them are inside a file `vm.exe check` refuses (an error after an edit in such a file could
+#       not be attributed to the edit), and the other 251 are inside files the compiler accepts --
+#       138 `not-attributable` (the compiler's complaint about a declaration-only rename is about
+#       the program -- `no 'main' function` -- and not about a use), 85 `too-many-references` (over
+#       the 6 claimed references the per-occurrence sweep runs under) and 28
+#       `no-references-and-silent`.  Every category has its own counter AND its own printed rows,
+#       even at zero.
+#     * the `main` declaration of every program is in the `not-attributable` set, so the
+#       write-back is not measured on it.  That is the compiler's vocabulary, not this tool's
+#       choice: renaming `main` produces a complaint about the program.
+#
+#   the verdict, verbatim, and the coverage triple
+#     VERDICT: for every one of the 782 judged declaration(s), the plugin's own write-back wrote
+#     exactly the 1675 reference(s) it claims and the declaration, changed no other token in the
+#     file, and produced a file the compiler accepts; renaming the declaration alone is refused
+#     by the compiler for 781 of them, and leaving out any one compiler-required reference is
+#     refused for 1667 of them
+#     COVERAGE: ran 782 / skipped 5614 (compiler-refused-file 5363, too-large 0,
+#     missing-corpus-file 0, no-references-and-silent 28, not-attributable 138,
+#     new-name-refused 0, new-name-collides 0, too-many-references 85, crashed 0,
+#     contradiction 0) / wrong 0
+#     exit 0
+#
+#   the raw log of the run, verbatim, from here down
+# ---------------------------------------------------------------------------------------------
+
+
+=== Preconditions
+    repo root     : C:\Users\lu\Downloads\vela
+    JDK           : D:\JetBrains\IntelliJ IDEA 2026.2.1
+    tools         : RenameWriteback
+    using the frozen compiler already at C:\Users\lu\AppData\Local\Temp\dsh-8YjBG0\vela-writeback-vm\vm.exe (-Refreeze to replace it)
+    frozen compiler: 905216 bytes  sha256 feeb0271a3249dc61b7010ffea5b10e8dad826f63d93bd3b77f8eeb7d2e3e0ca
+    tree   compiler: 905216 bytes  sha256 feeb0271a3249dc61b7010ffea5b10e8dad826f63d93bd3b77f8eeb7d2e3e0ca
+
+=== Compile the harness against the plugin classes
+    plugin classes snapshotted: 171 file(s) -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\classes-snapshot-40420 (a concurrent build-offline.ps1 cannot disturb this run)
+powershell.exe : javac.exe : C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:601: ����: [
+removal] Inspecti
+At line:1 char:329
++ ... final.txt'; & powershell -NoProfile -ExecutionPolicy Bypass -File (Jo ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (javac.exe : C:\...moval] Inspecti:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+onManager �е� createNewGlobalContext(boolean) �ѹ�ʱ, �ұ��Ϊ��ɾ��
+At C:\Users\lu\Downloads\vela\idea-plugin\harness.ps1:302 char:1
++ & $javac ('@' + $javacArgsFile) 2>&1 | Tee-Object -FilePath (Join-Pat ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\lu\Dow...ѹ�ʱ, �ұ��Ϊ��ɾ��:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+        public com.intellij.codeInspection.GlobalInspectionContext createNewGlobalContext(boolean b) {
+                                                                   ^
+C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:624: ����: [removal] InspectionManager �е
+� createProblemDescriptor(@org.jetbrains.annotations.NotNull PsiElement,@org.jetbrains.annotations.NotNull @com.intelli
+j.codeInspection.util.InspectionMessage String,@org.jetbrains.annotations.NotNull LocalQuickFix @org.jetbrains.annotati
+ons.Nullable [],@org.jetbrains.annotations.NotNull ProblemHighlightType,boolean) �ѹ�ʱ, �ұ��Ϊ��ɾ��
+        public com.intellij.codeInspection.ProblemDescriptor createProblemDescriptor(
+                                                             ^
+C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:618: ����: [removal] InspectionManager �е
+� createProblemDescriptor(@org.jetbrains.annotations.NotNull PsiElement,@org.jetbrains.annotations.NotNull @com.intelli
+j.codeInspection.util.InspectionMessage String,@org.jetbrains.annotations.NotNull LocalQuickFix @org.jetbrains.annotati
+ons.Nullable [],@org.jetbrains.annotations.NotNull ProblemHighlightType) �ѹ�ʱ, �ұ��Ϊ��ɾ��
+        public com.intellij.codeInspection.ProblemDescriptor createProblemDescriptor(
+                                                             ^
+ע: C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.javaʹ�û򸲸����ѹ�ʱ�� API��
+ע: �й���ϸ��Ϣ, ��ʹ�� -Xlint:deprecation ���±��롣
+3 ������
+    21 source file(s) -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes (74 class file(s))
+    javac driven from an @argfile (1704 bytes, over the 32 767-character limit)
+
+=== RenameWriteback
+== RenameWriteback: the rename write-back, read back from disk ==
+driver   : VelaReferenceContributor -> VelaReferenceProvider ->
+           VelaReference.resolve / handleElementRename, and
+           VelaLeafManipulator.handleContentChange for the declaration
+           (the plugin's own write path; the platform supplies the
+           interfaces, the document and the command processor)
+compiler : C:\Users\lu\AppData\Local\Temp\dsh-8YjBG0\vela-writeback-vm\vm.exe (905216 bytes, sha256 feeb0271a3249dc61b7010ffea5b10e8dad826f63d93bd3b77f8eeb7d2e3e0ca)
+platform : com.intellij.mock.MockApplication (MockApplication) + com.intellij.mock.MockProject
+           PsiDocumentManager.getInstance(project) is this tool's own: true
+           CommandProcessor.getInstance() is this tool's own: true
+corpus   : 318 file(s), each copied before it is edited
+           files over 4194304 bytes are skipped
+== per kind: declarations judged, and reference-level numbers ==
+kind            decls   refs    written  required  silent  wrong decls
+----------------  ------  ------  -------  --------  ------  -----------
+field           26      85      111      85        0       0
+function        102     186     288      186       0       0
+local           376     885     1261     884       1       0
+loop variable   56      103     159      103       0       0
+method          10      12      22       12        0       0
+parameter       199     364     563      364       0       0
+struct          13      40      53       33        7       0
+
+  files judged (the compiler accepts the copy) : 138 of 318 file(s) in the corpus
+  judged declarations                        : 782
+  claimed references (the plugin's answer)   : 1675
+  writes landed / attempted by the plugin    : 2457 / 2457
+  the file read back compiles               : 782 of 782
+  the two write paths agree                 : 782 of 782
+  the falsification fires (declaration alone refused) : 781 of 782
+  compiler-required claimed references      : 1667   (leaving one out is refused: the write set could not have omitted it)
+  compiler-silent claimed references        : 8   (counted, never called wrong)
+  wrong declarations                        : 0
+  compiler processes                        : 3723 in this run (161 s, 8 threads)
+  corpus files that had CRLF                : 9   (the copy is the file normalised to \n, which is stated because it is a difference: the copy is what the compiler is asked about)
+
+== the falsification: renaming the declaration and leaving its uses behind ==
+  refused by the compiler for 781 declaration(s); accepted for 1, which are the declarations the compiler binds no use of (nothing to falsify)
+  tests/accept/modules/module_import_reserved_name.vel:13 `import` (local): declaration-only rename refused -- vela: type error: undeclared name 'import'
+  tests/build/arith_basics.vel:2 `a` (local): declaration-only rename refused -- vela: type error: undeclared name 'a'
+  tests/build/arith_basics.vel:3 `b` (local): declaration-only rename refused -- vela: type error: undeclared name 'b'
+  tests/build/arrays_and_len_folding.vel:2 `xs` (local): declaration-only rename refused -- vela: type error: undeclared name 'xs'
+  tests/build/arrays_and_len_folding.vel:3 `i` (loop variable): declaration-only rename refused -- vela: type error: undeclared name 'i'
+  tests/build/arrays_and_len_folding.vel:6 `s` (local): declaration-only rename refused -- vela: type error: undeclared name 's'
+
+== every declaration that is not judged, and why ==
+  compiler-refused-file 5363, too-large 0, missing-corpus-file 0, no-references-and-silent 28, not-attributable 138, new-name-refused 0, new-name-collides 0, too-many-references 85, crashed 0, contradiction 0
+  tests/accept/closure_escaping_refused.vel: `vm.exe check` refuses this file, so its 4 declaration(s) are not judged: vela: syntax error: expected '{' to open a block, found '('
+  tests/accept/closure_fn_parameter.vel: `vm.exe check` refuses this file, so its 5 declaration(s) are not judged: vela: syntax error: expected ')' after the parameters
+  tests/accept/closure_lambda_as_argument.vel: `vm.exe check` refuses this file, so its 3 declaration(s) are not judged: vela: syntax error: expected ')' after the parameters
+  (5360 more of this kind, not printed)
+  tests/build/extern/extern_c_probe.vel:14 `abs` (function): not judged [no-references-and-silent] no reference resolves to this declaration and renaming it is accepted by the compiler, so there is nothing for a rename to write
+  tests/build/extern/extern_c_probe.vel:14 `x` (parameter): not judged [no-references-and-silent] no reference resolves to this declaration and renaming it is accepted by the compiler, so there is nothing for a rename to write
+  tests/build/extern/extern_c_probe.vel:15 `sqrt` (function): not judged [no-references-and-silent] no reference resolves to this declaration and renaming it is accepted by the compiler, so there is nothing for a rename to write
+  (25 more of this kind, not printed)
+  tests/accept/modules/module_import_reserved_name.vel:12 `main` (function): not judged [not-attributable] renaming the declaration alone is refused for a reason that is about the program rather than a use: vela: type error: no 'main' function
+  tests/build/arith_basics.vel:1 `main` (function): not judged [not-attributable] renaming the declaration alone is refused for a reason that is about the program rather than a use: vela: type error: no 'main' function
+  tests/build/arrays_and_len_folding.vel:1 `main` (function): not judged [not-attributable] renaming the declaration alone is refused for a reason that is about the program rather than a use: vela: type error: no 'main' function
+  (135 more of this kind, not printed)
+  tests/build/struct_and_methods.vel:1 `Vec2` (struct): not judged [too-many-references] 7 claimed reference(s), over --max-refs 6
+  tests/llvm-shapes/array_in_loop.vel:14 `row` (local): not judged [too-many-references] 12 claimed reference(s), over --max-refs 6
+  tests/llvm-shapes/two_arrays.vel:21 `a` (local): not judged [too-many-references] 7 claimed reference(s), over --max-refs 6
+  (82 more of this kind, not printed)
+
+== every wrong declaration, in full ==
+  (none)
+
+== claimed references the compiler never requires (unprovable) ==
+  tests/build/struct_value_semantics.vel:1 `P` (struct): the table claims line 7 (offset 73), and renaming the declaration plus every other claimed reference compiles, so the compiler does not bind that occurrence to this declaration.  Counted, never called wrong: the compiler's silence is not a denial
+  tests/llvm-shapes/struct_by_value.vel:1 `P` (struct): the table claims line 9 (offset 107), line 10 (offset 126), and renaming the declaration plus every other claimed reference compiles, so the compiler does not bind that occurrence to this declaration.  Counted, never called wrong: the compiler's silence is not a denial
+  tests/llvm-shapes/struct_return.vel:1 `P` (struct): the table claims line 4 (offset 35), line 8 (offset 85), and renaming the declaration plus every other claimed reference compiles, so the compiler does not bind that occurrence to this declaration.  Counted, never called wrong: the compiler's silence is not a denial
+  tests/llvm-shapes/str_in_struct.vel:1 `P` (struct): the table claims line 6 (offset 66), and renaming the declaration plus every other claimed reference compiles, so the compiler does not bind that occurrence to this declaration.  Counted, never called wrong: the compiler's silence is not a denial
+  tests/safety/cases/hole_parallel_impure_method_nested_receiver.vel:8 `Inner` (struct): the table claims line 17 (offset 663), and renaming the declaration plus every other claimed reference compiles, so the compiler does not bind that occurrence to this declaration.  Counted, never called wrong: the compiler's silence is not a denial
+  tests/safety/cases/scope_shadow_across_blocks_ok.vel:7 `x` (local): the table claims line 8 (offset 292), and renaming the declaration plus every other claimed reference compiles, so the compiler does not bind that occurrence to this declaration.  Counted, never called wrong: the compiler's silence is not a denial
+
+== control: the comparator asked to fire, on a real declaration ==
+  declaration: tests/accept/modules/module_import_reserved_name.vel:13 `import` (local), 1 claimed reference(s), write set 2 range(s)
+  the plugin's own write set, compared with the original     : no finding (correct)
+  one reference deliberately left unwritten               : caught: UNCHANGED-REFERENCE: 1 range(s) of the write set are unchanged in the file read back, at line 14 (offset 725) -- those are references the rename did not write
+      and the compiler on that file: exit 2 -- vela: type error: undeclared name 'import'
+  one unrelated identifier deliberately rewritten at offset 674 : caught: WRONG-CHARACTERS: offset 699 is in the write set and the token went from `import` to `importzzqrt`, not to `importzzq` -- the write used the wrong range or the wrong replacement
+  control verdict: the comparator fires in both directions, so its zeros above are a measurement
+
+VERDICT: for every one of the 782 judged declaration(s), the plugin's own write-back wrote exactly the 1675 reference(s) it claims and the declaration, changed no other token in the file, and produced a file the compiler accepts; renaming the declaration alone is refused by the compiler for 781 of them, and leaving out any one compiler-required reference is refused for 1667 of them
+COVERAGE: ran 782 / skipped 5614 (compiler-refused-file 5363, too-large 0, missing-corpus-file 0, no-references-and-silent 28, not-attributable 138, new-name-refused 0, new-name-collides 0, too-many-references 85, crashed 0, contradiction 0) / wrong 0
+    exit 0   log: C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\RenameWriteback.log
+
+=== Coverage
+    the measurement behind every verdict above, one line per tool:
+  RenameWriteback exit 0   COVERAGE: ran 782 / skipped 5614 (compiler-refused-file 5363, too-large 0, missing-corpus-file 0, no-references-and-silent 28, not-attributable 138, new-name-refused 0, new-name-collides 0, too-many-references 85, crashed 0, contradiction 0) / wrong 0
+
+    the verdict each tool reached:
+  RenameWriteback VERDICT: for every one of the 782 judged declaration(s), the plugin's own write-back wrote exactly the 1675 reference(s) it claims and the declaration, changed no other token in the file, and produced a file the compiler accepts; renaming the declaration alone is refused by the compiler for 781 of them, and leaving out any one compiler-required reference is refused for 1667 of them  [exit 0, wrong 0]
+
+=== Verdict vs exit vs coverage
+    the three things a reader has to reconcile, per tool; only disagreements are shown:
+      (none: each tool's verdict, exit code and wrong count agree)
+
+=== Done
+    frozen compiler : C:\Users\lu\AppData\Local\Temp\dsh-8YjBG0\vela-writeback-vm\vm.exe (905216 bytes, sha256 feeb0271a3249dc61b7010ffea5b10e8dad826f63d93bd3b77f8eeb7d2e3e0ca)
+    logs            : C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes

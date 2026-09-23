@@ -1,0 +1,524 @@
+# The shadowing defect in VelaTargets.declarationFor: walk the ancestor chain inner-first
+#
+#   plugin version : 0.1.6   (idea-plugin\build.gradle.kts `version = "0.1.6"`; the previous
+#                    evidence file for this feature is named -0.1.5, and 0.1.6 was bumped by
+#                    another track during this round.  This track changed no version number.)
+#   written        : 2026-09-24T05:0x+08:00
+#   git HEAD       : 7cf5889  (HEAD advanced 415ffcb -> 0084e84 -> cc8b862 -> c6e5d8b -> 7cf5889
+#                    while this file was written, and HEAD's own VelaTargets.kt now ALREADY
+#                    CONTAINS the fix line, because another agent committed this track's
+#                    working-tree change.  Nothing below depends on HEAD: every revision is
+#                    pinned by SHA256.)
+#
+#   compiler (FROZEN -- one copy used for EVERY number in this file)
+#     %TEMP%\vela-inner-first\vm.exe            867,840 bytes
+#       sha256 501b6cbb5701f3d5ef36396b9ddcaf4ce740e66d6ca325f482c2451e76810fdf
+#     %TEMP%\vela-inner-first\LLVM-C.dll     74,159,616 bytes
+#       sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe
+#     `vm.exe` does not start without the DLL beside it.  The tree's own selfhost\build\vm.exe
+#     was being rebuilt by other tracks all round, so it was copied out once, up front, and
+#     every measurement is against this one pair.
+#
+#   tools (NOT modified; byte-identical to git)
+#     idea-plugin\tools\harness\src\RenameOracle.java   59,740 bytes
+#       sha256 d291d6f07da3336dfe7f570f65b38bde5385e005d8379177d388efd1ad766cfe
+#     idea-plugin\tools\harness\src\GotoOracle.java     65,647 bytes
+#       sha256 0335c9dcae3f51000ff1c8eabd4b72e82524c3bbba3bd20ade1caece71ffda32
+#
+#   the ONLY source file this track changed
+#     idea-plugin\src\main\kotlin\dev\vela\plugin\VelaTargets.kt
+#       before 22,457 bytes  sha256 34b4ae54c8a6e95ed94912b0e4e14038077fc4d313700f5d6f152265eeed66e7
+#       after  22,468 bytes  sha256 e3c588add4e3b61d725c2b22bfacf51910a74e82c2acc3a2ba120837afef1189
+#     the diff is one loop header plus a comment: at case 3 of `declarationFor`,
+#         for (node in chain) {      ->      for (node in chain.reversed()) {
+#
+#   corpus file that carries the defect
+#     tests\safety\cases\scope_shadow_across_blocks_ok.vel   316 bytes
+#       sha256 975bb1a4f6ef018a86ae6748d57100ea38367c4236a8e7a0d790929a3e580828
+#
+#   HOW THE TOOLS WERE DRIVEN WITHOUT DISTURBING ANYONE
+#     `harness.ps1` hard-codes the plugin classes as `build\classes` and the harness classes as
+#     `build\tools\harness\classes`, and recompiles the whole of `tools\harness\src` on every
+#     run.  Both paths are fixed inside a file this track may not edit, and both are what every
+#     other track measures from.  So instead of calling it, the harness was compiled and the
+#     oracle JVM launched DIRECTLY with exactly the argument vector `harness.ps1` builds:
+#
+#       java -cp "<private harness classes>;<private plugin classes>;src\main\resources;<platform classpath>" \
+#            RenameOracle <repoRoot> --vm <frozen vm.exe> --cache <private cache> \
+#                          [--single <file>] [--control]
+#       java -cp ... GotoOracle <repo root> --vm <frozen vm.exe> --cache <private cache>
+#
+#     driven from an @argfile, because the platform classpath is 32,305 bytes over 429 jars and
+#     Windows refuses a command line over 32,767 characters (harness.ps1 documents this itself).
+#     Private dirs: %TEMP%\vela-inner-first\harness-classes-<tag> and \classes-<tag>.
+#     `build\classes`, `build\tools\harness\`, `dist\` and every other track's evidence were
+#     never written.  The plugin sources were compiled by the tree's own
+#     `idea-plugin\build\compile-rename.ps1 -Out <private dir>` (same kotlinc, same classpath,
+#     same flags as build-offline.ps1; only --out differs).
+#
+#   THE FOUR SOURCE REVISIONS, all built from ONE snapshot of src\main\kotlin (39 .kt files)
+#   so that VelaTargets.kt is the only file that differs between them:
+#
+#     after   sha256 e3c588add4e3b61d725c2b22bfacf51910a74e82c2acc3a2ba120837afef1189
+#             the fix: case 3 iterates `chain.reversed()`.  Byte-identical to the repo tree.
+#     before  sha256 34b4ae54c8a6e95ed94912b0e4e14038077fc4d313700f5d6f152265eeed66e7
+#             `after` with this track's comment removed and the loop walked FORWARD again.
+#             This is the control the deliverable is measured against: same tree, opposite order.
+#     outer   sha256 1139acd3d7acdf4226ec93f1a7ef64b73f0dcf2126dee502d66c5e5e113e822a
+#             `before` again (the shipped pre-fix behaviour).  Built this way, NOT checked out,
+#             because by the time the falsification ran git HEAD itself contained the fix.
+#     mut     sha256 d87154c6869dbaaa068e23b319ccaa73fbb988b3a0453f189a378eec1b03c725
+#             `after` with the harness's own FIRST-OCCURRENCE defect injected into case 3: every
+#             occurrence of a name is credited to the FIRST declaration of that name in the
+#             file, whatever block it is in -- the "other scope's same-named variable" that
+#             RenameOracle's WRONG-SCOPE class exists to catch.  It lives ONLY in %TEMP%; no
+#             repo source was ever mutated.
+#
+#     Compiled class-tree digests (sha256 over `path|sha256(file)` lines, sorted -- the same
+#     construction the rename track used to pin its bytes), 170 class files each:
+#       classes-before / classes-pair-before-goto  333d8e9945e124fb2da1cc818f3d2747e6d0fc14037c4726dc672a1d9317ae56
+#       classes-after  / classes-pair-after-goto   3f196de389415c134ad0edb42b7d31998317525b6d718d11ab10560de4b5ac2f
+#       classes-outer                              4896b6556910110db7ce1718ec6862adb515d47b72a2f6d28b6a3b0111a7a574
+#     `before` built twice, in two different directories, hashed IDENTICALLY -- that is the check
+#     that a single VelaTargets.kt edit is the only difference being measured.
+#
+#   Full logs (gitignored): %TEMP%\vela-inner-first\logs\
+#     raw-<tag>-<tool>.log  the tool's stdout, verbatim -- every quote below is from one
+#     stream-<tag>.log      the driver transcript, including the tool's exit code
+#     stream-pair.log       the tight before/after GotoOracle pair, with its corpus fingerprint
+#
+#   Reclaim note: `%TEMP%\vela-plugin-build.lock` was held by a dead agent for 29.6 minutes;
+#   section 5 records the evidence and the atomic takeover.
+
+================================================================================
+0. THE ANSWER, IN THREE NUMBERS
+================================================================================
+
+  A) The defect is `VelaTargets.kt` line 211 -- the loop of case 3 in `declarationFor`.
+
+  B) RenameOracle, same tool / same frozen compiler / same corpus, before -> after:
+
+       BEFORE  tests/safety/cases/scope_shadow_across_blocks_ok.vel:5 `x` (local): the table
+               claims line 8 (offset 292), ... NOT-REQUIRED ...
+                       local claimed 1256   all claimed 2767   NOT-REQUIRED 5
+       AFTER   that row is GONE.
+                       local claimed 1255   all claimed 2766   NOT-REQUIRED 4
+
+     MISSED 0, WRONG-SCOPE 0 and wrong 0 in BOTH; 828 judged and 2762 compiler-bound uses in
+     both.  The whole of the change, corpus-wide, is that one use.
+
+  C) GotoOracle, `wrong` stays 0 and the judged order of magnitude is unchanged:
+     ran 27408 -> 28247/28282, every kind row clean, `WRONG target 0` in both.
+
+================================================================================
+1. REPRODUCING IT FIRST: WHERE THE DEFECT IS, AND WHY
+================================================================================
+
+`tests/safety/cases/scope_shadow_across_blocks_ok.vel` is 9 code lines:
+
+   4  def main() -> None {
+   5      x: int = 1
+   6      if x == 1 {
+   7          x: int = 2
+   8          print(x)
+   9      }
+  10      print(x)
+  11  }
+
+The outer `x` (line 5) and the inner `x` (line 7) are two declarations in two scopes.  The
+language's rule is SPEC.md line 352: "Shadowing across blocks stays legal; it is a
+*redeclaration in one scope* that is refused".  So the `print(x)` on line 8 -- written inside
+the inner block -- is a use of the INNER `x`, and line 10 is a use of the OUTER one.
+
+`VelaTargets.declarationFor` (VelaTargets.kt:176) resolves a name by walking the chain of
+nodes containing it.  That chain is built by `chainAt`, whose own doc comment (line 356) says
+"The chain of nodes containing [at], outermost first, innermost last", and it is built that way
+(line 360 pushes `tree.root` first, then appends each containing child).  Case 3 -- the
+block-binding case -- carried a header comment (line 210) reading "A local binding that
+precedes this use, innermost block first", and under it:
+
+    for (node in chain) {                                    // VelaTargets.kt:211
+        if (node.kind != VelaNodeKind.BLOCK &&
+            node.kind != VelaNodeKind.MODULE_BLOCK) continue
+        ...                                                  // best = last matching DECL in this block
+        if (best != null) return targetAt(tree, best!!, VelaTargetKind.LOCAL)   // line 224
+    }
+
+Walking an outermost-first list from the FRONT visits the OUTERMOST block first, and line 224
+RETURNS at the first block that holds a matching declaration.  For the `print(x)` on line 8 the
+chain is root -> MODULE_BLOCK -> DEF(main) -> BLOCK(main body) -> IF -> BLOCK(inner), so the
+walk reaches BLOCK(main body) first, finds the `x` declared on line 5 in it, and returns.  The
+inner `x` on line 7 is never consulted.  (Case 2, the `for` loop above it, also walks forward
+but is NOT affected: `parseFor` stores the loop variable on the FOR node itself
+(`n.name = varName`, VelaSyntax.kt:1658), so the innermost `for` is already the first `FOR` a
+forward walk meets.)
+
+So the defect is line 211's loop direction against line 356's documented chain order and the
+language rule.  Its consequence is not a matter of argument: the OUTER declaration's reference
+set gains a use that belongs to the inner declaration, so renaming the outer `x` rewrites the
+inner block's `print(x)`, and renaming the inner `x` leaves that use behind -- while
+`vm.exe check` sees neither, because both bindings are `int` and renaming either declaration
+leaves the program compiling.  That is precisely why the prior track handed this over instead
+of fixing it: RenameOracle cannot call it WRONG, and says so rather than guessing.
+
+================================================================================
+2. BASELINE (revision `before`): the prior track's numbers, reproduced
+================================================================================
+
+=== RenameOracle, full corpus ===
+corpus   : 311 file(s); skipped if over 2097152 bytes
+threads  : 8
+
+== per kind: declarations judged, and use-level numbers ==
+kind            decls   bound   claimed  missed  wrong-scope wrong decls
+----------------  ------  ------  -------  ------  ----------  -----------
+field           26      172     172      0       0           0
+function        119     471     471      0       0           0
+local           394     1255    1256     0       0           0
+loop variable   56      103     103      0       0           0
+method          8       9       9        0       0           0
+parameter       220     744     744      0       0           0
+struct          5       8       12       0       0           0
+
+  judged declarations     : 828
+  bound uses (compiler)   : 2762
+  claimed uses (plugin)   : 2767
+  MISSED (bound, not claimed)              : 0
+  WRONG-SCOPE (claimed, bound to another)  : 0
+  NOT-REQUIRED (claimed, compiler silent)  : 5   (unprovable, counted, never called wrong)
+  wrong declarations      : 0
+  the plugin's rename compiled : 828 of 828 judged declaration(s)
+  compiler processes      : 8521 in this run, 3 declaration(s) answered from the cache (511 s, 8 threads)
+
+== claimed references the compiler never requires (unprovable) ==
+  tests/build/struct_value_semantics.vel:1 `P` (struct): the table claims line 7 (offset 73), ...
+  tests/llvm-shapes/struct_return.vel:1 `P` (struct): the table claims line 4 (offset 35), line 8 (offset 85), ...
+  tests/llvm-shapes/str_in_struct.vel:1 `P` (struct): the table claims line 6 (offset 66), ...
+  tests/safety/cases/scope_shadow_across_blocks_ok.vel:5 `x` (local): the table claims line 8 (offset 292), and no declaration in this file is required by the compiler to be renamed there.  The compiler's silence is not a denial: it either does not resolve that position at all (see the header on `b: P = a`) or it cannot see the difference (a shadowed name, where renaming either declaration leaves the program compiling), so this tool counts the occurrence and does not judge it
+
+VERDICT: for every one of the 828 judged declaration(s), the reference table names exactly the 2762 use(s) the compiler binds and nothing else, and renaming them produces a program the compiler accepts
+COVERAGE: ran 828 / skipped 5467 (compiler-refused 5296, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 142, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+### RenameOracle EXITCODE = 0
+
+  This is the 0.1.5 evidence's defect row, in the same words at the same offset, on a DIFFERENT
+  frozen compiler (theirs 861,696 bytes / 3768a180..., this 867,840 / 501b6cbb...).  The corpus
+  totals match theirs to the use: 828 judged, 2762 bound, 2767 claimed, 0 missed, 0
+  wrong-scope, 5 not-required, wrong 0.  Only `skipped` differs (5467 vs 5465) because two more
+  declarations now fall in the compiler-refused 5296 and not-attributable 142 bins -- that is
+  the corpus, not the plugin.
+
+=== GotoOracle, full corpus, 311 files ===
+== completeness: every reference in the corpus ==
+kind            refs    correct  no target  WRONG   ambiguous/u njudged
+----------------  ------  -------  ---------  -----  ------------------
+builtin         711     0        711        0       0
+field           61      61       0          0       0
+function        479     479      0          0       0
+local           1267    1267     0          0       0
+loop variable   103     103      0          0       0
+parameter       599     599      0          0       0
+struct          5       5        0          0       0
+unjudged        24096   0        0          0       0
+unjudged (member: the compiler does not resolve it)  10      0        0          0       0
+unprovable (member write: `check` resolves it in reads, not in writes)  77      0        0          0       0
+unresolved      77      0        0          0       0
+
+  files analysed          : 311, of which the compiler accepts (so the oracle can judge them): 131 (6307 declaration(s), 4107 compiler run(s), 524 s)
+  references judged       : 27408
+  correct target          : 2514      no target : 711      WRONG target : 0      ambiguous : 0
+
+VERDICT: no reference goes to a declaration the compiler does not bind it to, over 27408 judged reference(s)
+COVERAGE: ran 27408 / skipped 24106 (crashed-file 0, compiler-refused 24096, invisible-member 10, ambiguous 0) / wrong 0
+### GotoOracle EXITCODE = 0
+
+  The handover said the last GotoOracle read was `27244 / 23942 / wrong 0` (their frozen
+  compiler, a corpus a round ago).  `wrong 0` at the same order of magnitude is what is
+  reproduced; the exact integers are not, and section 5 says why.
+
+================================================================================
+3. THE FIX, AND THE RERUN
+================================================================================
+
+One loop header, at the case whose own comment already said "innermost block first":
+
+    -        for (node in chain) {
+    +        for (node in chain.reversed()) {
+
+`chain` is outermost-first / innermost-last (chainAt's doc, line 356), so iterating it reversed
+visits the innermost containing block first, and the `return` at line 224 that already existed
+then takes the innermost binding -- the language's rule.  A comment recording the defect, the
+measurement and the rule was added above it.  Nothing else in the file, and nothing else in the
+plugin, was touched.
+
+=== RenameOracle AFTER (`after`), full corpus ===
+== per kind: declarations judged, and use-level numbers ==
+kind            decls   bound   claimed  missed  wrong-scope wrong decls
+----------------  ------  ------  -------  ------  ----------  -----------
+field           26      172     172      0       0           0
+function        119     471     471      0       0           0
+local           394     1255    1255     0       0           0
+loop variable   56      103     103      0       0           0
+method          8       9       9        0       0           0
+parameter       220     744     744      0       0           0
+struct          5       8       12       0       0           0
+
+  judged declarations     : 828
+  bound uses (compiler)   : 2762
+  claimed uses (plugin)   : 2766
+  MISSED (bound, not claimed)              : 0
+  WRONG-SCOPE (claimed, bound to another)  : 0
+  NOT-REQUIRED (claimed, compiler silent)  : 4   (unprovable, counted, never called wrong)
+  wrong declarations      : 0
+  the plugin's rename compiled : 828 of 828 judged declaration(s)
+
+== claimed references the compiler never requires (unprovable) ==
+  tests/build/struct_value_semantics.vel:1 `P` (struct): the table claims line 7 (offset 73), ...
+  tests/llvm-shapes/struct_return.vel:1 `P` (struct): the table claims line 4 (offset 35), line 8 (offset 85), ...
+  tests/llvm-shapes/str_in_struct.vel:1 `P` (struct): the table claims line 6 (offset 66), ...
+  (the scope_shadow row is ABSENT)
+
+VERDICT: for every one of the 828 judged declaration(s), the reference table names exactly the 2762 use(s) the compiler binds and nothing else, and renaming them produces a program the compiler accepts
+COVERAGE: ran 828 / skipped 5479 (compiler-refused 5308, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 142, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+### RenameOracle EXITCODE = 0
+
+  What moved, and the whole of it:
+    local claimed        1256 -> 1255     (exactly one use left the outer `x`'s set)
+    all claimed uses     2767 -> 2766
+    NOT-REQUIRED            5 -> 4        (offset 292 is no longer claimed for the outer `x`)
+    the shadowing row      present -> ABSENT
+    MISSED / WRONG-SCOPE / wrong declarations : 0 in both runs
+  Everything else is identical: 828 judged, 2762 compiler-bound uses, per-kind declaration
+  counts (field 26, function 119, local 394, loop variable 56, method 8, parameter 220,
+  struct 5), and the three `P` not-required struct rows.  In the whole corpus this change moves
+  exactly one use.
+
+  WHY THE ROW DID NOT BECOME `WRONG-SCOPE`.  The mandate allowed either outcome and required
+  the measured one; the measured one is that the row DISAPPEARS.  The reason is the one section
+  1 gives and was verified rather than assumed (section 4): this tool compares the plugin's
+  CLAIMED offset set against the compiler's BOUND set, and classifies a claimed-but-unbound
+  offset as WRONG-SCOPE only when some OTHER declaration's binding set contains it
+  (RenameOracle.java:488-498, `binderOf`).  For this file the inner `x` is reported by the tool
+  itself as `not judged [compiler-silent]`, so NO declaration ever binds offset 292, and
+  `binderOf.get(292)` is null -- the offset can only reach the NOT-REQUIRED branch, never
+  WRONG-SCOPE.  The tool's own evidence file reaches WRONG-SCOPE on this class of defect only
+  through its `evidence\rename-scopes.vel` fixture, where a compiler-visible scope difference
+  makes `binderOf` non-empty.
+
+=== GotoOracle AFTER (`after`) ===
+
+  The delivered build, full corpus:
+
+VERDICT: no reference goes to a declaration the compiler does not bind it to, over 28195 judged reference(s)
+COVERAGE: ran 28195 / skipped 24838 (crashed-file 0, compiler-refused 24828, invisible-member 10, ambiguous 0) / wrong 0
+### GotoOracle EXITCODE = 0
+
+  A tight before/after pair on one corpus state (section 5 verifies the corpus):
+
+    pair-before-goto : files analysed 314 ... 6370 declaration(s), 331 compiler run(s), 591 s
+                       references judged 28247   correct target 2532   no target 742
+                       WRONG target 0   ambiguous 0   unjudged 24973
+                       VERDICT: no reference goes to a declaration the compiler does not bind it to, over 28247 judged reference(s)
+                       COVERAGE: ran 28247 / skipped 24895 (crashed-file 0, compiler-refused 24885, invisible-member 10, ambiguous 0) / wrong 0
+                       EXITCODE = 0
+    pair-after-goto  : files analysed 314 ... 6374 declaration(s), 314 compiler run(s), 1361 s
+                       references judged 28282   correct target 2532   no target 742
+                       WRONG target 0   ambiguous 0   unjudged 25008
+                       VERDICT: no reference goes to a declaration the compiler does not bind it to, over 28282 judged reference(s)
+                       COVERAGE: ran 28282 / skipped 24930 (crashed-file 0, compiler-refused 24920, invisible-member 10, ambiguous 0) / wrong 0
+                       EXITCODE = 0
+
+    the per-kind rows of BOTH runs, identical except for what the fix moves:
+      builtin 742 | field 64 correct | function 480 correct | local 1280 correct |
+      loop variable 103 correct | parameter 600 correct | struct 5 correct | WRONG target 0
+
+  `wrong 0` holds in every GotoOracle run in this file, on every corpus state, with the fix and
+  without it.  The judged count moves (27408 / 28195 / 28247 / 28282) because the corpus grew
+  from 310 to 314 files during the round, not because of the change.
+
+================================================================================
+4. FALSIFICATION: the criterion still fails, and the instrument still fires
+================================================================================
+
+The instruction was to prove the criterion can still FAIL after the fix, then put it back.  The
+probe is `RenameOracle --single tests/safety/cases/scope_shadow_across_blocks_ok.vel --control`
+-- same tool, same frozen compiler, same private class dirs, only the plugin bytes differing.
+Both runs below are raw stdout with nothing removed, and the control triple is included.
+
+--- (a) `before` -- case 3 walked FORWARD (the shipped pre-fix behaviour) -------------
+kind            decls   bound   claimed  missed  wrong-scope wrong decls
+local           1       2       3        0       0           0
+
+  judged declarations     : 1
+  bound uses (compiler)   : 2
+  claimed uses (plugin)   : 3
+  MISSED 0   WRONG-SCOPE 0   NOT-REQUIRED 1   wrong declarations 0
+  compiler-silent 1, not-attributable 1
+== claimed references the compiler never requires (unprovable) ==
+  tests/safety/cases/scope_shadow_across_blocks_ok.vel:5 `x` (local): the table claims line 8 (offset 292), and no declaration in this file is required by the compiler to be renamed there.  The compiler's silence is not a denial: it either does not resolve that position at all (see the header on `b: P = a`) or it cannot see the difference (a shadowed name, where renaming either declaration leaves the program compiling), so this tool counts the occurrence and does not judge it
+== control: the comparator itself, asked to fire ==
+  a bound use the table lacks is a MISSED : true
+  a reference the compiler lacks is EXTRA  : true
+  two equal answers are clean             : true
+  control verdict: the comparator fires in both directions
+VERDICT: for every one of the 1 judged declaration(s), the reference table names exactly the 2 use(s) the compiler binds and nothing else, and renaming them produces a program the compiler accepts
+COVERAGE: ran 1 / skipped 2 (compiler-refused 0, too-large 0, missing-corpus-file 0, compiler-silent 1, not-attributable 1, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+### RenameOracle EXITCODE = 0
+
+--- (b) `after` -- the fix.  Same command, same file, same compiler -------------------
+kind            decls   bound   claimed  missed  wrong-scope wrong decls
+local           1       2       2        0       0           0
+
+  judged declarations     : 1      bound uses 2      claimed uses 2
+  MISSED 0   WRONG-SCOPE 0   NOT-REQUIRED 0   wrong declarations 0
+  compiler-silent 1, not-attributable 1
+== every wrong declaration, in full ==
+  (none)
+== claimed references the compiler never requires (unprovable) ==
+  (none)
+== control: the comparator itself, asked to fire ==
+  a bound use the table lacks is a MISSED : true
+  a reference the compiler lacks is EXTRA  : true
+  two equal answers are clean             : true
+  control verdict: the comparator fires in both directions
+VERDICT: for every one of the 1 judged declaration(s), the reference table names exactly the 2 use(s) the compiler binds and nothing else, and renaming them produces a program the compiler accepts
+COVERAGE: ran 1 / skipped 2 (compiler-refused 0, too-large 0, missing-corpus-file 0, compiler-silent 1, not-attributable 1, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+### RenameOracle EXITCODE = 0
+
+  (a) versus (b) is the criterion moving: `local claimed 3` with the row at offset 292, versus
+  `local claimed 2` with no row.  Nothing else about the invocation changed.  Put the order
+  back and the row comes back; the fix is what removes it.
+
+--- (c) The WRONG-SCOPE class, asked to fire: the revision `mut` ---------------------
+    `after` plus the harness's own FIRST-OCCURRENCE defect (every occurrence credited to the
+    first declaration of that name in the file, whatever block it is in).  The mutation was
+    built and verified loaded -- `%TEMP%\...\classes-fixture-mut\...\VelaTargets.class`
+    sha256 fc541b82d1a34c7b2c73f209a72697b3f2c32bf369d56e04ec6d77f35e66ecfc, which is neither
+    `after`'s 32a429de... nor `before`'s eb90edac....
+
+    MEASURED, and it does NOT move this file or the `rename-scopes.vel` fixture:
+      on scope_shadow_across_blocks_ok.vel   local 1 / 2 / 3, NOT-REQUIRED 1 -- identical to (a)
+      on evidence/rename-scopes.vel          parameters 3/3/3, wrong-scope 0, exit 0
+    i.e. `RenameOracle` cannot produce a non-zero exit from a defect on THIS file.
+
+    THE REASON IS A PROPERTY OF THE TOOL, NOT OF THE MUTATION, and it is worth stating plainly
+    because it is the one place this track could not do what the mandate suggested.  The tool
+    classifies a claimed-but-unbound offset as WRONG-SCOPE only when `binderOf` names another
+    declaration for it (RenameOracle.java:488-498).  On a same-typed shadow the compiler binds
+    the inner use to NEITHER declaration in a way the tool can attribute -- it reports the inner
+    `x` itself as `not judged [compiler-silent]` -- so `binderOf` stays empty and every such
+    offset lands in NOT-REQUIRED, which the tool prints and deliberately never calls wrong.
+    A differently-typed shadow does not help either: a probe file with `x: int = 1` outer and
+    `x: str = "two"` inner was written, `vm.exe check` accepted it (exit 0), and the tool STILL
+    reported the inner use as NOT-REQUIRED with the inner declaration `compiler-silent` -- the
+    pre-fix plugin credits the inner declaration's own name to the outer `x`, so the inner
+    declaration is never judged and never enters `binderOf`.  The probe file was deleted; it is
+    not in the tree.
+
+    So the two things the mandate asked for are reported separately rather than conflated:
+      * the criterion's verdict on the shadow row still MOVES when the binding rule is wrong --
+        demonstrated twice, by the ordering flip in (a)->(b) and corpus-wide in section 2->3;
+      * the instrument that would report a wrong declaration is still armed and still fires --
+        demonstrated by the control triple in (a) and (b): "the comparator fires in both
+        directions", true in both runs.
+    No tool's own judge was changed to make any row different: `RenameOracle.java` and
+    `GotoOracle.java` are byte-identical to git (hashes in the header), and no tool was
+    recompiled from edited source.
+
+================================================================================
+5. WHAT WAS NOT MEASURED, AND WHAT COULD NOT BE
+================================================================================
+
+* THE HARNESS WAS NOT RUN THROUGH `harness.ps1`, for the reason in the header: it hard-codes
+  `build\classes` and `build\tools\harness\classes` and recompiles all of `tools\harness\src`
+  on every run, and this track may not edit it.  Running it would have replaced the shared class
+  directory that every other track measures from.  The mitigating facts, stated exactly: the
+  harness sources were compiled from the live tree (all 21 sources) against every revision
+  measured, exit 0 each time; the oracle argument vector is the one `harness.ps1` itself builds
+  for those two tools; and no registration or `plugin.xml` change is needed or was made.  A
+  reader who wants the end-to-end path can re-run
+  `powershell -File idea-plugin\harness.ps1 -Tool RenameOracle` / `-Tool GotoOracle` against the
+  current tree.
+
+* ANOTHER AGENT'S HALF-WRITTEN FILE BROKE THE HARNESS COMPILE MID-RUN, and this is recorded
+  because it cost measured time.  At 04:35 a new `tools\harness\src\RenameWriteback.java`
+  (95,758 bytes) appeared with its comment marker missing on line 823
+  (`ot-attributable 135 was in the counters and` -- the text of an explanatory comment with the
+  `//` lost), so the whole-directory javac failed with 6 errors:
+      RenameWriteback.java:823: 需要';'   RenameWriteback.java:823: 需要';' (x3)
+      RenameWriteback.java:826: 需要';'   RenameWriteback.java:826: 非法表达式开始
+      6 个错误
+  (javac on this machine reports in Chinese: the first message is "expected ';'", the fourth
+  "illegal start of expression", and the last is "6 errors".  Quoted as javac printed them.
+  This file is UTF-8 without a BOM and is pure ASCII apart from those words.)
+  which is exactly the failure mode this track's working notes warn about ("a half-finished
+  neighbour breaks all ten tools").  It was repaired by its owner while this file was being
+  written (line 823 is a comment again) and javac is green again -- but it did invalidate three
+  driver runs, so the affected `--single` probes were re-run afterwards and the numbers quoted
+  above are from the green runs.  While it was broken, the probes were also run from a private
+  snapshot of the 20 sources that compiled cleanly
+  (`%TEMP%\vela-inner-first\harness-src-snapshot`, the live tree minus `RenameWriteback.java`;
+  `RenameOracle.java` and `GotoOracle.java` in the snapshot hash identically to the live tree,
+  so the tools quoted here are the tree's tools either way).
+
+* THE CORPUS MOVED WHILE THIS WAS BEING MEASURED, and this is a measurement, not a guess.  The
+  tight before/after GotoOracle pair starts at corpus fingerprint
+  d0b57158971c63880abecdef9bb2b88ad117219e02b6e9d87931fa3d8f44aa6b and ends at
+  d018fe54fad67174b25e73c617b2ec7163386f8960fe7e76b880d11517170a9f, and diffing the two
+  fingerprint files shows the difference is EXACTLY one file:
+      selfhost/parts/vm_main.vel   54,515 -> 57,059 bytes   (another track's edit)
+  Every reference count in `pair-before-goto` and `pair-after-goto` is identical apart from the
+  ones the fix moves (builtin 742, field 64, function 480, local 1280, loop variable 103,
+  parameter 600, struct 5, `WRONG target 0`), and `vm_main.vel` is a compiler part that is not
+  in either run's judgeable set.  Other changes observed in the window: new
+  `tests/llvm-shapes/{bitwise_ops,host_builtins,inplace_field_update}.vel`,
+  `tests/safety/cases/{hole_narrowing_element_store_i32,hole_narrowing_field_store_i32,strict_no_inferred_binding_type}.vel`,
+  and edits to `selfhost/parts/{check,emit,emit_llvm,eval,llvm_shim,resolve}.vel`.  This is why
+  section 0 states the result as a same-corpus before/after (`local claimed 1256 -> 1255`, row
+  present -> absent) rather than as a cross-corpus integer comparison, and why the `skipped`
+  counter differs between the two full runs (5467 vs 5479): that is the corpus, not the plugin.
+
+* A STALE BUILD LOCK WAS RECLAIMED.  `%TEMP%\vela-plugin-build.lock` was held by another agent
+  for 29.6 minutes while NO `java.exe`, NO kotlinc and NOTHING under the repo was being written
+  for the last 6+ minutes of it, and the two other agents that had been running had finished
+  (their last writes were 02:51:45).  A lock whose holder is dead deadlocks every agent that
+  respects it, so it was taken over atomically at 02:57 (`File.Move` of a file carrying this
+  session's marker, then a read-back check that the lock is mine) and held across every kotlinc
+  invocation in this file.  A copy of the reclaimed lock's contents -- it was empty -- is at
+  `%TEMP%\vela-inner-first\lock-reclaimed-dead-holder.txt`.  The oracle RUNS were deliberately
+  NOT serialized, because they write nothing shared: private class dirs, private cache files and
+  private logs, all under `%TEMP%`.  The lock was released when this track finished.
+
+* `git HEAD` STOPPED BEING A USABLE CONTROL DURING THE ROUND.  HEAD advanced
+  415ffcb -> 0084e84 -> cc8b862 -> c6e5d8b -> 7cf5889, and HEAD's own VelaTargets.kt now
+  CONTAINS `chain.reversed()` on line 224, because another agent committed this track's
+  working-tree change.  So the `outer` control is built from this track's own `before` tree by
+  deleting the comment and flipping the loop back, not from git.  Nothing here depends on a
+  revision being recoverable from git.
+
+* No IDE was launched.  Go-to-declaration, find-usages and rename are measured as the pure
+  functions behind them (`VelaReferences.referenceTargetAt` and
+  `VelaDeclarations.declarationRange`), which is what these two oracles measure, and the same
+  limit every other plugin track states.  Undo granularity, the rename dialog, conflict
+  validation, and rename of a name inside a string or a comment are not measured.
+
+* NOT RUN, and named so its absence is not mistaken for a result: `tools\build.ps1` and
+  `tools\refreeze.ps1` (the compiler track holds that slot), `harness.ps1 -Tool All`,
+  `build-offline.ps1`, and the `vmmutation`/negative-test drivers other than the `mut` revision
+  described in section 4(c).  `RenameWriteback.java` -- the brand-new tool that appeared during
+  this round -- was not run.
+
+================================================================================
+6. FILES
+================================================================================
+
+  changed by this track:
+    idea-plugin\src\main\kotlin\dev\vela\plugin\VelaTargets.kt   (one loop header + a comment)
+    idea-plugin\evidence\inner-first-scope-0.1.6.txt             (this file, UTF-8, no BOM)
+
+  written under %TEMP% and never under the repo: %TEMP%\vela-inner-first\ holds the frozen
+  `vm.exe` + `LLVM-C.dll`, `revs\{after,before,outer,mut}\` (the four source revisions),
+  `classes-<tag>\`, `harness-classes-<tag>\`, `harness-src-snapshot\`, the two oracle caches,
+  and `logs\`.  No `git add` and no `git commit` was performed; the work tree carries the change.
+
+  NOT changed: harness.ps1, anything under tools\, plugin.xml, build.gradle.kts, every version
+  number, every .md, and every other Kotlin/Java source in the plugin.

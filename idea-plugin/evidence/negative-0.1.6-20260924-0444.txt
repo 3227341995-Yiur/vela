@@ -1,0 +1,60 @@
+# negative-tests.ps1 against the 0.1.6 tree -- the A-I set: break one thing, require the verifier to name it
+#
+#   plugin version : 0.1.6   (src\main\resources\META-INF\plugin.xml `<version>0.1.6</version>`)
+#   written        : 2026-09-24T04:50+08:00   (the run's own timestamp is 2026-09-24T04:44:20+08:00)
+#   git HEAD       : e119a8a  llvm: every local array was allocated with a size of zero
+#
+#   THE JAR TESTED, named with the three things that identify it
+#     This script does not mutate `dist\`: it packs its OWN scratch jar from the built classes
+#     plus `src\main\resources`, mutates that, and requires the *unmutated* one to pass first.
+#     name : idea-plugin\build\verify\negative-0.1.6\baseline\dist\vela\lib\vela-idea-plugin.jar
+#     size : the report below states the hash; the size of the packed jar is 391,263 bytes
+#     hash : sha256 c006a296f27ddd2f8055b1e0240c6e49f93ead9d1b215cd415f8354206cd0d45
+#     The classes it packs are `idea-plugin\build\classes` (171 files, digest
+#     0398d046675732c7784b281611aff6df5fea0d41ca0fe64c4c8e17047e175ca3), from the
+#     `build-offline.ps1` run at 04:40 that ended `RESULT: PASS`, so this control and the
+#     mutation run and the rename write-back all describe one artifact.
+#     The hash differs from `dist\vela\lib\vela-idea-plugin.jar`'s
+#     (3ff8091cfec5a8936f38f4ca62e41396799a528177b8075adec4b067250435a7) because a zip carries
+#     its own timestamps: the *contents* are the same tree, and that is what the digest above
+#     is for.
+#
+#   why this file is dated 0.1.6 and not 0.1.5
+#     `evidence\negative-0.1.5-raw.txt` describes the 0.1.5 tree.  Re-running it is the whole
+#     point of the set: the mutations derive their targets from the *current* plugin.xml, and a
+#     target that has disappeared reports VOID rather than a stale CAUGHT.  This run reports
+#     0 void, so every target still exists and every mutation still applied.
+#
+#   the command
+#     powershell -NoProfile -ExecutionPolicy Bypass -File idea-plugin\tools\negative-tests.ps1
+#     (the published report, with the version, the descriptor's sha256, the jar's sha256 and the
+#      run's time in its own header, is
+#      idea-plugin\build\verify\negative-0.1.6\negative-report.txt)
+#
+#   the result, verbatim
+#     baseline: PASS (the unmutated jar agrees with the verifier)
+#     negative tests: 12/12 caught; 0 missed; 0 void
+#     exit 0
+#
+#   the raw output of the run, verbatim, from here down
+# ---------------------------------------------------------------------------------------------
+
+plugin.xml targets: group-id=NewGroup  action-id=Vela.NewFile  class=dev.vela.plugin.VelaNewFileAction  producer=dev.vela.plugin.VelaRunConfigurationProducer
+
+baseline: PASS (the unmutated jar agrees with the verifier)
+
+  CAUGHT   exit=1  matched='does not claim "vel"'x2  verdict=FAIL  ::  the 0.1.0 file type: extensions="vela" only
+  CAUGHT   exit=1  matched='names an <action>'x2  verdict=FAIL  ::  the 0.1.0 add-to-group: an <action id> used as a group-id
+  CAUGHT   exit=1  matched='not an action or group id the installed platform defines'x2  verdict=FAIL  ::  a group id nobody defines
+  CAUGHT   exit=1  matched='NO CLASS FILE'x4  verdict=FAIL  ::  a class named by plugin.xml that is not in the jar
+  CAUGHT   exit=1  matched='silent no-op'x2  verdict=FAIL  ::  an extension point id no descriptor declares
+  CAUGHT   exit=1  matched='is not the language this plugin registers'x2  verdict=FAIL  ::  a language id the plugin does not register
+  CAUGHT   exit=1  matched='is NOT a 'x2  verdict=FAIL  ::  the producer registered under an existing class of the wrong type
+  CAUGHT   exit=1  matched='silent no-op'x2  verdict=FAIL  ::  the producer registered under an extension point id nobody declares
+  CAUGHT   exit=1  matched='is NOT a 'x2  verdict=FAIL  ::  an annotator registered against a class that is not an Annotator
+  CAUGHT   exit=1  matched='silent no-op'x2  verdict=FAIL  ::  the go-to-declaration tag renamed to an id nobody declares
+  CAUGHT   exit=1  matched='check registrationAttributes'x2  verdict=FAIL  ::  the silent no-op: the class named under an attribute the platform does not bind
+  CAUGHT   exit=1  matched='check emitterHeaderContract'x4  verdict=FAIL  ::  the emitter/header contract: vela_bounds_check renamed in runtime/vela_runtime.h
+
+negative tests: 12/12 caught; 0 missed; 0 void
+report: C:\Users\lu\Downloads\vela\idea-plugin\build\verify\negative-0.1.6\negative-report.txt

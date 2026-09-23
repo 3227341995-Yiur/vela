@@ -93,10 +93,10 @@ harness run, in `build\evidence\`).
 | 6 | syntax error highlighting | `<annotator language="Python" implementationClass="com.jetbrains.python.validation.PySyntaxAnnotator" />` | implemented | `VelaParserDefinition.kt` (`PsiBuilder.error` during the replay), `VelaAnnotator.kt` | `[harness]` `psi-tree-diff.ps1` asserts that a parser problem produces an error element in the platform tree (`VELA_ERROR` / `ERROR_ELEMENT`); files where the parser reported a problem: 12 (recovery is exercised, not avoided). `[harness]` VerifyPlugin §9: problems parsed out of the compiler's own output with kind, message and line |
 | 7 | code completion (incl. after `.`) | 28 `<completion.contributor language="Python" …>` in `ce-plugin.xml`; member completion after `.` comes from `PyClassMembersProvider` / `pyModuleMembersProvider` | partial | `VelaCompletion.kt` | `[registration]` `<completion.contributor language="Vela">`. **No behavioural measurement exists**: nothing in `idea-plugin\` drives the completion contributor headlessly. This row is registered and compiled, and that is all that is claimed |
 | 8 | hover documentation | `<lang.documentationProvider language="Python" id="pythonDocumentationProvider" implementationClass="com.jetbrains.python.documentation.PythonDocumentationProvider" />` (4 entries), plus `pythonDocumentationQuickInfoProvider` | implemented | `VelaDocumentation.kt` | `[registration]` `<lang.documentationProvider language="Vela">`. `[harness]` `HoverTruth`: **11,830 row(s) judged, wrong 0**, over 311 corpus files — every struct, field, `def` and parameter hovered at its declaration and compared against the compiler's own `parse` dump (names, `mut`, types, return types, nesting) and its `lex` dump for the line number; every builtin name against SPEC.md §8; and every identifier in the token stream that neither the file nor the language declares must hover as **nothing**, which is the axis that catches invented content (an earlier defect in this area copied parameter names out of the parentheses and produced `s: s: s:`). A parameter list the model cannot read prints no names at all rather than guessing. Falsification is part of the evidence: `--demand-hover <a name that does not exist>` fails and says the demand failed, and `--swap-params` reports exactly the declaration whose parameter order it reversed. What is still not measured: a running IDE's popup — the harness calls `documentationAt(text, offset)`, which is the PSI-free entry point the popup itself calls, so the rendering is not driven |
-| 9 | parameter info | `<codeInsight.parameterInfo language="Python" implementationClass="com.jetbrains.python.PyParameterInfoHandler" />`; pro adds `keywordArgumentProvider` and `Pythonid.pyBddParametersInspection` | **partial** | `VelaParameterInfo.kt`, `VelaLanguage.kt` (`callAt`), `VelaTargets.kt` | `[harness]` `HintDiff` / `HintShapes` / `HintDupes` measure the same declaration reader the popup calls: `VelaParameterInfo.kt:56` and `VelaHints.parameterHints` both go through `VelaTargets.declaredParameterNames` / `builtinParameterNames`. `HintDiff`: **11,441 hints drawn, 11,441 correct, 0 wrong, 0 beyond the declared list**, `COVERAGE: ran 31188 / skipped 14 (compiler-cannot-parse 2, arg-boundary-disagreement 12) / wrong 0`; `HintDupes`: 0 callables with a repeated parameter name (the old `s: s: s:`), 0 empty names. **The row stays `partial`, and not for the 30 positions it used to be `partial` for**: that finding is not in the current run — which is not the same corpus either (29,006 argument positions then, 31,188 now), and what removed it is not recorded in the evidence I have. What keeps the row `partial` is the other half: the harness measures *the reader the popup calls*, and nothing drives the popup itself, so its rendering is not measured |
-| 10 | go to declaration | `<gotoDeclarationHandler implementation="com.jetbrains.python.psi.impl.PyGotoDeclarationHandler" />` + `PyBreakContinueGotoProvider`; the resolution itself is `pyReferenceResolveProvider` with `PyForwardReferenceResolveProvider` | implemented | `VelaGotoDeclaration.kt`, `VelaTargets.kt` | `[harness]` `GotoOracle` (one `vm.exe check` per declaration rename, the binding set verified by the file compiling again): **26,077 references judged, 0 WRONG**, and the skip side is categorised rather than dropped |
-| 11 | find usages / references | `<lang.findUsagesProvider language="Python" implementationClass="com.jetbrains.python.findUsages.PythonFindUsagesProvider" />`; `usageTypeProvider` in `py-plugin.xml` | partial | `VelaFindUsages.kt`, `VelaReferenceContributor` in `VelaGotoDeclaration.kt` | `[registration]` `<lang.findUsagesProvider language="Vela">`, `<psi.referenceContributor implementation="…VelaReferenceContributor">` (the attribute is `implementation`, proven in `PLUGIN_SURFACE.md`). The same reference is what `GotoOracle` drives, but the *usages window* itself is not measured |
-| 12 | rename refactoring | Python relies on PSI references; `py-plugin.xml` adds `vetoRenameCondition` and `customUsageSearcher` | partial | `VelaLeafManipulator` in `VelaGotoDeclaration.kt`, reference from `VelaReferenceContributor` | `[registration]` `<lang.elementManipulator forClass="com.intellij.psi.PsiElement" implementationClass="…VelaLeafManipulator">`. The write-back is compiled and registered; no harness renames a file and reads it back |
+| 9 | parameter info | `<codeInsight.parameterInfo language="Python" implementationClass="com.jetbrains.python.PyParameterInfoHandler" />`; pro adds `keywordArgumentProvider` and `Pythonid.pyBddParametersInspection` | **partial** | `VelaParameterInfo.kt`, `VelaLanguage.kt` (`callAt`), `VelaTargets.kt` | `[harness]` `HintDiff` / `HintShapes` / `HintDupes` measure the same declaration reader the popup calls: `VelaParameterInfo.kt:56` and `VelaHints.parameterHints` both go through `VelaTargets.declaredParameterNames` / `builtinParameterNames`. `HintDiff`: **11,441 hints drawn, 11,441 correct, 0 wrong, 0 beyond the declared list**, `COVERAGE: ran 31188 / skipped 14 (compiler-cannot-parse 2, arg-boundary-disagreement 12) / wrong 0`; `HintDupes`: 0 callables with a repeated parameter name (the old `s: s: s:`), 0 empty names. **The row stays `partial`, and not for the 30 positions it used to be `partial` for**: that finding is not in the current run — which is not the same corpus either (29,006 argument positions then, 31,188 now), and what removed it is not recorded in the evidence I have. **What keeps the row `partial` is the one axis no harness reaches**: no harness has ever instantiated `VelaParameterInfoHandler`, so the popup's own two decisions — the argument index the caret is in (`updateParameterInfo` → `setCurrentParameter`) and the string `updateUI` draws with the parameter emphasised — have never been driven, while `HintDiff` measures only the parameter-name reader the popup shares with the inlay hints (`VelaTargets.declaredParameterNames` / `builtinParameterNames`) |
+| 10 | go to declaration | `<gotoDeclarationHandler implementation="com.jetbrains.python.psi.impl.PyGotoDeclarationHandler" />` + `PyBreakContinueGotoProvider`; the resolution itself is `pyReferenceResolveProvider` with `PyForwardReferenceResolveProvider` | implemented | `VelaGotoDeclaration.kt`, `VelaTargets.kt` | `[harness]` `GotoOracle` (one `vm.exe check` per declaration rename, the binding set verified by the file compiling again): **26,077 references judged, 0 WRONG**, and the skip side is categorised rather than dropped. The shadowing case of the same resolver — Ctrl+Click on an inner `x` jumping to the outer one — is measured separately in `evidence\inner-first-scope-0.1.6.txt`: `VelaTargets.declarationFor` case 3 now walks the ancestor chain inner-first, and that file states its own limit (the case could not be made to exit non-zero, because the inner `x` is itself compile-silent, so the row disappears instead of turning red) |
+| 11 | find usages / references | `<lang.findUsagesProvider language="Python" implementationClass="com.jetbrains.python.findUsages.PythonFindUsagesProvider" />`; `usageTypeProvider` in `py-plugin.xml` | implemented | `VelaFindUsages.kt`, `VelaReferenceContributor` in `VelaGotoDeclaration.kt` | `[registration]` `<lang.findUsagesProvider language="Vela">`, `<psi.referenceContributor implementation="…VelaReferenceContributor">` (the attribute is `implementation`, proven in `PLUGIN_SURFACE.md`). `[harness]` **Two independent measurements of the same table, on 0.1.6 and the same frozen compiler** (`vm.exe` 905,216 bytes, sha256 `feeb0271…`). `RenameOracle` asks the compiler about one occurrence at a time — rename the declaration and every candidate *except* that one, and a refusal means the compiler binds it: **853 declarations judged, 2,855 bound uses, 0 MISSED, 0 WRONG-SCOPE, 4 claimed-but-unprovable, wrong 0**, `COVERAGE: ran 853 / skipped 5543 (compiler-refused 5363, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 151, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0`; the same run holds the results view's own decisions to the compiler (`canSearchAt` on every bound use and on the declaration's own name, and the label `typeAt` returns — the `NOT-SEARCHABLE` and `LABEL` findings, 0). `RenameWriteback` (`evidence\rename-writeback-0.1.6-20260924-0445.txt`) drives the provider **itself** over copies of real corpus files: 782 declarations, 1,675 claimed references, and **leaving any one of them unwritten is refused by `vm.exe check` for 1,667** of the 1,675 — the other 8 being compile-silent positions that are counted and printed rather than called wrong (`b: P = a` is one shape, a shadowed inner declaration whose use would rebind to the outer same-typed one is the other). The shadowing half of the same table has its own measurement, `evidence\inner-first-scope-0.1.6.txt` (case 3 of `VelaTargets.declarationFor` now walks the ancestor chain inner-first; `NOT-REQUIRED` 5 → 4 and the `scope_shadow_across_blocks_ok.vel:5 'x'` row gone). **What is still not measured: the usages window's own rendering** — no IDE was launched — which is the same limit row 8 states for the hover popup |
+| 12 | rename refactoring | Python relies on PSI references; `py-plugin.xml` adds `vetoRenameCondition` and `customUsageSearcher` | implemented | `VelaLeafManipulator` in `VelaGotoDeclaration.kt`, reference from `VelaReferenceContributor` | `[registration]` `<lang.elementManipulator forClass="com.intellij.psi.PsiElement" implementationClass="…VelaLeafManipulator">`. `[harness]` **`RenameWriteback`, which renames and reads the file back from disk** (`evidence\rename-writeback-0.1.6-20260924-0445.txt`): it drives the plugin's own write path — `VelaReferenceProvider` → `VelaReference.resolve()` → `VelaReference.handleElementRename` for every usage, `VelaLeafManipulator.handleContentChange` for the declaration, in the platform's reverse-document order — over a *copy* of each real corpus file, through the plugin's own `document.replaceString(start, end, newName)` calls, and then asks the compiler about the file it produced. **782 declarations, 1,675 claimed references, 2,457 writes landed of 2,457 attempted, the file read back compiles for 782 of 782, the two write paths agree for 782 of 782, `wrong 0`**; the recorded write log *is* the write set (every range a whole identifier leaf of the right length, every replacement the new name, nothing else written), the file read back is the original with exactly those ranges replaced, and the token-by-token comparison over both texts (plugin lexer) finds no token outside the write set that changed. **The falsification is measured rather than asserted**: renaming the *declaration alone* through the same write path is refused by the compiler for 781 of the 782 — and the tool exits 3 if that count is ever 0, so a rename that silently wrote nothing could not pass. Making the rename *set* the same test (leave one reference out and the compiler must refuse) holds for 1,667 of the 1,675; the 8 that compile anyway are the same compile-silent positions row 11 counts. **What is still not measured**: the platform's rename dialog and its processor (`vetoRenameCondition`, the search-in-comments options) and the undo step — the `CommandProcessor` is a stand-in that runs the command inline — so the plugin's write is measured end to end and the IDE around it is not |
 | 13 | structure view | `<lang.psiStructureViewFactory language="Python" implementationClass="com.jetbrains.python.structureView.PyStructureViewFactory" />` | implemented | `VelaStructureView.kt`, `VelaPsiStructureViewFactory.kt`, `VelaModel.kt` | `[registration]` `<lang.psiStructureViewFactory language="Vela">`. `[harness]` the symbol list it renders is `VelaModel.symbols`, measured by `SymbolDiff` over 126 files (see row 14's note and the SymbolDiff section below) |
 | 14 | problems / inspections / quick fixes | **98** `<localInspection language="Python" …>` in `ce-plugin.xml` (e.g. `PyUnusedLocalInspection`, `PyTypeCheckerInspection`), and the plugin declares `Pythonid.inspectionExtension` for others to add to | implemented | `VelaAnnotator.kt` (`VelaExternalAnnotator`), `VelaDiagnostics.kt` | `[harness]` VerifyPlugin §9/§10: the compiler is run end to end — `arith_basics.vel` accepted (0 problems), `truthiness.vel` refused (1 problem, correct kind and **line read from the compiler**, not guessed), and the same diagnostic 4 lines lower moves to line 7. `[registration]` **three** `<localInspection language="Vela">` entries — `VelaImmutableAssignment`, `VelaStringConcatenation`, `VelaIntFloatMixing` — with a quick fix each: insert `mut `, rewrite to the `concat(...)` builtin, and wrap the int operand in `to_float(...)`. Until those three lines existed the verifier refused the classes, reporting all three as implementing `LocalInspectionTool` with "no registration and no class file names it", so `build-offline.ps1` was FAILING rather than passing a feature nobody could reach. `[harness]` `InspectionProbe` against a frozen compiler over 311 corpus files: **`ran 257 / skipped 54 / wrong 0`**, **zero findings on the 131 files the compiler accepts**, 13 of 13 findings walked to a refusal the compiler itself makes on that exact line, and every fix leaves `check` at exit 0. The method matters: `vm.exe check` reports only its **first** refusal, so a finding is verified by fixing it and asking again, not by looking for a diagnostic on its line. Negative control: one word changed in a rule's criterion gives `wrong 41` and exit 1. **Category, not parity: three rules against Python's 98** — the row is `implemented` because the category exists, is registered, and is measured, not because the counts match. What is not measured: no IDE was started, so `LocalQuickFix.applyFix`'s write action over a live document and the alt-Enter menu are untested |
 | 15 | code formatter | `<lang.formatter language="Python" implementationClass="com.jetbrains.python.formatter.PythonFormattingModelBuilder" />`, `codeStyleSettingsProvider`, `fileIndentOptionsProvider` | implemented | `VelaFormatter.kt`, `VelaFormatRules.kt`, `VelaCodeStyle.kt` | `[harness]` `FeatureProbe` §5, over 195 files and 120,468 tokens: **18,899 gaps in the corpus contain a line feed and 0 of them can be closed by this rule set** (every such gap either keeps line breaks or demands ≥1 line feed), 0 depth/spacing length mismatches, 0 negative depths. That is the property that separates reformatting from changing the program. `[registration]` `<lang.formatter>`, `<codeStyleSettingsProvider>`, `<langCodeStyleSettingsProvider>` |
@@ -129,18 +129,28 @@ should do, and each says plainly how far it actually goes.
 
 | state | rows | which |
 |---|---|---|
-| `implemented` | **21** | 1, 2, 3, 4, 5, 6, 8, 10, 13, 14, 15, 16, 17, 18, 20, 21, 22, 24, 25, 26, 27 |
-| `partial` | **5** | 7 completion, 9 parameter info, 11 find usages, 12 rename, 19 typed/enter handler |
+| `implemented` | **23** | 1, 2, 3, 4, 5, 6, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 21, 22, 24, 25, 26, 27 |
+| `partial` | **3** | 7 completion, 9 parameter info, 19 typed/enter handler |
 | `missing` | **0** | — |
 | `refused-deliberately` | **1** | 23 debugger |
-| total | **27** | `21 + 5 + 1 + 0 = 27` |
+| total | **27** | `23 + 3 + 1 + 0 = 27` |
 
 Row 5 moved from `implemented` to `partial` when its own verifier went red (`psi-tree-diff`
 125 of 126, one FAIL) and moved back to `implemented` when that verifier went green —
 `126 of 126`, `failed 0`, `VERDICT : PASS`, `COVERAGE: ran 126 / skipped 0 / wrong 0` — with
-the FAIL's root cause fixed rather than the expectation restated. Row 9's first reason
-(30 positions wrong, 125 unjudged) is not in the current run either, but that row stays
-`partial` on the part no harness reaches: the popup's own rendering. A row is not
+the FAIL's root cause fixed rather than the expectation restated. Rows 11 and 12 moved from
+`partial` to `implemented` in the same way, on a measurement built for exactly the reason
+they were `partial`: the registration and the *resolution* were measured and nothing had
+ever renamed anything and read the file back, so `RenameWriteback` now drives the plugin's
+own write path over copies of real corpus files and reads them back from disk, with the
+compiler's own refusal of a declaration-only rename as the falsification (row 12's evidence
+column). Row 9's reason is the
+same one axis in its own row and here: **no harness ever instantiates
+`VelaParameterInfoHandler`**, so the argument index the popup highlights
+(`updateParameterInfo` → `setCurrentParameter`) and the string `updateUI` draws are
+unmeasured, and the 30 mis-hinted positions it was once `partial` for are not what keeps
+it `partial` — they are not in the current run, on a corpus that is not the same either. A
+row is not
 `implemented` while its own verifier is red; a green verifier is not by itself enough when
 the capability's own surface was never driven.
 
@@ -148,19 +158,27 @@ the capability's own surface was never driven.
 
 | evidence behind the row | rows | which |
 |---|---|---|
-| `[registration]` **and** `[harness]` | **15** | 2, 3, 4, 5, 6, 9, 10, 13, 15, 16, 17, 18, 20, 21, 22 — row 25's inlay hints too, so this is 16 |
-| `[registration]` only | **10** | 1, 7, 8, 11, 12, 19, 23, 24, 26, 27 |
+| `[registration]` **and** `[harness]` | **18** | 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 25 |
+| `[registration]` only | **8** | 1, 7, 8, 19, 23, 24, 26, 27 |
 | `[harness]` only, no registration | **0** | — |
 
-Corrected: **16** rows have both (2, 3, 4, 5, 6, 9, 10, 13, 15, 16, 17, 18, 20, 21, 22,
-25), **10** have a registration only, and row 23 is the `refused-deliberately` one whose
-evidence is the registration of the *suppression*: `16 + 10 + 1 = 27`.
+**18** rows have both, **8** have a registration only, and row 23 is the
+`refused-deliberately` one whose evidence is the registration of the *suppression*:
+`18 + 8 + 1 = 27`. Rows 11 and 12 were in the second group and are in the first one now,
+because the harness that moved them (`RenameWriteback`) drives the capability's own code —
+the provider, the reference and the manipulator — rather than a reader the capability
+happens to share.
 
-The ten registration-only rows are honest omissions, not oversights: completion, hover,
-find-usages, rename and the typed/enter handlers are document-and-editor features whose
-behaviour only exists with an editor attached, and the debugger row is a refusal. The
-`FeatureProbe` harness added in this round was written specifically to move rows 3, 17,
-18, 15, 4 and 21 out of that group, and it did.
+The eight registration-only rows are honest omissions, not oversights, and each has its own
+reason rather than a shared one: completion (7) and the typed/enter handlers (19) are
+document-and-editor features whose behaviour only exists with an editor attached; hover (8)
+and the PSI tree window (24) have their *decisions* measured (the hover text by
+`HoverTruth`, the tree format by `ast-diff.ps1`) and the surface that draws them is not; the
+file type (1), the settings page (26) and the New → Vela File action (27) are registrations
+the verifier reads back, and the debugger (23) is a refusal. The
+`FeatureProbe` harness added in an earlier round was written specifically to move rows 3, 17,
+18, 15, 4 and 21 out of that group, and it did; `RenameWriteback` is the harness this round
+wrote to move 11 and 12 out of it, and it did.
 
 ## The two regression detectors, and what their non-zero numbers mean
 
@@ -208,24 +226,43 @@ printed and counted, so it cannot change silently.
 
 Every verifier in this plugin ends with `COVERAGE: ran N / skipped M (categorised) / wrong K`, and
 every skip category is declared up front so a declared-and-zero category is printed rather than
-omitted. From the `harness.ps1 -Tool All` pass on the 0.1.5 build, plus `ast-diff.ps1` /
-`psi-tree-diff.ps1` and the `SymbolDiff`/`FoldDiff` re-run with the classes in it — the raw logs
-are `idea-plugin\evidence\harness-0.1.5.txt`, `ast-diff-0.1.5.txt`, `psi-tree-diff-0.1.5.txt` and
-`detectors-0.1.5.txt`:
+omitted. The numbers below come from **two** passes, and each row says which: the
+`harness.ps1 -Tool All` pass on the 0.1.5 build (plus `ast-diff.ps1` / `psi-tree-diff.ps1`), whose
+raw logs are `idea-plugin\evidence\harness-0.1.5.txt`, `ast-diff-0.1.5.txt`,
+`psi-tree-diff-0.1.5.txt` and `detectors-0.1.5.txt`; and the 0.1.6 runs of `RenameOracle` and
+`RenameWriteback`, whose raw logs are `idea-plugin\evidence\rename-oracle-0.1.6-20260924-0445.txt`
+and `rename-writeback-0.1.6-20260924-0445.txt`. The 0.1.5 rows are still the 0.1.5 numbers
+because that pass was not re-run this round (an `All` pass over this corpus takes minutes, and
+`GotoOracle`'s own cache was keyed to a compiler that has since been rebuilt) — **and that is a
+gap in this table rather than a property of those tools**: the rows not marked 0.1.6 below were
+measured on the previous compiler, so their numbers are a record of a pair that no longer exists,
+not a current measurement. What is current is rows 11 and 12's evidence, and the two rows at the
+bottom of this table are what makes them current.
 
 | tool | exit | coverage triple | verdict |
 |---|---|---|---|
-| `ast-diff.ps1` | 0 | `ran 114 / skipped 12 (compiler-refused 12, too-large 0, missing-corpus-file 0, compiler-crashed 0) / wrong 0` | PASS -- 127,318 node lines identical |
-| `psi-tree-diff.ps1` | 0 | `ran 126 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0) / wrong 0` | PASS -- 126 of 126 files replayed |
-| `GotoOracle` | 0 | `ran 26077 / skipped 22960 (crashed-file 0, compiler-refused 22951, invisible-member 9, ambiguous 0) / wrong 0` | clean, and no longer clean-by-omission |
-| `HintDiff` | 0 | `ran 31188 / skipped 14 (compiler-cannot-parse 2, arg-boundary-disagreement 12) / wrong 0` | clean -- every hint names the parameter its declaration gives, and every declared parameter has a hint |
-| `HintNames` | 0 | `ran 1781 / skipped 2 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 2, too-large 0, not-judgeable-in-a-refused-file 0) / wrong 0` | clean, with the refused-file case counted rather than called a disagreement |
-| `HintShapes` | 0 | `ran 5793 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 0` | clean -- 0 labels that are not plain identifiers |
-| `HintDupes` | 0 | `ran 1781 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 0` | clean -- no repeated or empty parameter name |
-| `SymbolDiff` | 1 | `ran 86 / skipped 27 (threw 0, missing-corpus-file 0, too-large 0, type-spelling-only-difference 2, tree-reports-more-declarations 25, scan-reports-more-declarations 0) / wrong 13` | regression detector, above |
-| `FoldDiff` | 1 | `ran 64 / skipped 38 (threw 0, missing-corpus-file 0, too-large 0, granularity-only-difference 38) / wrong 24` | regression detector, above |
-| `FeatureProbe` | 0 | `ran 976 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) / wrong 0` | clean -- six features that had only a registration |
+| `ast-diff.ps1` | 0 | `ran 114 / skipped 12 (compiler-refused 12, too-large 0, missing-corpus-file 0, compiler-crashed 0) / wrong 0` | PASS -- 127,318 node lines identical (0.1.5) |
+| `psi-tree-diff.ps1` | 0 | `ran 126 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0) / wrong 0` | PASS -- 126 of 126 files replayed (0.1.5) |
+| `GotoOracle` | 0 | `ran 26077 / skipped 22960 (crashed-file 0, compiler-refused 22951, invisible-member 9, ambiguous 0) / wrong 0` | clean, and no longer clean-by-omission (0.1.5) |
+| `HintDiff` | 0 | `ran 31188 / skipped 14 (compiler-cannot-parse 2, arg-boundary-disagreement 12) / wrong 0` | clean -- every hint names the parameter its declaration gives, and every declared parameter has a hint (0.1.5) |
+| `HintNames` | 0 | `ran 1781 / skipped 2 (threw 0, missing-corpus-file 0, no-model-entry-for-this-def 2, too-large 0, not-judgeable-in-a-refused-file 0) / wrong 0` | clean, with the refused-file case counted rather than called a disagreement (0.1.5) |
+| `HintShapes` | 0 | `ran 5793 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 0` | clean -- 0 labels that are not plain identifiers (0.1.5) |
+| `HintDupes` | 0 | `ran 1781 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 0` | clean -- no repeated or empty parameter name (0.1.5) |
+| `SymbolDiff` | 1 | `ran 86 / skipped 27 (threw 0, missing-corpus-file 0, too-large 0, type-spelling-only-difference 2, tree-reports-more-declarations 25, scan-reports-more-declarations 0) / wrong 13` | regression detector, above (0.1.5) |
+| `FoldDiff` | 1 | `ran 64 / skipped 38 (threw 0, missing-corpus-file 0, too-large 0, granularity-only-difference 38) / wrong 24` | regression detector, above (0.1.5) |
+| `FeatureProbe` | 0 | `ran 976 / skipped 0 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0) / wrong 0` | clean -- six features that had only a registration (0.1.5) |
+| `RenameOracle` | 0 | `ran 853 / skipped 5543 (compiler-refused 5363, too-large 0, missing-corpus-file 0, compiler-silent 29, not-attributable 151, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0` | clean -- the reference table names exactly the 2,855 uses the compiler binds and nothing else, 0 MISSED, 0 WRONG-SCOPE, 4 unprovable (**0.1.6**) |
+| `RenameWriteback` | 0 | `ran 782 / skipped 5614 (compiler-refused-file 5363, too-large 0, missing-corpus-file 0, no-references-and-silent 28, not-attributable 138, new-name-refused 0, new-name-collides 0, too-many-references 85, crashed 0, contradiction 0) / wrong 0` | clean -- the plugin's write-back wrote its own write set into the file it read back, which the compiler accepts for 782 of 782, and the control fired (**0.1.6**) |
 
+Two notes on the two 0.1.6 rows, because they are the ones a reader will check. The corpus is
+**not the same corpus** the 0.1.5 rows above were measured on: `tests\` belongs to another track
+and was being added to while this round ran, so the same tool judged 768, 770 and 782
+declarations in three runs over the same tree, and the 0.1.6 rows carry the third run's numbers
+with the corpus digest taken immediately after it. `RenameWriteback`'s `main`-shaped skips are
+its own: 138 declarations whose declaration-only rename is refused for a reason about the program
+(`no 'main' function`) are counted `not-attributable`, 85 with more than 6 claimed references are
+`too-many-references`, and 28 have nothing to rename — each with its own rows printed in the
+evidence file, which is the point of printing them.
 `HintNames`'s one case, in full: ``tests/build/check_cases/unannotated_parameter.vel line 2 `f` tree=[] model=[n]``.
 That file is a compiler-refused case -- `def f(n)` with an unannotated parameter -- so the tree
 records no parameter and the symbol model reads `n` out of the detail text. On illegal Vela the
@@ -313,7 +350,7 @@ tiling the text, say nothing about an editor rendering it — no IDE was launche
 Note the shape of this one: the file was a `missing-corpus-file` defect an hour before the
 FAIL, and the FAIL is what a corpus entry pointing at nothing had been hiding.
 
-### 2. `HintDiff`: 30 argument positions got no parameter-name hint — gone from the 0.1.5 run (row 9 keeps `partial` for another reason)
+### 2. `HintDiff`: 30 argument positions got no parameter-name hint — gone from the 0.1.5 run (row 9 keeps `partial` for the undriven `VelaParameterInfoHandler`)
 
 ```
 0.1.5 pass (`idea-plugin\evidence\harness-0.1.5.txt`):
@@ -393,7 +430,9 @@ from where the parser puts the argument — so the two sides disagree about wher
 complex argument begins, or how many arguments there are, and the harness cannot say
 whether the position's own hint is present. It is counted rather than dropped
 (`arg-boundary-disagreement 125` then, `12` now), and it is no longer why row 9 is
-`partial` — the unmeasured popup is. What keeps this entry is that 12 is not 0.
+`partial` — no harness ever instantiates `VelaParameterInfoHandler`, so the argument index the
+popup highlights and the string `updateUI` draws are the unmeasured axis. What keeps this
+entry is that 12 is not 0.
 
 **Why this is not just the harness.** The first version of this check compared
 offsets exactly and reported 3,073 findings — those were the harness being wrong
@@ -408,9 +447,14 @@ are not in the current run.
 ### 4. The verifier's remaining hole, and the one it had
 
 `mutation-test.ps1` proves `VerifyPlugin` can fail: **13 mutants, 12 caught, 0 holes,
-1 control correct, 0 script/verdict problems**, baseline `RESULT: PASS`, published to
-`build\verify\mutation-0.1.5\mutation-report-0.1.5.txt` with the version, the jar's
-SHA256 and the time in its first lines, plus one verifier log per mutant. The known
+1 control correct, 0 script/verdict problems**, baseline `RESULT: PASS` on the 0.1.6 jar
+(`dist\vela\lib\vela-idea-plugin.jar`, 391,263 bytes, sha256 `3ff8091c…`), published to
+`build\verify\mutation-0.1.6\mutation-report-0.1.6.txt` with the version, the jar's
+SHA256 and the time in its first lines, plus one verifier log per mutant — and copied, with
+the command and the full raw output, into `evidence\mutation-0.1.6-20260924-0442.txt`. The
+0.1.5 pair of that file is still in `evidence\mutation-0.1.5-raw.txt`; it was **re-run rather
+than relabelled**, because a mutation result whose version disagrees with the descriptor is a
+result about an artifact nobody can name. The known
 open hole was `classRegisteredNowhere`, and it is **no longer a hole**: the mutant
 removes the `codeInsight.inlayProvider` registration and the verifier reports
 
@@ -427,7 +471,12 @@ contract no installed extension point declares *and* is registered nowhere — t
 no list to check it against. The count of such classes in this build is 0.
 
 `tools\negative-tests.ps1` (the older A–I set) is **12/12 caught, 0 missed, 0 void**,
-published to `build\verify\negative-0.1.5\negative-report.txt`. Getting there required
+published to `build\verify\negative-0.1.6\negative-report.txt` and copied, with the command
+and the full raw output, into `evidence\negative-0.1.6-20260924-0444.txt`. It was re-run on
+0.1.6 for the same reason the mutation set was: its mutations derive their targets from the
+*current* `plugin.xml`, and a target that had disappeared would report `VOID` rather than a
+stale `CAUGHT` — this run reports **0 void**, so every target still exists and every mutation
+still applied. Getting there required
 fixing two real verifier holes, both found by the negative test rather than by reading:
 
 | hole | what it looked like | fix |
@@ -471,6 +520,33 @@ non-match is a manifest entry pointing at a file that does not exist.
 its own category, its own exit code (3 = corpus defect, 1 = the plugin is wrong), and
 `AstDiff` now prints the manifest line.
 
+### 7. The shadowing defect in the reference table's resolver — closed, with the measurement's own limit stated
+
+```
+BEFORE (same corpus, same frozen compiler, tools byte-identical to git):
+    local claimed 1256 / all claimed 2767 / MISSED 0 / WRONG-SCOPE 0 / NOT-REQUIRED 5 / wrong 0
+    tests/safety/cases/scope_shadow_across_blocks_ok.vel:5 `x` (local): the table claims
+      line 8 (offset 292) ... NOT-REQUIRED
+AFTER  (the same pairs, the fix in):
+    local claimed 1255 / all claimed 2766 / NOT-REQUIRED 4 / wrong 0, and that row is gone
+```
+
+Case 3 of `VelaTargets.declarationFor` looked for the nearest declaration *preceding* the
+offset, so an inner redeclaration's own use was answered by the outer declaration: Ctrl+Click
+on the inner `x` jumped to the outer one, and the outer `x`'s rename claimed the inner use.
+The walk is now `chain.reversed()` — inner block first. The measurement is
+`evidence\inner-first-scope-0.1.6.txt` (a track of its own; the *fix* was already committed in
+`958aa85` before that round measured it, which is stated here because the file itself says so),
+and it includes the falsification: revert the order and the row comes back.
+
+**What that file does not show, kept here rather than only there**: the defect could not be
+made to exit non-zero. A claimed-but-unbound offset becomes `WRONG-SCOPE` only when some other
+declaration's binding set contains it, and this inner `x` is itself compiler-silent — so the
+row *disappears* instead of turning red, which is a weaker signal than a red. That is the same
+unprovable class rows 11 and 12 count (4 of them in `RenameOracle`'s 0.1.6 run, 8 in
+`RenameWriteback`'s), and it is why both of those rows say the class is counted and printed
+rather than called either way.
+
 ## What this table does not prove
 
 * **No IDE was launched.** No IntelliJ instance can be started in this session, so
@@ -482,7 +558,11 @@ its own category, its own exit code (3 = corpus defect, 1 = the plugin is wrong)
   labelled as such in every row that uses it.
 * `implemented` means "the platform will call this, and the decision function behind
   it was measured where a harness could reach it". It does not mean "seen working".
-* Rows 7, 8, 11, 12 and 19 have **no behaviour measurement at all**, and the table
+* Rows 7 and 19 have **no behaviour measurement at all**. Row 8's hover *text* is measured by
+  `HoverTruth` and its popup is not; row 9's parameter-name reader is measured by `HintDiff`
+  and its popup is not; the debugger row is a refusal. Rows 11 and 12 had no behaviour
+  measurement either until this round, and the harness built for exactly that reason
+  (`RenameWriteback`) is what moved them: the table
   says so per row rather than averaging it away.
 
 ## The verifier's remaining hole
