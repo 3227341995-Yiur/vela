@@ -41,6 +41,13 @@
                                        refuse to push something enormous, or to keep
                                        tracking one.  Also never invoked by anything
                                        until now
+      llvm-column tools\llvm-column.ps1
+                                       the third path: for every `run` row, the
+                                       `build-llvm` product's bytes and exit code
+                                       against the interpreter's.  A refusal must be
+                                       named in tests\llvm-refusals.txt with its
+                                       reason, and a ledger entry that is no longer
+                                       refused fails the run
       suite     tools\refreeze.ps1     record the locks, keep the written
                                        expectations, run all the cases
       bench     tools\bench.ps1        7 repetitions per variant, every answer
@@ -220,6 +227,20 @@ if (Test-Path -LiteralPath $shimHeader) {
 # cheapest to diagnose.
 Invoke-Step -Name 'docs-zh' -Script 'tools\docs-zh-check.ps1' -SuccessPattern 'RESULT: ok'
 Invoke-Step -Name 'hygiene' -Script 'tools\check-hygiene.ps1' -SuccessPattern 'RESULT: ok'
+
+# The third path, which nothing judged at all.
+#
+# `refreeze` runs the corpus through the interpreter and the C back end.  Nothing ran
+# the corpus through `build-llvm` -- the back end that builds the object in this
+# process with libLLVM and hands it to the linker.  That question was answered only
+# when somebody happened to have a scratch script to hand, which is where this tool
+# came from.
+#
+# A refusal is acceptable only if it is named in `tests\llvm-refusals.txt` with its
+# reason, and a ledger entry that is no longer refused fails the run too: a ledger
+# that is never pruned stops describing the back end.  It starts no C compiler, so it
+# can run while the build is owned by somebody else.
+Invoke-Step -Name 'llvm-column' -Script 'tools\llvm-column.ps1' -SuccessPattern 'RESULT: ok'
 
 if (-not $SkipSuite) {
     Invoke-Step -Name 'suite' -Script 'tools\refreeze.ps1' -SuccessPattern 'RESULT: green'

@@ -1,0 +1,28 @@
+# Programs the LLVM back end refuses, deliberately, with the reason.
+#
+# Read by `tools\llvm-column.ps1`.  The rule is two-sided on purpose:
+#
+#   * a program in the corpus that this back end refuses must appear here, or the
+#     run fails -- the back end is not allowed to grow silent holes;
+#   * a program listed here that is NOT refused any more also fails the run --
+#     an entry that is never pruned stops describing the back end, and from then
+#     on it is decoration.
+#
+# Format, one per line:
+#
+#     <case name from tests/cases.txt> | <substring the refusal must contain>
+#
+# The substring is matched with .Contains(), so write plain text, not a pattern.
+
+# LLVM IR has no OpenMP, and emitting the runtime ABI is out of scope for this
+# back end.  A loop that says it is parallel while running serially is the one
+# failure mode this project has promised never to ship, so this refusal is
+# permanent and by design rather than a gap being worked on.
+# See `selfhost/LLVM_PLAN.md`; the C back end compiles all seven of these.
+parallel_for_correct             | is refused by the LLVM back end, deliberately
+parallel_nested_2d               | is refused by the LLVM back end, deliberately
+pure_call_inside_parallel        | is refused by the LLVM back end, deliberately
+parallel_alias_read_only         | is refused by the LLVM back end, deliberately
+parallel_alias_read_any_index    | is refused by the LLVM back end, deliberately
+parallel_alias_same_index        | is refused by the LLVM back end, deliberately
+parallel_alias_nested_rowmajor   | is refused by the LLVM back end, deliberately
