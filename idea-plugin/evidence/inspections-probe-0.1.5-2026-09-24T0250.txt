@@ -1,0 +1,222 @@
+# Vela IDEA plugin 0.1.5 -- localInspection + quick fix: the primary measurement
+#
+# WHAT THIS IS
+#   The raw output of one run of idea-plugin\tools\harness\inspection-probe.ps1,
+#   which drives the three inspection classes this round adds -- through the
+#   platform's own ProblemsHolder and a PsiFile whose getText() is the buffer --
+#   and compares every finding with m.exe check, one fix at a time, over the
+#   corpus the plugin's other harnesses measure over.
+#
+# DATE / TIME
+#   2026-09-24 02:50 (local).  HEAD at that moment: cc8b86264e751015a4f576e35539babb9607ea4f.
+#   Other agents were committing into this checkout throughout the round, so HEAD is
+#   a moving value; the four files this round adds were still untracked at this time.
+#
+# PLUGIN
+#   version          0.1.5 (src\main\resources\META-INF\plugin.xml)
+#   jar              dist\vela\lib\vela-idea-plugin.jar
+#                    390641 bytes  sha256 6408725ff990f6f7fbcfc4cd4e8401fa9b842dfb7ba6aefdcc45cd511e4ec5aa
+#   zip              dist\vela-idea-plugin-0.1.5.zip
+#                    367106 bytes  sha256 ad7a6bb5c2662c1c4b354862469c4918aae3bbbf13b66d24b565bb6f1bfb3b26
+#   measured classes a snapshot of build\classes taken while this driver held
+#                    %TEMP%\vela-plugin-build.lock: 171 files.  The snapshot exists
+#                    because a parallel build-offline.ps1 replaced build\classes
+#                    mid-run once, which came back as
+#                    NoClassDefFoundError: dev/vela/plugin/VelaSyntaxParser\\
+#                    and was counted as 6 crashed files -- a wrong number about the
+#                    plugin, not a wrong answer from it.  The run below cannot be
+#                    moved that way.  The same measurement was repeated after the
+#                    later rebuild of the jar and gave the same numbers.
+#   jar contents     dev/vela/plugin/{VelaInspectionRules,VelaInspectionEdit,
+#                    VelaInspectionFinding,VelaInspectionFix,VelaInspectionBase,
+#                    VelaImmutableAssignmentInspection,VelaStringConcatenationInspection,
+#                    VelaIntFloatMixingInspection}.class all present in the jar above.
+#
+# THE COMPILER (the oracle)
+#   frozen         C:\Users\lu\AppData\Local\Temp\dsh-YLmwYt\vela-inspection-probe\vm.exe
+#                  861696 bytes  sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a
+#                  (copied out of selfhost\build\vm.exe at 2026-09-24 01:50:39, before
+#                  any of this round's work; the tree's own copy was rebuilt twice
+#                  afterwards, which is exactly why it was frozen first)
+#   LLVM-C.dll     frozen beside it, sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe
+#   side by side   867840 bytes sha256 501b6cbb5701f3d5ef36396b9ddcaf4ce740e66d6ca325f482c2451e76810fdf
+#                  (selfhost\build\vm.exe as it stood during this round)
+#                  868352 bytes sha256 1b2d79195243892a7eb4946284ad7916a26f359c4f66c3406e2512ff8b9fa
+#                  (selfhost\vm.exe, the fixed build the leader names; not yet promoted)
+#
+# ENVIRONMENT
+#   JDK/platform   D:\JetBrains\IntelliJ IDEA 2026.2.1  (IU-262.9437.185, JBR)
+#   kotlinc        <IDE>\plugins\Kotlin\kotlinc  build 2.3.20-release-208
+#   corpus         tests\ examples\ ide-demo\ bench\ selfhost\parts\ + selfhost\vela.vel
+#                  = 311 file(s) (ran 257 + skipped 54)
+#
+# THE COMMAND
+#   powershell -ExecutionPolicy Bypass -File idea-plugin\tools\harness\inspection-probe.ps1 `
+#       -FrozenVm %TEMP%\vela-inspection-probe\vm.exe `
+#       -Exclude tests/safety/cases/strict_no_inferred_binding_type.vel
+#
+#   The exclusion is printed by the tool and counted as excluded-by-request 1.
+#   That file makes m.exe check not terminate (measured on three compiler builds;
+#   see inspections-oracles-and-hang-*.txt), so a full run reports it as the defect
+#   category check-did-not-terminate and is non-clean for that reason alone.  With
+#   the fixed compiler (1b2d7919) the full corpus, exclusion not needed, is
+#   an 258 / skipped 53 / wrong 0 -- see the same other file.
+#
+# THE RAW OUTPUT FOLLOWS, BYTE FOR BYTE
+
+=== Preconditions
+    repo root : C:\Users\lu\Downloads\vela
+    plugin    : C:\Users\lu\Downloads\vela\idea-plugin
+    JDK       : D:\JetBrains\IntelliJ IDEA 2026.2.1
+    lock      : C:\Users\lu\AppData\Local\Temp\dsh-YLmwYt\vela-plugin-build.lock (pid 33380, waited 0s)
+
+=== Snapshot the plugin classes (under the lock)
+    snapshot  : C:\Users\lu\AppData\Local\Temp\dsh-YLmwYt\vela-plugin-inspection-probe\classes-snapshot (171 file(s), taken while the lock was held)
+                ^ every number below is about these class files, not about build\classes
+
+=== Freeze the compiler
+    using the frozen compiler already at C:\Users\lu\AppData\Local\Temp\dsh-YLmwYt\vela-inspection-probe\vm.exe (-Refreeze to replace it)
+    frozen compiler: 861696 bytes  sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a
+    tree   compiler: 868352 bytes  sha256 42e5d5eec76aa13a28b265daaa438fb835927948ab3af665e49c34c0d80f1bdb
+                           ^ a different build from the frozen one; that is why the frozen copy is the oracle
+
+=== Compile the harness (two files, see the header)
+powershell.exe : javac.exe : C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:601: ????: [
+removal] Inspecti
+At line:5 char:1
++ & powershell -ExecutionPolicy Bypass -File idea-plugin\tools\harness\ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (javac.exe : C:\...moval] Inspecti:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+onManager ?§Ö? createNewGlobalContext(boolean) ????, ??????????
+At C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\inspection-probe.ps1:311 char:5
++     & $javac ('@' + $javacArgsFile) 2>&1 | Tee-Object -FilePath (Join ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\lu\Dow...???, ??????????:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+        public com.intellij.codeInspection.GlobalInspectionContext createNewGlobalContext(boolean b) {
+                                                                   ^
+C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:624: ????: [removal] InspectionManager ?§Ö
+? createProblemDescriptor(@org.jetbrains.annotations.NotNull PsiElement,@org.jetbrains.annotations.NotNull @com.intelli
+j.codeInspection.util.InspectionMessage String,@org.jetbrains.annotations.NotNull LocalQuickFix @org.jetbrains.annotati
+ons.Nullable [],@org.jetbrains.annotations.NotNull ProblemHighlightType,boolean) ????, ??????????
+        public com.intellij.codeInspection.ProblemDescriptor createProblemDescriptor(
+                                                             ^
+C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java:618: ????: [removal] InspectionManager ?§Ö
+? createProblemDescriptor(@org.jetbrains.annotations.NotNull PsiElement,@org.jetbrains.annotations.NotNull @com.intelli
+j.codeInspection.util.InspectionMessage String,@org.jetbrains.annotations.NotNull LocalQuickFix @org.jetbrains.annotati
+ons.Nullable [],@org.jetbrains.annotations.NotNull ProblemHighlightType) ????, ??????????
+        public com.intellij.codeInspection.ProblemDescriptor createProblemDescriptor(
+                                                             ^
+?: C:\Users\lu\Downloads\vela\idea-plugin\tools\harness\src\InspectionProbe.java?????????????? API??
+?: ?§Û???????, ????? -Xlint:deprecation ???¡À???
+3 ??????
+    compiled: 2 source file(s) -> C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes
+
+=== InspectionProbe
+application : com.intellij.mock.MockApplication (the platform's own headless application; the holder and the visitor are the real ones)
+repo root   : C:\Users\lu\Downloads\vela
+rules       : VelaImmutableAssignment, VelaStringConcatenation, VelaIntFloatMixing
+excluded by request: tests/safety/cases/strict_no_inferred_binding_type.vel
+corpus      : 310 file(s)
+
+== A. the registered classes ==
+  VelaImmutableAssignment   VelaImmutableAssignmentInspection       LocalInspectionTool, getShortName()=VelaImmutableAssignment
+  VelaStringConcatenation   VelaStringConcatenationInspection       LocalInspectionTool, getShortName()=VelaStringConcatenation
+  VelaIntFloatMixing        VelaIntFloatMixingInspection            LocalInspectionTool, getShortName()=VelaIntFloatMixing
+  the descriptor line is NOT this round's file; see the evidence file for it.
+
+== B. the authority ==
+  frozen compiler : C:\Users\lu\AppData\Local\Temp\dsh-YLmwYt\vela-inspection-probe\vm.exe (861696 bytes)
+  sha256          : 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a
+  VelaImmutableAssignment   exit 2  line 3 safety error: cannot assign to 'x': it was declared immutable   <- the rule's own words
+  VelaStringConcatenation   exit 2  line 2 type error: string concatenation is not implemented in Vela 0.1   <- the rule's own words
+  VelaIntFloatMixing        exit 2  line 2 type error: operator '+' mixes int and float   <- the rule's own words
+
+== D. one fix, before and after: raw `vm.exe check` output ==
+
+  tests/safety/cases/strict_immutability.vel          VelaImmutableAssignment
+    the rule (line 3): Vela refuses this assignment: `x` was declared immutable, and the compiler says "cannot assign to 'x': it was declared immutable"
+    the fix: "Add 'mut' to the declaration of 'x'" ->
+             replace [25,25) with "mut "
+    -- check BEFORE the fix (exit 2):
+         vela: safety error: cannot assign to 'x': it was declared immutable
+         at before.vel:3
+         vela: panic: the program was refused
+    -- check AFTER the fix (exit 0):
+         ok
+
+  tests/safety/cases/strict_no_string_concatenation.vel  VelaStringConcatenation
+    the rule (line 5): Vela has no `+` for strings: the compiler refuses "string concatenation is not implemented in Vela 0.1"
+    the fix: "Join with concat(...)" ->
+             replace [248,257) with "concat("a", "b")"
+    -- check BEFORE the fix (exit 2):
+         vela: type error: string concatenation is not implemented in Vela 0.1
+         at before.vel:5
+         vela: panic: the program was refused
+    -- check AFTER the fix (exit 0):
+         ok
+
+  tests/safety/cases/strict_no_implicit_conversion.vel  VelaIntFloatMixing
+    the rule (line 2): Vela has no implicit int/float conversion: the compiler refuses "operator '+' mixes int and float"
+    the fix: "Convert the int operand with to_float(...)" ->
+             replace [31,32) with "to_float(1)"
+    -- check BEFORE the fix (exit 2):
+         vela: type error: operator '+' mixes int and float
+         at before.vel:2
+         vela: panic: the program was refused
+    -- check AFTER the fix (exit 0):
+         ok
+
+== C. the corpus ==
+  unit: one file for `ran` / `skipped` / `wrong`; wrong is a file where an inspection reported something the compiler does not, or where a fix did not
+        remove the refusal it was offered for.  Per-rule numbers below.
+
+  files the compiler accepts        : 131
+  files the compiler refuses         : 126
+  findings on files it ACCEPTS       : 0   <- must be 0: an inspection may not invent a refusal
+  files where all fixes were applied : 10
+  findings the walk could not reach   : 0   (an unrelated refusal sat in front of them; they are neither confirmed nor contradicted, and they are listed below)
+  slowest single `check`             : 30 ms (tests/safety/cases/hole_extern_conflicting_prototypes.vel)   <- the 60 s timeout is not a slow machine
+
+  per rule (`verified` = the compiler refused that very line with this rule's own words):
+    rule                      fired  verified corrob  unprov  disputed missed  fix-clean fix-partial on-accepted
+    VelaImmutableAssignment   2      2        0       0       0        1       2         0           0
+    VelaStringConcatenation   7      7        0       0       0        0       7         0           0
+    VelaIntFloatMixing        4      4        0       0       0        0       4         0           0
+  where a rule missed a refusal it claims (the compiler's words, no finding):
+    VelaImmutableAssignment   tests/build/check_cases/mutate_loop_variable.vel:3 "cannot modify 'i': it was declared immutable"
+
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 257
+  skipped                 : 54
+      crashed-file          0         <- a defect, not a limit
+      missing-corpus-file   0         <- a defect, not a limit
+      too-large             0         <- a defect, not a limit
+      compiler-did-not-run  0         <- a defect, not a limit
+      check-did-not-terminate  0         <- a defect, not a limit
+      fix-wrote-nothing     0         <- a defect, not a limit
+      inspection-class-disagrees-with-the-rule  0         <- a defect, not a limit
+      does-not-parse        53      
+      empty-or-whitespace-only  0       
+      excluded-by-request   1       
+  wrong                   : 0
+  corpus accounted for    : 311  (ran + skipped)
+
+COVERAGE: ran 257 / skipped 54 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 53, empty-or-whitespace-only 0, excluded-by-request 1) / wrong 0
+
+unverified-headless: LocalQuickFix.applyFix (needs a live Application: project, PsiDocumentManager, write action); the edits it writes ARE measured below.
+unverified-headless: plugin.xml registration (another agent owns the descriptor this round); the XML snippet is in the evidence file beside this log.
+not measured on purpose: rules whose repair is ambiguous or unsafe ??assignments to an immutable parameter, to an array, and `'%'` / `'**'` operand mixing.
+
+VERDICT: [PASS] every finding the three registered inspections report was walked to a refusal the frozen compiler itself makes on that line, every fix removes the refusal it was offered for, and no finding lands on a file the compiler accepts -- over 257 judged file(s), wrong 0, no defect category tripped
+
+=== Done
+    COVERAGE: ran 257 / skipped 54 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 53, empty-or-whitespace-only 0, excluded-by-request 1) / wrong 0
+    VERDICT: [PASS] every finding the three registered inspections report was walked to a refusal the frozen compiler itself makes on that line, every fix removes the refusal it was offered for, and no finding lands on a file the compiler accepts -- over 257 judged file(s), wrong 0, no defect category tripped
+    frozen compiler : C:\Users\lu\AppData\Local\Temp\dsh-YLmwYt\vela-inspection-probe\vm.exe (861696 bytes, sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a, written 2026-09-24 01:50:39)
+    log             : C:\Users\lu\Downloads\vela\idea-plugin\build\tools\harness\classes\InspectionProbe.log
+    exit            : 0

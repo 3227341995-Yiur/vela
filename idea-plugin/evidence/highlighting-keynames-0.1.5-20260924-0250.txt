@@ -1,0 +1,613 @@
+================================================================================
+FeatureProbe section 1, round 2: the KEYS and their NAMES, not just "some key came back"
+================================================================================
+
+READ THIS FIRST: harness.ps1 DOES NOT RECOMPILE KOTLIN.
+
+  Every .kt edit in this file is compiled by build-offline.ps1 -SkipVerify BEFORE the
+  harness runs. skipping that, and running harness.ps1 alone against a tree whose
+  Kotlin was just edited, measures build\classes as it was left by whoever built last.
+  Measured in round 1 of this work: after deleting the BAD_CHARACTER mapping from
+  VelaHighlighting.kt, the harness still reported "BAD_CHARACTER 5 coloured", because
+  build\classes\dev\vela\plugin\VelaSyntaxHighlighter.class still had its 02:14:49
+  mtime.  A red/green result that did not rebuild is not a result about the source.
+  In this round every variant is a full private kotlinc build of the whole plugin,
+  and the probe prints the code source of the page it loaded, so "which copy answered"
+  is checked rather than assumed.
+
+WHAT ROUND 2 ADDS
+
+  Round 1 established that section 1 never called the highlighter for the platform
+  token type and therefore could not fail for BAD_CHARACTER.  It now can.  That left
+  the shallower question: section 1 asked only whether getTokenHighlights(t) returned
+  AT LEAST ONE key.  A TextAttributesKey is looked up by identity in a colour scheme,
+  so a key whose external NAME drifted from the name the colour settings page
+  registers still colours the token while its settings row becomes a row that changes
+  nothing -- and section 1 could not see it.  Section 1 now has three parts:
+
+    1a  every token type the lexer emits has at least one colour key   (round 1)
+    1b  the keys drawn and the keys the settings page registers carry the SAME names
+    1c  a key resolves to an actual colour in the user scheme -- declared as a named
+        skip (needs-an-application-instance) because it needs a running Application
+
+WHY 1b IS A SUB-CHECK OF SECTION 1 AND NOT A NEW SECTION
+
+  Sections 2-6 are per-corpus-file, and the coverage unit -- "one (capability, file)
+  pair for sections 1-5, plus one artifact-level check for section 6" -- is stated in
+  the tool.  A seventh section would make that sentence and the "[FAIL] n of 6" wording
+  wrong for a check that is about two classes, not about the corpus.  1b compares two
+  sets once, prints both, and reports under section 1, where a reader already looks for
+  "is highlighting wired up".  Its failures go into the same `wrong` count and the same
+  sectionFailures list, so the aggregate verdict cannot be greener than it.
+
+RUN HEADER
+
+  plugin version        : 0.1.5  (src\main\resources\META-INF\plugin.xml)
+  git HEAD              : cc8b86264e751015a4f576e35539babb9607ea4f
+  written               : 2026-09-24 02:50:02 (local)
+  plugin jar            : C:\Users\lu\Downloads\vela\idea-plugin\dist\vela\lib\vela-idea-plugin.jar
+                          390641 bytes  sha256 6408725ff990f6f7fbcfc4cd4e8401fa9b842dfb7ba6aefdcc45cd511e4ec5aa
+                          ONE build, rebuilt twice from the unmodified tree, and the
+                          hash is identical every time -- the in-tree harness run below
+                          is on exactly this artifact, and the jar was not rebuilt
+                          afterwards:
+                            build-offline.ps1 -SkipVerify -> 6408725f...e5aa
+                            harness.ps1 -Tool FeatureProbe  -> same hash after the run
+                            build-offline.ps1 -SkipVerify -> same hash
+                          (Note for the leader: the jar hash DIFFERS from the one in
+                           round 1 (19c5662d...be1d).  Other agents kept working in
+                           this tree and I rebuilt it, so the artifact contains their
+                           code too.  Everything in THIS file is about the one hash
+                           above and nothing else.)
+  VelaSyntaxHighlighter.class (build\classes) sha256 5de3e0ab1036c8979049bc3c13ed59861f9bc4895ae368650650f172466a642e
+  VelaColorsAndFontsPage.class (build\classes) sha256 88f60372ae41ebab1465401f940ed14e85d98a64f04507094623cf99170e78f4
+                          -- these two ARE the jar's copies: both were rebuilt from the
+                          tree's own sources immediately before the run below, and the
+                          probe prints that same class's code source at run time.
+  VelaHighlighting.kt   : sha256 8ba3fd2bb68292defb0ab37c0fc51ec5ad4e26d1c9c31f0947777217b55ba9e9  4066 B  (NOT modified by this work)
+  VelaColorSettingsPage.kt: sha256 5b27e934c48551cd9bd106a418d30abc51e5068d394139d2f900e5796a38cbe3  4716 B  (NOT modified by this work)
+  FeatureProbe.java     : sha256 49fdb87196ba3f2faae35eee2cd8599a1d76efe48d058a967eaeb3ee2a16adb8  47369 B
+  compiler (frozen)     : C:\Users\lu\AppData\Local\Temp\dsh-7TvGDu\vela-plugin-parse\vm.exe  867840 B  sha256 501b6cbb5701f3d5ef36396b9ddcaf4ce740e66d6ca325f482c2451e76810fdf
+  compiler (tree)       : selfhost\build\vm.exe  sha256 42e5d5eec76aa13a28b265daaa438fb835927948ab3af665e49c34c0d80f1bdb
+
+  WHICH FILE DECLARES THE SETTINGS PAGE, AND WHY IT MATTERS
+
+    plugin.xml line 377 registers dev.vela.plugin.VelaColorsAndFontsPage, and that
+    class is declared in VelaColorSettingsPage.kt -- not in the file whose name matches
+    it.  VelaColorsAndFontsPage.kt is a 24-line comment-only tombstone that says the
+    opposite ("**The survivor is VelaColorSettingsPage.kt**"), which is wrong twice:
+    the surviving CLASS is VelaColorsAndFontsPage, and the file it is declared in is the
+    other one.  It also says the survivor "lists all 14 keys" -- true of
+    VelaColorSettingsPage.kt, which is the file that is actually compiled.  Verified
+    from the artifacts, not from the comment: build\classes holds
+    VelaColorsAndFontsPage.class and no VelaColorSettingsPage.class, and the jar's copy
+    of that class contains the "Bad character" row.  Nothing was changed to fix the
+    comment (out of scope for this work); the leader should decide who owns it.
+
+================================================================================
+A. IN-TREE RESULT: harness.ps1 -Tool FeatureProbe, on the artifact above
+================================================================================
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+   1a  every token type the lexer emits has at least one colour key
+   1b  the keys drawn and the keys the colour settings page registers carry the same names
+   1c  those keys resolve to an actual colour in the user's scheme (declared as a named skip when no Application instance exists)
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         coloured
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+  -- 1b. do the keys drawn and the keys registered carry the SAME names?
+     why: a key is looked up by identity, so a renamed key still colours the token while the settings row that names the old name changes nothing.
+      keys drawn by the highlighter : 14 [VELA_BAD, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      rows on the settings page    : 14 [VELA_BAD, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      settings page class          : dev.vela.plugin.VelaColorsAndFontsPage from file:/C:/Users/lu/Downloads/vela/idea-plugin/build/classes/
+      key objects                  : VelaColors.BAD=VELA_BAD @2d363fb3   drawn key @2d363fb3   same object=true
+      row "Keyword" names VELA_KEYWORD
+      row "Identifier" names VELA_IDENT
+      row "Number" names VELA_NUMBER
+      row "String" names VELA_STRING
+      row "Comment" names VELA_COMMENT
+      row "Operator" names VELA_OP
+      row "Braces" names VELA_BRACES
+      row "Brackets" names VELA_BRACKETS
+      row "Parentheses" names VELA_PARENS
+      row "Comma" names VELA_COMMA
+      row "Dot" names VELA_DOT
+      row "Colon" names VELA_COLON
+      row "Semicolon" names VELA_SEMI
+      row "Bad character" names VELA_BAD
+  VERDICT: every key the highlighter draws is a name the settings page registers
+  -- 1c. do those keys resolve to a colour in the user's scheme?
+      not measured: resolving a key needs an Application instance (EditorColorsManager threw NullPointerException: Cannot invoke "com.intellij.openapi.application.Application.getService(java.lang.Class)" because the return value of "com.intellij.openapi.application.ApplicationManager.getApplication()" is null); counted as needs-an-application-instance 1
+
+
+  Verdict block of that run:
+    VERDICT: every token type the lexer emits over this corpus gets a colour key
+    VERDICT: every key the highlighter draws is a name the settings page registers
+    VERDICT: every delimiter in the corpus is a type getPairs() declares
+    VERDICT: the commenter's prefix is the lexer's comment character, over 4437 real comment token(s)
+    VERDICT: the two paths agree on every one of 17015 name use(s)
+    VERDICT: no gap with a line feed in it can be closed by this rule set, over 20656 real line break(s)
+    VERDICT: the file is in the artifact, declares 7 template(s), and every one is in the VELA context
+    VERDICT: [PASS] all six features answered as the invariant requires, over 1556 judged unit(s) (5 corpus-wide checks per readable file, plus one artifact-level check), wrong 0, no defect category tripped
+
+  Coverage block:
+    == coverage: what ran, what did not, and why ==
+      ran (judged)            : 1556
+      skipped                 : 1
+          missing-corpus-file   0         <- a defect, not a limit
+          too-large             0         <- a defect, not a limit
+          empty-or-whitespace-only  0       
+          needs-an-application-instance  1       
+      wrong                   : 0
+      corpus accounted for    : 1557  (ran + skipped)
+
+================================================================================
+B. THE EIGHT STATES.  Each state is ONE edit to ONE file of the tree; the variant
+   file replaces only that file in a private whole-plugin build, and the variant
+   class dir goes FIRST on the classpath.  Nothing under the tree was edited.
+   Tree bytes for reference: VelaHighlighting.kt 8ba3fd2bb68292defb0ab37c0fc51ec5ad4e26d1c9c31f0947777217b55ba9e9,
+   VelaColorSettingsPage.kt 5b27e934c48551cd9bd106a418d30abc51e5068d394139d2f900e5796a38cbe3
+   below), and the probe's own "settings page class ... from <dir>" line proves which
+   copy answered every time.
+================================================================================
+
+  st  1a    1b    exit   what the state is
+  B   ok    ok    0      VelaHighlighting.kt exactly as the tree has it (baseline)
+  C   FAIL  FAIL  1      the BAD_CHARACTER mapping line deleted
+  D   ok    ok    0      the key name rewritten EVERYWHERE it appears (symmetric)
+  E   ok    ok    0      the tree's bytes again
+  G   ok    FAIL  1      the page's "Bad character" row names VelaColors.DOT instead
+  H   ok    ok    0      the tree's bytes again (this is the state shipped)
+  I   ok    ok    0      only the KEY DECLARATION renamed
+  J   ok    FAIL  1      the page's row names a key of its OWN invention
+
+B0. WHAT "D" AND "I" WITHOUT A FAILURE MEANS  (measured, then explained)
+
+    Both D and I rename the key to VELA_BAD_TYPO, and BOTH pass.  That is not a hole in
+    1b; it is a structural fact about this plugin, and the instrumented run says so in
+    one line.  Verbatim, out of state I's own log:
+
+        keys drawn by the highlighter : 14 [VELA_BAD_TYPO, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+        rows on the settings page    : 14 [VELA_BAD_TYPO, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+        key objects                  : VelaColors.BAD=VELA_BAD_TYPO @617faa95   drawn key @617faa95   same object=true
+
+    The settings page writes `AttributesDescriptor("Bad character", VelaColors.BAD)`, so
+    the row holds the SAME key object as the mapping.  Renaming the object renames the
+    row with it; there is no way to reach a state where the highlighter and the page
+    disagree while both read VelaColors.  Name drift therefore cannot arrive by renaming
+    a key -- which is a real finding about the plugin, and it is the reason the failing
+    shapes are G and J (a row pointed at a DIFFERENT key, and a row carrying its own
+    copy of the name) rather than a one-character typo.  The leader's state-鈶?question
+    is answered by I, not by D: I passes for the same reason.
+
+B1. STATE B -- the tree as it is (also the shipped state)
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+   1a  every token type the lexer emits has at least one colour key
+   1b  the keys drawn and the keys the colour settings page registers carry the same names
+   1c  those keys resolve to an actual colour in the user's scheme (declared as a named skip when no Application instance exists)
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         coloured
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+  -- 1b. do the keys drawn and the keys registered carry the SAME names?
+     why: a key is looked up by identity, so a renamed key still colours the token while the settings row that names the old name changes nothing.
+      keys drawn by the highlighter : 14 [VELA_BAD, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      rows on the settings page    : 14 [VELA_BAD, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      settings page class          : dev.vela.plugin.VelaColorsAndFontsPage from file:/C:/Users/lu/AppData/Local/Temp/dsh-7TvGDu/vela-round2/classes-B/
+      key objects                  : VelaColors.BAD=VELA_BAD @617faa95   drawn key @617faa95   same object=true
+      row "Keyword" names VELA_KEYWORD
+      row "Identifier" names VELA_IDENT
+      row "Number" names VELA_NUMBER
+      row "String" names VELA_STRING
+      row "Comment" names VELA_COMMENT
+      row "Operator" names VELA_OP
+      row "Braces" names VELA_BRACES
+      row "Brackets" names VELA_BRACKETS
+      row "Parentheses" names VELA_PARENS
+      row "Comma" names VELA_COMMA
+      row "Dot" names VELA_DOT
+      row "Colon" names VELA_COLON
+      row "Semicolon" names VELA_SEMI
+      row "Bad character" names VELA_BAD
+  VERDICT: every key the highlighter draws is a name the settings page registers
+  -- 1c. do those keys resolve to a colour in the user's scheme?
+      not measured: resolving a key needs an Application instance (EditorColorsManager threw NullPointerException: Cannot invoke "com.intellij.openapi.application.Application.getService(java.lang.Class)" because the return value of "com.intellij.openapi.application.ApplicationManager.getApplication()" is null); counted as needs-an-application-instance 1
+
+
+B2. STATE C -- mapping line deleted -> 1a fails AND 1b fails (the row is left with no key)
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+   1a  every token type the lexer emits has at least one colour key
+   1b  the keys drawn and the keys the colour settings page registers carry the same names
+   1c  those keys resolve to an actual colour in the user's scheme (declared as a named skip when no Application instance exists)
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         NO COLOUR KEY
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 1 -> [BAD_CHARACTER]
+  VERDICT: 1 token type(s) would be drawn uncoloured
+  -- 1b. do the keys drawn and the keys registered carry the SAME names?
+     why: a key is looked up by identity, so a renamed key still colours the token while the settings row that names the old name changes nothing.
+      keys drawn by the highlighter : 13 [VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      rows on the settings page    : 14 [VELA_BAD, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      settings page class          : dev.vela.plugin.VelaColorsAndFontsPage from file:/C:/Users/lu/AppData/Local/Temp/dsh-7TvGDu/vela-round2/classes-C/
+      key objects                  : VelaColors.BAD=VELA_BAD @617faa95   drawn key @1e127982   same object=false
+      row "Keyword" names VELA_KEYWORD
+      row "Identifier" names VELA_IDENT
+      row "Number" names VELA_NUMBER
+      row "String" names VELA_STRING
+      row "Comment" names VELA_COMMENT
+      row "Operator" names VELA_OP
+      row "Braces" names VELA_BRACES
+      row "Brackets" names VELA_BRACKETS
+      row "Parentheses" names VELA_PARENS
+      row "Comma" names VELA_COMMA
+      row "Dot" names VELA_DOT
+      row "Colon" names VELA_COLON
+      row "Semicolon" names VELA_SEMI
+      row "Bad character" names VELA_BAD
+  VERDICT: 1 name mismatch(es) between highlighter and settings page
+      on the settings page but never drawn (rows that do nothing): [VELA_BAD]
+  -- 1c. do those keys resolve to a colour in the user's scheme?
+      not measured: resolving a key needs an Application instance (EditorColorsManager threw NullPointerException: Cannot invoke "com.intellij.openapi.application.Application.getService(java.lang.Class)" because the return value of "com.intellij.openapi.application.ApplicationManager.getApplication()" is null); counted as needs-an-application-instance 1
+
+
+B3. STATE G -- the row points at VelaColors.DOT -> 1a passes, 1b FAILS
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+   1a  every token type the lexer emits has at least one colour key
+   1b  the keys drawn and the keys the colour settings page registers carry the same names
+   1c  those keys resolve to an actual colour in the user's scheme (declared as a named skip when no Application instance exists)
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         coloured
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+  -- 1b. do the keys drawn and the keys registered carry the SAME names?
+     why: a key is looked up by identity, so a renamed key still colours the token while the settings row that names the old name changes nothing.
+      keys drawn by the highlighter : 14 [VELA_BAD, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      rows on the settings page    : 13 [VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      settings page class          : dev.vela.plugin.VelaColorsAndFontsPage from file:/C:/Users/lu/AppData/Local/Temp/dsh-7TvGDu/vela-round2/classes-G/
+      key objects                  : VelaColors.BAD=VELA_BAD @617faa95   drawn key @617faa95   same object=true
+      row "Keyword" names VELA_KEYWORD
+      row "Identifier" names VELA_IDENT
+      row "Number" names VELA_NUMBER
+      row "String" names VELA_STRING
+      row "Comment" names VELA_COMMENT
+      row "Operator" names VELA_OP
+      row "Braces" names VELA_BRACES
+      row "Brackets" names VELA_BRACKETS
+      row "Parentheses" names VELA_PARENS
+      row "Comma" names VELA_COMMA
+      row "Dot" names VELA_DOT
+      row "Colon" names VELA_COLON
+      row "Semicolon" names VELA_SEMI
+      row "Bad character" names VELA_DOT
+  VERDICT: 1 name mismatch(es) between highlighter and settings page
+      drawn but not on the settings page (the user cannot recolour them): [VELA_BAD]
+  -- 1c. do those keys resolve to a colour in the user's scheme?
+      not measured: resolving a key needs an Application instance (EditorColorsManager threw NullPointerException: Cannot invoke "com.intellij.openapi.application.Application.getService(java.lang.Class)" because the return value of "com.intellij.openapi.application.ApplicationManager.getApplication()" is null); counted as needs-an-application-instance 1
+
+
+B4. STATE J -- the row carries its own key name VELA_BAD_THIS_PAGE_INVENTED -> 1b FAILS, both directions
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+   1a  every token type the lexer emits has at least one colour key
+   1b  the keys drawn and the keys the colour settings page registers carry the same names
+   1c  those keys resolve to an actual colour in the user's scheme (declared as a named skip when no Application instance exists)
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         coloured
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+  -- 1b. do the keys drawn and the keys registered carry the SAME names?
+     why: a key is looked up by identity, so a renamed key still colours the token while the settings row that names the old name changes nothing.
+      keys drawn by the highlighter : 14 [VELA_BAD, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      rows on the settings page    : 14 [VELA_BAD_THIS_PAGE_INVENTED, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      settings page class          : dev.vela.plugin.VelaColorsAndFontsPage from file:/C:/Users/lu/AppData/Local/Temp/dsh-7TvGDu/vela-round2/classes-J/
+      key objects                  : VelaColors.BAD=VELA_BAD @617faa95   drawn key @617faa95   same object=true
+      row "Keyword" names VELA_KEYWORD
+      row "Identifier" names VELA_IDENT
+      row "Number" names VELA_NUMBER
+      row "String" names VELA_STRING
+      row "Comment" names VELA_COMMENT
+      row "Operator" names VELA_OP
+      row "Braces" names VELA_BRACES
+      row "Brackets" names VELA_BRACKETS
+      row "Parentheses" names VELA_PARENS
+      row "Comma" names VELA_COMMA
+      row "Dot" names VELA_DOT
+      row "Colon" names VELA_COLON
+      row "Semicolon" names VELA_SEMI
+      row "Bad character" names VELA_BAD_THIS_PAGE_INVENTED
+  VERDICT: 2 name mismatch(es) between highlighter and settings page
+      drawn but not on the settings page (the user cannot recolour them): [VELA_BAD]
+      on the settings page but never drawn (rows that do nothing): [VELA_BAD_THIS_PAGE_INVENTED]
+  -- 1c. do those keys resolve to a colour in the user's scheme?
+      not measured: resolving a key needs an Application instance (EditorColorsManager threw NullPointerException: Cannot invoke "com.intellij.openapi.application.Application.getService(java.lang.Class)" because the return value of "com.intellij.openapi.application.ApplicationManager.getApplication()" is null); counted as needs-an-application-instance 1
+
+
+B5. STATE D -- key name rewritten everywhere (symmetric): 1b passes, with the reason on screen
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+   1a  every token type the lexer emits has at least one colour key
+   1b  the keys drawn and the keys the colour settings page registers carry the same names
+   1c  those keys resolve to an actual colour in the user's scheme (declared as a named skip when no Application instance exists)
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         coloured
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+  -- 1b. do the keys drawn and the keys registered carry the SAME names?
+     why: a key is looked up by identity, so a renamed key still colours the token while the settings row that names the old name changes nothing.
+      keys drawn by the highlighter : 14 [VELA_BAD_TYPO, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      rows on the settings page    : 14 [VELA_BAD_TYPO, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      settings page class          : dev.vela.plugin.VelaColorsAndFontsPage from file:/C:/Users/lu/AppData/Local/Temp/dsh-7TvGDu/vela-round2/classes-D/
+      key objects                  : VelaColors.BAD=VELA_BAD_TYPO @617faa95   drawn key @617faa95   same object=true
+      row "Keyword" names VELA_KEYWORD
+      row "Identifier" names VELA_IDENT
+      row "Number" names VELA_NUMBER
+      row "String" names VELA_STRING
+      row "Comment" names VELA_COMMENT
+      row "Operator" names VELA_OP
+      row "Braces" names VELA_BRACES
+      row "Brackets" names VELA_BRACKETS
+      row "Parentheses" names VELA_PARENS
+      row "Comma" names VELA_COMMA
+      row "Dot" names VELA_DOT
+      row "Colon" names VELA_COLON
+      row "Semicolon" names VELA_SEMI
+      row "Bad character" names VELA_BAD_TYPO
+  VERDICT: every key the highlighter draws is a name the settings page registers
+  -- 1c. do those keys resolve to a colour in the user's scheme?
+      not measured: resolving a key needs an Application instance (EditorColorsManager threw NullPointerException: Cannot invoke "com.intellij.openapi.application.Application.getService(java.lang.Class)" because the return value of "com.intellij.openapi.application.ApplicationManager.getApplication()" is null); counted as needs-an-application-instance 1
+
+
+B6. STATE I -- only the declaration renamed: same as D, and the same object-identity line
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+   1a  every token type the lexer emits has at least one colour key
+   1b  the keys drawn and the keys the colour settings page registers carry the same names
+   1c  those keys resolve to an actual colour in the user's scheme (declared as a named skip when no Application instance exists)
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         coloured
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+  -- 1b. do the keys drawn and the keys registered carry the SAME names?
+     why: a key is looked up by identity, so a renamed key still colours the token while the settings row that names the old name changes nothing.
+      keys drawn by the highlighter : 14 [VELA_BAD_TYPO, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      rows on the settings page    : 14 [VELA_BAD_TYPO, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      settings page class          : dev.vela.plugin.VelaColorsAndFontsPage from file:/C:/Users/lu/AppData/Local/Temp/dsh-7TvGDu/vela-round2/classes-I/
+      key objects                  : VelaColors.BAD=VELA_BAD_TYPO @617faa95   drawn key @617faa95   same object=true
+      row "Keyword" names VELA_KEYWORD
+      row "Identifier" names VELA_IDENT
+      row "Number" names VELA_NUMBER
+      row "String" names VELA_STRING
+      row "Comment" names VELA_COMMENT
+      row "Operator" names VELA_OP
+      row "Braces" names VELA_BRACES
+      row "Brackets" names VELA_BRACKETS
+      row "Parentheses" names VELA_PARENS
+      row "Comma" names VELA_COMMA
+      row "Dot" names VELA_DOT
+      row "Colon" names VELA_COLON
+      row "Semicolon" names VELA_SEMI
+      row "Bad character" names VELA_BAD_TYPO
+  VERDICT: every key the highlighter draws is a name the settings page registers
+  -- 1c. do those keys resolve to a colour in the user's scheme?
+      not measured: resolving a key needs an Application instance (EditorColorsManager threw NullPointerException: Cannot invoke "com.intellij.openapi.application.Application.getService(java.lang.Class)" because the return value of "com.intellij.openapi.application.ApplicationManager.getApplication()" is null); counted as needs-an-application-instance 1
+
+
+B7. STATE H -- the tree's bytes again (identical shape to B)
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+   1a  every token type the lexer emits has at least one colour key
+   1b  the keys drawn and the keys the colour settings page registers carry the same names
+   1c  those keys resolve to an actual colour in the user's scheme (declared as a named skip when no Application instance exists)
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         coloured
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+  -- 1b. do the keys drawn and the keys registered carry the SAME names?
+     why: a key is looked up by identity, so a renamed key still colours the token while the settings row that names the old name changes nothing.
+      keys drawn by the highlighter : 14 [VELA_BAD, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      rows on the settings page    : 14 [VELA_BAD, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      settings page class          : dev.vela.plugin.VelaColorsAndFontsPage from file:/C:/Users/lu/AppData/Local/Temp/dsh-7TvGDu/vela-round2/classes-H/
+      key objects                  : VelaColors.BAD=VELA_BAD @617faa95   drawn key @617faa95   same object=true
+      row "Keyword" names VELA_KEYWORD
+      row "Identifier" names VELA_IDENT
+      row "Number" names VELA_NUMBER
+      row "String" names VELA_STRING
+      row "Comment" names VELA_COMMENT
+      row "Operator" names VELA_OP
+      row "Braces" names VELA_BRACES
+      row "Brackets" names VELA_BRACKETS
+      row "Parentheses" names VELA_PARENS
+      row "Comma" names VELA_COMMA
+      row "Dot" names VELA_DOT
+      row "Colon" names VELA_COLON
+      row "Semicolon" names VELA_SEMI
+      row "Bad character" names VELA_BAD
+  VERDICT: every key the highlighter draws is a name the settings page registers
+  -- 1c. do those keys resolve to a colour in the user's scheme?
+      not measured: resolving a key needs an Application instance (EditorColorsManager threw NullPointerException: Cannot invoke "com.intellij.openapi.application.Application.getService(java.lang.Class)" because the return value of "com.intellij.openapi.application.ApplicationManager.getApplication()" is null); counted as needs-an-application-instance 1
+
+
+B8. STATE E -- the tree's bytes again
+== 1. syntax highlighting: is every token the lexer emits coloured? ==
+   1a  every token type the lexer emits has at least one colour key
+   1b  the keys drawn and the keys the colour settings page registers carry the same names
+   1c  those keys resolve to an actual colour in the user's scheme (declared as a named skip when no Application instance exists)
+  files lexed             : 311
+  tokens                  : 200641
+  distinct token types    : 13
+      BAD_CHARACTER     5         coloured
+      VELA_BRACES       7893      coloured
+      VELA_BRACKETS     5652      coloured
+      VELA_COLON        4999      coloured
+      VELA_COMMA        14585     coloured
+      VELA_COMMENT      4437      coloured
+      VELA_DOT          1470      coloured
+      VELA_IDENT        42192     coloured
+      VELA_KEYWORD      9079      coloured
+      VELA_NUMBER       7849      coloured
+      VELA_OP           10098     coloured
+      VELA_PARENS       17911     coloured
+      VELA_STRING       2228      coloured
+  token types with no colour: 0
+  VERDICT: every token type the lexer emits over this corpus gets a colour key
+  -- 1b. do the keys drawn and the keys registered carry the SAME names?
+     why: a key is looked up by identity, so a renamed key still colours the token while the settings row that names the old name changes nothing.
+      keys drawn by the highlighter : 14 [VELA_BAD, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      rows on the settings page    : 14 [VELA_BAD, VELA_BRACES, VELA_BRACKETS, VELA_COLON, VELA_COMMA, VELA_COMMENT, VELA_DOT, VELA_IDENT, VELA_KEYWORD, VELA_NUMBER, VELA_OP, VELA_PARENS, VELA_SEMI, VELA_STRING]
+      settings page class          : dev.vela.plugin.VelaColorsAndFontsPage from file:/C:/Users/lu/AppData/Local/Temp/dsh-7TvGDu/vela-round2/classes-E/
+      key objects                  : VelaColors.BAD=VELA_BAD @617faa95   drawn key @617faa95   same object=true
+      row "Keyword" names VELA_KEYWORD
+      row "Identifier" names VELA_IDENT
+      row "Number" names VELA_NUMBER
+      row "String" names VELA_STRING
+      row "Comment" names VELA_COMMENT
+      row "Operator" names VELA_OP
+      row "Braces" names VELA_BRACES
+      row "Brackets" names VELA_BRACKETS
+      row "Parentheses" names VELA_PARENS
+      row "Comma" names VELA_COMMA
+      row "Dot" names VELA_DOT
+      row "Colon" names VELA_COLON
+      row "Semicolon" names VELA_SEMI
+      row "Bad character" names VELA_BAD
+  VERDICT: every key the highlighter draws is a name the settings page registers
+  -- 1c. do those keys resolve to a colour in the user's scheme?
+      not measured: resolving a key needs an Application instance (EditorColorsManager threw NullPointerException: Cannot invoke "com.intellij.openapi.application.Application.getService(java.lang.Class)" because the return value of "com.intellij.openapi.application.ApplicationManager.getApplication()" is null); counted as needs-an-application-instance 1
+
+
+================================================================================
+C. 1c: THE CHECK THAT IS DECLARED AND NOT RUN
+================================================================================
+
+  Resolving a key in the user's scheme needs EditorColorsManager.getInstance(), i.e. a
+  running Application.  This plugin's harnesses deliberately start none, so 1c cannot
+  run here -- and the coverage line says so by name instead of saying nothing:
+
+    COVERAGE: ran 1556 / skipped 1 (missing-corpus-file 0, too-large 0,
+              empty-or-whitespace-only 0, needs-an-application-instance 1) / wrong 0
+
+  The category is declared up front, so a reader sees "1" rather than having to guess
+  whether the check was counted.  What it would check: a key that is mapped and
+  registered can still resolve to nothing (no foreground, no fallback), and then the
+  character is on screen and invisible -- the user-visible symptom this whole section
+  exists to rule out.  The exception text is printed verbatim in the run output above
+  (NullPointerException from ApplicationManager.getApplication() == null).
+
+================================================================================
+D. FILES CHANGED BY THIS WORK
+================================================================================
+
+    idea-plugin\tools\harness\src\FeatureProbe.java   (1a fixed in round 1; 1b + 1c + the
+                                                      coverage category added in round 2)
+    idea-plugin\evidence\highlighting-badcharacter-0.1.5-20260924-0232.txt  (round 1)
+    idea-plugin\evidence\
+    Nothing else.  VelaHighlighting.kt and VelaColorSettingsPage.kt are byte-identical
+    to their state at the start of this round (sha256s in the run header).  No
+    plugin.xml, no build file, no version, no other java, no tools\**.

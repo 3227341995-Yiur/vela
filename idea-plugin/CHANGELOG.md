@@ -23,6 +23,42 @@ action registered as a group, and three extension points that were never
 registered (or registered under the wrong attribute name). An entry that says
 "added X, unverified" is worth more than one that says "added X".
 
+## 0.1.6 — the first inspections, and a highlight check that can fail
+
+**What changed.**
+
+* **Three `localInspection` rules, with working quick fixes.** `FEATURE_PARITY.md` said of
+  this feature "no `localInspection`s and no quick fixes at all", and that was true: the
+  classes existed and the verifier refused them, reporting all three as implementing
+  `LocalInspectionTool` with "no registration and no class file names it".  The three
+  registrations exist now, and each rule reports what the compiler itself refuses on that
+  line: assignment to an immutable binding (fix: insert `mut `), `"a" + "b"` (fix: the
+  `concat(...)` builtin), and an int and a float mixed in one operation (fix: `to_float(...)`
+  on the int side).
+
+  Measured against a frozen compiler over 311 corpus files: `ran 257 / skipped 54 / wrong 0`,
+  with **zero findings on the 131 files the compiler accepts**, and 13 of 13 findings walked
+  to a refusal the compiler makes on that exact line; every fix leaves `check` at exit 0.  The
+  method matters, because `vm.exe check` reports only its *first* refusal: a finding is
+  verified by fixing it and asking again, not by looking for a diagnostic on its line.  The
+  negative control is one word changed in a rule's criterion, which gave `wrong 41` and exit 1
+  before the word was put back.
+
+* **`FeatureProbe`'s first section can fail again.**  It reported `BAD_CHARACTER` as having no
+  colour key.  The plugin was right and the probe was blind: its lookup searched thirteen
+  hardcoded token constants, the lexer emits the *platform's* `TokenType.BAD_CHARACTER`, and
+  the section `continue`d before calling the highlighter at all.  It now compares the keys the
+  highlighter draws against the keys the colour settings page registers, in both directions.
+  A renamed key still passes, and that is a fact about this plugin rather than a gap in the
+  check: the settings row and the highlighter hold the *same* `TextAttributesKey` object, so a
+  rename moves both sides at once.  What the check catches is a row pointing at a different
+  key, or a row carrying a name of its own.
+
+**What this does not prove.**  No IDE was started.  `LocalQuickFix.applyFix`'s last four lines
+(a write action over a live document) were not driven, the alt-Enter menu was not opened, and
+whether a colour resolves in the user's *scheme* is recorded as a named skip
+(`needs-an-application-instance`) rather than as a pass.
+
 ## 0.1.5 — every red verifier turns green, two that could never be right become decidable
 
 **What changed.** Two defects, both found by measurement rather than by reading, and

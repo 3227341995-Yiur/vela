@@ -1,0 +1,74 @@
+# Vela IDEA plugin 0.1.5 -- the inspection measurement's oracles, and the compiler hang
+#
+# Companion to inspections-probe-0.1.5-2026-09-24T0250.txt.  That file is the full raw log of
+# the primary run; this one is the same tool over the *other* three oracles, so that the
+# numbers can be read against a compiler that was rebuilt twice during the round, plus
+# the raw reproduction of the one corpus file `vm.exe check` does not terminate on.
+# Every measurement line below is the tool's own output, copied out of the run logs.
+#
+#   date/time      2026-09-24 02:50 (local)
+#   git HEAD       cc8b86264e751015a4f576e35539babb9607ea4f (moving: other agents commit)
+#   plugin version 0.1.5
+#   jar            dist\vela\lib\vela-idea-plugin.jar 390641 bytes
+#                  sha256 6408725ff990f6f7fbcfc4cd4e8401fa9b842dfb7ba6aefdcc45cd511e4ec5aa
+#   oracles        3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a  861696 B (frozen first)
+#                  501b6cbb5701f3d5ef36396b9ddcaf4ce740e66d6ca325f482c2451e76810fdf  867840 B (selfhost\build\vm.exe)
+#                  1b2d79195243892a7eb4946284ad7916a26f359c4f66c3406e2512ff8b9fa  868352 B (selfhost\vm.exe, fixed, unpromoted)
+#
+# THE THREE LINES THAT MATTER
+#   A  the full corpus against the frozen oracle      -- wrong 0, and one named defect: the hang
+#   B  the same, hanging file excluded                -- wrong 0, VERDICT [PASS]
+#   E  the FIXED compiler, whole corpus, no exclusion -- wrong 0, VERDICT [PASS], hang gone (1 -> 0)
+#
+===== RUN A: the full corpus, no exclusion -- the compiler HANGS on one file
+      command: inspection-probe.ps1 -FrozenVm %TEMP%\vela-inspection-probe\vm.exe
+      oracle : 3768a180 (861696 bytes)
+  tests/safety/cases/strict_no_inferred_binding_type.vel: vm.exe check did NOT terminate within 60 s (killed after 60007 ms) -- the compiler hangs on this program, so this file was not judged
+  slowest single `check`             : 40 ms (selfhost/parts/eval.vel)   <- the 60 s timeout is not a slow machine
+COVERAGE: ran 257 / skipped 54 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 1, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 53, empty-or-whitespace-only 0, excluded-by-request 0) / wrong 0
+VERDICT: [FAIL] a defect category tripped: crashed-file=0, missing-corpus-file=0, too-large=0, compiler-did-not-run=0, check-did-not-terminate=1 -- and the run itself is not clean (a defect category tripped)
+
+===== RUN B: the same oracle, the hanging file excluded -- the inspection verdict alone
+      command: inspection-probe.ps1 -FrozenVm %TEMP%\vela-inspection-probe\vm.exe -Exclude <the hanging file>
+excluded by request: tests/safety/cases/strict_no_inferred_binding_type.vel
+COVERAGE: ran 257 / skipped 54 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 53, empty-or-whitespace-only 0, excluded-by-request 1) / wrong 0
+VERDICT: [PASS] every finding the three registered inspections report was walked to a refusal the frozen compiler itself makes on that line, every fix removes the refusal it was offered for, and no finding lands on a file the compiler accepts -- over 257 judged file(s), wrong 0, no defect category tripped
+
+===== RUN C: the tree compiler as it stood (501b6cbb, 867840 bytes), hanging file excluded
+      command: inspection-probe.ps1            (driver default freeze = selfhost\build\vm.exe)
+    frozen compiler: 867840 bytes  sha256 501b6cbb5701f3d5ef36396b9ddcaf4ce740e66d6ca325f482c2451e76810fdf
+COVERAGE: ran 257 / skipped 53 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 53, empty-or-whitespace-only 0) / wrong 0
+VERDICT: [PASS] every finding the three registered inspections report was walked to a refusal the frozen compiler itself makes on that line, every fix removes the refusal it was offered for, and no finding lands on a file the compiler accepts -- over 257 judged file(s), wrong 0, no defect category tripped
+
+===== RUN D: the FIXED compiler (1b2d7919, 868352 bytes, selfhost\vm.exe), hanging file excluded
+    frozen compiler: 868352 bytes  sha256 1b2d79195243892a7eb4946284ad5287916a26f359c4f66c3406e2512ff8b9fa
+COVERAGE: ran 257 / skipped 54 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 53, empty-or-whitespace-only 0, excluded-by-request 1) / wrong 0
+VERDICT: [PASS] every finding the three registered inspections report was walked to a refusal the frozen compiler itself makes on that line, every fix removes the refusal it was offered for, and no finding lands on a file the compiler accepts -- over 257 judged file(s), wrong 0, no defect category tripped
+
+===== RUN E: the FIXED compiler, the WHOLE corpus, no exclusion -- the defect count goes 1 -> 0
+      command: inspection-probe.ps1 -FrozenVm %TEMP%\vela-plugin-inspection-probe-fixed\vm.exe
+    frozen compiler: 868352 bytes  sha256 1b2d79195243892a7eb4946284ad5287916a26f359c4f66c3406e2512ff8b9fa
+      excluded-by-request   0
+COVERAGE: ran 258 / skipped 53 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 53, empty-or-whitespace-only 0, excluded-by-request 0) / wrong 0
+VERDICT: [PASS] every finding the three registered inspections report was walked to a refusal the frozen compiler itself makes on that line, every fix removes the refusal it was offered for, and no finding lands on a file the compiler accepts -- over 258 judged file(s), wrong 0, no defect category tripped
+    COVERAGE: ran 258 / skipped 53 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 53, empty-or-whitespace-only 0, excluded-by-request 0) / wrong 0
+
+===== THE HANG ITSELF: `vm.exe check` on that file, three builds, 20 s bound, raw
+      file (50 bytes, untracked in git at the time, added by another agent):
+        def main() -> None {
+            mut a = 1
+            print(a)
+        }
+      manifest expectation: check | 2 | binding 'a' has no type annotation | ... SPEC 3.1
+      Start-Process ... ; if (-not $p.WaitForExit(20000)) { Stop-Process -Id $p.Id -Force; "HANG" }:
+        frozen-3768a180 (my oracle)        sha 3768a1809749 : HANG - killed after 20 s, stdout=[] stderr=[]
+        frozen-501b6cbb (driver default)   sha 501b6cbb5701 : HANG - killed after 20 s, stdout=[] stderr=[]
+        tree selfhost\build\vm.exe         sha 501b6cbb5701 : HANG - killed after 20 s, stdout=[] stderr=[]
+      and under the FIXED build, the same command:
+        exit=2
+        vela: type error: binding 'a' has no type annotation: write the type after the name, as in mut a: int = 1
+          at f.vel:2
+
+      ^ this is why the driver has a 60 s per-call timeout and a `check-did-not-terminate`
+        defect category: the first version of this tool sat behind that loop and had to be
+        killed from outside, and the slowest legitimate check over the whole corpus is 57 ms.

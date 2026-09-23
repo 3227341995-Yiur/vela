@@ -1,5 +1,9 @@
 import com.intellij.lexer.Lexer;
+import com.intellij.openapi.editor.colors.EditorColorsManager;
+import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
+import com.intellij.openapi.editor.markup.TextAttributes;
+import com.intellij.openapi.options.colors.AttributesDescriptor;
 import com.intellij.psi.TokenType;
 import com.intellij.psi.tree.IElementType;
 import dev.vela.plugin.VelaCommenter;
@@ -27,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * The features that had only a *registration* behind them, measured.
@@ -120,7 +125,12 @@ public final class FeatureProbe {
         Coverage cov = new Coverage()
                 .defectCategory("missing-corpus-file")
                 .defectCategory("too-large")
-                .category("empty-or-whitespace-only");
+                .category("empty-or-whitespace-only")
+                // Declared up front like every other category, so "0" and "never counted"
+                // cannot look the same.  It stays at 1 while this tool runs without an
+                // Application instance, which is the only honest number for a check that
+                // did not run: section 1c's effective-colour lookup.
+                .category("needs-an-application-instance");
 
         highlighting(cov);
         braceMatching(cov);
@@ -231,6 +241,11 @@ public final class FeatureProbe {
      */
     private void highlighting(Coverage cov) throws IOException {
         System.out.println("== 1. syntax highlighting: is every token the lexer emits coloured? ==");
+        System.out.println("   1a  every token type the lexer emits has at least one colour key");
+        System.out.println("   1b  the keys drawn and the keys the colour settings page registers carry"
+                + " the same names");
+        System.out.println("   1c  those keys resolve to an actual colour in the user's scheme"
+                + " (declared as a named skip when no Application instance exists)");
         VelaSyntaxHighlighter highlighter = new VelaSyntaxHighlighter();
         Map<String, Long> seen = new TreeMap<>();
         List<String> uncoloured = new ArrayList<>();
@@ -280,7 +295,180 @@ public final class FeatureProbe {
             sectionFailures.add("highlighting: " + uncoloured.size() + " token type(s) the lexer"
                     + " emits over this corpus would be drawn with no colour key " + uncoloured);
         }
+
+        // ---------------------------------------------------------------- 1b
+        //
+        // A KEY IS NOT A NAME.  The check above proves only that *some* key comes back
+        // for every token type.  A `TextAttributesKey` is looked up by identity, so a key
+        // whose external name drifted from the name the colour settings page registers
+        // still colours the token while the settings row becomes a row that changes
+        // nothing.  Measured before this check existed: renaming the key to
+        // "VELA_BAD_TYPO" in VelaHighlighting.kt, leaving
+        // `AttributesDescriptor("Bad character", VelaColors.BAD)` in place, read
+        // "BAD_CHARACTER 5 coloured" and passed -- because the highlighter hands the SAME
+        // key object to the page, under a new name.
+        //
+        // So the comparison is by external name, in both directions.  Names drawn are
+        // taken from the corpus plus the settings page's own demo text, because the page
+        // registers the rows for every token kind it can show and a colour scheme is
+        // indexed over the whole set, not over the tokens one file happens to contain.
+        System.out.println("  -- 1b. do the keys drawn and the keys registered carry the SAME names?");
+        System.out.println("     why: a key is looked up by identity, so a renamed key still colours"
+                + " the token while the settings row that names the old name changes nothing.");
+        Set<String> drawn = new TreeSet<>();
+        Set<String> listed = new TreeSet<>();
+        List<TextAttributesKey> drawnKeys = new ArrayList<>();
+        List<String> nameErrors = new ArrayList<>();
+        List<String> nameNotes = new ArrayList<>();
+        boolean pageRead = false;
+        try {
+            for (String name : seen.keySet()) {
+                IElementType type = elementTypeNamed(name);
+                if (type == null) continue;
+                drawn.addAll(drawnNamesFor(highlighter, type));
+                for (TextAttributesKey k : highlighter.getTokenHighlights(type)) {
+                    if (k != null && k.getExternalName() != null) drawnKeys.add(k);
+                }
+            }
+            // Fully qualified on purpose: this class is declared in
+            // `VelaColorSettingsPage.kt` (a file whose name does not match the class it
+            // declares), it is registered by plugin.xml line 377, and an unqualified
+            // reference to it from this default-package file did not resolve for javac
+            // while the very same reference from another file did.  Spelling the package
+            // out removes the question.
+            dev.vela.plugin.VelaColorsAndFontsPage page = new dev.vela.plugin.VelaColorsAndFontsPage();
+            for (AttributesDescriptor d : page.getAttributeDescriptors()) {
+                TextAttributesKey key = d.getKey();
+                if (key == null) {
+                    nameErrors.add("a settings row has a null key");
+                    continue;
+                }
+                listed.add(String.valueOf(key.getExternalName()));
+                nameNotes.add("row \"" + d.getDisplayName() + "\" names "
+                        + key.getExternalName());
+            }
+            for (String name : drawnNamesFrom(highlighter, page.getDemoText())) drawn.add(name);
+            pageRead = true;
+        } catch (RuntimeException | Error e) {
+            // No registry, no comparison.  Said out loud rather than counted as a pass.
+            nameErrors.add("the colour settings page could not be read ("
+                    + e.getClass().getName() + ": " + e.getMessage()
+                    + "), so names drawn and names registered were NOT compared");
+        }
+        System.out.println("      keys drawn by the highlighter : " + drawn.size() + " " + drawn);
+        System.out.println("      rows on the settings page    : " + listed.size() + " " + listed);
+        // WHICH COPY OF THE PAGE IS THIS?  A harness that compiles the plugin itself can
+        // have two copies of it on the classpath, and "the page says VELA_BAD" is worth
+        // nothing until the reader knows which page answered.  One line, printed always.
+        System.out.println("      settings page class          : " + codeSourceOf(
+                dev.vela.plugin.VelaColorsAndFontsPage.class));
+        System.out.println("      key objects                  : VelaColors.BAD="
+                + dev.vela.plugin.VelaColors.BAD.getExternalName() + " @"
+                + Integer.toHexString(System.identityHashCode(dev.vela.plugin.VelaColors.BAD))
+                + "   drawn key @"
+                + (drawnKeys.isEmpty() ? "n/a"
+                        : Integer.toHexString(System.identityHashCode(drawnKeys.get(0))))
+                + "   same object=" + (!drawnKeys.isEmpty()
+                        && drawnKeys.get(0) == dev.vela.plugin.VelaColors.BAD));
+        if (pageRead) {
+            Set<String> onlyDrawn = new TreeSet<>(drawn);
+            onlyDrawn.removeAll(listed);
+            Set<String> onlyListed = new TreeSet<>(listed);
+            onlyListed.removeAll(drawn);
+            if (!onlyDrawn.isEmpty()) {
+                nameErrors.add("drawn but not on the settings page (the user cannot recolour them): "
+                        + onlyDrawn);
+            }
+            if (!onlyListed.isEmpty()) {
+                nameErrors.add("on the settings page but never drawn (rows that do nothing): "
+                        + onlyListed);
+            }
+            for (String n : nameNotes) System.out.println("      " + n);
+        }
+        System.out.println("  VERDICT: " + (nameErrors.isEmpty()
+                ? "every key the highlighter draws is a name the settings page registers"
+                : nameErrors.size() + " name mismatch(es) between highlighter and settings page"));
+        for (String e : nameErrors) System.out.println("      " + e);
+
+        // ---------------------------------------------------------------- 1c
+        //
+        // AND A NAME IS NOT A COLOUR.  A key can be mapped, registered and named
+        // identically and still resolve to nothing in the scheme -- no foreground and no
+        // fallback -- in which case the character is on screen and invisible, which is the
+        // user-visible defect this section exists to rule out.  Resolving it needs
+        // `EditorColorsManager.getInstance()`, i.e. a running Application; this plugin's
+        // harnesses deliberately start none, so the check is declared as a named skip
+        // instead of being silently omitted or claimed.  It is a skip category with a
+        // fixed size of ONE: it is a check that did not run, not a per-file tally.
+        System.out.println("  -- 1c. do those keys resolve to a colour in the user's scheme?");
+        String resolveNote;
+        try {
+            EditorColorsScheme scheme = EditorColorsManager.getInstance().getGlobalScheme();
+            TextAttributes attrs = scheme.getAttributes(dev.vela.plugin.VelaColors.BAD);
+            String fg = attrs == null || attrs.getForegroundColor() == null
+                    ? "no foreground" : String.valueOf(attrs.getForegroundColor());
+            resolveNote = "scheme \"" + scheme.getName() + "\" resolves VELA_BAD to " + fg;
+            System.out.println("      " + resolveNote);
+        } catch (RuntimeException | Error e) {
+            // Only the *unavailable* case is a skip.  Getting a scheme and finding no
+            // foreground would be a finding, not a limit, and belongs in the wrong count.
+            cov.skipped("needs-an-application-instance", 1);
+            resolveNote = "not measured: resolving a key needs an Application instance"
+                    + " (EditorColorsManager threw " + e.getClass().getSimpleName() + ": "
+                    + e.getMessage() + "); counted as needs-an-application-instance 1";
+            System.out.println("      " + resolveNote);
+        }
         System.out.println();
+
+        // All three of 1b's and 1c's problems land in `wrong`, so the aggregate verdict --
+        // which is computed from sectionFailures and cov.wrong() -- cannot be greener.
+        cov.wrong(cov.wrong() + nameErrors.size());
+        if (!nameErrors.isEmpty()) {
+            sectionFailures.add("highlighting/naming: " + nameErrors.size()
+                    + " disagreement(s) between the keys the highlighter draws and the keys the"
+                    + " colour settings page registers -- " + String.join("; ", nameErrors));
+        }
+    }
+
+    /** The external names of every key {@link VelaSyntaxHighlighter} returns for [type]. */
+    private static Set<String> drawnNamesFor(VelaSyntaxHighlighter highlighter, IElementType type) {
+        Set<String> out = new TreeSet<>();
+        for (TextAttributesKey k : highlighter.getTokenHighlights(type)) {
+            if (k != null && k.getExternalName() != null) out.add(k.getExternalName());
+        }
+        return out;
+    }
+
+    /** Where a class was loaded from -- which copy of the plugin answered a question. */
+    private static String codeSourceOf(Class<?> c) {
+        try {
+            java.security.CodeSource cs = c.getProtectionDomain().getCodeSource();
+            return cs == null || cs.getLocation() == null ? c.getName() + " (unknown code source)"
+                    : c.getName() + " from " + cs.getLocation();
+        } catch (RuntimeException | Error e) {
+            return c.getName() + " (code source unavailable: " + e.getClass().getSimpleName() + ")";
+        }
+    }
+
+    /**
+     * The external names of every key the highlighter returns when it lexes [text].
+     *
+     * Used on the settings page's own demo text: the page registers a row for every token
+     * kind its preview can show, so a kind that occurs in no corpus file (Vela never uses
+     * `;`, and `@` is exactly the character Vela does not know) still has a row, and a
+     * comparison that ignored the demo text would call that row "never drawn".
+     */
+    private static Set<String> drawnNamesFrom(VelaSyntaxHighlighter highlighter, String text) {
+        Set<String> out = new TreeSet<>();
+        if (text == null) return out;
+        Lexer lexer = lexer();
+        lexer.start(text);
+        while (lexer.getTokenType() != null) {
+            IElementType type = lexer.getTokenType();
+            if (type != TokenType.WHITE_SPACE) out.addAll(drawnNamesFor(highlighter, type));
+            lexer.advance();
+        }
+        return out;
     }
 
     /**

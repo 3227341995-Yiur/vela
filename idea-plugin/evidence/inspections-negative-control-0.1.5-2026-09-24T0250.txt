@@ -1,0 +1,70 @@
+# Vela IDEA plugin 0.1.5 -- the negative control for the inspection harness
+#
+# THE QUESTION THIS ANSWERS
+#   Is `wrong 0` a measurement, or does the tool say it whatever the rules do?  So one
+#   word of the int/float rule was corrupted, the whole measurement was re-run, and then
+#   the word was put back.  The corruption is exactly one token:
+#
+#     idea-plugin/src/main/kotlin/dev/vela/plugin/VelaInspections.kt, in `intFloatMixing`:
+#
+#       -   l == "int" && r == "float" -> left
+#       +   l == "int" && r == "int"   -> left // NEGATIVE CONTROL
+#
+#   which turns "one operand is an int and the other a float" into "both are ints": every
+#   piece of ordinary integer arithmetic in the corpus (`x + 1`) becomes a finding, and
+#   every real int/float mix stops being one.  Nothing else was touched.
+#
+# HOW IT WAS RUN
+#   The two Kotlin files were compiled with the plugin's own KotlinBuild tool against the
+#   frozen snapshot of build\classes (171 files) at %TEMP%\vela-plugin-inspection-probe\
+#   classes-snapshot, and the tool was run with that directory first on the classpath --
+#   the same code path the driver uses, with the corrupted rule classes in place of the
+#   snapshot's:
+#
+#     java -cp "<harness classes>;<corrupted kt classes>;<snapshot>;<resources>;<platform>"
+#          InspectionProbe <repo-root> --vm <frozen 3768a180>
+#              --exclude tests/safety/cases/strict_no_inferred_binding_type.vel
+#
+#   The classpath is written out in %TEMP%\evidence\control.args; both runs below used it
+#   unchanged, so the only difference between them is that one word.
+#
+# DATE / TIME   2026-09-24 02:50 (local)   git HEAD cc8b86264e751015a4f576e35539babb9607ea4f
+# VERSION       0.1.5
+# JAR           dist\vela\lib\vela-idea-plugin.jar 390641 bytes
+#               sha256 6408725ff990f6f7fbcfc4cd4e8401fa9b842dfb7ba6aefdcc45cd511e4ec5aa
+# ORACLE        %TEMP%\vela-inspection-probe\vm.exe 861696 bytes
+#               sha256 3768a18097493a5639739d330f65b8ed787729c9b5c5200e323ac8aad9bb5f8a
+#
+# THE RAW OUTPUT, BEFORE (corrupted) AND AFTER (restored)
+
+===== CORRUPTED -- one word wrong
+  the corrupted line was:  l == "int" && r == "int" -> left // NEGATIVE CONTROL
+  (the line restored afterwards is: l == "int" && r == "float" -> left)
+
+    findings on files it ACCEPTS       : 314   <- must be 0: an inspection may not invent a refusal
+    findings the walk could not reach   : 2688   (an unrelated refusal sat in front of them; they are neither confirmed nor contradicted, and they are listed below)
+    wrong                   : 41
+  COVERAGE: ran 257 / skipped 54 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 53, empty-or-whitespace-only 0, excluded-by-request 1) / wrong 41
+  VERDICT: [FAIL] VelaIntFloatMixing reported nothing on its canonical file tests/safety/cases/strict_no_implicit_conversion.vel; VelaIntFloatMixing: reported on a file the compiler accepts -- tests/build/arith_basics.vel:4 Vela has no implicit int/float conversion: the compiler refuses "operator '+' mixes int and float"; VelaIntFloatMixing: reported on a file the compiler accepts -- tests/build/arith_basics.vel:4 Vela has no implicit int/float conversion: the compiler refuses "operator '-' mixes int and float"; VelaIntFloatMixing: reported on a file the compiler accepts -- tests/build/arith_basics.vel:4 Vela has no implicit int/float conversion: the compiler refuses "operator '*' mixes int and float" -- wrong 41 file(s): an inspection reported something the compiler did not
+  per rule:
+      VelaImmutableAssignment   2      2        0       0       0        1       2         0           0
+      VelaStringConcatenation   7      7        0       0       0        0       7         0           0
+      VelaIntFloatMixing        3003   1        0       2688    0        3       298       2705        314
+      VelaImmutableAssignment   tests/build/check_cases/mutate_loop_variable.vel:3 "cannot modify 'i': it was declared immutable"
+      VelaIntFloatMixing        tests/build/check_cases/float_to_int_variable.vel:4 "operator '+' mixes int and float"
+      VelaIntFloatMixing        tests/safety/cases/hole_cmp_int_float.vel:4 "operator '<' mixes int and float"
+      VelaIntFloatMixing        tests/safety/cases/strict_no_implicit_conversion.vel:2 "operator '+' mixes int and float"
+  process exit code 1
+
+===== RESTORED -- the same run, the one word back
+    findings on files it ACCEPTS       : 0   <- must be 0: an inspection may not invent a refusal
+    findings the walk could not reach   : 0   (an unrelated refusal sat in front of them; they are neither confirmed nor contradicted, and they are listed below)
+    wrong                   : 0
+  COVERAGE: ran 257 / skipped 54 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 53, empty-or-whitespace-only 0, excluded-by-request 1) / wrong 0
+  VERDICT: [PASS] every finding the three registered inspections report was walked to a refusal the frozen compiler itself makes on that line, every fix removes the refusal it was offered for, and no finding lands on a file the compiler accepts -- over 257 judged file(s), wrong 0, no defect category tripped
+  per rule:
+      VelaImmutableAssignment   2      2        0       0       0        1       2         0           0
+      VelaStringConcatenation   7      7        0       0       0        0       7         0           0
+      VelaIntFloatMixing        4      4        0       0       0        0       4         0           0
+      VelaImmutableAssignment   tests/build/check_cases/mutate_loop_variable.vel:3 "cannot modify 'i': it was declared immutable"
+  process exit code 0

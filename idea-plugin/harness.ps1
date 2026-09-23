@@ -20,7 +20,9 @@
       HintDiff     the parameter-name inlay hints, against `vm.exe parse`'s own
                    `param name=` lines.  Prints hints drawn / correct / WRONG.
       HintNames    the two sources of a callable's parameter names (the symbol's
-                   `detail` text vs the tree's `param` nodes) -- do they agree?
+                   `detail` text vs the tree's `param` nodes) -- do they agree?  A file
+                   `vm.exe check` refuses is not judged: the language saying "this is not
+                   a Vela program" is not this plugin's defect.
       HintShapes   the call *shapes* that make the hint engine draw a name no
                    declaration has, plus every truncated prefix of every file.
       HintDupes    where a parameter name repeats inside one signature (the source
@@ -153,7 +155,7 @@ $javac = Join-Path $best 'jbr\bin\javac.exe'
 foreach ($t in @($java, $javac)) { if (-not (Test-Path -LiteralPath $t)) { Die "missing: $t" } }
 
 $TOOLS = @('GotoOracle', 'HintDiff', 'HintNames', 'HintShapes', 'HintDupes', 'SymbolDiff', 'FoldDiff',
-           'FeatureProbe', 'ParamNames', 'HintTruth', 'HoverTruth', 'RenameOracle')
+           'FeatureProbe', 'ParamNames', 'HintTruth', 'HoverTruth', 'RenameOracle', 'InspectionProbe')
 if ($Tool -eq 'All') { $run = $TOOLS }
 else {
     if ($TOOLS -notcontains $Tool) { Die "-Tool must be one of: $($TOOLS -join ', '), All" }
@@ -264,6 +266,16 @@ foreach ($t in $run) {
             # a WRONG row gets investigated rather than guessed at.
             if ($HarnessDebug)  { $a += '--debug' }
         }
+        'HintNames' {
+            # THE COMPILER IS THE AUTHORITY ON WHAT IS VELA AT ALL.  HintNames compares two
+            # sources that both live inside this plugin, so a disagreement inside a file the
+            # compiler refuses (today's acceptance corpus: closures are a syntax error, nested
+            # functions are `type error: nested functions are not supported`) is not a defect.
+            # It asks `vm.exe check` itself, at the end of a file and only when that file
+            # produced a disagreement, and files the units under `compiler-refused-the-file`.
+            $a += @('--vm', $FrozenVm)
+            if ($Truncate -gt 0) { $a += @('--truncate', "$Truncate") }
+        }
         'HintDiff' {
             $a += @('--vm', $FrozenVm)
             if ($Truncate -gt 0) { $a += @('--truncate', "$Truncate") }
@@ -292,6 +304,14 @@ foreach ($t in $run) {
             $a += @('--vm', $FrozenVm, '--cache', (Join-Path $pluginRoot 'build\tools\harness\rename-oracle.txt'))
             if ($RebuildOracle) { $a += '--rebuild-oracle' }
             if ($Single)        { $a += @('--single', $Single) }
+        }
+        'InspectionProbe' {
+            # The three localInspection rules and their quick fixes, against the frozen
+            # compiler.  `--vm` is not optional here: without an oracle this tool has no
+            # conclusion to reach, because the rules are only allowed to report what the
+            # compiler itself refuses on that line.
+            $a += @('--vm', $FrozenVm)
+            if ($Single) { $a += @('--single', $Single) }
         }
         'HintShapes' {
             if ($Shapes) { $a = @($t, '--shapes') }
