@@ -1,0 +1,2 @@
+vela: safety error: 'parallel for' may not concatenate strings: every iteration would allocate out of the same string region
+  at tests/build/check_cases/parallel_string_concat.vel:4

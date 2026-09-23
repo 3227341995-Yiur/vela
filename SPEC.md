@@ -84,7 +84,18 @@ day one arrives.
   (`DESIGN.md` §7.3 — this is what the first self-hosted build got wrong.)
 * **Adjacent literals are refused**: `"a" "b"` is an error, because in Python
   that is a silent concatenation and in C it is not.
-* There is no string concatenation operator in 0.1, and no slicing.
+* **`+` on two `str`s joins them**, and `+=` appends to a `mut` binding:
+  `"ab" + "cd"` is `"abcd"`, and after `mut s: str = "a"` the statement
+  `s += "b"` leaves `s == "ab"`. The result is a new `str` in permanent memory
+  (§6 rule 3), so it can be returned, compared, and concatenated again. It is the
+  **same operation** the `concat` builtin performs (§8) — one runtime call,
+  whichever spelling is written — and `str + int` is still refused with
+  `operator '+' mixes str and int` (§3.1): nothing in this language converts a
+  number to text, and a `+` that started doing it would be a silent `toString`.
+* There is **no mutable string**: `+=` on a `str` builds a new one, and nothing
+  appends into an existing one in place. There is no slicing either.
+* Concatenation allocates, so it is refused inside a `parallel for` (§7) — the one
+  operator that rule judges without a call in sight.
 
 ### 1.6 Operators
 
@@ -297,6 +308,10 @@ calls f(x), indexing a[i], field access s.f
   use **Python's floor semantics**, not C's truncation, for negatives:
   `-7 // 2 == -4`, `-7 % 2 == 1`.
 * `**` is integer power for ints, `pow(float, float)` for floats.
+* `+` on two `str`s is concatenation (§1.5), and it is the same operation as
+  `concat(a, b)` (§8). `+` is the only operator with a `str` meaning; every other
+  one still compares the two operand types, so `str + int` is a mixing error
+  (§3.1).
 
 ---
 
@@ -404,8 +419,25 @@ The checker accepts it only if **all** of these hold:
   **not** write are free, at any index;
 * scalars written inside the body must be private to the iteration (declared in
   the body), otherwise the write is shared state and the loop is refused;
-* calls inside the body must be `pure`: `print`, `read_text` and friends are
-  refused.
+* calls inside the body must be `pure`. Two are refused **by name**, because a
+  `parallel for` is exactly where they would race: `print`, whose whole purpose is
+  a side effect on a shared stream, and `concat` — see the next bullet. The rest of
+  §8's impure table is *not* refused here yet, and that gap is stated rather than
+  hidden: `read_text` grows the same string region and `check` still accepts it
+  inside a parallel body today;
+* **concatenation is refused inside the body, in both spellings.** `a + b` on two
+  `str`s and `concat(a, b)` are one operation, so they get one verdict —
+  `'parallel for' may not concatenate strings: every iteration would allocate out
+  of the same string region` — and refusing the operator while admitting the
+  builtin, or the other way round, would describe this back end instead of the
+  language. What the two reach is the permanent string region: it is extended by
+  one bump pointer, and the C back end hands an admitted `parallel for` to OpenMP,
+  so two iterations concatenating at once both read and both write it and the
+  loser's bytes are handed to whoever asked second — a silently wrong string,
+  which is the one outcome this language refuses to ship. `+` on two `str`s is
+  therefore **impure for this rule only**: it stays pure for `pure def`, because
+  the two rules ask different questions, and this one is about state every
+  iteration shares.
 
 Anything else produces a safety error that names the reason, rather than a
 `#pragma omp parallel for` handed to the C compiler in the hope that the writes do
@@ -435,7 +467,7 @@ Pure, and callable from `pure` functions:
 | `bytes_at(s, i)` | checked byte value 0..255 |
 | `substr(s, a, b)` | slice of a string (non-owning, and safe because every `str` is either a literal or permanent memory — §6 rule 3) |
 | `unescape(s)` | decode backslash escapes |
-| `concat(a, b)` | the two strings joined. Deliberately a *named* builtin and not `+`: `a + b` on two strings stays refused (§1.5), but a compiler that has to name a file, build a command line or write a message needs some way to make a string, and there is no other. The result is permanent memory, like a literal |
+| `concat(a, b)` | the two strings joined — the same operation `a + b` is on two `str`s (§1.5), lowered to the same runtime call by both back ends, so the two spellings cannot drift. The result is permanent memory, like a literal. **Not allowed inside `parallel for`** (§7), in either spelling: it allocates in the string region every iteration shares |
 | `interned(h)` | string table lookup |
 | `env(name)` | what the environment says, or `""` when it says nothing |
 | `argc()`, `arg(i)` | process arguments |

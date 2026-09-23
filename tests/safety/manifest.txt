@@ -318,6 +318,14 @@ concurrency_parameter_array_read_legal | concurrency_parameter_array_read_legal.
 concurrency_shared_scalar_refused | concurrency_shared_scalar_refused.vel | check | 2 | 'parallel for' assigns to 'total', which is shared across every iteration | | | | | | | | | SPEC 7 | |
 concurrency_body_local_scalar_legal | concurrency_body_local_scalar_legal.vel | ok | 0 | | | | | | | | | | SPEC 7 | twin: the written scalar is declared inside the body |
 concurrency_impure_call_refused | concurrency_impure_call_refused.vel | check | 2 | 'print' inside a 'parallel for' would interleave output unpredictably | | | | | | | | | SPEC 7 / 8 | |
+# Concatenation, the one thing this rule judges that is not a call.  It allocates in
+# the string region every iteration shares, so it is refused by name in both
+# spellings -- `+` and the `concat` builtin are one operation, and a language that
+# admitted one while refusing the other would be describing its back end.  The row
+# above is the `print` half of the same list; both spellings are here because the
+# promise is about the operation, not about the spelling.
+concurrency_string_concat_refused | concurrency_string_concat_refused.vel | check | 2 | 'parallel for' may not concatenate strings | | | | | | | | | SPEC 7 / 8 | |
+concurrency_string_concat_builtin_refused | concurrency_string_concat_builtin_refused.vel | check | 2 | 'parallel for' may not concatenate strings | | | | | | | | | SPEC 7 / 8 | twin: the named builtin instead of `+` |
 concurrency_pure_call_legal | concurrency_pure_call_legal.vel | ok | 0 | | | | | | | | | | SPEC 7 / 4 | twin: the call is to a `pure def` |
 concurrency_impure_method_refused | concurrency_impure_method_refused.vel | check | 2 | call to impure function 'bump' inside 'parallel for' | | | | | | | | | SPEC 7 | |
 concurrency_pure_method_legal | concurrency_pure_method_legal.vel | ok | 0 | | | | | | | | | | SPEC 7 | twin: a `pure def` method instead of an impure one |
@@ -346,8 +354,16 @@ escape_extern_scalar_return_ok | escape_extern_scalar_return_ok.vel | ok | 0 | |
 # ------------------------------------------------- 11. literals (SPEC §1.5)
 strict_no_adjacent_string_literals | strict_no_adjacent_string_literals.vel | check | 2 | adjacent string literals are not allowed | | | | | | | | | SPEC 1.5 | |
 strict_single_string_literal_ok | strict_single_string_literal_ok.vel | ok | 0 | | | | | | | | | | SPEC 1.5 | twin: one literal instead of two |
-strict_no_string_concatenation | strict_no_string_concatenation.vel | check | 2 | string concatenation is not implemented in Vela 0.1 | | | | | | | | | SPEC 1.5 / 8 | |
-strict_string_concat_builtin_ok | strict_string_concat_builtin_ok.vel | ok | 0 | | | | | | | | | | SPEC 8 | twin: the named `concat(a, b)` instead of `+` |
+# Until 2026-09-24 this pair was `strict_no_string_concatenation` (the operator
+# refused, exit 2) and `strict_string_concat_builtin_ok` (the builtin accepted).
+# SPEC 1.5 no longer promises the absence, so the first is repurposed into what the
+# language promises now -- the operator works, in the compiled program *and* in the
+# interpreter, printing the same bytes as its builtin twin -- and the boundary of
+# the new rule gets a row of its own: `+` is defined for two `str`s and for nothing
+# else, so `str + int` is still refused, with no silent `toString`.
+strict_string_concat_operator_ok | strict_string_concat_operator_ok.vel | ok | 0 | | | | | | | | | | SPEC 1.5 / 8 | twin: the same program with the named builtin; the `ab` both print is promised by `run string_concat_basic` in tests/cases.txt, because no `native`/`run-ok` row in this file can build today (tools/safety.ps1 copies vm.exe and LLVM-C.dll into %TEMP% but not vela_llvm_runtime.obj, and `build` links it) |
+strict_string_concat_builtin_ok | strict_string_concat_builtin_ok.vel | ok | 0 | | | | | | | | | | SPEC 8 | twin: the same program with `+` |
+strict_string_concat_int_operand | strict_string_concat_int_operand.vel | check | 2 | operator '+' mixes str and int | | | | | | | | | SPEC 1.5 / 3.1 | |
 
 # --------------------------------------------- 12. an open violation, in SPEC §7
 # SPEC.md §7: "calls inside the body must be `pure`".  DESIGN.md §7.5 admits the

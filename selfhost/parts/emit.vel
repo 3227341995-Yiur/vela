@@ -9,8 +9,10 @@
 # symbol.
 #
 # Two properties make this a streaming emitter rather than a tree rewriter.  Vela
-# has no string concatenation (SPEC 1.5) and no mutable string, so nothing is ever
-# built in memory: every part of the C program is written to standard output the
+# has no *mutable* string — `+` on two `str`s and the `concat` builtin both build
+# a new one, but nothing appends to an existing one (SPEC 1.5) — so there is no
+# builder to accumulate the program in and patch afterwards even if this back end
+# wanted one: every part of the C program is written to standard output the
 # moment it is known, and `emit_str`/`emit_int` put it there.  Second, a checked
 # operation is an *expression* — `vela_add_range(a, b, INT64_MIN, INT64_MAX, f,
 # l)` — so no temporaries have to be hoisted and no statement queue has to exist.
@@ -575,6 +577,20 @@ def emit_binop(nd: Array[int, 1310720], ty: Array[int, 262144],
             emit_location(path, line)
             emit_str(")")
             return K_INT()
+        }
+    }
+    if lk == K_STR() {
+        if op == 1 {
+            # `a + b` on two strings is the concatenation `concat(a, b)` has always
+            # been, and this is that builtin's own C spelling on purpose: one call
+            # to `vela_concat`, one allocation discipline, so the operator and the
+            # function cannot drift apart.  A `str` is a 16-byte struct in C, so
+            # what is below this branch — C's own `+`, parenthesised — would not
+            # even compile for these operands.
+            emit_str("vela_concat(")
+            emit_binop_operands(nd, ty, flt, src, path, mem, vm, e)
+            emit_str(")")
+            return K_STR()
         }
     }
     # everything else is C's own operator, parenthesised so precedence is never
@@ -1475,6 +1491,22 @@ def emit_augassign(nd: Array[int, 1310720], ty: Array[int, 262144],
         emit_indent(indent)
     }
     k: int = expr_kind(nd, ty, mem, vm, tgt)
+    if k == K_STR() {
+        # `s += t` on a `str`, lowered to the same `vela_concat` `+` and `concat`
+        # make: one operation, one call.  The `k != K_INT()` branch below is the
+        # one that would otherwise be reached, and `vl_s += vl_t;` on two 16-byte
+        # structs is not C — there is no `+` for a `vela_str` at all.
+        if op != 1 {
+            trap(path, line, "this augmented operator has no string spelling")
+        }
+        emit_lvalue(nd, ty, flt, src, path, mem, vm, tgt)
+        emit_str(" = vela_concat(")
+        emit_lvalue(nd, ty, flt, src, path, mem, vm, tgt)
+        emit_str(", ")
+        emit_expr(nd, ty, flt, src, path, mem, vm, v)
+        emit_str(");\n")
+        return
+    }
     if k != K_INT() {
         # floats cannot overflow and cannot divide by an integer zero, so C's own
         # augmented operator is the whole story

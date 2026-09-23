@@ -5,7 +5,7 @@
 # is what the compiler says today.  A difference is a failure even when it looks like
 # progress: the day a feature lands, this file is what says so, and the program moves
 # into tests\cases.txt with a golden.  Shape:  name | outcome | first diagnostic line
-# recorded against compiler sha256 2d1793afb26d0bf65fdaec25fb8728d49b7eced6a7ceee35086a233c71dfd3ce
+# recorded against compiler sha256 2dc752e7aed370e89cce8c5df2869bb414b0ba02c642218f425dac81dc89da23
 tests/accept/closure_escaping_refused.vel | REFUSED | vela: syntax error: expected '{' to open a block, found '('
 tests/accept/closure_fn_parameter.vel | REFUSED | vela: syntax error: expected ')' after the parameters
 tests/accept/closure_lambda_as_argument.vel | REFUSED | vela: syntax error: expected ')' after the parameters
@@ -39,6 +39,4 @@ tests/accept/slices_const_out_of_range.vel | REFUSED | vela: type error: slices 
 tests/accept/slices_reversed_bounds.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
 tests/accept/slices_runtime_end_out_of_range.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
 tests/accept/slices_str.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
-tests/accept/string_concat_basic.vel | REFUSED | vela: type error: string concatenation is not implemented in Vela 0.1
-tests/accept/string_concat_growth.vel | REFUSED | vela: type error: string concatenation is not implemented in Vela 0.1
 tests/accept/string_concat_int_operand.vel | REFUSED | vela: type error: operator '+' mixes str and int

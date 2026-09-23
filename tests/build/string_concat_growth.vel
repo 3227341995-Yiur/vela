@@ -2,6 +2,12 @@
 # case that catches a result buffer that is one byte short, reused, or aliased
 # with its input.  str storage is permanent memory in this language (SPEC.md 6
 # rule 3), so the 100-byte result must still be equal to itself afterwards.
+#
+# It was `tests/accept/string_concat_growth.vel` until the feature landed; see
+# the header of `string_concat_basic.vel` for what that move means.  `t = t + t`
+# is the aliasing half and `s = s + "x"` the length half, and both go through the
+# same `vela_concat` on every path.
+#
 # Expected stdout, byte for byte:
 #     100
 #     True

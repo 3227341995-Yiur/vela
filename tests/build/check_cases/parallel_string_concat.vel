@@ -1,0 +1,7 @@
+def main() -> None {
+    mut out: Array[int, 64] = [0]
+    parallel for i in range(0, 64) {
+        out[i] = len("x" + "y")
+    }
+    print(out[0])
+}

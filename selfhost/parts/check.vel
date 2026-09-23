@@ -540,8 +540,16 @@ def ck_arith(nd: Array[int, 1310720], path: str, line: int, e: int, op: int,
              lt: int, rt: int) -> None {
     if op == 1 {
         if lt == K_STR() and rt == K_STR() {
-            ck_type(path, line,
-                    "string concatenation is not implemented in Vela 0.1")
+            # `a + b` on two `str`s joins them, and the result is a `str`.  This
+            # is the one place the operator table is not the whole story: every
+            # other row below says whether two kinds may meet, and this one says
+            # what the meeting *means* — so the whole of the rule is here, and
+            # `concat(a, b)` (SPEC 8) is the same operation under a name.  The
+            # back ends lower the two to one call for exactly that reason.
+            #
+            # `str + int` is *not* here and must not be: it falls through to the
+            # rows below and is refused as a mixed pair, because nothing in this
+            # language converts a number to text (SPEC 3.1).
             return
         }
     }
@@ -661,6 +669,10 @@ def ck_etype(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
             if lt == rt {
                 if ck_is_num_kind(lt) {
                     return lt
+                }
+                if op == 1 and lt == K_STR() {
+                    # `+` on two strings is the concatenation `ck_arith` admits
+                    return K_STR()
                 }
                 return K_BAD()
             }
@@ -2731,6 +2743,46 @@ def ck_pure_method(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
     }
 }
 
+# Concatenation inside a `parallel for`, and the one operator this rule judges
+# without a call in sight.  The decision, and why it is this one:
+#
+# **`+` on two `str`s is impure for this rule.**  It is pure everywhere else —
+# it reads no binding, writes no binding, and is deterministic given its two
+# operands — but concatenation *allocates*, in the permanent string region
+# `runtime/vela_runtime.h` reserves for every `str` that is not a literal.  That
+# region is extended by a bump pointer (`vela_persist_region.used`) which is one
+# plain variable, and the C back end hands a `parallel for` to OpenMP: two
+# iterations that concatenate at the same time both read it, both write it, and
+# the loser's bytes are handed to whoever asked second.  The failure is a
+# silently wrong string, in a language whose entire claim is that it will not
+# ship one.  So the loop is refused rather than serialised or guessed at.
+#
+# **`concat(a, b)` gets the same verdict.**  The rule above is about an operator
+# and the builtin is about a function, but the two are one operation — the same
+# runtime call, the same allocation — and a language that refused the spelling
+# and admitted the function would be describing its own back end instead of its
+# semantics.  So this is one message used at both sites, and a program that
+# concatenates inside a parallel loop is refused whichever way it spells it.
+#
+# What this does *not* settle, left standing rather than papered over: allocating
+# in that region is not the only impure thing a builtin here can do, and the rest
+# of the list is still whatever `ck_pure` says below — `read_text` grows the same
+# region and is admitted, and `print` is refused for a reason of its own.  Those
+# are other decisions about other builtins; this one is about concatenation.
+def ck_concat_msg() -> str {
+    return "'parallel for' may not concatenate strings: every iteration would allocate out of the same string region"
+}
+
+# Which values a `parallel for` body may not concatenate.  The operand kind is
+# asked of the *first* operand and the checker has already proved the second is
+# the same kind (ck_arith refuses a mixed pair), so one question is enough.
+def ck_concat_impure(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
+                     path: str, vm: VM, e: int) -> None {
+    if ck_etype(nd, mem, vm, nd[e * 10 + 2]) == K_STR() {
+        ck_safety(path, nd_line(nd, e), ck_concat_msg())
+    }
+}
+
 # `_parallel_rhs_ok`: everything a parallel body calls must be provably pure,
 # and `print` is refused before purity is even asked about, because its whole
 # purpose is a side effect on a shared stream.
@@ -2748,6 +2800,11 @@ def ck_pure(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
                 if nt_get(mem, callee, NT_VAL()) == B_PRINT() {
                     ck_safety(path, nd_line(nd, e),
                               "'print' inside a 'parallel for' would interleave output unpredictably")
+                    return
+                }
+                if nt_get(mem, callee, NT_VAL()) == B_CONCAT() {
+                    # the other spelling of `+` on two strings; see `ck_concat_msg`
+                    ck_safety(path, nd_line(nd, e), ck_concat_msg())
                     return
                 }
             }
@@ -2772,6 +2829,13 @@ def ck_pure(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
         return
     }
     if k == 27 or k == 29 or k == 30 {
+        if k == 27 {
+            if nd[e * 10 + 1] == 1 {
+                # `+`, and the one case where the operands are strings: see
+                # `ck_concat_msg` for why this operator is impure here
+                ck_concat_impure(nd, mem, path, vm, e)
+            }
+        }
         ck_pure(nd, mem, path, vm, nd[e * 10 + 2])
         ck_pure(nd, mem, path, vm, nd[e * 10 + 3])
         return

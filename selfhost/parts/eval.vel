@@ -828,6 +828,22 @@ def combine(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
         }
         trap(path, vm.line, "this operator does not apply to two floats")
     }
+    if lt == K_STR() {
+        if op == 1 {
+            # `a + b` on two strings, evaluated exactly as the `concat` builtin is
+            # (SPEC 8): intern the joined text so the result is a real `str` — with
+            # a length, comparable with `==`, and usable as an operand of another
+            # `+` — and not a new kind of value the rest of the interpreter does not
+            # know about.  The two spellings share this one line so they cannot
+            # drift, and the checked arithmetic above is not involved: joining two
+            # strings cannot overflow, and cannot fail.
+            set_str(mem, fmem, dst,
+                    intern(concat(interned(mem[l * 4 + 1]),
+                                  interned(mem[r * 4 + 1]))))
+            return
+        }
+        trap(path, vm.line, "this operator does not apply to two strings")
+    }
     trap(path, vm.line, "this operator does not apply to these values")
 }
 
