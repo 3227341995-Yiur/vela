@@ -76,19 +76,51 @@ function Get-ForeignCl {
 
 # ------------------------------------------------------------------ part A
 Say ''
-Say '== A. a C compiler in another checkout, while this tree''s build runs'
+Say '== A1. which paths may be swept (the worktree case, decided without a process)'
 
-$slice = Read-BuildFunctions 'function Get-OwnedProcess' 'foreach ($name in ''WerFault'', ''wermgr'')'
+$slice = Read-BuildFunctions 'function Get-OutputPaths' 'foreach ($name in ''WerFault'', ''wermgr'')'
 if ($slice) {
     Invoke-Expression $slice
-    Pass 'the ownership predicates were read out of tools\build.ps1 itself, not restated here'
+    Pass 'the sweep predicates were read out of tools\build.ps1 itself, not restated here'
 } else {
-    Fail 'could not find the ownership predicates in tools\build.ps1 (a probe cannot check what it cannot read)'
+    Fail 'could not find the sweep predicates in tools\build.ps1 (a probe cannot check what it cannot read)'
 }
 if (-not (Get-Command Get-OwnedProcess -ErrorAction SilentlyContinue)) {
     Say ''
     Say 'RESULT: failed - no Get-OwnedProcess survived the slice, so nothing below can be measured'
     exit 1
+}
+
+# **A path prefix is not ownership**, and this is the case the leader found after the first
+# version of the rule: a `git worktree` of this repository lives *inside* it
+# (`.wt\enums`, and `.gitignore` carries the rule), so `$p.Path.StartsWith($root)` calls the
+# other agent's compiler ours and sweeps it.  The rule now names the paths the build is
+# actually for, so the fixtures below are decided before any process is started: the real
+# question is which of them the predicate matches, and only three may.
+$ourOutputs = Get-OutputPaths
+foreach ($o in $ourOutputs) { Say ('    an output path: ' + $o) }
+$fixtures = @(
+    @{ Path = (Join-Path $root 'selfhost\build\vm.exe');                  Want = $true;  What = 'the compiler this build writes and every gate runs' },
+    @{ Path = (Join-Path $root 'selfhost\vm.exe');                        Want = $true;  What = 'what step 4 promotes' },
+    @{ Path = (Join-Path $root 'selfhost\build\vm_by_vela.exe');          Want = $true;  What = 'the same binary, under the name that says how it was made' },
+    @{ Path = (Join-Path $root '.wt\enums\selfhost\build\vm.exe');        Want = $false; What = 'A WORKTREE: under the checkout, and somebody else''s' },
+    @{ Path = (Join-Path $env:TEMP 'vela-other-checkout\vm.exe');         Want = $false; What = 'a different directory entirely' },
+    @{ Path = '';                                                         Want = $false; What = 'a path this user cannot open (measured: every vm.exe here)' },
+    @{ Path = (Join-Path $root 'selfhost\build\vela.exe');                Want = $false; What = 'the standalone lexer: not an output this build overwrites' }
+)
+foreach ($f in $fixtures) {
+    $got = Test-IsOurBuildOutput $f.Path $ourOutputs
+    $shown = if ($f.Path) { $f.Path.Substring($root.Length).TrimStart('\', '/') } else { '(empty)' }
+    if ($got -eq $f.Want) {
+        Pass (('{0,-6} {1,-46} {2}' -f $(if ($got) { 'swept' } else { 'left' }), $shown, $f.What))
+    } else {
+        Fail (('{0} but should be {1}: {2} -- {3}' -f $(if ($got) { 'swept' } else { 'left alone' }), $(if ($f.Want) { 'swept' } else { 'left alone' }), $shown, $f.What))
+    }
+}
+if ($ourOutputs.Count -ne 3) {
+    Fail ('the sweep should name exactly three output paths and it names ' + $ourOutputs.Count)
+} else {
+    Pass 'the sweep names exactly three output paths, and no directory prefix'
 }
 
 # A working directory OUTSIDE this checkout is what makes a process foreign.  The
@@ -167,14 +199,14 @@ if (-not $vcv) {
         $pid1 = $foreign.Id
         Say ("  foreign cl.exe is pid {0}" -f $pid1)
         $byName = @(Get-Process -Name cl -ErrorAction SilentlyContinue | Where-Object { $_.Id -eq $pid1 })
-        $byOwner = @(Get-OwnedProcess 'cl' | Where-Object { $_.Id -eq $pid1 })
+        $byOutput = @(Get-OwnedProcess $ourOutputs | Where-Object { $_.Id -eq $pid1 })
         Say ''
-        Say ('  the OLD condition, Get-Process -Name cl : {0} process(es) matched' -f @($byName).Count)
-        Say ('  the NEW condition, Get-OwnedProcess cl  : {0} process(es) matched' -f @($byOwner).Count)
-        if (@($byName).Count -ge 1 -and @($byOwner).Count -eq 0) {
+        Say ('  the OLD condition, Get-Process -Name cl        : {0} process(es) matched' -f @($byName).Count)
+        Say ('  the NEW condition, Get-OwnedProcess outputs    : {0} process(es) matched' -f @($byOutput).Count)
+        if (@($byName).Count -ge 1 -and @($byOutput).Count -eq 0) {
             Pass 'the old sweep catches it and the new one does not - the fix is a real difference'
         } else {
-            Fail ('the two conditions agree on this process (by name {0}, by owner {1}), so this probe cannot tell them apart' -f @($byName).Count, @($byOwner).Count)
+            Fail ('the two conditions agree on this process (by name {0}, by output {1}), so this probe cannot tell them apart' -f @($byName).Count, @($byOutput).Count)
         }
 
         if ($SkipKill) {
@@ -195,6 +227,95 @@ if (-not $vcv) {
         }
     }
     if (-not $proc.HasExited) { $proc | Stop-Process -Force -ErrorAction SilentlyContinue }
+}
+
+# ------------------------------------------------------- A3. the worktree, live
+#
+# The fixture table above decides the predicate on strings.  This is the same case with a
+# **real process**: a copy of the compiler named `vm.exe` in a directory that looks like a
+# worktree of this checkout must survive the sweep, and a copy at the compiler's own output
+# path must not.  Two processes, one rule, and the difference between them is only the
+# directory -- which is the whole claim.
+Say ''
+Say '== A3. two real vm.exe processes: the worktree one must survive, the output one must not'
+
+# The compiler these copies are made from.  `selfhost\build\vm.exe` is the one every gate
+# runs, so it is also the one the sweep is *for* -- the copies below carry its bytes and its
+# name and differ only in where they live.
+$compilerExe = Join-Path $root 'selfhost\build\vm.exe'
+if (-not (Test-Path -LiteralPath $compilerExe)) {
+    Fail ("no compiler at " + $compilerExe + ", so A3 cannot be measured")
+}
+
+$wtDir = Join-Path $root '.wt\_probe-worktree\selfhost\build'
+New-Item -ItemType Directory -Force -Path $wtDir | Out-Null
+$wtExe = Join-Path $wtDir 'vm.exe'
+# The positive fixture has to be named `vm.exe` too, or the rule ignores it for the wrong
+# reason: the predicate matches the *name* `vm` first and the path second.  It cannot be the
+# real `selfhost\build\vm.exe`, because every gate in this session is running it.  So it goes
+# in a third directory, and the claim it supports is the narrow one: **given that a process is
+# called `vm`, the sweep kills it at its output path and not in a worktree**.  The negative
+# fixture is what the leader asked for; this is its control, and without it the negative one
+# would also pass for a predicate that matched nothing at all.
+$outDir = Join-Path $env:TEMP 'vela-probe-output'
+Remove-Item -LiteralPath $outDir -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+$outExe = Join-Path $outDir 'vm.exe'
+Copy-Item -LiteralPath $compilerExe -Destination $wtExe -Force
+Copy-Item -LiteralPath $compilerExe -Destination $outExe -Force
+# And the rule reads a *fixed* list of output paths, so the TEMP copy is not on it -- which is
+# the honest expectation here: it is swept only if the rule were a prefix test, and that is
+# exactly the regression this round removed.
+$probeOutputs = @($ourOutputs + [System.IO.Path]::GetFullPath($outExe))
+
+# A copy of the compiler **started with no arguments** prints its usage list and exits in
+# milliseconds, which is enough: `Get-Process` reads the image path of a running process, and
+# the predicate is about the path.  So both fixtures are copies of the real compiler and
+# nothing has to be faked about either.  (A first version of this half copied powershell.exe
+# over the copy and started a sleep under `vm.exe`'s name, which is not what a sweep meets in
+# practice and which also needed a script file; the tested property is the same and the real
+# binary is a better witness.)
+function Start-ProbeExe([string] $path) {
+    # One argument, not none: `Start-Process -ArgumentList @()` is refused by PowerShell 5.1
+    # ("the argument collection contains a null value", measured).  `--probe` is a mode the
+    # compiler does not know, so it prints its usage list and exits -- which is all this needs,
+    # because the sweep reads the *path* of the running image.
+    return Start-Process -FilePath $path -ArgumentList '--probe' -PassThru -WindowStyle Hidden
+}
+
+$wtProc = $null
+$outProc = $null
+try {
+    $wtProc = Start-ProbeExe $wtExe
+    if (Test-Path -LiteralPath $outExe) { $outProc = Start-ProbeExe $outExe }
+    Start-Sleep -Milliseconds 900
+
+    if ($wtProc) {
+        $got = @(Get-OwnedProcess $ourOutputs | Where-Object { $_.Id -eq $wtProc.Id })
+        if ($got.Count -eq 0) {
+            Pass ('a vm.exe in .wt\_probe-worktree (pid ' + $wtProc.Id + ') is NOT swept -- a worktree is somebody else''s tree')
+        } else {
+            Fail 'a vm.exe inside the checkout but in a worktree WAS swept, which is the defect this round fixes'
+        }
+    }
+    if ($outProc) {
+        # The same predicate, with the copy's own directory added to the list, must match it --
+        # so the negative result above is about the path and not about a predicate that never
+        # matches anything.
+        $got = @(Get-OwnedProcess $probeOutputs | Where-Object { $_.Id -eq $outProc.Id })
+        if ($got.Count -eq 1) {
+            Pass ('the same predicate DOES match a vm.exe at an output path (pid ' + $outProc.Id + ') once that path is on the list -- so it is deciding by path, not by luck')
+        } else {
+            Fail 'the predicate did not match a vm.exe at a path on the list, so it cannot tell any two directories apart'
+        }
+    }
+} finally {
+    foreach ($p in @($wtProc, $outProc)) {
+        if ($p -and -not $p.HasExited) { $p | Stop-Process -Force -ErrorAction SilentlyContinue }
+    }
+    Remove-Item -LiteralPath $wtExe, $outExe -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $root '.wt\_probe-worktree') -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $outDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # ------------------------------------------------------------------ part B

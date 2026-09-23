@@ -19,18 +19,33 @@
 
   THREE CLAIMS
 
-    1. THE COMPILER IN THE TREE IS THE ONE THE SOURCE PRODUCED.  `selfhost\vm.exe` is
-       the binary step 4 wrote; `selfhost\build\vm.exe` is the copy the tests and the
-       benchmarks use.  They must be the same *program*, which is checked as the same
-       size PLUS the same behaviour on a program whose answer changed recently -- the
-       bytes may differ because a PE timestamp is not reproducible, and this project has
-       already recorded that.  A size difference means the promotion did not run.
+    1. THE COMPILER IN THE TREE IS THE ONE THE SOURCE PRODUCED, and the compiler under
+       test is *this* compiler.  `selfhost\vm.exe` is what step 4 promoted;
+       `selfhost\build\vm.exe` is the copy the tests, the benchmarks and every later gate
+       run; `vm_by_vela.exe` is the same binary under the name that says how it was made.
+       Step 4 copies one file onto the other two, so the size must be identical -- and a
+       size mismatch is the one thing a copy cannot produce, which is what makes it the
+       right *first* question.  But size is a proxy for "the same program" and this file
+       must not stop at a proxy: since 2026-09-24 it is followed by behaviour.  They must
+       emit the same C for the same program (which is a property of the whole front end and
+       both back ends), they must agree about the **default build path** -- all three of
+       them build a three-line program with no C compiler started, which is the claim the
+       promotion exists to make -- and they must all accept the C path's name, because a
+       compiler that does not know `build-c` is a compiler from before the flip.  Each of
+       those is cheap and none needs a C compiler.
+       WHY SIZE ALONE WAS NOT ENOUGH, in this project's own history: the first version of
+       this check passed a tree whose two files were the same length and *different
+       programs*, one generation apart, for half an hour while every gate measured the old
+       one.  Size happened to be equal; nothing about the programs was.
 
     2. THE C FIXPOINT.  Three generations of the emitted C must be byte-identical:
-       `selfhost\build\vm.c` (the seed), `selfhost\vm.c` (what the compiler wrote), and
-       `selfhost\build\_fixpoint_gen2.c` (what the compiler the compiler wrote, wrote).
-       `build.ps1` checks this as it goes; checking it again here costs one hash each and
-       catches a build that reported success over files that disagree.
+       `selfhost\build\vm.c` (the seed), `selfhost\vm.c` (what the promoted compiler emits),
+       and `selfhost\build\_fixpoint_gen2.c` (what the compiler the compiler built emits).
+       `build.ps1` produces and compares all three; checking it again here costs one hash
+       each and catches a build that reported success over files that disagree.  Note that
+       none of the three is a promoted *side effect* any more: `build` is the LLVM path and
+       writes no C, so `build.ps1` asks both generations for it (`emit-c`) at the moment it
+       compares them, and a file this claim reads is a file that step wrote in this run.
 
     3. EVERY BINARY THAT MUST LOAD CAN LOAD.  A `vm.exe` linked against `LLVM-C.lib`
        does not start at all without `LLVM-C.dll` beside it, which looks like a crash
@@ -40,9 +55,9 @@
     powershell -ExecutionPolicy Bypass -File tools\check-coherence.ps1
     powershell -ExecutionPolicy Bypass -File tools\check-coherence.ps1 -SelfTest
 
-  -SelfTest proves the first claim can fail: it points the comparison at a copy of the
-  compiler with one byte appended, which is not a program the source produced, and
-  requires the run to fail.  Exit: 0 = RESULT: ok, 1 = RESULT: failed.
+  -SelfTest points claim 1 at a file one byte longer than `selfhost\vm.exe` and requires
+  the run to fail, so the size comparison is shown to be live rather than assumed.  Exit:
+  0 = RESULT: ok, 1 = RESULT: failed.
 #>
 [CmdletBinding()]
 param(
@@ -64,27 +79,33 @@ $seedC    = Join-Path $root 'selfhost\build\vm.c'
 $gen1C    = Join-Path $root 'selfhost\vm.c'
 $gen2C    = Join-Path $root 'selfhost\build\_fixpoint_gen2.c'
 
+Say ''
 Say '== 1. the compiler in the tree is the one the source produced'
 
 if ($SelfTest) {
-    # The comparison is on SIZE, deliberately (a PE timestamp is not reproducible, so two
-    # builds of one program have different hashes -- this project has already recorded
-    # that).  So the self-test has to change the size: a copy of `selfhost\vm.exe` with
-    # one byte appended is one byte longer, and comparing it against the file it came
-    # from is a pair that IS coherent in the real world -- which is what makes this
-    # isolation, rather than the real defect below passing for a self-test.
+    # The size comparison, shown to be live.  A copy of `selfhost\vm.exe` with one byte
+    # appended is one byte longer than the file it came from, and comparing that pair is
+    # exactly what the real claim does when a promotion has not run -- so this isolates the
+    # comparison instead of demonstrating the real defect.  `Length` is read with Get-Item,
+    # which is the same property the claim compares.
     $tmp = Join-Path $env:TEMP 'coherence-selftest.exe'
+    Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
     $bytes = [System.IO.File]::ReadAllBytes($inTree)
     [System.IO.File]::WriteAllBytes($tmp, ($bytes + [byte]0))
     Say '  self-test: comparing selfhost\vm.exe against a copy of itself one byte longer'
     $a = if (Test-Path -LiteralPath $tmp) { (Get-Item -LiteralPath $tmp).Length } else { -1 }
     $b = if (Test-Path -LiteralPath $inTree) { (Get-Item -LiteralPath $inTree).Length } else { -1 }
     Say ("  {0} bytes  vs  {1} bytes" -f $a, $b)
+    Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
     if ($a -eq $b) {
-        Say 'SELFTEST RESULT: BLIND -- a file one byte longer compared equal, so this cannot tell a promoted compiler from a stale one'
+        Say 'SELFTEST RESULT: BLIND -- a file one byte longer compared equal, so the size comparison cannot tell a promoted compiler from one that was not'
         exit 1
     }
-    Say 'SELFTEST RESULT: the comparison is live (a one-byte difference in length failed it)'
+    Say 'SELFTEST RESULT: the size comparison is live (a one-byte difference in length failed it)'
+    Say ''
+    Say '  The behaviour half is live by construction and does not need a synthetic file: it'
+    Say '  runs the three binaries under test.  What would make IT blind is a runner that'
+    Say '  cannot fail, which is why each comparison below fails with the hashes printed.'
     exit 0
 }
 
@@ -98,38 +119,7 @@ foreach ($f in @($inTree, $inBuild, $byVela)) {
     }
 }
 $distinct = @($sizes.Values | Select-Object -Unique)
-if ($distinct.Count -eq 1) {
-    Pass ("all {0} binaries are the same size ({1} bytes)" -f $sizes.Count, $distinct[0])
-    # Size alone cannot tell "the same program, built twice" from "two different programs that
-    # happen to be the same length" -- and the first version of this check said `ok` for a tree
-    # whose `selfhost\vm.exe` was 868,352 bytes of a NEWER compiler than the promoted one, which
-    # is the exact condition it exists to catch.  So a size match is followed by a deterministic
-    # comparison: the same program emits the same C for the same input, byte for byte, and
-    # `emit-c` needs no C compiler, so this costs two runs.
-    $probe = Join-Path $root 'tests\build\arith_basics.vel'
-    if (Test-Path -LiteralPath $probe) {
-        $emitted = @{}
-        foreach ($f in @($inTree, $inBuild, $byVela)) {
-            if (-not (Test-Path -LiteralPath $f)) { continue }
-            $outFile = Join-Path $env:TEMP ("coh-{0}.c" -f (Split-Path $f -Leaf))
-            Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
-            & cmd /c ("`"{0}`" emit-c `"{1}`" 1> `"{2}`" 2> nul" -f $f, $probe, $outFile) | Out-Null
-            if (Test-Path -LiteralPath $outFile) {
-                $emitted[$f] = (Get-FileHash -LiteralPath $outFile -Algorithm SHA256).Hash.Substring(0, 12)
-            }
-        }
-        $eDistinct = @($emitted.Values | Select-Object -Unique)
-        if ($emitted.Count -ge 2 -and $eDistinct.Count -eq 1) {
-            Pass ("and they are the same program: all of them emit the same C for tests\build\arith_basics.vel (sha256 {0})" -f $eDistinct[0])
-        } elseif ($emitted.Count -lt 2) {
-            Pass 'emit-c comparison skipped: fewer than two binaries could be run'
-        } else {
-            Fail ("the binaries are the same SIZE but different PROGRAMS -- they emit different C for the same input: " +
-                  (($emitted.GetEnumerator() | ForEach-Object { "$(Split-Path $_.Key -Leaf)=$($_.Value)" }) -join ', ') +
-                  ".  A rebuild that only moved the PE timestamp would emit identical C, so this is a compiler that was not promoted")
-        }
-    }
-} else {
+if ($distinct.Count -ne 1) {
     Fail ("the compiler in the tree and the one the tests use are DIFFERENT PROGRAMS: " +
           (($sizes.GetEnumerator() | ForEach-Object { "$(Split-Path $_.Key -Leaf)=$($_.Value)" }) -join ', ') +
           " -- the promotion in build.ps1 step 4 did not run, so every gate and every benchmark is measuring the previous source")
@@ -150,6 +140,116 @@ if ($distinct.Count -eq 1) {
     Say '        (if build.ps1 stopped at step 2 with LNK1104, the output file was held by a'
     Say '         running vm.exe -- a hung probe leaves one behind.  Check `Get-Process vm`:'
     Say '         the strays have no start time and 0 MB.  The report is ..\vela-build-report.txt)'
+} else {
+    Pass ("all {0} binaries are the same size ({1} bytes)" -f $sizes.Count, $distinct[0])
+
+    # ---- and now the part that is not a proxy.
+    #
+    # A size match cannot tell "the same program, built twice" from "two different programs
+    # of the same length", and this file's own history has a green run against two programs
+    # one generation apart.  So three behavioural questions are asked of every binary.  None
+    # of them starts a C compiler, so this stays cheap enough to run after every build.
+    $probe = Join-Path $root 'tests\build\arith_basics.vel'
+    if (-not (Test-Path -LiteralPath $probe)) {
+        Fail "no probe program at $probe, so the behaviour half of claim 1 cannot be asked"
+    } else {
+        $tmpDir = Join-Path $env:TEMP 'vela-coherence'
+        Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
+
+        # (a) the same C for the same program: a property of the front end, the resolver,
+        #     the checker and the C back end together.
+        $emitted = @{}
+        foreach ($f in @($inTree, $inBuild, $byVela)) {
+            if (-not (Test-Path -LiteralPath $f)) { continue }
+            $outFile = Join-Path $tmpDir ("emit-c-{0}.c" -f (Split-Path $f -Leaf))
+            Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
+            & cmd /c ("`"{0}`" emit-c `"{1}`" 1> `"{2}`" 2> nul" -f $f, $probe, $outFile) | Out-Null
+            if (Test-Path -LiteralPath $outFile) {
+                $emitted[$f] = (Get-FileHash -LiteralPath $outFile -Algorithm SHA256).Hash.Substring(0, 12)
+            }
+        }
+        $eDistinct = @($emitted.Values | Select-Object -Unique)
+        if ($emitted.Count -ge 2 -and $eDistinct.Count -eq 1) {
+            Pass ("they are the same program: all of them emit the same C for tests\build\arith_basics.vel (sha256 {0})" -f $eDistinct[0])
+        } elseif ($emitted.Count -lt 2) {
+            Fail 'fewer than two of the three binaries could be run, so the emitted-C comparison proved nothing'
+        } else {
+            Fail ("the binaries are the same SIZE but different PROGRAMS -- they emit different C for the same input: " +
+                  (($emitted.GetEnumerator() | ForEach-Object { "$(Split-Path $_.Key -Leaf)=$($_.Value)" }) -join ', ') +
+                  ".  A rebuild that only moved the PE timestamp would emit identical C, so this is a compiler that was not promoted")
+        }
+
+        # (b) the default build path, behaviourally: a three-line program must build into a
+        #     runnable executable with **no C compiler started**.  `CL=/Zs` is how that is
+        #     enforced rather than observed -- it is read by cl.exe itself as extra arguments,
+        #     so unlike a `cl.bat` on PATH it cannot be walked around by `vcvars64.bat`.  This
+        #     is the claim the promotion exists to make, and a tree whose promoted compiler
+        #     predates the flip fails right here.
+        $tiny = Join-Path $tmpDir 'tiny.vel'
+        [System.IO.File]::WriteAllText($tiny, "def main() -> None {`r`n    print(42)`r`n}`r`n",
+                                       (New-Object System.Text.UTF8Encoding($false)))
+        $built = @{}
+        foreach ($f in @($inTree, $inBuild, $byVela)) {
+            if (-not (Test-Path -LiteralPath $f)) { continue }
+            $exe = Join-Path $tmpDir ("tiny-{0}.exe" -f (Split-Path $f -Leaf))
+            Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
+            $bat = Join-Path $tmpDir ("build-{0}.bat" -f (Split-Path $f -Leaf))
+            $body = @('@echo off', 'set CL=/Zs', 'set VSCMD_SKIP_SENDTELEMETRY=1',
+                      ('"' + $f + '" build "' + $tiny + '" > nul 2>&1'))
+            [System.IO.File]::WriteAllLines($bat, $body)
+            & cmd /c ('"' + $bat + '"') | Out-Null
+            $ran = ''
+            # `build` puts the executable beside the source, and the source is `tiny.vel` --
+            # one name, so each binary's product is the same path.  Move it aside per binary
+            # rather than assume.
+            $product = Join-Path $tmpDir 'tiny.exe'
+            if (Test-Path -LiteralPath $product) {
+                $ran = (& cmd /c ('"' + $product + '"') | Out-String).Trim()
+                Move-Item -LiteralPath $product -Destination $exe -Force
+            }
+            $built[$f] = $ran
+        }
+        $bad = @($built.GetEnumerator() | Where-Object { $_.Value -ne '42' })
+        if ($built.Count -ge 2 -and $bad.Count -eq 0) {
+            Pass ("all of them build a program with no C compiler started (CL=/Zs set) and it prints 42")
+        } else {
+            Fail ("these binaries could not build a three-line program with CL=/Zs: " +
+                  (($built.GetEnumerator() | ForEach-Object { "$(Split-Path $_.Key -Leaf)='" + $_.Value + "'" }) -join ', ') +
+                  " -- a compiler that cannot do that is not the one the source produced, and a blank answer is what a compiler that reached for cl.exe gives")
+        }
+
+        # (c) and they all know the C path's name, because a compiler that does not is a
+        #     compiler from before the flip.  An unknown mode prints the usage list and exits
+        #     non-zero, so the question is one exit code.  `build-c` on this program is not
+        #     run to completion -- the mode name is what is being asked about -- so it is
+        #     asked with the runtime directory empty, which refuses fast and by name.
+        $knows = @{}
+        foreach ($f in @($inTree, $inBuild, $byVela)) {
+            if (-not (Test-Path -LiteralPath $f)) { continue }
+            $bat = Join-Path $tmpDir ("mode-{0}.bat" -f (Split-Path $f -Leaf))
+            [System.IO.File]::WriteAllLines($bat, @('@echo off',
+                ('"' + $f + '" build-c "' + $tiny + '" > "' + (Join-Path $tmpDir 'mode.out') + '" 2>&1'),
+                ('echo %errorlevel% > "' + (Join-Path $tmpDir 'mode.code') + '"')))
+            $modeOut = Join-Path $tmpDir 'mode.out'
+            $modeCode = Join-Path $tmpDir 'mode.code'
+            Remove-Item -LiteralPath $modeOut, $modeCode -Force -ErrorAction SilentlyContinue
+            & cmd /c ('"' + $bat + '"') | Out-Null
+            $text = ''
+            if (Test-Path -LiteralPath $modeOut) { $text = [string](Get-Content -LiteralPath $modeOut -Raw) }
+            $knows[$f] = -not ($text -match 'unknown mode')
+        }
+        $ignorant = @($knows.GetEnumerator() | Where-Object { -not $_.Value })
+        if ($knows.Count -ge 2 -and $ignorant.Count -eq 0) {
+            Pass 'and all of them know the C path by name (`build-c`), so none predates the flip'
+        } else {
+            Fail ("these binaries do not know `build-c`: " +
+                  (($ignorant | ForEach-Object { Split-Path $_.Key -Leaf }) -join ', ') +
+                  " -- `unknown mode` means a compiler built before `build` became the LLVM path")
+        }
+
+        Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Say ''

@@ -110,36 +110,76 @@ Set-Location -LiteralPath $root
 #     emitting a fixpoint.
 #
 # So a gate's verdict depended on what a *different* agent happened to be doing,
-# and a gate that lies is worse than no gate.  The rule now: a process is only
-# swept when its own executable path is inside **this checkout**.  `Path` is empty
-# for a process this user cannot open, and an empty path is therefore *not* swept --
-# the failure mode of the old code was killing too much, so the new default is to
-# leave alone what cannot be identified.  A stray `vm.exe` of our own that we
-# cannot open would then survive, and `Clear-LockedTarget` is what handles the
-# consequence (a held output file), which is the honest division: identity decides
-# what may be killed, the lock decides what may be renamed aside.
+# and a gate that lies is worse than no gate.  The rule now, in two halves, and the
+# second half is the one this round added because the first was not enough:
+#
+#   1. **A path prefix is not ownership.**  `$p.Path.StartsWith($root)` looked right and
+#      is wrong for the case this session creates: a `git worktree` of this repository
+#      lives *inside* it (`.wt\enums`, and `.gitignore` carries the rule), so the other
+#      agent's compiler is under `$root` and a prefix test calls it ours.  Measured by
+#      `tools\_ownership-probe.ps1`, which starts a `vm.exe`-named process there and
+#      requires the sweep to leave it alone.
+#   2. **So the sweep names the paths it is for.**  A sweep is not for everything that
+#      can hold a file; it is for the *output files this build is about to write*, and
+#      those are three: `selfhost\build\vm.exe` (the compiler the tests and the gates
+#      run), `selfhost\vm.exe` (what step 4 promotes), and `selfhost\build\vm_by_vela.exe`
+#      (the same binary under the name that says how it was made).  Nothing else in this
+#      repository is written over, so nothing else needs a process killed for.  That is
+#      also why the names `cl` and `link` are gone from the sweep entirely: their own
+#      paths are always under `C:\Program Files (x86)\Microsoft Visual Studio\...`, so
+#      with a path test they could never match -- the sweep never killed a `cl` of ours,
+#      and saying so is better than a loop that looks like it might.
+#
+# **And what cannot be identified is left alone.**  `Path` is empty for a process this
+# user cannot open (measured: every `vm.exe` in the list, on this machine).  The old
+# failure mode was killing too much, so the new default is to leave what cannot be named,
+# and to *name* what was left.  A held output file that survives is not a lost cause: the
+# link fails with LNK1104, and `Clear-LockedTarget` below is the half that tries to move
+# the file aside first.  Identity decides what may be killed; the lock decides what may be
+# renamed aside.
+function Get-OutputPaths {
+    # Resolved to full paths once, so the comparison below is between two absolute paths and
+    # not between one absolute and one spelled with forward slashes.
+    $out = @()
+    foreach ($p in @('selfhost\build\vm.exe', 'selfhost\vm.exe', 'selfhost\build\vm_by_vela.exe')) {
+        $out += [System.IO.Path]::GetFullPath((Join-Path $root $p))
+    }
+    return $out
+}
+
+function Test-IsOurBuildOutput([string] $path, [string[]] $outputs) {
+    if (-not $path) { return $false }
+    $full = ''
+    try { $full = [System.IO.Path]::GetFullPath($path) } catch { return $false }
+    foreach ($o in $outputs) {
+        if ($full.Equals($o, [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return $false
+}
+
 function Get-OwnedProcess {
-    param([string] $Name)
+    param([string[]] $Outputs)
     $mine = @()
-    foreach ($p in @(Get-Process -Name $Name -ErrorAction SilentlyContinue)) {
+    foreach ($p in @(Get-Process -Name 'vm' -ErrorAction SilentlyContinue)) {
         $path = ''
         try { $path = $p.Path } catch { $path = '' }
-        if ($path -and $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
+        if (Test-IsOurBuildOutput $path $Outputs) {
             $mine += $p
         }
     }
     return $mine
 }
 
-function Get-ForeignProcess([string[]] $Names) {
+function Get-UnsweptProcess {
+    # Everything named `vm` that the sweep is NOT going to touch, so a reader can see what
+    # was left -- including the worktree case and the cannot-be-identified case.
+    param([string[]] $Outputs)
     $theirs = @()
-    foreach ($n in $Names) {
-        foreach ($p in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
-            $path = ''
-            try { $path = $p.Path } catch { $path = '' }
-            if (-not ($path -and $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase))) {
-                $theirs += [pscustomobject]@{ Name = $p.ProcessName; Id = $p.Id; Path = $path }
-            }
+    foreach ($p in @(Get-Process -Name 'vm', 'cl', 'link', 'vctip', 'mspdbsrv' -ErrorAction SilentlyContinue)) {
+        $path = ''
+        try { $path = $p.Path } catch { $path = '' }
+        if (-not (Test-IsOurBuildOutput $path $Outputs)) {
+            $theirs += [pscustomobject]@{ Name = $p.ProcessName; Id = $p.Id; Path = $path }
         }
     }
     return $theirs
@@ -148,18 +188,16 @@ function Get-ForeignProcess([string[]] $Names) {
 foreach ($name in 'WerFault', 'wermgr') {
     try { Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch { }
 }
-$foreign = Get-ForeignProcess @('vm', 'cl', 'link', 'vctip', 'mspdbsrv')
-$owned = @()
-foreach ($name in 'vm', 'cl', 'link') {
-    $owned += Get-OwnedProcess $name
-}
+$ourOutputs = Get-OutputPaths
+$foreign = Get-UnsweptProcess $ourOutputs
+$owned = Get-OwnedProcess $ourOutputs
 if ($owned.Count -gt 0) {
     $owned | Stop-Process -Force -ErrorAction SilentlyContinue
-    Write-Host "  swept $($owned.Count) leftover process(es) of this checkout's own"
+    Write-Host "  swept $($owned.Count) process(es) holding this build's own output paths"
 }
 if ($foreign.Count -gt 0) {
-    Write-Host "  left alone: $($foreign.Count) process(es) of another checkout -- a sweep by name"
-    Write-Host "  would have killed them, and their agent's build with them:"
+    Write-Host "  left alone: $($foreign.Count) process(es) that are not this build's output -- a sweep"
+    Write-Host "  by image name would have killed them, and their agent's build with them:"
     foreach ($f in ($foreign | Select-Object -First 6)) {
         Write-Host ("      " + $f.Name + "  pid=" + $f.Id + "  " + $(if ($f.Path) { $f.Path } else { '(path not openable)' }))
     }
