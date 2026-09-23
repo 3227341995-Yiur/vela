@@ -568,12 +568,12 @@ static vela_str vela_substr(vela_str s, int64_t a, int64_t b)
     return vela_str_lit((const char *)s.data + a, b - a);
 }
 
-/* Concatenation, as a *named* builtin and deliberately not as an operator.
- * `a + b` on two strings is refused by the language (SPEC 1.5): in Python it
- * coerces silently, and in C the nearest meaning is pointer arithmetic.  But a
- * self-hosting compiler has to build paths, command lines and message text, and
- * there is otherwise no way to make a string at all — so the capability exists,
- * with a name that says what it costs.
+/* Concatenation, in the one place it is implemented.  `a + b` on two strings and
+ * the `concat(a, b)` builtin are one operation and both arrive here: the two back
+ * ends lower `+` to this exact call, so there is no second implementation to
+ * drift from this one.  The name stays because the *cost* stays — this allocates
+ * in the permanent region below, which is why a `parallel for` may not concatenate
+ * at all (the checker refuses it by name, in both spellings, for this reason).
  *
  * The result lives in the permanent region, exactly like a literal or the
  * result of read_text, so nothing here can dangle and nothing has to be freed. */

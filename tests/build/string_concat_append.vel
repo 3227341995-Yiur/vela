@@ -1,0 +1,41 @@
+# `+=` on a `mut s: str`.  It is a different lowering in all three
+# implementations from the `+` the other two string cases use: the interpreter's
+# `combine` runs with the binding's own cell as the destination, the C back end
+# writes `vl_s = vela_concat(vl_s, vl_t);`, and the LLVM back end passes the
+# local's storage as the hidden destination *and* as the left operand.  A `+=`
+# that computed the right value and then stored the old one back, or that joined
+# the result to itself, would pass every `+` case in this directory.
+#
+# `t += t` is here for the second of those: the operands alias.  `u += "a"` in a
+# loop is here because the storage is permanent (SPEC.md 6 rule 3) — 26 strings
+# must all still be readable when the loop ends, which is what catches a
+# concatenation that reuses one buffer.
+#
+# Both `+` and `concat` must agree with this, so the last line's number is the
+# length and not a copy of anything.
+#
+# Expected stdout, byte for byte:
+#     ab
+#     abc
+#     3
+#     aaaa
+#     True
+#     26
+
+def main() -> None {
+    mut s: str = "a"
+    s += "b"
+    print(s)
+    s += "c"
+    print(s)
+    print(len(s))
+    mut t: str = "aa"
+    t += t
+    print(t)
+    print(t == "aaaa")
+    mut u: str = ""
+    for i in range(0, 26) {
+        u += "a"
+    }
+    print(len(u))
+}

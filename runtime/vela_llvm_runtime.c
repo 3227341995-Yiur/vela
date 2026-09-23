@@ -268,9 +268,9 @@ vela_str vela_llvm_substr(vela_str s, int64_t a, int64_t b)
     return vela_substr(s, a, b);
 }
 
-/* A *named* builtin rather than an operator: `a + b` on two strings is refused by
- * the language, and the capability exists anyway because a compiler that has to
- * name files, command lines and messages cannot be written without it. */
+/* `concat(a, b)` and `a + b` on two strings: the LLVM back end lowers both to
+ * this one call, which is the header's `vela_concat` under an IR-reachable name,
+ * so the operator and the builtin cannot disagree about what they cost. */
 vela_str vela_llvm_concat(vela_str a, vela_str b)
 {
     return vela_concat(a, b);

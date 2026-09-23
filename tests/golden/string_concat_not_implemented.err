@@ -1,2 +1,0 @@
-vela: type error: string concatenation is not implemented in Vela 0.1
-  at tests/build/check_cases/string_concat_not_implemented.vel:4

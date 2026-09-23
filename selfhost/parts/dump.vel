@@ -9,8 +9,11 @@
 # Python front end, and the digest is what is left of that agreement.
 #
 # The dump writes through emit_str/emit_int/emit_float, so it never builds a
-# string at run time — Vela has no string concatenation, and a printer that
-# needs one would be a printer that cannot be written in Vela.
+# string at run time.  That is not a limitation of the language any more — with
+# `+` on two `str`s it could join text in memory — but it is still the right shape
+# for a printer: the dump is written to standard output as it is walked, in the
+# same streaming form the C back end uses, and a digest can be taken of the bytes
+# on the way past without the whole dump ever existing at once.
 
 def d_indent(depth: int) -> None {
     mut i: int = 0
