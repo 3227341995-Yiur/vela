@@ -278,6 +278,20 @@ Invoke-Step -Name 'llvm-column' -Script 'tools\llvm-column.ps1' -SuccessPattern 
 # feature lands is the day the program moves into `tests\cases.txt` with a golden.
 Invoke-Step -Name 'accept-status' -Script 'tools\accept-status.ps1' -SuccessPattern 'RESULT: ok'
 
+# The north star's own test: build the compiler with the LLVM path -- no C compiler anywhere --
+# and require the result to be a compiler that works.
+#
+# This was tested by hand, once, and recorded in a message: on 2026-09-24 the compiler agent
+# built it, ran it, and found the worst outcome this project has a name for -- a WRONG ANSWER.
+# The built compiler links, runs, and fails every program with `syntax error ... found '' at
+# line 25` on a three-line file, because its own parser's token cursor reads past the array.
+# Nothing in the tree noticed, and nothing could: the corpus and the shape corpus compare the
+# interpreter against `build-llvm` for ordinary programs, and neither of them is the compiler.
+#
+# Two seconds, and it runs a control through the tree's own compiler first, so a failure here
+# cannot be the probe's fault.  RED at this commit, on purpose and for a real reason.
+Invoke-Step -Name 'selfhost-llvm' -Script 'tools\selfhost-llvm.ps1' -SuccessPattern 'RESULT: ok'
+
 if (-not $SkipSuite) {
     Invoke-Step -Name 'suite' -Script 'tools\refreeze.ps1' -SuccessPattern 'RESULT: green'
 } else {
