@@ -287,7 +287,14 @@ function Invoke-Verifier([string] $dir, [string] $tag) {
         Log     = $log
         Fails   = $fails
         Interim = $interim
-        Verdict = if ($verdict.Count -gt 0) { $verdict[0] } else { '(no RESULT line: the verifier did not finish)' }
+        # The fallback used to read "the verifier did not finish", which is a guess: all
+        # it knows is that no RESULT line was printed.  Three cases, said plainly, with
+        # the exit code carried into the line so a reader can tell a silent stop from a
+        # crash.  `harness.ps1` had the same defect in the same shape, for the verdicts
+        # it summarises, and it was fixed there first; this is the other copy.
+        Verdict = if ($verdict.Count -gt 0) { $verdict[0] }
+                  elseif ($code -ne 0) { "(no RESULT line: the verifier stopped before reaching a verdict -- exit $code)" }
+                  else { '(no RESULT line and exit 0: the verifier printed no measurement at all)' }
         Crashed = ($verdict.Count -eq 0)
     }
 }
