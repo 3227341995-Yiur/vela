@@ -20,6 +20,12 @@
       smoke     tools\smoke.ps1        is the tree alive: build, run, build from
                                        outside the repository, the user's directory
                                        staying clean, compiled == interpreted
+      llvm-inproc tools\llvm-inproc.ps1
+                                       the north star: build-llvm runs with no C
+                                       compiler on PATH at all, and the only program
+                                       it starts is the linker.  Witnessed by a
+                                       sabotage PATH whose trap is proved to work
+                                       first, and by the recorded link command
       shim-decls tools\gen-shim-decls.ps1 -Check
                                        the compiler's code generator is reached
                                        through generated `extern c` declarations;
@@ -150,6 +156,31 @@ Write-Host ("  logs: {0}" -f $logDir)
 
 Invoke-Step -Name 'build'  -Script 'tools\build.ps1'    -SuccessPattern 'RESULT: ok'
 Invoke-Step -Name 'smoke'  -Script 'tools\smoke.ps1'    -SuccessPattern 'RESULT: ok'
+
+# The north star, as a check rather than as a memory: `build-llvm` produces a
+# native executable through libLLVM *inside this process*, and the only program
+# it starts on the outside is the linker.
+#
+# `tools\llvm-inproc.ps1` proves that the way a claim of absence has to be
+# proved -- it puts a restricted PATH in front of the build holding sabotage
+# `cl.bat`, `clang.bat` and `clang-cl.bat` that each write a marker file and exit
+# 97, so a build that reached for a C compiler would leave a file behind; and it
+# first proves the trap works, because "no marker appeared" is also exactly what
+# an empty directory produces.
+#
+# It has existed for several sessions and *nothing called it*: the strongest
+# claim this project makes was verified only when somebody happened to remember
+# the script's name.  A check that never runs is how a false green is born, so it
+# is a step here, after the build it depends on.
+$llvmRuntimeObj = Join-Path $repo 'selfhost\build\vela_llvm_runtime.obj'
+if (Test-Path -LiteralPath $llvmRuntimeObj) {
+    Invoke-Step -Name 'llvm-inproc' -Script 'tools\llvm-inproc.ps1' -SuccessPattern 'RESULT: ok'
+} else {
+    [void]$results.Add([pscustomobject]@{
+        Step = 'llvm-inproc'; Ok = $null; Code = 0; Seconds = 0;
+        Verdict = 'skipped (no selfhost\build\vela_llvm_runtime.obj -- the build did not get that far)'; Out = ''; Err = ''
+    })
+}
 
 # The compiler's own code generator is reached through `extern c` declarations that
 # are generated from the C header, because an interface written twice by hand drifts.
