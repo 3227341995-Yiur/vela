@@ -1,0 +1,4 @@
+def main() -> None {
+    mut a: u8 = 3
+    print(0 - a)
+}

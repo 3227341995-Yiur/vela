@@ -1,0 +1,4 @@
+def main() -> None {
+    mut a: Array[float, 2] = [1.0, 2.0]
+    print(a[0])
+}

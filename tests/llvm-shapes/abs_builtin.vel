@@ -1,0 +1,4 @@
+def main() -> None {
+    mut x: int = 0 - 7
+    print(abs(x))
+}

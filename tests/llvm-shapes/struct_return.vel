@@ -1,0 +1,10 @@
+struct P {
+    x: int
+}
+def f() -> P {
+    return P(1)
+}
+def main() -> None {
+    p: P = f()
+    print(p.x)
+}

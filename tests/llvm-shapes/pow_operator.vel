@@ -1,0 +1,5 @@
+def main() -> None {
+    mut x: int = 2
+    mut y: int = 3
+    print(x ** y)
+}
