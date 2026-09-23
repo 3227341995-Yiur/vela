@@ -1,6 +1,0 @@
-# SPEC.md §1.5: "There is no string concatenation operator in 0.1, and no
-# slicing."  SPEC.md §8: `concat(a, b)` is "Deliberately a *named* builtin and not
-# `+`".  Legal twin: strict_string_concat_builtin_ok.vel.
-def main() -> None {
-    print("a" + "b")
-}

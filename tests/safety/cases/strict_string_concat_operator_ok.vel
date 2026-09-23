@@ -1,0 +1,13 @@
+# SPEC.md §1.5: "`+` on two `str`s joins them", and §8: `concat(a, b)` is "the same
+# operation `a + b` is on two `str`s ... lowered to the same runtime call".  This is
+# the operator half of a pair and it promises the whole shape: `check` accepts, the
+# compiled program prints `ab`, and the interpreter prints the same bytes.  Twin:
+# strict_string_concat_builtin_ok.vel, the same program with the named builtin —
+# the two spellings must not drift, which is why they are promised side by side.
+#
+# Until 2026-09-24 this file was strict_no_string_concatenation.vel and promised the
+# refusal instead; that promise is gone from SPEC 1.5, so the case is repurposed
+# rather than kept as a row the compiler would now be right to fail.
+def main() -> None {
+    print("a" + "b")
+}

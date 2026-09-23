@@ -1,0 +1,2 @@
+vela: safety error: cannot modify 's': it was declared immutable
+  at tests/build/check_cases/string_concat_immutable.vel:3

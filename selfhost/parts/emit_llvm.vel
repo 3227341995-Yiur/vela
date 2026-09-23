@@ -1502,6 +1502,20 @@ def ll_reserve_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if k == 27 {
+        # `a + b` on two strings: a 16-byte `str` comes back through a hidden
+        # pointer exactly as it does from a call, so the storage has to exist
+        # before the concatenation is emitted and it is reserved here, in the
+        # entry block, for the same reason a string-returning call's slot is —
+        # a `+` inside a loop must reuse one slot instead of carving out a new
+        # one per iteration.  Both operands being strings is what makes the
+        # result one (`ck_etype`), so asking the *left* operand's kind is the
+        # same question `ll_binop` asks.
+        if expr_kind(nd, ty, mem, vm, e) == K_STR() {
+            if lit[e] == 0 {
+                lit[e] = ll_ck(lg, "a slot for a concatenated string",
+                               vshim_build_alloca(lg.m, lg.t_str, 8))
+            }
+        }
         ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 2])
         ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 3])
         return
@@ -1937,6 +1951,26 @@ def ll_binop(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     b: int = ll_wide(lg, expr_kind(nd, ty, mem, vm, nd[e * 10 + 3]),
                      ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots,
                              slotkind, lit, fns, nd[e * 10 + 3]))
+    if lk == K_STR() {
+        # `a + b` on two `str`s.  This is the `concat` builtin's own lowering,
+        # written out rather than routed through the call node: the same
+        # `vela_llvm_concat`, the same hidden first argument, the same slot
+        # reserved in the entry block — so `+`, `concat` and `build`'s runtime
+        # cannot disagree about what a concatenation costs or where it lives.
+        # `ll_wide` above left both operands alone: a `str` operand is already
+        # the address of its 16 bytes, which is the argument this call takes.
+        if op == 1 {
+            dst: int = lit[e]
+            if dst == 0 {
+                trap(path, line,
+                     "this concatenation's result was never given a slot in the entry block")
+            }
+            ll_call3(lg, lg.f_concat, dst, a, b)
+            return dst
+        }
+        trap(path, line,
+             "only `+` is compiled by the LLVM back end for two strings")
+    }
     if lk == K_INT() or ll_iso_wide(lk) {
         # `u8` and `i32` take this path too, and it is the C back end's path:
         # there, `vl_b + 55LL` is an `int` addition with an implicit conversion
@@ -3047,6 +3081,22 @@ def ll_aug(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     } else {
         trap(path, line,
              "only a local variable, an array element or a struct field can be updated in place by the LLVM back end so far")
+    }
+    if k == K_STR() {
+        # `s += t` on a `str`: the concatenation `+` and `concat` make, called
+        # with `h` as the hidden destination *and* as the left operand, which is
+        # not an alias the callee can see — `vela_concat` builds the result from
+        # the two inputs and only then is the struct handed back, so reading `h`
+        # and writing `h` here is a copy of a complete value into its own place.
+        # Nothing is loaded and nothing is stored: the call *is* the update, and
+        # the `load`/`store` pair below is about scalars and floats.
+        if op != 1 {
+            trap(path, line, "this augmented operator has no string lowering")
+        }
+        val3: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                            lit, fns, v)
+        ll_call3(lg, lg.f_concat, h, h, val3)
+        return
     }
     t: int = ll_type_of(lg, k)
     if t == 0 {

@@ -1,0 +1,12 @@
+# SPEC.md §7: concatenation is refused inside a `parallel for`, in both spellings,
+# because each iteration would allocate out of the one string region every iteration
+# shares.  The `+` here is the whole subject of the promise; the rest of §7 is
+# satisfied by the loop (the write lands on a local array element at the loop's own
+# index), so the only thing left that could refuse it is the concatenation.
+def main() -> None {
+    mut out: Array[int, 64] = [0]
+    parallel for i in range(0, 64) {
+        out[i] = len("x" + "y")
+    }
+    print(out[0])
+}

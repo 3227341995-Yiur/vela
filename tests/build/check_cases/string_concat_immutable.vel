@@ -1,0 +1,5 @@
+def main() -> None {
+    s: str = "a"
+    s += "b"
+    print(s)
+}

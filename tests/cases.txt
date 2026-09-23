@@ -95,6 +95,37 @@ run while_with_narrowing                     tests/build/while_with_narrowing.ve
 run int_width_literals                       tests/build/int_width_literals.vel
 run strings                                  tests/build/strings.vel
 run string_escapes                           tests/build/string_escapes.vel
+
+# ------------------------------------------------------- string concatenation
+#
+# `a + b` on two `str`s and `s += t` for a `mut s: str`, landed 2026-09-24.  Three
+# programs rather than one, because they are three different lowerings: the
+# operator, the growth case that catches a buffer one byte short or reused, and
+# `+=`, whose destination is the binding in all three implementations.
+#
+# They are `run`, so `build` compiles them — the LLVM back end, which lowers `+`
+# to the same `vela_llvm_concat` the `concat` builtin has always called.  That is
+# the whole design of the feature: one operation, one runtime call, two spellings.
+#
+# Two of the three were `tests/accept/` programs until the feature landed, which is
+# that directory's contract — it pins a missing feature, and the day the feature
+# arrives its programs move here with rows and goldens and BASELINE.txt is
+# re-recorded without them.  `refuse string_concat_not_implemented` is gone for the
+# same reason, and its case file and golden with it: the entire content of that case
+# was that this feature was missing.
+run string_concat_basic                       tests/build/string_concat_basic.vel
+run string_concat_growth                      tests/build/string_concat_growth.vel
+run string_concat_append                      tests/build/string_concat_append.vel
+# The lowerings themselves, held by a digest — three numbers each, so a change in
+# the back end cannot hide behind an unchanged parser.  A digest cannot be read,
+# and that is not what it is for here: what it pins is that `+`, `+=` and `concat`
+# keep producing the same C.  Read it with
+#     vm.exe emit-c tests/build/string_concat_basic.vel
+# (it is `vela_concat(...)` in every one of these places) and
+#     vm.exe emit-llvm tests/build/string_concat_basic.vel
+# (it is `vela_llvm_concat`), which is where a drift would show up first.
+dumps string_concat_basic                     tests/build/string_concat_basic.vel
+dumps string_concat_append                    tests/build/string_concat_append.vel
 # ------------------------------------------------- what cannot be restored
 #
 # Three cases were commented out on 2026-09-19, and they are commented rather
@@ -203,6 +234,10 @@ refuse float_to_int_variable                 tests/build/check_cases/float_to_in
 refuse truthiness                            tests/build/check_cases/truthiness.vel
 refuse truthiness_string                     tests/build/check_cases/truthiness_string.vel
 refuse immutable_rebind                      tests/build/check_cases/immutable_rebind.vel
+# The other half of `+=` for a `str`: the binding has to be `mut`.  The refusal is
+# the one every other immutable target gets, in its compound-assignment wording
+# (`cannot modify`, not `cannot assign to`, because that is what the reader wrote).
+refuse string_concat_immutable               tests/build/check_cases/string_concat_immutable.vel
 refuse immutable_array_element               tests/build/check_cases/immutable_array_element.vel
 refuse array_rebind                          tests/build/check_cases/array_rebind.vel
 refuse const_index_out_of_range              tests/build/check_cases/const_index_out_of_range.vel
@@ -217,6 +252,15 @@ refuse parallel_unprovable_index             tests/build/check_cases/parallel_un
 refuse parallel_writes_parameter             tests/build/check_cases/parallel_writes_parameter.vel
 refuse parallel_impure_call                  tests/build/check_cases/parallel_impure_call.vel
 refuse parallel_print                        tests/build/check_cases/parallel_print.vel
+# The decision string concatenation forced rather than inherited: it allocates, in
+# the string region every iteration of a `parallel for` would share, so it is
+# *impure for this rule* and refused by name — in both spellings, because `+` and
+# `concat` are one operation and a language that admitted the function while
+# refusing the operator would be describing its own back end.  The rule, the reason
+# and what it does not cover are written out at `ck_concat_msg` in
+# `selfhost/parts/check.vel`; these two rows are the measurement of it.
+refuse parallel_string_concat                tests/build/check_cases/parallel_string_concat.vel
+refuse parallel_concat_builtin               tests/build/check_cases/parallel_concat_builtin.vel
 refuse pure_function_impure_call             tests/build/check_cases/pure_function_impure_call.vel
 refuse chained_comparison                    tests/build/check_cases/chained_comparison.vel
 refuse elif_is_not_vela                      tests/build/check_cases/elif_is_not_vela.vel
@@ -226,7 +270,6 @@ refuse uninitialised_scalar                  tests/build/check_cases/uninitialis
 refuse mutate_loop_variable                  tests/build/check_cases/mutate_loop_variable.vel
 refuse return_own_array                      tests/build/check_cases/return_own_array.vel
 refuse array_struct_field                    tests/build/check_cases/array_struct_field.vel
-refuse string_concat_not_implemented         tests/build/check_cases/string_concat_not_implemented.vel
 refuse slice_not_implemented                 tests/build/check_cases/slice_not_implemented.vel
 refuse nested_function                       tests/build/check_cases/nested_function.vel
 refuse tuple                                 tests/build/check_cases/tuple.vel
@@ -236,8 +279,9 @@ refuse adjacent_string_literals              tests/build/check_cases/adjacent_st
 # other half of the same rule -- `str + int` stays refused, because SPEC 3.1 compares
 # both operands and nothing in Vela converts a number to text.  A `+` that started
 # doing it would be a silent toString in the one place the language promised there is
-# none.  Recorded 2026-09-24 while the feature is still absent, deliberately before
-# it exists.
+# none.  Recorded 2026-09-24 while the feature was still absent, deliberately before
+# it existed -- and measured again the day `str + str` landed, when the diagnostic
+# came back byte-identical, which is what that sentence was written to mean.
 refuse string_concat_int_operand              tests/accept/string_concat_int_operand.vel
 refuse missing_open_brace                    tests/build/check_cases/missing_open_brace.vel
 refuse missing_close_brace                   tests/build/check_cases/missing_close_brace.vel

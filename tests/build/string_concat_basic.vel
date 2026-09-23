@@ -1,0 +1,36 @@
+# String concatenation.  Claim: `+` on two str joins them, and the result is a
+# real str — len, ==, and being an operand of another `+` all work on it.  The
+# comparison against `concat` (the builtin, SPEC.md 8) is deliberate: `+` and
+# `concat` must agree, and the empty string is the operand where an off-by-one
+# length shows up.
+#
+# This program was `tests/accept/string_concat_basic.vel` until the feature
+# landed, which is what that directory is for: it pins what the compiler says
+# while a feature is missing, and the program moves here with a row in
+# `tests/cases.txt` and a golden the day the feature arrives — BASELINE.txt is
+# re-recorded without it.  The row is `run`, so the compiled path is `build`, the
+# LLVM back end: `emit-llvm` shows every `+` in this file as the same
+# `vela_llvm_concat` call the `concat` builtin makes.
+#
+# Expected stdout, byte for byte:
+#     abcd
+#     4
+#     True
+#     True
+#     xyz
+#     abcd
+#     4
+#     True
+#     True
+#     xyz
+
+def main() -> None {
+    a: str = "ab"
+    b: str = "cd"
+    c: str = a + b
+    print(c)
+    print(len(c))
+    print(c == "abcd")
+    print(a + "" == concat(a, ""))
+    print("x" + "y" + "z")
+}

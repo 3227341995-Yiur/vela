@@ -1,0 +1,11 @@
+# SPEC.md §7: concatenation is refused inside a `parallel for`.  Same program as
+# concurrency_string_concat_refused.vel with the named builtin, because `+` on two
+# `str`s and `concat(a, b)` are one operation and the promise is about the
+# operation, not about the spelling.
+def main() -> None {
+    mut out: Array[int, 64] = [0]
+    parallel for i in range(0, 64) {
+        out[i] = len(concat("x", "y"))
+    }
+    print(out[0])
+}

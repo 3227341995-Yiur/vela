@@ -1,0 +1,8 @@
+# SPEC.md §1.5: concatenation is defined for two `str`s and for nothing else.
+# `str + int` is refused as a mixed pair — there is no silent `toString` in this
+# language — and this is the half of the rule that must NOT change now that `+`
+# joins strings.  Measured byte-identical the day the feature landed.
+def main() -> None {
+    s: str = "n="
+    print(s + 7)
+}
