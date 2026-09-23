@@ -4,14 +4,29 @@
 
 <!--
 源文件 : STATUS.md
-源文件字节 : 29495
-源文件 SHA256 : 0e069d16bfeea6aebba47fe8c472373c8b598d308333680fac05f394204a7856
+源文件字节 : 32831
+源文件 SHA256 : 4bafb7eb5e2b36adead46f1a157168530b02f8a717ae51283d8649c0a33b447e
 翻译日期 : 2026-09-22
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
 
 一次工作会话的快照，不能替代运行它所点名的命令。下面每一条 "verified" 都是在这台机器上实测的；每一条 "written" 都是尚未经过它所需要的那件工具的源码，而它自己也这么说。
+
+## 0.1 当前状态，2026-09-24 —— 先读这一段；下面的一切都是 2026-09-20 的那条边界
+
+§0 里那个带日期的块和 §2 里的那些表，是 **2026-09-20** 的会话快照。它们被保留着，因为那就是那条边界的记录，而它们当中有**一行现在在主动误导人**：§0 说门禁是*红的*，`187 passed, 3 failed of 190`。它是绿的。今天的状态，是逐条运行每个命令测出来的，而不是通过读这个文件得来的：
+
+| 什么 | 命令 | 今天 |
+|---|---|---|
+| 套件 | `tools\refreeze.ps1` | `RESULT: green` —— **196 passed, 0 failed（196 个用例，251 次捕获）**。六个带手写 golden 的 `refuse` 用例是在本文件写完之后加上去的；190 → 196 就是这么来的 |
+| 三方差分 | `powershell -ExecutionPolicy Bypass -File _llvmdiff.ps1` | **现在是一个工具，不是手工跑出来的**：`cases: 23  match: 14  REFUSED: 9  DIVERGE: 0`。那九个是 7 个刻意的 `parallel for` 拒绝，加上 `struct` 参数和 `struct` 局部变量。§0 那句 "7 match, 16 refused" 是两轮收口之前的事 |
+| 自举 | `tools\build.ps1` | `RESULT: ok`，而不动点是按 **C** 判的，不是按 `.exe` 字节：`selfhost\build\vm.c` == `selfhost\vm.c` == `selfhost\build\_fixpoint_gen2.c`，`CF2F0B76…`，944 784 字节。同一份源码的两次构建会产出不同的 `.exe` 哈希（PE 时间戳），所以要比对的产物是发出的 C |
+| 检查器 | 对那六个被耗尽的洞用例运行 `vm.exe check` | 六个洞已关闭，每一个都用记录在案的那套措辞拒绝。在 70 个 safety 行里，仍然开着的两个是被记录下来而不是被藏起来：`hole_mut_scalar_parameter`（`SPEC.md` §3.2 说这个实现对一个标量并不守那条承诺）和 `hole_narrowing_binding_{u8,i32}`，也就是解释器和编译出来的路径给出不同答案（`300` 对 `44`）的那些 **diverge** 行。那处分歧现在被定下来了：三条路径都会在收窄存储处检查可表示性，并用同一条消息拒绝，而不是让其中一条悄悄地保住一个更宽的值 |
+| IDEA 插件 | `idea-plugin\build-offline.ps1` | **0.1.4**：`dist\vela-idea-plugin-0.1.4.zip` 324 186 B，`RESULT: PASS`（154 OK / 0 FAIL），98 个具体顶层类，**0 个死的**。能力清单是 `idea-plugin\FEATURE_PARITY.md`：27 行，**18 个 `implemented`、8 个 `partial`、1 个 `refused-deliberately`、0 个 missing**，而所有者报告的那个参数名缺陷已经关闭，前后对照证据在 `idea-plugin\evidence\` 里 |
+| 基准 | `tools\bench.ps1 -Reps 7` | 重新测量并记录在 `bench/RESULTS.md` 里它自己那个带日期的章节中：串行 matmul **慢 2.42×**，并行 **按 7 取最佳是 3.49× / 按中位数是 2.80×**，mandelbrot 是平手，sieve 慢 1.50×。**"比 C++ 快" 仍然没有被确立**，而 §4 的那些阶梯仍然是那个唯一可能改变这件事的杠杆的论据 |
+
+以上这些都没有改变下面这件事，而它仍然是这项工作的形状：`build` 把 C 送给 `cl.exe`，所以北极星 ① 只 **在** `build-llvm` 那条路径上成立；而这门语言还缺带载荷的枚举和 `match`、模块/`import`、`Result`/`?`、泛型、闭包、嵌套函数、字符串拼接、slice，以及迭代/traits —— 九个功能，**零** 行代码。这些各自需要什么，有一份带日期的清单在本次会话所对着的那个目标里。
 
 ## 0. 这次会话把代码树留在了哪里（2026-09-20，02:1x）
 
