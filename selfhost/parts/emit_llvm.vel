@@ -1774,13 +1774,23 @@ def ll_array_decl(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
                   flt: Array[float, 65536], src: str, path: str,
                   mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
                   slotkind: Array[int, 4096], lit: Array[int, 69632],
-                  fns: Array[int, 8192], s: int, h: int, k: int) -> None {
+                  fns: Array[int, 8192], s: int, h: int, kp: int) -> None {
     line: int = nd_line(nd, s)
-    n: int = unpack_len(k)
-    if n < 0 {
+    # `kp` is the *packed* binding kind, not the kind: the length is the whole
+    # point of packing it (`kind + n * 256`), and reading the length out of a
+    # value that has already been through `unpack_kind` gives 0 for every array
+    # there is.  That is what this function did, so every local array asked the
+    # arena for `arena_alloc(0)` -- and `vela_arena_alloc` is a bump allocator
+    # that advances by `n`, so all of a function's arrays came back at the *same
+    # address*: `mut a: Array[int, 3]` and `mut b: Array[int, 3]` in one body
+    # were one array, and the compiler's own `main` -- five arrays, the token
+    # pool among them -- parsed its token stream out of the node pool.  See
+    # `tests/llvm-shapes/two_arrays.vel`.
+    n: int = unpack_len(kp)
+    if n <= 0 {
         trap(path, line, "this array declaration has no declared length")
     }
-    ek: int = elem_kind_of(k)
+    ek: int = elem_kind_of(unpack_kind(kp))
     esz: int = ll_esize_of(ek, path, line)
     p: int = ll_call1(lg, lg.f_alloc,
                       ll_ck(lg, "an array's size",
@@ -2880,8 +2890,11 @@ def ll_assign(mut lg: LG, nd: Array[int, 655360], ty: Array[int, 262144],
         slot = nt_get(mem, s, NT_SLOT())
         if is_array(k) {
             h0: int = ll_slot_for(lg, slots, slotkind, slot, k, path, line)
+            # `packed`, not `k`: the length of the array is packed into the same
+            # word above the kind, and this call needs it to know how many bytes
+            # to ask the arena for (see `ll_array_decl`).
             ll_array_decl(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
-                          lit, fns, s, h0, k)
+                          lit, fns, s, h0, packed)
             return
         }
     } else {

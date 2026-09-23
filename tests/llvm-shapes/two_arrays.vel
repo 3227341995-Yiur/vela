@@ -1,0 +1,17 @@
+def main() -> None {
+    mut a: Array[int, 3]
+    mut b: Array[int, 3]
+    a[0] = 1
+    a[1] = 2
+    a[2] = 3
+    b[0] = 10
+    b[1] = 20
+    b[2] = 30
+    print(a[0] + a[1] + a[2])
+    print(b[0] + b[1] + b[2])
+    mut c: Array[int, 5]
+    c[0] = 100
+    c[4] = 99
+    print(c[0] + c[4])
+    print(a[2])
+}

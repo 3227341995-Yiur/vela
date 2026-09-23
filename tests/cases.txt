@@ -43,6 +43,28 @@ run struct_value_semantics                   tests/build/struct_value_semantics.
 # and it also covers `~`, `u8` shifts and a `u8` comparison, because the mixed-width and
 # promotion paths were being fixed in the same batch.
 run bitwise_ops                              tests/llvm-shapes/bitwise_ops.vel
+# Two live arrays in one body: the permanent guard for a silent wrong answer that survived
+# every gate this project had, including a 24-case three-way differential with DIVERGE 0.
+#
+# `parts/emit_llvm.vel`'s `ll_array_decl` asked the arena for the size of an array out of a
+# value it had already stripped the length from (`unpack_kind(packed)` is `packed & 255`, and
+# the length is packed *above* the low byte, so the answer was 0 for every array there is).
+# The C back end asks for `(size_t)n * sizeof(T)` and was right; `vela_arena_alloc` is a bump
+# allocator that advances by exactly the number it is given, so `arena_alloc(0)` hands back
+# the *same address* every time -- every array in one function was one array:
+#
+#     mut a: Array[int, 3]        interpreter 6, C 6, LLVM **60** (a[i] read b[i])
+#     mut b: Array[int, 3]
+#
+# Nothing in the corpus had two arrays live at once (`tests/build/array_zero_filled.vel` uses
+# one, so it read zeroes the arena happened to hold), and the compiler's own `main` is where
+# it finally showed: five arrays, the token pool among them, all at one address, so the
+# LLVM-built compiler parsed its token stream out of the node pool and failed every input with
+# `expected a newline between statements, found '' at line 25` -- a constant, which is what
+# sent this to struct field offsets first.  Fixed 2026-09-24; `tools/selfhost-llvm.ps1` is the
+# gate that was red for it.  This row pins the three-way answer inside the suite as well, so
+# the case is not only in `tools/llvm-column.ps1`'s shapes corpus.
+run two_arrays                               tests/llvm-shapes/two_arrays.vel
 run arrays_and_len_folding                   tests/build/arrays_and_len_folding.vel
 run array_zero_filled                        tests/build/array_zero_filled.vel
 run parallel_for_correct                     tests/build/parallel_for_correct.vel

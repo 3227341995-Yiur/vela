@@ -77,9 +77,9 @@ lex dump 35045974
 parse dump 147505748
 lex vm_main 956548645
 parse vm_main 176362405
-lex vm 286862573
-parse vm 771480956
-emit vm 841235756
+lex vm 652917391
+parse vm 972263125
+emit vm 771112937
 lex run_tests 48308088
 parse run_tests 522598157
 emit run_tests 512134324
