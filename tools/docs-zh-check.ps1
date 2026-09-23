@@ -153,7 +153,15 @@ if ($patterns.Count -eq 0) { $patterns = @('*.zh-CN.md') }
 
 # Directories whose `*.zh-CN.md` files are not translations of a document in the
 # tree.  Named once, printed once, so the sweep's arithmetic adds up.
-$skipDirPattern = '\\(\.work|\.git)\\'
+#
+# `.wt\` belongs here because a `git worktree` of this repository lives *inside* it
+# (`git worktree add .wt\enums`), and a worktree is another agent's tree in the middle
+# of being edited.  Measured 2026-09-24: with two worktrees present this sweep found 51
+# pairs where the tree itself has 34, and a twin an agent had not re-pinned yet would
+# have turned *this* gate red for work that was not in the commit being judged.  The
+# gate is supposed to judge the tree it is run in; a verdict that depends on another
+# tree's uncommitted state is not a verdict.
+$skipDirPattern = '\\(\.work|\.git|\.wt)\\'
 $skipBuildPattern = '\\idea-plugin\\build\\'
 
 # The Chinese label for the language, built from code points because this script
@@ -290,7 +298,7 @@ $skipped = @()
 
 foreach ($f in $found) {
     $full = $f.FullName
-    if ($full -match $skipDirPattern)     { $skipped += [pscustomobject]@{ Path = $full; Why = 'under .work\ or .git\' }; continue }
+    if ($full -match $skipDirPattern)     { $skipped += [pscustomobject]@{ Path = $full; Why = 'under .work\, .git\ or .wt\' }; continue }
     if ($full -match $skipBuildPattern)   { $skipped += [pscustomobject]@{ Path = $full; Why = 'under idea-plugin\build\' }; continue }
     $matched = $false
     foreach ($pattern in $patterns) { if ($f.Name -like $pattern) { $matched = $true; break } }
