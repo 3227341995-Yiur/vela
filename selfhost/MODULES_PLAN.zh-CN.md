@@ -4,8 +4,8 @@
 
 <!--
 源文件 : MODULES_PLAN.md
-源文件字节 : 18668
-源文件 SHA256 : 66e3bb2a9ea69d60b03dea1f517c8753eb2060947734a17148b8e2ae2e3b77b9
+源文件字节 : 25041
+源文件 SHA256 : 775c71f282e95a6ac44644dd4478b578c270f7ca692e103aefc60519842bdf66
 翻译日期 : 2026-09-25
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -77,17 +77,31 @@
 
 **2.8 构建的形状，因为第 5 步会改它。** `tools/build.ps1` 跑八步；本计划涉及的是第 3 步（`build.ps1` 613-615 行：构建 `tools/link_selfhost.vel`，再运行它写出 `selfhost/vm.vel`）、第 5 步（819 行：构建独立的词法器 `selfhost/vela.vel`），以及第 6 步（不动点：向两代编译器索取 `selfhost/vm.vel` 的 C，比较字节与哈希）。
 
-**2.9 词法器的关键字表是一张编号表**（`selfhost/vela.vel` 158-244 行）：`def`=1 … `extern`=23、`enum`=24、`match`=25，而 24-25 上方那段注释记录了本计划必须遵守的做法——在 `enum`/`match` 变成关键字之前，有人把树里每个 `.vel` 文件都检查了一遍，看有没有把它们当名字用，注释把这件事写出来了。
+**2.9 语料已经把这个功能写出来了，而且记录了今天的结果。** 之前某一轮把提案留在这个仓库存放提案的地方：用例里。`tests/accept/modules/` 有九个文件，`tests/accept/BASELINE.txt` 20-28 行逐个记下判决：
+
+    mathlib.vel                        REFUSED   vela: type error: no 'main' function
+    module_cycle_a.vel                 REFUSED   syntax error: ... found 'module_cycle_b'
+    module_cycle_b.vel                 REFUSED   syntax error: ... found 'module_cycle_a'
+    module_import_from.vel             REFUSED   syntax error: ... found 'mathlib'
+    module_import_missing.vel          REFUSED   syntax error: ... found 'nosuchmodule'
+    module_import_qualified.vel        REFUSED   syntax error: ... found 'mathlib'
+    module_import_reserved_name.vel    ACCEPTED
+    module_import_twice.vel            REFUSED   syntax error: ... found 'mathlib'
+    module_import_unknown_name.vel     REFUSED   syntax error: ... found 'mathlib'
+
+它们不是装饰，它们在三处改变了这份计划。(i) **它们提议的语法不是 D1 选的那个**：`module_import_from.vel` 写的是 `from mathlib import add`，`module_import_qualified.vel` 写的是 `import mathlib` 加 `mathlib.add(2, 3)`——一个**模块名**，在导入它的文件旁边找到，以及限定访问。(ii) **它们已经包含了第 2 步欠消息的那些错误用例**：模块缺失、名字未知、同一个模块被导入两次，以及两文件构成的环。(iii) `module_import_reserved_name.vel` 就是 D2 的代价，在决策做出之前就被写成了用例——这个文件今天能跑（实测 `exit 0`），而它自己的注释说两种诚实结局是「这个用例翻转成被拒」或者「因为关键字是上下文式的而把这个用例删掉」，无论哪种，`SPEC.md` 里那句话都要给个答复。baseline 文件是一条边界，所以这份梯子里任何改动这九行之一的步骤，都欠它的证据一份新的 baseline。
+
+**2.10 词法器的关键字表是一张编号表**（`selfhost/vela.vel` 158-244 行）：`def`=1 … `extern`=23、`enum`=24、`match`=25，而 24-25 上方那段注释记录了本计划必须遵守的做法——在 `enum`/`match` 变成关键字之前，有人把树里每个 `.vel` 文件都检查了一遍，看有没有把它们当名字用，注释把这件事写出来了。
 
 ## 3. 决策
 
 每条决策都点名它否掉的替代方案和理由，因为没有替代方案的决策只是偏好。
 
-**D1——语法是顶层 `import "相对/路径.vel"`。** 用路径**字符串**，不用裸名字。裸名字（`import helpers`）需要一条查找规则——当前目录？某个根？一张列表？——而这个仓库的规则是：编译器不猜。字符串让文件身份变成显式的，让「相对于导入它的那个文件」成为唯一的规则，并且正好给装载器它需要的那串字符。`import` 成为**关键字**（D2）；`from`/`as` 形式不在范围内（§6），在它们自己那一步到来之前保持普通标识符。
+**D1——第一个落地形态是顶层 `import "相对/路径.vel"`，语料里那两种拼法是**目标**而不是第一步。** 用路径**字符串**，不用裸名字。裸名字（`import helpers`）需要一条查找规则——当前目录？某个根？一张列表？——而这个仓库的规则是：编译器不猜。字符串让文件身份变成显式的，让「相对于导入它的那个文件」成为唯一的规则，并且正好给装载器它需要的那串字符。`import` 成为**关键字**（D2）。语料提议的东西更丰富（2.9）：`from mathlib import add`，以及 `import mathlib` 配 `mathlib.add(2, 3)`。它们在自己的那一步到来（第 6 步），在那之前**它们那两个用例保持红，而消息会变**——`module_import_from.vel` 和 `module_import_qualified.vel` 不再说 "expected a newline between statements"，而开始说：*模块名*还不是这个拼法。这个顺序是诚实的：查找规则和名字空间都是自带证据负担的决策，而 `module_import_qualified.vel` 自己的注释已经写明「如果只有一种形式先落地」该怎么办——「这两个用例里正好一个留红，而报告说清是哪一个」。这份文件就是那份报告。
 
-**D2——`import` 变成关键字，这是本计划明知故犯的一次破坏性改动。** `SPEC.md` §1.3 已经承诺过它（"今天把它们当名字用的程序，在模块到来的那天需要改名"），而 2.1 量出了这样的程序**今天**是合法的。替代方案——在语句位置识别一个 `import`——就是 `enum`/`match` 已经付过代价的那种歧义（`selfhost/vela.vel` 228-236 行：`match(x)` 是调用、`match = 1` 是赋值）。把词变成关键字的那一步欠这棵树一次测量：哪些 `.vel` 文件变了判决，如果没有，也要说没有。
+**D2——`import` 变成关键字，这是本计划明知故犯的一次破坏性改动。** `SPEC.md` §1.3 已经承诺过它（"今天把它们当名字用的程序，在模块到来的那天需要改名"），而 2.1 量出了这样的程序**今天**是合法的。替代方案——在语句位置识别一个 `import`——就是 `enum`/`match` 已经付过代价的那种歧义（`selfhost/vela.vel` 228-236 行：`match(x)` 是调用、`match = 1` 是赋值）。把词变成关键字的那一步欠这棵树一次测量：哪些 `.vel` 文件变了判决，如果没有，也要说没有——而语料已经把其中一个写下来了：`module_import_reserved_name.vel` 之所以单独存在，正是为了让这个代价成为一条被记录的行，而不是一次发现。
 
-**D3——语义是扁平的、整文件可见的，也就是链接器语义在 AST 层面的样子。** `import "b.vel"` 让 `b.vel` 的**每一个**顶层声明对整个程序可见，包括 `b.vel` 自己导入的东西，传递地可见。没有限定访问，没有按模块划分的名字空间。这刻意的就是这个能退休掉链接器的最小语义：今天的拼接产生的可见性正是这个，所以第 5 步是**机制**的改动而不是含义的改动，而不动点就是关于它的证据。限定名、私有性和选择性导入都在 §6。
+**D3——语义是扁平的、整文件可见的，也就是链接器语义在 AST 层面的样子。** `import "b.vel"` 让 `b.vel` 的**每一个**顶层声明对整个程序可见，包括 `b.vel` 自己导入的东西，传递地可见。**在这个语义里**没有限定访问，没有按模块划分的名字空间。这刻意的就是这个能退休掉链接器的最小语义：今天的拼接产生的可见性正是这个，所以第 5 步是**机制**的改动而不是含义的改动，而不动点就是关于它的证据。限定访问不是被拒绝，而是被**排期**：语料为它留了一个用例（`module_import_qualified.vel`），而为这份计划做的侦察量出了它为什么是清单上最难的一件事——resolver 的键是**裸的驻留句柄**（在整个进程里按内容寻址，`runtime/vela_runtime.h` 688-705 行），所以每一张存储或查找名字的表（作用域栈、结构体表、枚举与变体表，以及那条本该表示 `mathlib.add` 的 attr 路径、节点 kind 32）都得学会一个模块分量，而且不能破坏遮蔽。私有性、选择性导入和别名仍然留在 §6。
 
 **D4——声明顺序由装载器决定，不由导入者决定。** 被导入文件的声明排在**前面**，最外层导入最先，然后才是根文件自己的——正是链接器今天产生的顺序，也是 `tools/link_selfhost.vel` 说它需要的顺序（"一个函数必须在使用它的地方之前被声明"）。所以导入行在导入文件里的位置，除了导入本身之外不携带含义；期待 Python 那样顺序语义的读者，会得到相同的**可见性**和不同的**顺序**，本计划把这件事说出来，而不是留给别人去发现。
 
@@ -107,7 +121,7 @@
 
 *改动。* `import` 作为 26 加入 `keyword_id`（`selfhost/vela.vel` 158-244 行）；解析器只在顶层接受 `import "路径"` 并为它建一个节点（接在 `parse_module` 之后，`selfhost/parts/parser.vel` 1611-1646 行，它用 `nx` 把顶层语句连成链）；每一个本该**对它采取行动**的模式按名字拒绝。
 *命令。* `tools\build.ps1`（这个改动必须活过不动点），然后 `tools\refreeze.ps1`（196 个用例的语料），然后在树上每个 `.vel` 文件上跑 `vm.exe check`，来偿还 D2 欠下的那笔账：**哪些文件变了判决，或者没有**。
-*验收。* 含 `import "b.vel"` 的程序被拒绝时，消息点名这个构造和路径，而不是 "expected a newline"；`mut import: int = 1` 现在被拒（关键字冲突），而那条拒绝是一个语料用例，因为它是 D2 可观测的代价；语料是绿的；判决变化清单在步骤自己的证据文件里。
+*验收。* 含 `import "b.vel"` 的程序被拒绝时，消息点名这个构造和路径，而不是 "expected a newline"；`mut import: int = 1` 现在被拒（关键字冲突），而那条拒绝是一个语料用例，因为它是 D2 可观测的代价；语料是绿的；判决变化清单在步骤自己的证据文件里。**而语料自己那九行会按已经记录下来的方式移动**（2.9）：`module_import_reserved_name.vel` 从 `ACCEPTED` 变成 `REFUSED`（这就是 D2 的代价，正是那个文件自己的注释要求的），另外八个继续被拒、但不再引述错误的理由——那五条 `... found 'mathlib'` / `'nosuchmodule'` 消息变成「模块**名**不是这个拼法，请写 `import \"mathlib.vel\"`」，两个环用例保留一条点名那个环的消息。新的 `tests/accept/BASELINE.txt` 是本步骤证据的一部分，因为旧的那份就此变成假话。
 *文档。* `SPEC.md` §1.3 那一段，以及它的中文孪生；`selfhost/vela.vel` / `parser.vel` 里 "reserved but not implemented" 的注释。
 
 ### 第 2 步——装载、合并、解释执行
@@ -135,9 +149,16 @@
 *命令。* `tools\build.ps1`（全部八步，包括不动点），然后 `tools\refreeze.ps1`，然后 `tools\llvm-no-cl.ps1`，然后 `tools\check-coherence.ps1`。
 *验收。* 不动点仍然成立：两代编译器为 `selfhost/vm.vel` 发出逐字节相同的 C。`selfhost/vela.vel` 的独立词法器仍然能构建、能词法化。8192 驻留名的那次测量（2.5）在真东西上做一次。`RESULT: ok`。
 
-### 第 6 步——编辑器
+### 第 6 步——语料里的那两种拼法：模块**名**，以及 `mathlib.add(2, 3)`
 
-*改动。* 插件的解析器学会 `import`（它逐节点复刻编译器的语法树，`FEATURE_PARITY.md` 第 5 行），它的名字解析跨文件可达（第 10 行的 `VelaTargets.declarationFor`）。
+*改动。* `from mathlib import add` 与 `import mathlib`（2.9）把装载器的路径参数变成**名字**，并配一条**由语言说出来**而不是猜出来的查找规则——「在导入它的文件旁边」就是语料说的那句话，它在 `SPEC.md` 里是一句话，不是一张路径列表。限定访问是深的那一半：今天 `name.field` 形状的节点是对**值**读属性（节点 kind 32），经接收者的结构体 id 解析，所以 `mathlib.add` 必须走**另一条**解析路线——模块自己的名字空间；而侦察的结论是这是整架梯子上改动面最宽的一步，因为名字在任何被存储的地方都是裸的驻留句柄（`resolve.vel` 的作用域栈、结构体/枚举/变体表、`STB_NAME`/`ENB_NAME`/`VRB_NAME`），而 `intern` 在整个进程里按内容寻址。
+*命令。* 点名那两个语料用例（`tests/accept/modules/module_import_from.vel`、`module_import_qualified.vel`），加上整套套件与不动点。
+*验收。* 两个文件都能编译，并逐字节打印出它们自己注释里承诺的东西（`5 / 8` 与 `5 / 9`），`module_import_unknown_name.vel` 仍然被拒，`import mathlib` 两次仍然只装载一次。`tests/accept/BASELINE.txt` 重新生成，它的 diff 就是本步骤的证据。
+*为什么它不是第 1 步。* 查找规则和名字空间都是语言决策；扁平形态先落地，好让两文件程序先存在，而这一步正是语料那两个红用例转绿的地方。
+
+### 第 7 步——编辑器
+
+*改动。* 插件的解析器学会 `import`（它逐节点复刻编译器的语法树，`FEATURE_PARITY.md` 第 5 行），它的名字解析跨文件可达（第 10 行的 `VelaTargets.declarationFor`），等限定形态存在之后也包括它。
 *命令。* `idea-plugin\ast-diff.ps1`、`psi-tree-diff.ps1`、`harness.ps1`，以及插件自己的闸门；验收在编译器的第 2 步形状冻结之后再写，因为两棵语法树必须逐字节一致。
 
 ## 5. 什么会让这份计划变成错的
@@ -148,21 +169,23 @@
 | 一张行基数表足以表达身份 | 某个 trap 或诊断点错文件 | 第 2-4 步，包括第 3 步对发出的 C 的 grep |
 | 解释器能装载 N 个文件 | 装载过程中的 `string table full` | 第 5 步的测量（2.5） |
 | 扁平合并真的就是链接器的语义 | 今天能编译、第 5 步之后不能（或反过来）的程序 | 第 5 步的不动点，加上 `tools\refreeze.ps1` |
-| 树里没有程序把 `import`/`from`/`as` 当名字 | 第 1 步里判决发生变化的某个文件 | 第 1 步的判决扫描（D2） |
-| 插件的解析器跟得上 | `ast-diff.ps1` 报出一个无法解释的差异 | 第 6 步 |
+| 树里没有程序把 `import`/`from`/`as` 当名字 | 第 1 步里判决发生变化的某个文件 | 第 1 步的判决扫描（D2）——而 2.9 已经点名了一个预期会变的文件 |
+| 裸模块名就够用，限定访问可以等 | 语料那两个红用例红得比梯子说的更久 | 第 6 步，它的全部工作就是那两个文件 |
+| 插件的解析器跟得上 | `ast-diff.ps1` 报出一个无法解释的差异 | 第 7 步 |
 
 ## 6. 刻意不在这份计划里的东西
 
-包与任何形式的仓库；查找路径；限定访问（`mod.name`）；私有性（`pub`/`export`）；选择性导入（`from "a.vel" import x`）；别名（`as`）；再导出；条件编译；增量或并行编译；循环导入（被拒绝，D6）。每一条都是自带证据负担的语言决策，而它们中没有一条是 `ROADMAP.md` 已经写下的那个验收所需要的。`from` 与 `as` 在被它们各自的那一步认领之前，保持「由文档保留的标识符」这一地位。
+包与任何形式的仓库；**路径列表**；私有性（`pub`/`export`）；别名（`as`）；再导出；条件编译；增量或并行编译；循环导入（被拒绝，D6）。每一条都是自带证据负担的语言决策，而它们中没有一条是 `ROADMAP.md` 已经写下的那个验收所需要的。有两件看起来属于这份清单的事**不**属于：在导入文件旁边找到的裸模块名，以及限定访问（`mathlib.add`）——因为语料已经为两者写好了用例（2.9），它们是第 6 步。`from` 与 `as` 作为**关键字**也在第 6 步被认领；它们拼出来的形态属于那一步，在那之前它们保持「由文档保留的标识符」这一地位。
 
 ## 7. 账本
 
 | 步骤 | 状态 | 证据 |
 |---|---|---|
-| 0. 设计，对照实测 | **完成** 2026-09-25 | 上面 §2：每个数字都在 `selfhost/build/vm.exe` 870 400 B 上跑过 |
-| 1. 语法 + 一个点名的拒绝 | 未开始 | — |
+| 0. 设计，对照实测 | **完成** 2026-09-25 | 上面 §2：每个数字都在 `selfhost/build/vm.exe` 870 400 B 上跑过，加上语料那九条已记录的判决（2.9） |
+| 1. 语法 + 一个点名的拒绝 | 未开始 | 「之前」是 `tests/accept/BASELINE.txt` 20-28 行；「之后」欠一份新的 baseline |
 | 2. 装载、合并、解释执行 | 未开始 | — |
 | 3. C 后端 | 未开始 | — |
 | 4. LLVM 后端 | 未开始 | — |
 | 5. 自举切换 | 未开始 | — |
-| 6. 编辑器 | 未开始 | — |
+| 6. 模块名、`from M import x`、以及 `mathlib.add` | 未开始 | `tests/accept/modules/module_import_from.vel`、`module_import_qualified.vel` |
+| 7. 编辑器 | 未开始 | — |

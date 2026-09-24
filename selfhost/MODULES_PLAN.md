@@ -107,24 +107,54 @@ steps; the ones this plan touches are step 3 (`build.ps1` lines 613-615: build
 which asks two generations of the compiler for the C of `selfhost/vm.vel` and
 compares the bytes and hashes).
 
-**2.9 The lexer's keyword table is a numbered list** (`selfhost/vela.vel` lines
-158-244): `def`=1 … `extern`=23, `enum`=24, `match`=25, and the comment above 24-25
-records the practice this plan must follow — before `enum`/`match` became keywords
-an agent checked every `.vel` file in the tree for the words used as names, and the
-comment says so.
+**2.9 The corpus already writes the feature, and records what happens today.**  An earlier
+round left the proposal where this repository keeps proposals: as cases.  `tests/accept/modules/`
+holds nine files and `tests/accept/BASELINE.txt` lines 20-28 record one verdict each:
+
+    mathlib.vel                        REFUSED   vela: type error: no 'main' function
+    module_cycle_a.vel                 REFUSED   syntax error: ... found 'module_cycle_b'
+    module_cycle_b.vel                 REFUSED   syntax error: ... found 'module_cycle_a'
+    module_import_from.vel             REFUSED   syntax error: ... found 'mathlib'
+    module_import_missing.vel          REFUSED   syntax error: ... found 'nosuchmodule'
+    module_import_qualified.vel        REFUSED   syntax error: ... found 'mathlib'
+    module_import_reserved_name.vel    ACCEPTED
+    module_import_twice.vel            REFUSED   syntax error: ... found 'mathlib'
+    module_import_unknown_name.vel     REFUSED   syntax error: ... found 'mathlib'
+
+They are not decoration, and they change this plan in three ways.  (i) **The syntax they propose
+is not the syntax D1 chose**: `module_import_from.vel` writes `from mathlib import add` and
+`module_import_qualified.vel` writes `import mathlib` plus `mathlib.add(2, 3)` — a *module name*
+found next to the importing file, and qualified access.  (ii) **They already contain the error
+cases** step 2 owes messages for: a missing module, an unknown name, a module imported twice, and a
+two-file cycle.  (iii) `module_import_reserved_name.vel` is D2's cost, written as a case before the
+decision was made — the file works today (measured: exit 0), and its own comment says the two
+honest outcomes are "this case flips to refused" or "this case is dropped because the keyword is
+contextual", with a `SPEC.md` sentence to answer either way.  A baseline file is a boundary, so any
+step here that changes one of these nine lines owes a new baseline in its evidence.
+
+**2.10 The lexer's keyword table is a numbered list** (`selfhost/vela.vel` lines 158-244): `def`=1
+… `extern`=23, `enum`=24, `match`=25, and the comment above 24-25 records the practice this plan
+must follow — before `enum`/`match` became keywords an agent checked every `.vel` file in the tree
+for the words used as names, and the comment says so.
 
 ## 3. The decisions
 
 Each decision names the alternative it rejected and the reason, because a decision
 without a rejected alternative is a preference.
 
-**D1 — the syntax is `import "relative/path.vel"` at top level.**  A path *string*,
-not a bare name.  A bare name (`import helpers`) needs a search rule — current
-directory? a root? a list? — and this repository's rule is that the compiler does
-not guess.  A string makes the file identity explicit, makes the relative-to-the-
-importing-file rule the only rule, and gives the loader exactly the string the
-loader needs.  `import` becomes a **keyword** (D2); the `from`/`as` forms are out of
-scope (§6) and stay ordinary identifiers until their own step.
+**D1 — the first landing is `import "relative/path.vel"` at top level, and the corpus's two
+spellings are the target rather than the first step.**  A path *string*, not a bare name.  A bare
+name (`import helpers`) needs a search rule — current directory? a root? a list? — and this
+repository's rule is that the compiler does not guess.  A string makes the file identity explicit,
+makes the relative-to-the-importing-file rule the only rule, and gives the loader exactly the
+string the loader needs.  `import` becomes a **keyword** (D2).  The corpus proposes something
+richer (2.9): `from mathlib import add` and `import mathlib` with `mathlib.add(2, 3)`.  Those come
+in their own step (step 6), and until then **their cases stay red and their messages change** —
+`module_import_from.vel` and `module_import_qualified.vel` will stop saying "expected a newline
+between statements" and start saying that a *module name* is not this spelling yet.  That is the
+honest order: a search rule and a namespace are both decisions with their own evidence burden, and
+`module_import_qualified.vel`'s own comment already says what to do if only one form lands first —
+"exactly one of these two cases stays red and the report says which".  This file is that report.
 
 **D2 — `import` becomes a keyword, and that is a breaking change this plan takes
 knowingly.**  `SPEC.md` §1.3 already promises it ("a program that uses them as
@@ -132,16 +162,24 @@ names will need renaming the day one arrives") and 2.1 measures that such progra
 are legal *today*.  The alternative — recognising a statement-position `import` —
 is the ambiguity `enum`/`match` already paid for (`selfhost/vela.vel` lines 228-236:
 `match(x)` is a call and `match = 1` is an assignment).  The step that makes it a
-keyword owes the tree a measurement: which `.vel` files change verdict, if any.
+keyword owes the tree a measurement: which `.vel` files change verdict, if any — and
+the corpus has already written one of them down: `module_import_reserved_name.vel` is
+its own file precisely so that this cost is a recorded line rather than a discovery.
 
 **D3 — the semantics are flat and whole-file, which is the linker's semantics at
 the AST level.**  `import "b.vel"` makes **every** top-level declaration of `b.vel`
 visible to the entire program, including `b.vel`'s own imports, transitively.  There
-is no qualified access and no per-module namespace.  This is deliberately the
+is no qualified access and no per-module namespace *in this semantics*.  This is deliberately the
 smallest semantics that can retire the linker: today's concatenation produces
 exactly this visibility, so step 5 is a change of *mechanism* and not of meaning,
-and the fixpoint is evidence about it.  Qualified names, privacy and selective
-imports are §6.
+and the fixpoint is evidence about it.  Qualified access is not rejected, it is *scheduled*: the
+corpus has a case for it (`module_import_qualified.vel`), and the recon for this plan measured why
+it is the hardest thing on the list — the resolver's keys are **bare intern handles**
+(content-addressed across the whole process, `runtime/vela_runtime.h` lines 688-705), so every
+table that stores or looks up a name (the scope stack, the struct table, the enum and variant
+tables, and the attr path that would have to mean `mathlib.add`, node kind 32) has to learn a
+module component without breaking shadowing.  Privacy, selective import and aliasing stay out
+(§6).
 
 **D4 — declaration order is the loader's, not the importer's.**  Imported files'
 declarations come **first**, outermost import first, then the root file's own — the
@@ -206,7 +244,12 @@ the tree to answer D2's debt: **which files changed verdict, if any**.
 the construct and the path, not "expected a newline"; `mut import: int = 1` is now
 refused as a keyword collision (and that refusal is a corpus case, since it is the
 observable cost of D2); the corpus is green; the verdict-change list is in the
-step's evidence file.
+step's evidence file.  **And the corpus's own nine lines move in a way that is already recorded**
+(2.9): `module_import_reserved_name.vel` goes `ACCEPTED -> REFUSED` (D2's cost, as that file's
+comment asked for), the other eight keep refusing but stop quoting the wrong reason — the five
+`... found 'mathlib'` / `'nosuchmodule'` messages become "a module *name* is not this spelling yet,
+write `import \"mathlib.vel\"`", and the two cycle cases keep a message that names the cycle.  A new
+`tests/accept/BASELINE.txt` is part of this step's evidence, because the old one becomes false.
 *Documents.*  `SPEC.md` §1.3's paragraph, and its Chinese twin; the "reserved but not
 implemented" comments in `selfhost/vela.vel` / `parser.vel`.
 
@@ -265,11 +308,32 @@ byte-identical C for `selfhost/vm.vel`.  `selfhost/vela.vel`'s standalone lexer 
 builds and lexes.  The 8192-intern measurement (2.5) is taken on the real thing.
 `RESULT: ok`.
 
-### Step 6 — the editor
+### Step 6 — the corpus's spellings: a module *name*, and `mathlib.add(2, 3)`
+
+*Changes.*  `from mathlib import add` and `import mathlib` (2.9) turn the loader's path argument
+into a *name* with a search rule the language states rather than guesses — "next to the importing
+file" is what the corpus says and it is one sentence in `SPEC.md`, not a path list.  Qualified
+access is the deep half: a `name.field`-shaped node today is an attribute read on a *value* (node
+kind 32) and resolves through the receiver's struct id, so `mathlib.add` has to be a *different*
+resolution route — the module's own name space — and the recon's finding is that this is the single
+widest change on the ladder, because a name is a bare intern handle everywhere it is stored
+(`resolve.vel`'s scope stack, the struct/enum/variant tables, `STB_NAME`/`ENB_NAME`/`VRB_NAME`) and
+`intern` is content-addressed across the whole process.
+*Commands.*  the two corpus cases by name (`tests/accept/modules/module_import_from.vel`,
+`module_import_qualified.vel`) plus the whole suite and the fixpoint.
+*Acceptance.*  Both files compile and print what their own comments promise byte for byte (`5 / 8`
+and `5 / 9`), `module_import_unknown_name.vel` still refuses, and `import mathlib` twice is still
+one load.  `tests/accept/BASELINE.txt` is regenerated and the diff is the step's evidence.
+*Why it is not step 1.*  A search rule and a namespace are both language decisions; the flat form
+lands first so that a two-file program exists at all, and this step is where the corpus's two red
+cases go green.
+
+### Step 7 — the editor
 
 *Changes.*  The plugin's parser learns `import` (it reproduces the compiler's parse
 tree node for node, `FEATURE_PARITY.md` row 5) and its name resolution reaches
-across files (row 10's `VelaTargets.declarationFor`).
+across files (row 10's `VelaTargets.declarationFor`), including the qualified form once there is
+one.
 *Commands.*  `idea-plugin\ast-diff.ps1`, `psi-tree-diff.ps1`, `harness.ps1`, and the
 plugin's own gates; the acceptance is written when the compiler's step 2 shape is
 frozen, because the two trees have to agree exactly.
@@ -282,27 +346,31 @@ frozen, because the two trees have to agree exactly.
 | one line-base table is enough for identity | a trap or diagnostic naming the wrong file | steps 2-4, including the emitted C grep in step 3 |
 | the interpreter can load N files | `string table full` while loading | step 5's measurement (2.5) |
 | a flat merge really is the linker's semantics | a program that compiles today and not after step 5, or the reverse | the fixpoint at step 5, plus `tools\refreeze.ps1` |
-| no program in the tree uses `import`/`from`/`as` as a name | a file whose verdict changes at step 1 | step 1's verdict sweep (D2) |
-| the plugin's parser can follow | `ast-diff.ps1` reporting a difference it cannot explain | step 6 |
+| no program in the tree uses `import`/`from`/`as` as a name | a file whose verdict changes at step 1 | step 1's verdict sweep (D2) — and 2.9 names one file it is expected to change |
+| a bare module name is enough, and qualified access can wait | the corpus's two red cases staying red for longer than the ladder says | step 6, whose whole job is those two files |
+| the plugin's parser can follow | `ast-diff.ps1` reporting a difference it cannot explain | step 7 |
 
 ## 6. Deliberately not in this plan
 
-Packages and any notion of a registry; search paths; qualified access
-(`mod.name`); privacy (`pub`/`export`); selective import (`from "a.vel" import x`);
-aliasing (`as`); re-export; conditional compilation; incremental or parallel
+Packages and any notion of a registry; a *search path* list; privacy (`pub`/`export`); aliasing
+(`as`); re-export; conditional compilation; incremental or parallel
 compilation; cyclic imports (refused, D6).  Each is a language decision with its own
 evidence burden, and none of them is needed for the acceptance `ROADMAP.md` already
-writes down.  `from` and `as` keep their status as documentation-reserved
-identifiers until the step that claims them.
+writes down.  Two things that look like they belong in this list do **not**: a bare module name
+found next to the importing file, and qualified access (`mathlib.add`), because the corpus has
+already written cases for both (2.9) and they are step 6.  `from` and `as` as *keywords* are claimed
+in step 6 too; the forms they spell are that step's, and until then they stay
+documentation-reserved identifiers.
 
 ## 7. The ledger
 
 | step | state | the evidence |
 |---|---|---|
-| 0. the design, against measurements | **done** 2026-09-25 | §2 above: every number run on `selfhost/build/vm.exe` 870 400 B |
-| 1. syntax + a named refusal | not started | — |
+| 0. the design, against measurements | **done** 2026-09-25 | §2 above: every number run on `selfhost/build/vm.exe` 870 400 B, plus the corpus's nine recorded verdicts (2.9) |
+| 1. syntax + a named refusal | not started | the before is `tests/accept/BASELINE.txt` lines 20-28; the after owes a new baseline |
 | 2. load, merge, interpret | not started | — |
 | 3. the C back end | not started | — |
 | 4. the LLVM back end | not started | — |
 | 5. the self-hosting switch | not started | — |
-| 6. the editor | not started | — |
+| 6. a module name, `from M import x`, and `mathlib.add` | not started | `tests/accept/modules/module_import_from.vel`, `module_import_qualified.vel` |
+| 7. the editor | not started | — |
