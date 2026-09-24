@@ -29,14 +29,30 @@ import com.intellij.psi.PsiFile
  * `VelaSyntaxParser`'s tree: the class the platform calls below is a ten-line
  * adapter, and the harness measures the same code path the editor will.
  *
- * The three, and the compiler line each one claims:
+ * The two, and the compiler line each one claims:
  *
  *   VelaImmutableAssignment   `vela: safety error: cannot assign to 'x': it was
  *                             declared immutable`   -> write `mut` at the declaration
- *   VelaStringConcatenation   `vela: type error: string concatenation is not
- *                             implemented in Vela 0.1`   -> `concat(a, b)`
  *   VelaIntFloatMixing        `vela: type error: operator '+' mixes int and float`
  *                             -> `to_float(...)` on the int operand
+ *
+ * THE RULE THAT WAS RETIRED, AND WHY IT WAS NOT REPLACED
+ *
+ * `VelaStringConcatenation` reported `"a" + "b"` against the compiler's
+ * `type error: string concatenation is not implemented in Vela 0.1` and offered
+ * `concat(a, b)` as the repair.  The compiler learned `+` on two `str`s (SPEC.md §1.5,
+ * "the same operation the `concat` builtin performs"), so that message can no longer
+ * be emitted: the rule could not fire, and its quick fix would have rewritten working
+ * code into something the user did not write — a rule whose premise is gone is worse
+ * than no rule, because it still offers a repair.
+ *
+ * The alternative was a *style* rule in the other direction (`concat(a, b)` -> `a + b`),
+ * and it is deliberately not taken.  Every rule here is chosen on one criterion and it
+ * is not "useful": its finding must come back with a refusal the compiler itself makes
+ * on that line, which is what `InspectionProbe` walks and what makes a finding a fact
+ * rather than an opinion.  A rule that fires where the compiler is silent would break
+ * that invariant for a matter of taste, so the plugin has no opinion: both spellings
+ * are the language's, and the choice between them is the reader's.
  *
  * WHAT IS DELIBERATELY *NOT* REPORTED, AND WHY THAT IS NOT AN OVERSIGHT
  *
@@ -119,12 +135,11 @@ class VelaInspectionFinding(
 object VelaInspectionRules {
 
     @JvmField val IMMUTABLE_ASSIGNMENT = "VelaImmutableAssignment"
-    @JvmField val STRING_CONCATENATION = "VelaStringConcatenation"
     @JvmField val INT_FLOAT_MIXING = "VelaIntFloatMixing"
 
     /** In the order the report prints them; the harness also iterates this. */
     @JvmField val RULES: List<String> = listOf(
-        IMMUTABLE_ASSIGNMENT, STRING_CONCATENATION, INT_FLOAT_MIXING,
+        IMMUTABLE_ASSIGNMENT, INT_FLOAT_MIXING,
     )
 
     /**
@@ -138,9 +153,6 @@ object VelaInspectionRules {
     private val AUTHORITY: Map<String, List<String>> = mapOf(
         IMMUTABLE_ASSIGNMENT to listOf(
             "it was declared immutable", // `cannot assign to 'x'` / `cannot modify 'x'`
-        ),
-        STRING_CONCATENATION to listOf(
-            "string concatenation is not implemented",
         ),
         INT_FLOAT_MIXING to listOf(
             // Both source orders: `1 + 2.5` is "mixes int and float", `2.5 + 1` is
@@ -186,7 +198,6 @@ object VelaInspectionRules {
         val rules = VelaInspectionWalk(src, tree)
         return when (rule) {
             IMMUTABLE_ASSIGNMENT -> rules.immutableAssignments()
-            STRING_CONCATENATION -> rules.stringConcatenations()
             INT_FLOAT_MIXING -> rules.intFloatMixing()
             else -> emptyList()
         }
@@ -414,23 +425,9 @@ private class VelaInspectionWalk(
         return seen
     }
 
-    private fun isStringOperand(n: VelaSyntaxNode): Boolean = when (n.kind) {
-        VelaNodeKind.STR -> true
-        VelaNodeKind.NAME -> declaredString(n.name)
-        VelaNodeKind.CALL -> {
-            val callee = n.children.firstOrNull()
-            callee != null && callee.kind == VelaNodeKind.NAME && callee.name == "concat"
-        }
-        else -> false
-    }
-
-    private fun declaredString(name: String): Boolean {
-        if (name.isEmpty()) return false
-        val decls = declarations[name] ?: return false
-        return decls.isNotEmpty() && decls.all {
-            it.kind != VelaNodeKind.FOR && it.typeText.removePrefix("mut ").trim() == "str"
-        }
-    }
+    // `isStringOperand` and `declaredString` were removed with the concatenation rule:
+    // "is this operand a string?" is a question only that rule asked, and a helper kept
+    // for an answer nobody wants is a fossil that reads like a safety net.
 
     // -------------------------------------------------------------- rule one
 
@@ -486,59 +483,18 @@ private class VelaInspectionWalk(
         return out
     }
 
-    // -------------------------------------------------------------- rule two
+    // ------------------------------------------------------------- rule two
+    //
+    // THE RULE THAT USED TO BE HERE.  `stringConcatenations()`, `isConcatChain` and
+    // `rewriteConcat` found `"a" + "b"` and rewrote it to `concat("a", "b")`, keyed on
+    // the compiler's `type error: string concatenation is not implemented in Vela 0.1`.
+    // `+` on two `str`s is legal now (SPEC.md §1.5), so that message is gone, the rule
+    // could not fire, and its fix would have rewritten working code.  Retired in 0.1.11
+    // rather than repurposed: a style rule in the other direction would fire where the
+    // compiler is silent, and every rule in this file is measured by
+    // `InspectionProbe` walking its finding back to a refusal.  See the header.
 
-    /**
-     * `"a" + "b"`: `vela: type error: string concatenation is not implemented in
-     * Vela 0.1`.  The language's only way to join two strings is the named builtin,
-     * so the fix writes `concat(a, b)`.
-     *
-     * Only the *outermost* `+` of a chain is reported, and its fix rewrites the
-     * whole chain 閳?`"a" + "b" + "c"` becomes `concat(concat("a", "b"), "c")`.  A
-     * fix on the inner `+` alone would leave a `+` behind and the file would still
-     * be refused, which is the one thing a quick fix may not do.
-     */
-    fun stringConcatenations(): List<VelaInspectionFinding> {
-        val out = ArrayList<VelaInspectionFinding>()
-        for (n in all) {
-            if (!isConcatChain(n)) continue
-            if (isConcatChain(parentOf(n) ?: NO_NODE)) continue // report the outermost only
-            val range = operatorRange(n) ?: continue
-            val left = n.children[0]
-            val right = n.children[1]
-            val at = charStart(left)
-            val to = charEnd(right)
-            if (at < 0 || to > src.length || at >= to) continue
-            out.add(
-                VelaInspectionFinding(
-                    rule = VelaInspectionRules.STRING_CONCATENATION,
-                    line = VelaInspectionRules.lineOf(src, range.first),
-                    start = range.first,
-                    end = range.second,
-                    message = "Vela has no `+` for strings: the compiler refuses \"string " +
-                        "concatenation is not implemented in Vela 0.1\"",
-                    subject = "",
-                    fixName = "Join with concat(...)",
-                    edits = listOf(VelaInspectionEdit(at, to, rewriteConcat(n))),
-                    source = src,
-                )
-            )
-        }
-        return out
-    }
-
-    /** `a + b` where both sides are strings (or a string `+` chain). */
-    private fun isConcatChain(n: VelaSyntaxNode): Boolean {
-        if (n.kind != VelaNodeKind.BINOP || n.op != VelaOps.PLUS || n.children.size != 2) return false
-        return isStringOperand(n.children[0]) && isStringOperand(n.children[1])
-    }
-
-    private fun rewriteConcat(n: VelaSyntaxNode): String {
-        if (!isConcatChain(n)) return textOf(n)
-        return "concat(" + rewriteConcat(n.children[0]) + ", " + rewriteConcat(n.children[1]) + ")"
-    }
-
-    // ------------------------------------------------------------ rule three
+    // ------------------------------------------------------------ rule two
 
     /** The operators whose mixed operands the compiler refuses, and that `to_float` repairs. */
     private val mixingOps = setOf(
@@ -677,22 +633,6 @@ class VelaImmutableAssignmentInspection : VelaInspectionBase(
         "no way to make an existing binding mutable other than to write it at its " +
         "declaration.<br><br>Not reported for parameters (a <code>mut</code> scalar parameter " +
         "is a copy) and not for arrays (<code>mut</code> does not repair a rebind).</html>",
-)
-
-/**
- * `"a" + "b"`.
- *
- * `vela: type error: string concatenation is not implemented in Vela 0.1`, from
- * `tests/safety/cases/strict_no_string_concatenation.vel`; the passing twin is the
- * same program with the named builtin, `concat("a", "b")`.
- */
-class VelaStringConcatenationInspection : VelaInspectionBase(
-    VelaInspectionRules.STRING_CONCATENATION,
-    "'+' on strings",
-    "<html>Vela 0.1 has no string concatenation operator: <code>\"a\" + \"b\"</code> is " +
-        "refused with <code>type error: string concatenation is not implemented in Vela 0.1</code>. " +
-        "The language joins strings with the named builtin <code>concat(a, b)</code>, which is " +
-        "what this fix writes.</html>",
 )
 
 /**

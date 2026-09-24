@@ -49,7 +49,7 @@
       (253) to prove that every class and member they use is present in both 鈥?      so the plugin can honestly claim to load from 253 upward.  until-build is
       deliberately absent: no fake upper limit.
     -->
-    <version>0.1.10</version>
+    <version>0.1.11</version>
     <idea-version since-build="253"/>
 
     <depends>com.intellij.modules.platform</depends>
@@ -338,14 +338,23 @@
         <lang.braceMatcher language="Vela"
                            implementationClass="dev.vela.plugin.VelaPairedBraceMatcher"/>
 
-        <!-- Problems and quick fixes: the three rules the plugin reports in the editor.
+        <!-- Problems and quick fixes: the two rules the plugin reports in the editor.
 
-             Until these three lines existed, `FEATURE_PARITY.md` said of this feature "no
+             Until these registrations existed, `FEATURE_PARITY.md` said of this feature "no
              `localInspection`s and no quick fixes at all", and that was true.  The classes
              were written and the verifier refused to accept them, on purpose:
-             `check unregisteredImplementations` reported all three as implementing
+             `check unregisteredImplementations` reported them as implementing
              `LocalInspectionTool` with "no registration and no class file names it", which
              is the check that stops a plugin shipping a class nobody can reach.
+
+             There were THREE until 0.1.11.  The third, `VelaStringConcatenation`, reported
+             `"a" + "b"` against the compiler's `type error: string concatenation is not
+             implemented in Vela 0.1` and repaired it to `concat("a", "b")`.  The language
+             learned `+` on two `str`s (`SPEC.md` 1.5, 2026-09-24), so that refusal is gone,
+             the rule could no longer fire honestly, and its fix would have rewritten a
+             working program.  It is retired, not repurposed, and `VelaInspections.kt`
+             carries the argument.  The retired text is kept here rather than deleted
+             because the count in it is what a reader would otherwise have to reconstruct.
 
              Attribute names are not from memory: `language`, `implementationClass`,
              `shortName`, `displayName`, `groupName`, `level`, `enabledByDefault` and
@@ -364,15 +373,6 @@
                          level="ERROR"
                          hasStaticDescription="true"
                          implementationClass="dev.vela.plugin.VelaImmutableAssignmentInspection"/>
-
-        <localInspection language="Vela"
-                         shortName="VelaStringConcatenation"
-                         displayName="'+' on strings"
-                         groupName="Vela"
-                         enabledByDefault="true"
-                         level="ERROR"
-                         hasStaticDescription="true"
-                         implementationClass="dev.vela.plugin.VelaStringConcatenationInspection"/>
 
         <localInspection language="Vela"
                          shortName="VelaIntFloatMixing"

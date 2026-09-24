@@ -22,7 +22,7 @@ group = "dev.vela"
 // Kept in step with <version> in src\main\resources\META-INF\plugin.xml, which is
 // the source of truth the offline build reads.  Every plugin update bumps both,
 // and writes the entry in CHANGELOG.md.
-version = "0.1.10"
+version = "0.1.11"
 
 repositories {
     mavenCentral()

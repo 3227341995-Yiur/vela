@@ -20,7 +20,6 @@ import dev.vela.plugin.VelaInspectionFinding;
 import dev.vela.plugin.VelaInspectionRules;
 import dev.vela.plugin.VelaIntFloatMixingInspection;
 import dev.vela.plugin.VelaProblem;
-import dev.vela.plugin.VelaStringConcatenationInspection;
 import dev.vela.plugin.VelaSyntaxParser;
 import dev.vela.plugin.VelaSyntaxTree;
 
@@ -42,7 +41,13 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * The three inspections against the compiler that is their authority.
+ * The two inspections against the compiler that is their authority.
+ *
+ * There were three until 0.1.11: `VelaStringConcatenation` was retired when the
+ * language learned `+` on two `str`s (`SPEC.md` 1.5), because the refusal it keyed
+ * on stopped existing and its fix would then have rewritten working code.  The rule
+ * count below is read from `VelaInspectionRules.RULES`, so a rule that leaves the
+ * file leaves this tool's own numbers with it.
  *
  * WHY THIS EXISTS
  *
@@ -51,7 +56,7 @@ import java.util.TreeMap;
  * are also the one feature where the plugin can *invent* language rules 閳?a rule the
  * compiler does not have, with a fix that does not repair anything, teaches the user
  * to write a program `vm.exe` will refuse.  So this tool exists to make that failure
- * measurable, and it is the whole reason the three rules were chosen: each one is a
+ * measurable, and it is the whole reason the rules were chosen one by one: each is a
  * `check` refusal the language's own test battery already asserts.
  *
  * WHAT IS MEASURED, PER CORPUS FILE
@@ -217,7 +222,8 @@ public final class InspectionProbe {
         boolean clean = sectionFailures.isEmpty() && cov.wrong() == 0 && !cov.hasDefect();
         System.out.println();
         System.out.println("VERDICT: " + (clean
-                ? "[PASS] every finding the three registered inspections report was walked to a refusal the"
+                ? "[PASS] every finding the " + VelaInspectionRules.RULES.size()
+                  + " registered inspections report was walked to a refusal the"
                   + " frozen compiler itself makes on that line, every fix removes the refusal it was offered"
                   + " for, and no finding lands on a file the compiler accepts -- over " + cov.ran()
                   + " judged file(s), wrong 0, no defect category tripped"
@@ -360,7 +366,7 @@ public final class InspectionProbe {
                 System.currentTimeMillis() - started);
     }
 
-    /** The first diagnostic in the compiler's list that one of the three rules claims. */
+    /** The first diagnostic in the compiler's list that one of the registered rules claims. */
     private static VelaProblem firstAuthority(List<VelaProblem> problems) {
         for (VelaProblem p : problems) {
             for (String rule : VelaInspectionRules.RULES) {
@@ -426,7 +432,10 @@ public final class InspectionProbe {
             System.out.println("== A. the registered classes ==");
             Map<String, Class<?>> classes = new LinkedHashMap<>();
             classes.put(VelaInspectionRules.IMMUTABLE_ASSIGNMENT, VelaImmutableAssignmentInspection.class);
-            classes.put(VelaInspectionRules.STRING_CONCATENATION, VelaStringConcatenationInspection.class);
+            // `VelaStringConcatenation` was here until 0.1.11.  Its probe program was
+            // `print("a" + "b")`, which the compiler now *accepts* (SPEC.md 1.5), so the
+            // section below could only have reported "NOT the rule's words" about a rule
+            // that no longer exists: both the rule and this entry went together.
             classes.put(VelaInspectionRules.INT_FLOAT_MIXING, VelaIntFloatMixingInspection.class);
             for (Map.Entry<String, Class<?>> e : classes.entrySet()) {
                 String rule = e.getKey();
@@ -485,8 +494,6 @@ public final class InspectionProbe {
                 String[][] probes = {
                         {"VelaImmutableAssignment",
                          "def main() -> None {\n    x: int = 1\n    x = 2\n    print(x)\n}\n"},
-                        {"VelaStringConcatenation",
-                         "def main() -> None {\n    print(\"a\" + \"b\")\n}\n"},
                         {"VelaIntFloatMixing",
                          "def main() -> None {\n    print(1 + 2.5)\n}\n"},
                 };
@@ -764,21 +771,22 @@ public final class InspectionProbe {
     // ------------------------------------------- the fix, before and after, raw
 
     /**
-     * The three canonical programs, verbatim: `check` before the fix, the edit the
+     * The canonical programs, verbatim: `check` before the fix, the edit the
      * registered class offers, and `check` after it.
      *
      * This is the shortest possible statement of what a quick fix is for, and it is
      * printed rather than summarised because the point of a fix is its *text*: the
      * compiler's exact words before, the exact edit, the compiler's exact words
-     * after.  The three files are the language's own safety cases — the programs that
-     * already assert these refusals — and the passing twin of each is a file in the
+     * after.  Each file is one of the language's own safety cases — the program that
+     * already asserts that refusal — and the passing twin of each is a file in the
      * same directory (`strict_*_ok.vel`, `strict_*_explicit.vel`), which is why
-     * "the fix writes the legal form" is not a judgement call.
+     * "the fix writes the legal form" is not a judgement call.  One file per
+     * registered rule: the array had a third row until 0.1.11, and the rule it named
+     * went (see the header).
      */
     static final class SectionD {
         private static final String[][] CANONICAL = {
                 {"tests/safety/cases/strict_immutability.vel", VelaInspectionRules.IMMUTABLE_ASSIGNMENT},
-                {"tests/safety/cases/strict_no_string_concatenation.vel", VelaInspectionRules.STRING_CONCATENATION},
                 {"tests/safety/cases/strict_no_implicit_conversion.vel", VelaInspectionRules.INT_FLOAT_MIXING},
         };
 
@@ -1020,17 +1028,20 @@ public final class InspectionProbe {
                         wrongHere = true;
                     } else if (!findings.isEmpty()) {
                         // THE LADDER.  `check` reports the *first* refusal and stops -- measured,
-                        // not assumed: `tests/build/accept/string_concat_basic.vel` has three `+`
-                        // on strings and the compiler words one of them (line 16).  So a finding
-                        // on line 20 is not judged by "is there a diagnostic on line 20" -- that
-                        // question answers no for a reason that has nothing to do with the rule.
-                        // It is judged by walking the refusal stack one fix at a time: fix the
-                        // finding the compiler just named, ask again, and the next refusal is the
-                        // next finding's own proof.  Each step is one more `check`, and the walk
-                        // stops as soon as the compiler's next refusal is not something these
-                        // rules claim -- at which point the findings below it are *unproven*
-                        // (counted, printed, not called wrong: an unrelated refusal is not this
-                        // rule's answer).
+                        // not assumed: this compiler words one refusal and panics on it, so a file
+                        // with two of them only ever produces one diagnostic.  (The example this
+                        // comment used to cite was `tests/build/accept/string_concat_basic.vel`'s
+                        // three `+` on strings; it is an accepted program since 0.1.11, which is
+                        // the same day the string rule was retired -- see the header.)  So a
+                        // finding on line 20 is not judged by "is there a diagnostic on line
+                        // 20" -- that question answers no for a reason that has nothing to do
+                        // with the rule.  It is judged by walking the refusal stack one fix at a
+                        // time: fix the finding the compiler just named, ask again, and the next
+                        // refusal is the next finding's own proof.  Each step is one more
+                        // `check`, and the walk stops as soon as the compiler's next refusal is
+                        // not something these rules claim -- at which point the findings below it
+                        // are *unproven* (counted, printed, not called wrong: an unrelated
+                        // refusal is not this rule's answer).
                         List<VelaInspectionFinding> pending = new ArrayList<>(findings);
                         List<VelaInspectionFinding> verified = new ArrayList<>();
                         // HOW MANY findings at each (rule, line) the walk has confirmed.  A count,
@@ -1045,7 +1056,8 @@ public final class InspectionProbe {
                         while (steps <= findings.size() + 1) {
                             VelaProblem named = firstAuthority(cur.problems);
                             if (named == null) {
-                                stopped = "the compiler's refusals of these three families are exhausted"
+                                stopped = "the compiler's refusals of these " + VelaInspectionRules.RULES.size()
+                                        + " rule families are exhausted"
                                         + (cur.exit == 0 ? " (it accepts the file)"
                                                          : " (exit " + cur.exit + ")");
                                 break;
@@ -1268,8 +1280,8 @@ public final class InspectionProbe {
                     anyMiss = true;
                 }
             }
-            if (!anyMiss) System.out.println("    (none: every refusal in the corpus that one of these three"
-                    + " rules claims was reported)");
+            if (!anyMiss) System.out.println("    (none: every refusal in the corpus that one of the "
+                    + VelaInspectionRules.RULES.size() + " registered rules claims was reported)");
 
             if (!table.isEmpty()) {
                 System.out.println();
