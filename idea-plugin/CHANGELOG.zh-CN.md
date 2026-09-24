@@ -4,8 +4,8 @@
 
 <!--
 源文件 : CHANGELOG.md
-源文件字节 : 69625
-源文件 SHA256 : faced60f75357a4edb044fdc31156d0c95174da73aaac5ca66a01d88e6f4372f
+源文件字节 : 74080
+源文件 SHA256 : 8f829d9aa750e7ee62229cd8f040eb12a6bc41e51fe323b0fee5e096510da5d9
 翻译日期 : 2026-09-25
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -23,6 +23,34 @@
 | 本文件 | 一条记录说改了什么，**以及什么被验证过、什么没有** |
 
 最后一列不是仪式。这个项目更老的那条规则是：没有人测量过的声称不存在。而这个插件已经发布过三个完成后完全无作用的功能——一个写错的文件扩展名、一个被当成组注册的动作，以及三个从未被注册（或者注册在错误属性名下）的扩展点。一条写着“加了 X，未验证”的记录，比一条写着“加了 X”的记录更有价值。
+
+## 0.1.12 —— 每一个参数名提示都被画了 490 遍，而这里没有任何工具能说出这件事
+
+**改了什么。** `VelaParameterNameInlayHintsCollector.collect` 忽略传给它的那个元素，在**每一次**回调里登记**整个文件**的提示表，并且返回 `true`——那是平台的「继续往子元素里走」。平台对每个 PSI 元素调用一次 `collect`，于是 `ide-demo/tour.vel` 的 7 个提示被画了 7 × 490 = **3430** 次，每个标签一直冲到行尾、再冲出屏幕。现在收集器只把整个文件画一次，并让遍历停下来。
+
+* **这个缺陷是「看」出来的，不是「测」出来的**——主人发来一张编辑器截图：`ide-demo/tour.vel` 和 `tests/…` 里的文件上，`abs(n: n: n: n: …)` 一直重复到行的右边。那一刻屏幕上明明是这样，而这份文件里所有关于 hints 的数字都是**绿的**；原因值得作为本条记录的另一半写下来：`HintDiff`、`HintShapes`、`HintTruth` 和 `ParamNames` 量的都是 `VelaHints.parameterHints`——**那张表**——而没有任何东西驱动过平台真正调用的那个对象。一张正确的表被画了 N 遍，就是一个错误的屏幕。
+
+* **标签是对的，错的只是次数。** `p.moved(10, 1)` 旁边的 `dx:` 正是编译器把这个实参绑到的那个参数（接收者 `self` 被丢掉，0.1.7 的那次修复），而 `describe(q)` 边的 `p:`、`scale(v, factor)` 边的 `v:`、`abs(...)` 边的 `n:` 都是声明自己的名字。所以上面那些工具并没有因为这一条而失效：它们判的是那张表，判得对，缺陷住在它们下面一层。
+
+* **修复是一个标志位加一个 `false`。** `painted` 让第一次调用把文件画完、之后的调用变成空操作，返回值则让遍历停下而不是继续下潜到每个元素。偏移量是**文档**偏移量，所以第一次调用带着哪个元素到来都无所谓。
+
+* **缺失的那根轴现在有了：`InlayProbe`。** 它驱动 `VelaParameterNameInlayHintsProvider.getCollectorFor(file, editor, settings, sink)` 返回的那个收集器，跑在文件**真实的 PSI 树**上（用平台自己的 `PsiBuilderImpl` 构建，也就是 `psi-tree-diff.ps1` 用的那次重放），并给一个会记录的 `InlayHintsSink`（一个 `Proxy`）数清每一次 `addInlineElement`；它断言一条不变量：**收集器登记的数量等于那张表**，无论遍历访问了多少个元素。它已经在 `harness.ps1` 的工具清单里，所以从这一版起整条 harness 都会量它。
+
+**已验证，以及由什么验证。** 同一个工具、同一批文件，唯一的差别是插件构建——0.1.11 的 jar 从已提交的 `dist\vela-idea-plugin-0.1.11.zip` 里取出（398 763 B，sha256 `4eaa6746…`，正是 0.1.11 自己那份证据记录的哈希），对上本轮的 0.1.12 jar（398 817 B，sha256 `a35ac762…`）：
+
+    file                                hints   elements   registered 0.1.11   registered 0.1.12
+    ide-demo/tour.vel                      7        490               3430                   7
+    examples/hello.vel                     1        149                149                   1
+    tests/build/arith_basics.vel           2         90                180                   2
+    tests/build/control_flow.vel           3        188                564                   3
+    bench/matmul.vel                       3        336               1008                   3
+
+    COVERAGE 0.1.11: ran 5 / skipped 0 / wrong 5   VERDICT: [FAIL] … exit 1
+    COVERAGE 0.1.12: ran 5 / skipped 0 / wrong 0   VERDICT: [PASS] … exit 0
+
+`build-offline.ps1`：`RESULT: PASS`，162 行 OK / 0 FAIL；`dist\vela-idea-plugin-0.1.12.zip` 375 236 B，jar 398 817 B，111 个具体顶层类，0 个死的。证据：`idea-plugin\evidence\inlay-hints-0.1.12-20260925-0115.txt`——两次运行逐字在内。
+
+**仍未验证的部分。** 没有启动过 IDE：sink 是一个会记录的 `Proxy`，editor 是一个代理，遍历是 `InlayProbe` 对 `FactoryInlayHintsCollector.collect` 那个 `Boolean` 所描述契约的实现。被测的是收集器**登记了什么**；一个跑起来的 IDEA 会画出什么并没有被测，截图是这份证据的「编辑器那一半」，而不是那个数字的替代品。有一个显眼的后果被点名而不是藏起来：修复后那次运行的遍历读作 `elements 1`，因为第一次调用就把整个文件画完并返回 `false`——而有 7 个提示的那个文件 `registered` 是 7，这一点才说明收集器真的被调用过。
 
 ## 0.1.11 —— 一条被撤下的规则，而不是被改造的规则：`+` 拼两个 `str` 现在合法
 

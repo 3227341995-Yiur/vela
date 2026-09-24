@@ -23,6 +23,68 @@ action registered as a group, and three extension points that were never
 registered (or registered under the wrong attribute name). An entry that says
 "added X, unverified" is worth more than one that says "added X".
 
+## 0.1.12 — every parameter-name hint was painted 490 times, and no tool here could have said so
+
+**What changed.** `VelaParameterNameInlayHintsCollector.collect` ignored the element it was handed,
+registered the **whole file's** hint list on **every** call, and returned `true` — the platform's
+"keep walking into the children".  The platform calls `collect` once per PSI element, so
+`ide-demo/tour.vel`'s 7 hints were drawn 7 × 490 = **3430** times, and each label ran to the right
+edge of the line and off it.  The collector now paints the file once and stops the walk.
+
+* **The defect was found by looking, not by measuring** — the owner sent a screenshot of the editor
+  with `abs(n: n: n: n: …)` repeated to the edge of the line, on `ide-demo/tour.vel` and on
+  `tests/…` files.  Every hints number in this file was **green** while that was on screen, and the
+  reason is worth writing down as the other half of the entry: `HintDiff`, `HintShapes`,
+  `HintTruth` and `ParamNames` all measure `VelaHints.parameterHints` — the **list** — and nothing
+  drove the object the platform actually calls.  A list that is right and painted N times is a
+  screen that is wrong.
+
+* **The labels were right; only the count was wrong.**  `dx:` at `p.moved(10, 1)` is the parameter
+  the compiler binds that argument to (the receiver `self` is dropped, the 0.1.7 fix), and `p:` at
+  `describe(q)`, `v:` at `scale(v, factor)` and `n:` at `abs(...)` are the declarations' own names.
+  So nothing above is invalidated by this entry: those tools judge the list, correctly, and the
+  defect lived one layer below them.
+
+* **The fix is a flag and a `false`.**  `painted` makes the first call paint and every later call a
+  no-op, and the return value stops the walk instead of descending into every element.  The offsets
+  are *document* offsets, so it does not matter which element the first call arrives with.
+
+* **The missing axis exists now: `InlayProbe`.**  It drives
+  `VelaParameterNameInlayHintsProvider.getCollectorFor(file, editor, settings, sink)`'s collector
+  over the file's real PSI tree — built through the platform's own `PsiBuilderImpl`, the replay
+  `psi-tree-diff.ps1` uses — with a recording `InlayHintsSink` (a `Proxy`) counting every
+  `addInlineElement`, and it asserts one invariant: **what the collector registers equals the
+  list**, however many elements the walk visits.  It is in `harness.ps1`'s tool list, so the whole
+  harness measures it from now on.
+
+**Verified, and by what.**  One tool, one corpus, the only difference the plugin build — the
+0.1.11 jar extracted from the committed `dist\vela-idea-plugin-0.1.11.zip` (398 763 B, sha256
+`4eaa6746…`, the hash 0.1.11's own evidence records) against this round's 0.1.12 jar (398 817 B,
+sha256 `a35ac762…`):
+
+    file                                hints   elements   registered 0.1.11   registered 0.1.12
+    ide-demo/tour.vel                      7        490               3430                   7
+    examples/hello.vel                     1        149                149                   1
+    tests/build/arith_basics.vel           2         90                180                   2
+    tests/build/control_flow.vel           3        188                564                   3
+    bench/matmul.vel                       3        336               1008                   3
+
+    COVERAGE 0.1.11: ran 5 / skipped 0 / wrong 5   VERDICT: [FAIL] … exit 1
+    COVERAGE 0.1.12: ran 5 / skipped 0 / wrong 0   VERDICT: [PASS] … exit 0
+
+`build-offline.ps1`: `RESULT: PASS`, 162 OK / 0 FAIL; `dist\vela-idea-plugin-0.1.12.zip` 375 236 B,
+jar 398 817 B, 111 concrete top-level classes, 0 dead.  Evidence:
+`idea-plugin\evidence\inlay-hints-0.1.12-20260925-0115.txt` — both runs verbatim.
+
+**What is still not verified.**  No IDE was started: the sink is a recording `Proxy`, the editor is
+a proxy, and the walk is `InlayProbe`'s implementation of the contract
+`FactoryInlayHintsCollector.collect`'s `Boolean` describes.  What is measured is what the collector
+*registers*; what a running IDEA paints is not, and the screenshot is the editor half of the
+evidence rather than a substitute for the number.  One visible consequence is named rather than
+hidden: the after-run's walk reads `elements 1`, because the first call paints the whole file and
+returns `false` — and `registered` is 7 on the file with 7 hints, which is what says the collector
+ran at all.
+
 ## 0.1.11 — a rule retired rather than repurposed: `+` on two `str`s is legal now
 
 **What changed.** The language learned string concatenation: `"ab" + "cd"` is `"abcd"` and `s += "b"`

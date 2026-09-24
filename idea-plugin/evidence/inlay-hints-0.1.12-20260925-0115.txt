@@ -1,0 +1,147 @@
+Every parameter-name hint was painted once per PSI element, and nothing here measured it   (0.1.12,
+2026-09-25 01:15)
+
+WHAT THIS FILE IS
+=================
+
+A defect the owner found by *looking at the editor* -- a screenshot of `ide-demo/tour.vel` with each
+call's parameter label repeated until it ran off the line -- and the measurement that had been
+missing underneath it.  Both matter, and they matter together: every hints number this plugin had
+was green while the screen was wrong, because all four hints tools measure the *list*
+(`VelaHints.parameterHints`) and none of them drove the object the platform actually calls.
+
+The defect
+    `VelaParameterNameInlayHintsCollector.collect` ignored the element it was handed, registered
+    the whole file's hint list on every call, and returned `true` -- which is the platform's
+    "keep walking into the children".  So each hint was registered once per PSI element:
+    `ide-demo/tour.vel` has 7 hints and 490 elements, and the editor was asked to draw the same
+    seven labels 490 times each.
+
+The fix
+    One paint per file, then stop the walk: a local flag makes the first call paint and every
+    later call a no-op, and the return value is `false` so the platform does not descend at all.
+    The offsets are document offsets, so it does not matter which element the first call arrives
+    with.
+
+WHY NO EXISTING TOOL COULD HAVE SAID SO
+    `HintDiff`, `HintShapes`, `HintTruth` and `ParamNames` all call
+    `VelaHints.INSTANCE.parameterHints(text, text.length())` and judge that list -- labels,
+    ranges, shapes, truncations, duplicates.  The list was right; the *drawing* was multiplied by
+    the element count.  `InlayProbe` is new here and drives the missing layer:
+    `VelaParameterNameInlayHintsProvider.getCollectorFor(file, editor, settings, sink)`'s
+    collector, over the file's real PSI tree (built through the platform's own `PsiBuilderImpl`,
+    the same replay `psi-tree-diff.ps1` uses), with a recording `InlayHintsSink` counting every
+    `addInlineElement`.
+
+WHAT WAS MEASURED AGAINST (pinned)
+==================================
+
+this run's plugin (0.1.12, the fixed build)
+    jar           dist\vela\lib\vela-idea-plugin.jar
+                  398,817 bytes  sha256 a35ac762fbb4870e1872008f5ca542c953d0409747c79eef10b0a48c467300be
+    dist zip      dist\vela-idea-plugin-0.1.12.zip
+                  375,236 bytes  sha256 5e85840c7910b72fccf1b76451690e4b15786ad29a0a3902eee9bba732dd982d
+    verifier      build-offline.ps1: RESULT: PASS -- 162 OK lines, 0 FAIL lines (build\logs\verify.log)
+
+the "before" plugin (0.1.11, the build the defect shipped in)
+    jar           extracted from the committed dist\vela-idea-plugin-0.1.11.zip into
+                  dist\_before-0.1.11\ (gitignored), so the before-run is reproducible without a
+                  snapshot that a %TEMP% clean would take away
+                  398,763 bytes  sha256 4eaa6746d034744cd44de9d66bea4636a6ce3da29c852db489f47d727db8a480
+                  -- the same hash 0.1.11's own evidence file records, so this is that build
+
+the oracle, per file: `VelaHints.parameterHints(text, text.length()).size()` -- the same list the
+four older tools measure, and the number the collector must register exactly once.
+
+THE INVARIANT
+=============
+
+    registered == the list's size
+
+however many elements the walk visits.  It held for 0 of 5 files before and for 5 of 5 after, and
+the before numbers are *exactly* `list × elements`, which is what makes the diagnosis a diagnosis
+rather than a guess:
+
+    file                                hints   elements   registered before   registered after
+    ide-demo/tour.vel                      7        490              3430                   7
+    examples/hello.vel                     1        149               149                   1
+    tests/build/arith_basics.vel           2         90               180                   2
+    tests/build/control_flow.vel           3        188               564                   3
+    bench/matmul.vel                       3        336              1008                   3
+
+`VERDICT: [FAIL] ... wrong 5` and exit 1 before; `VERDICT: [PASS] ... wrong 0` and exit 0 after.
+
+WHAT IS NOT MEASURED, SAID PLAINLY
+==================================
+
+* No IDE was started.  The sink here is a recording `java.lang.reflect.Proxy` for
+  `InlayHintsSink`, the editor is a proxy, and the walk is this tool's implementation of the
+  contract `FactoryInlayHintsCollector.collect`'s `Boolean` describes (the root first, children
+  while a call returns `true`).  What is measured is *what the collector registers*; what a
+  running IDEA paints is not, and the screenshot in the 0.1.12 changelog entry is the editor half
+  of the evidence -- it is why this file exists, and it is not a substitute for the number.
+* One consequence of the fix is visible in the after column and worth naming rather than hiding:
+  the walk now stops at `elements 1`, because the first call paints the whole file and returns
+  `false`.  That is the fix working, not the walk being skipped -- `registered` would be 0 if the
+  collector had never been called at all, and it is 7 on the file with 7 hints.
+* `InlayProbe` is now in `harness.ps1`'s tool list, so a run of the whole harness measures it;
+  when it was written it was reached through `tools\run-harness.ps1 -Class InlayProbe`, and either
+  way the exit code is the verdict (0 pass, 1 the invariant broke).
+
+--- THE SAME TOOL, THE 0.1.11 BUILD (before): tools\run-harness.ps1 -Class InlayProbe, with the
+    classpath pointed at dist\_before-0.1.11\vela\lib\vela-idea-plugin.jar
+application : com.intellij.mock.MockApplication (the platform's own headless application; the builder and the collector are the real ones)
+inlay    : the platform-called collector, not the list -- VelaParameterNameInlayHintsProvider.getCollectorFor(file, editor, settings, sink)
+walk     : collect(file), then children in pre-order while a call returns true (FactoryInlayHintsCollector's own Boolean contract)
+sink     : a recording InlayHintsSink -- every addInlineElement is counted
+oracle   : VelaHints.parameterHints(text, text.length) -- the same list every other hints tool measures
+repo root: C:\Users\lu\Downloads\vela
+
+file                                                the list  registered      walk reached  verdict
+----------------------------------------------------  --------  --------------  ------------  -------
+ide-demo/tour.vel                                   hints 7   registered 3430 elements 490  WRONG
+examples/hello.vel                                  hints 1   registered 149  elements 149  WRONG
+tests/build/arith_basics.vel                        hints 2   registered 180  elements 90   WRONG
+tests/build/control_flow.vel                        hints 3   registered 564  elements 188  WRONG
+bench/matmul.vel                                    hints 3   registered 1008 elements 336  WRONG
+
+the invariant: what the collector registers == the list, however many elements the walk visits
+COVERAGE: ran 5 / skipped 0 (missing-corpus-file 0, too-large 0, walked-threw 0) / wrong 5
+VERDICT: [FAIL] 5 file(s) registered a number of hints that is not the list's (that is the 0.1.11 defect: one paint per element) 
+
+--- THE SAME TOOL, THE 0.1.12 BUILD (after): powershell -ExecutionPolicy Bypass -File idea-plugin\harness.ps1 -Tool InlayProbe
+
+application : com.intellij.mock.MockApplication (the platform's own headless application; the builder and the collector are the real ones)
+inlay    : the platform-called collector, not the list -- VelaParameterNameInlayHintsProvider.getCollectorFor(file, editor, settings, sink)
+walk     : collect(file), then children in pre-order while a call returns true (FactoryInlayHintsCollector's own Boolean contract)
+sink     : a recording InlayHintsSink -- every addInlineElement is counted
+oracle   : VelaHints.parameterHints(text, text.length) -- the same list every other hints tool measures
+repo root: C:\Users\lu\Downloads\vela
+
+file                                                the list  registered      walk reached  verdict
+----------------------------------------------------  --------  --------------  ------------  -------
+ide-demo/tour.vel                                   hints 7   registered 7    elements 1    ok
+examples/hello.vel                                  hints 1   registered 1    elements 1    ok
+tests/build/arith_basics.vel                        hints 2   registered 2    elements 1    ok
+tests/build/control_flow.vel                        hints 3   registered 3    elements 1    ok
+bench/matmul.vel                                    hints 3   registered 3    elements 1    ok
+
+the invariant: what the collector registers == the list, however many elements the walk visits
+COVERAGE: ran 5 / skipped 0 (missing-corpus-file 0, too-large 0, walked-threw 0) / wrong 0
+VERDICT: [PASS] every hint the file has was registered once by the walk the platform drives -- over 5 judged file(s), 16 hint(s), 5 element(s) visited, wrong 0
+
+--- THE VERIFIER, VERBATIM (idea-plugin\build\logs\verify.log, build-offline.ps1 step 6; UTF-16LE)
+
+jar size   : 398817 bytes
+    OK  codeInsight.inlayProvider/implementationClass = dev.vela.plugin.VelaParameterNameInlayHintsProvider  in the jar
+    170 class files, highest major version = 65 (dev/vela/plugin/ParameterHint.class) -> Java 21
+    OK  <codeInsight.inlayProvider>        -> com.intellij.codeInsight.inlayProvider (declared by the installed platform at intellij.idea.ultimate.customization.jar!META-INF/plugin.xml)
+    OK  <codeInsight.inlayProvider> attribute implementationClass=dev.vela.plugin.VelaParameterNameInlayHintsProvider  (the platform binds [implementationClass])
+    OK  dev.vela.plugin.VelaParameterNameInlayHintsProvider  is a InlayHintsProvider   [the platform's own <with attribute="implementationClass" implements="com.intellij.codeInsight.hints.InlayHintsProvider">]
+--- 12. version discipline (one number, four places)
+    OK  build.gradle.kts                  version = "0.1.12" (same as plugin.xml)
+    OK  dist file name                    vela-idea-plugin-0.1.12.zip (375236 bytes)
+    OK  CHANGELOG.md                      "## 0.1.12 �� every parameter-name hint was painted 490 times, and no tool here could have said so"
+--- 13. dead classes (every concrete top-level class must be registered or reached)
+    111 concrete top-level class(es): 31 named by plugin.xml, 80 reached from another class file, 0 dead
+RESULT: PASS - all structural, bytecode, platform, registration, linkage and behavioural checks passed
