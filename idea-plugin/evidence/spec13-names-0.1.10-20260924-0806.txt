@@ -1,0 +1,245 @@
+SPEC.md section 13's names in the plugin: resolvable, searchable, renamable, hoverable   (0.1.10,
+2026-09-24 08:06)
+
+WHAT THIS FILE IS
+=================
+
+0.1.9 taught the plugin to *parse* `enum` and `match`.  This round makes the names the language
+gained *usable*: a variant name and an enum's name resolve through the same reference machinery the
+plugin already had, find-usages answers at the declaration's own name, parameter info opens for a
+variant construction, a payload field is a declaration the hover answers for, and a variant name
+has a colour kind of its own.  Every item is measured with a tool that already existed, and every
+"before" number is a run of the **same** tool against the **0.1.9 plugin's own classes** and the
+**same frozen compiler**, so the plugin build is the only difference.
+
+WHAT WAS MEASURED AGAINST (pinned)
+==================================
+
+this run's plugin
+    version       0.1.10               (src\main\resources\META-INF\plugin.xml line 52)
+    jar           dist\vela\lib\vela-idea-plugin.jar
+                  400,566 bytes  sha256 830fc6c09869371219ee00700e1791d4ac89b1b418363ca004e58c1329454a28
+    dist zip      dist\vela-idea-plugin-0.1.10.zip
+                  376,852 bytes  sha256 be06babd55ee22a1f6aaa9c665c556ffe0666728582da19948ac21e91c594ead
+    classes       build\classes; `harness.ps1` snapshots them before each run, so a concurrent build
+                  cannot disturb a run
+
+the "before" plugin
+    the 0.1.9 class files, which survive in `harness.ps1`'s own per-run snapshot directory
+    `build\tools\harness\classes\classes-snapshot-41940` (written 06:37:30; its
+    `dev\vela\plugin\VelaTargets.class` is 18,797 bytes against the current 19,862).
+    THE 0.1.9 DIST ZIP NO LONGER EXISTS: `build-offline.ps1` names the zip after the version in
+    `plugin.xml`, this round's version was not bumped until its last step, and three intermediate
+    builds overwrote `dist\vela-idea-plugin-0.1.9.zip` with work in progress.  The snapshot is the
+    only surviving copy, and every before/after below was run from it.  See the last section.
+
+the frozen compiler (the oracle for every name, member, parameter, tree and verdict below)
+    vm.exe        867,328 bytes  sha256 1e52032c0d3108ed7e042a69d62056b11e1a2f134cb4cc0b1db95f0b9ac9ed1c
+    LLVM-C.dll   74,159,616 bytes  sha256 1286e894afc98486963246a3f786459b63efb8bd3e4a00193530013fe46aa1fe
+    taken at 06:30 into %TEMP%\vela-plugin-drive-019\ and used from there.  The tree's own
+    `vm.exe` has been rebuilt at least three times during the day (867,328 -> 870,400 ->
+    `aaa0a599…` and counting); nothing here is a claim about any other binary.  One ast-diff run
+    in this round was made against the tree's copy by mistake -- `-FrozenVm` was left off -- and it
+    reported every `enum_*` file "compiler refused (exit 2) -- but this parser accepted it"; it was
+    re-run against the frozen copy and is the PASS quoted below.  The slip is recorded because the
+    red it produced was a measurement of the wrong compiler.
+
+ITEM 1 -- A VARIANT NAME AND AN ENUM'S NAME RESOLVE
+===================================================
+
+What changed: `VelaTargetKind.ENUM` / `VARIANT`, and the two sites in
+`VelaTargets.declarationFor` -- a call whose name is a variant (the construction `Circle(2.0)` and
+an arm's pattern `Circle(r) { … }` are the same shape), a bare enum name in a type position
+(`c: Shape`), and a payload-free variant written as a value (`Empty`).  `VelaUsageSearch.canSearchAt`
+accepts a leaf that resolves to itself, which is what makes the declaration's own name searchable.
+
+raw: GotoOracle on `tests/build/enum_exhaustive_switch.vel`, same tool, same frozen compiler, only
+the plugin build different (the tool's own per-kind table)
+
+    0.1.9 jar    kind            refs    correct  no target  WRONG   ambiguous/unjudged
+                 variant         3       0        3          0       0
+    0.1.10 jar   variant         3       3        0          0       0
+
+raw: RenameOracle on the same file, same tool, same compiler
+
+    0.1.9 jar    kind            decls   bound   claimed  missed  wrong-scope wrong decls
+                 variant         3       6       0        6       0           3
+      and every wrong row in full: `NOT-SEARCHABLE: the platform would refuse Find Usages on this
+      declaration's own name, so its usages cannot be looked for at all`, plus
+      `NOT-SEARCHABLE: the usage on line 17 (offset 553) cannot be searched for from its own name`
+      and the same for line 30 (offset 744)
+
+    0.1.10 jar   variant         3       6       6        0       0           0
+
+raw: the same two tools over the whole corpus on 0.1.10
+
+    GotoOracle     COVERAGE: ran 30880 / skipped 27305 (crashed-file 0, compiler-refused 27287, invisible-member 18, ambiguous 0) / wrong 0
+    RenameOracle   COVERAGE: ran 901 / skipped 6008 (compiler-refused 5800, too-large 0, missing-corpus-file 0, compiler-silent 42, not-attributable 166, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+      per kind:  enum 1 1 1 0 0 0      variant 21 42 42 0 0 0
+      VERDICT: for every one of the 901 judged declaration(s), the reference table names exactly the
+      2,998 use(s) the compiler binds and nothing else, and renaming them produces a program the
+      compiler accepts
+
+raw: the falsification the row needs -- a rename that compiles is not evidence unless the compiler
+can tell a wrong one from a right one.  Measured directly against the frozen compiler on a copy of
+`enum_exhaustive_switch.vel`:
+
+    rename the variant declaration `Add` -> `Addzzq`, alone:
+      vela: type error: no variant named 'Add' in this program ... at line 17     exit 2
+    rename the declaration and the arm's pattern, leaving the construction behind:
+      vela: type error: undeclared name 'Add' ... at line 30                      exit 2
+    rename the declaration, the pattern and the construction:
+      ok                                                                          exit 0
+
+and end to end through the plugin's own write path (`RenameWriteback`):
+
+    COVERAGE: ran 830 / skipped 6079 (compiler-refused-file 5800, too-large 0, missing-corpus-file 0,
+              no-references-and-silent 40, not-attributable 153, new-name-refused 0,
+              new-name-collides 0, too-many-references 86, crashed 0, contradiction 0) / wrong 0
+    writes landed / attempted by the plugin    : 2609 / 2609
+    refused by the compiler for 828 declaration(s); accepted for 2, which are the declarations the
+      compiler binds no use of (nothing to falsify)
+    VERDICT: for every one of the 830 judged declaration(s), the plugin's own write-back wrote
+      exactly the 1779 reference(s) it claims and the declaration, changed no other token in the
+      file, and produced a file the compiler accepts
+
+830 declarations is 23 more than the 0.1.9 round's 807: the §13 names are in that number.
+
+ITEM 2 -- PARAMETER INFO OPENS FOR A VARIANT CONSTRUCTION
+=========================================================
+
+What changed: `VelaNames.resolveCall` answers a variant with a payload, and
+`VelaParameterInfoHandler` draws its payload field names -- read off the variant symbol the model
+built from the `variant` node's own field list, which is the same reader the completion's
+`Circle` -> `Circle(radius)` template uses, so the two cannot disagree about one declaration.
+
+raw: `PlatformEntry` row 9 on the corpus as it stood at 07:30 (before three more corpus files
+arrived), same tool, same frozen compiler, the plugin build the only difference
+
+    0.1.9 jar   find 709 / show 688 / update 1380 / update-rebuilt 688,  ran 3465 / skipped 644
+                callee-not-a-declared-def 623
+    0.1.10 jar  find 718 / show 697 / update 1391 / update-rebuilt 697,  ran 3503 / skipped 635
+                callee-not-a-declared-def 614
+    VERDICT: ... every judged call ... [PASS]   (both builds)
+
+Nine calls moved from a counted class into judged ones, all correct: `Circle(2.0)`,
+`Rect(3.0, 4.0)`, `Add(2, 3)`, `Neg(7)`, `Full(7)`, `Small(3)`, `Wrap(...)` and their kind.
+
+ITEM 3 -- A VARIANT NAME HAS A COLOUR OF ITS OWN
+=================================================
+
+`VelaNameKind.VARIANT`, drawn with the platform's constant colour, for all four positions the
+language writes a variant in: the declaration inside the enum body, a construction, an arm's
+pattern and a bare value.  The compiler's own dump is the authority that a variant is a variant and
+not a plain name -- it prints `variant name=…` for the declaration and `name Circle` at every use.
+
+**NOTHING MEASURES THIS.**  No harness asks which key a name is drawn with; `FeatureProbe` checks
+that the keys the *lexer* draws are the keys the colour settings page registers, and these semantic
+kinds are drawn with platform defaults and registered nowhere.  The decision is written where it is
+made (`VelaSemanticHighlighting`, beside the `colourOf` mapping) and it is stated here rather than
+implied to be covered.
+
+ITEM 4 -- A PAYLOAD FIELD IS A DECLARATION
+===========================================
+
+What changed: `VelaModel.readEnumFromTree` emits a symbol per payload entry, owned by the variant
+that carries it, so the hover for `radius` is the declaration the compiler's dump prints
+(`field radius: float`, owner `Circle`).  `HoverTruth` judges those positions now instead of
+counting them.
+
+    0.1.9 jar   COVERAGE: ran 13013 / skipped 96 (... payload-field-not-a-model-declaration 15 ...) / wrong 0
+    0.1.10 jar  COVERAGE: ran 13028 / skipped 81 (...) / wrong 0
+
+The 15 positions moved out of the counted class into `ran`, and `skipped` fell by exactly 15.
+
+**It went red first, and the red was this round's own harness bug** -- the dump reader set the
+payload's owner where it recognised the line, and then the reader's common tail overwrote it:
+
+    e.nested = nestedInDef(parent);
+    if (e.kind.equals("field")) e.owner = e.nested ? "" : structOf(parent);   // "" for a payload
+
+`structOf(parent)` walks up looking for a `struct`, and a payload's parent is a **variant**.  The
+plugin was right and the tool was wrong:
+
+    0.1.10, before the fix:
+      tests/build/enum_payload_bind.vel:14 `radius` (field)
+          owner: the compiler nests it under `-`, the hover says `Circle`
+          hover: field radius: float
+      COVERAGE: ran 13028 / skipped 81 (...) / wrong 15
+      VERDICT: 15 declaration(s) hovered differently from what the compiler says [FAIL]
+
+    0.1.10, after:
+      VERDICT: every one of the 13028 row(s) judged says what the compiler, SPEC.md or the absence
+      of a declaration says [PASS]
+
+THE RE-MEASUREMENT, ONE PASS OF ONE ARTIFACT
+============================================
+
+Frozen compiler as pinned above; `ast-diff.ps1` and `psi-tree-diff.ps1` re-run the same way.  The
+corpus grew during the round (147 -> 152 files), so the position counts are one run over the tree as
+it stood at 08:00.
+
+    ast-diff.ps1      ran 138 / skipped 14 (compiler-refused 14) / wrong 0
+                      152 files in the corpus, 138 identical, 148,254 node lines, 0 different,
+                      0 suspect, 0 missing, VERDICT PASS
+    psi-tree-diff.ps1 ran 152 / skipped 0 / wrong 0
+                      148,291 composite nodes, 401,982 leaf tokens, failed 0, VERDICT PASS
+    GotoOracle        ran 30880 / skipped 27305 (crashed-file 0, compiler-refused 27287, invisible-member 18, ambiguous 0) / wrong 0
+    HintDiff          ran 37046 / skipped 78 (compiler-cannot-parse 51, arg-boundary-disagreement 12, compiler-refused-the-file 15, check-timed-out 0) / wrong 0
+    HintNames         ran 2094 / skipped 12 (threw 0, missing-corpus-file 0, check-timed-out 0, nothing-was-judged 0, no-model-entry-for-this-def 7, too-large 0, compiler-refused-the-file 5) / wrong 0
+    HintShapes        ran 9357 / skipped 4 (parameterHints-threw 0, missing-corpus-file 0, too-large 0, too-large-for-prefix-sweep 4) / wrong 0
+    HintDupes         ran 2099 / skipped 0 (symbols-threw 0, missing-corpus-file 0, too-large 0) / wrong 0
+    SymbolDiff        ran 90 / skipped 44 (threw 0, missing-corpus-file 0, too-large 0, type-spelling-only-difference 2, tree-reports-more-declarations 42, scan-reports-more-declarations 0) / wrong 13
+    FoldDiff          ran 68 / skipped 38 (threw 0, missing-corpus-file 0, too-large 0, granularity-only-difference 38) / wrong 41
+    FeatureProbe      ran 1621 / skipped 1 (missing-corpus-file 0, too-large 0, empty-or-whitespace-only 0, needs-an-application-instance 1) / wrong 0
+    ParamNames        ran 2099 / skipped 6413 (harness-threw 0, missing-corpus-file 0, file-too-large 0, not-a-callable 6413, callee-not-in-this-file-and-not-a-builtin 0, builtin-arity-only-SPEC-md-names-none 0) / wrong 0
+    HintTruth         ran 8215 / skipped 7660 (harness-threw 0, missing-corpus-file 0, file-too-large 0, no-argument-call 3012, callee-not-declared-in-file 4648, builtin-arity-documented-without-names 0) / wrong 0
+    HoverTruth        ran 13028 / skipped 81 (harness-threw 0, spec-documents-the-arity-without-parameter-names 24, compiler-refused-the-file 43, nested-def-outside-the-model 12, variadic-signature-declares-no-parameter 1, builtin-signature-writes-no-return-type 1) / wrong 0
+    RenameOracle      ran 901 / skipped 6008 (compiler-refused 5800, too-large 0, missing-corpus-file 0, compiler-silent 42, not-attributable 166, unverified-lines 0, unverifiable-basis 0, too-many-candidates 0, new-name-refused 0, crashed 0, contradiction 0) / wrong 0
+    InspectionProbe   ran 281 / skipped 43 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 43, empty-or-whitespace-only 0, excluded-by-request 0) / wrong 0
+    RenameWriteback   ran 830 / skipped 6079 (compiler-refused-file 5800, too-large 0, missing-corpus-file 0, no-references-and-silent 40, not-attributable 153, new-name-refused 0, new-name-collides 0, too-many-references 86, crashed 0, contradiction 0) / wrong 0
+    PlatformEntry     ran 14716 / skipped 2018 (25 named classes) / wrong 0   [rows 7, 9, 19 in one run]
+      row 7   ran 2288 / skipped 163 (insert-not-a-callable 13, template-names-not-in-spec 149, receiver-not-a-written-binding 1, ...) / wrong 0
+      row 9   ran 3519 / skipped 645 (callee-not-a-declared-def 624, struct-constructor-popup-closed 21, ...) / wrong 0
+      row 19  ran 8909 / skipped 1210 (closer-not-required 0, prefix-not-a-complete-program 48, indent-not-the-corpus-step 38, first-line 382, line-ends-with-brace 742) / wrong 0
+    the run's own reconciliation: "(none: each tool's verdict, exit code and wrong count agree)"
+
+`SymbolDiff` (13) and `FoldDiff` (41) are the two regression detectors and are non-zero by design;
+neither moved this round.  `SymbolDiff`'s `tree-reports-more-declarations` class covers the new
+payload-field symbols, which the retired token scan cannot see either.
+
+WHAT THIS PLUGIN STILL CANNOT DO FOR §13, NAMED WITH ITS COST
+=============================================================
+
+  * **A pattern binding's name is not resolved.**  `Circle(r)` binds `r` positionally; the arm's
+    body uses `r`, and `VelaTargets.declarationFor` has no case for a binding declared by an arm.
+    Those uses are `GotoOracle`'s `invisible-member` class (3 of them on
+    `enum_exhaustive_switch.vel`, 18 over the corpus, each printed with its line), and no rename can
+    reach them.
+  * **A payload field's name is not resolvable** -- and cannot be: nothing in the language writes
+    one.  Its declaration is hoverable (item 4), and no use of it exists to go to.
+  * **The semantic colour of a variant name is measured by nothing** (item 3).
+  * The plugin's parser still reproduces only the compiler's *parse* refusals, not its *checker*
+    refusals; a file the checker refuses is a tree here and a diagnostic from `vm.exe check` in the
+    editor.
+
+PROCESS FINDINGS, BECAUSE THEY COST THIS ROUND SOMETHING
+========================================================
+
+  * **The 0.1.9 dist zip was overwritten**, and with it the plugin classes every before/after above
+    is measured against.  `build-offline.ps1` names the zip after `<version>` in `plugin.xml`; this
+    round's version stayed 0.1.9 until its last step, and three intermediate builds wrote
+    `dist\vela-idea-plugin-0.1.9.zip` from work in progress.  What saved the round is
+    `harness.ps1`'s own design: it snapshots `build\classes` to
+    `build\tools\harness\classes\classes-snapshot-<pid>` before every run, so a concurrent build
+    cannot disturb it, and `classes-snapshot-41940` is the 0.1.9 build.  The discipline is now
+    observed in the other order: **bump the version first, then build**.
+  * **One differential ran against the wrong compiler**: `ast-diff.ps1` was invoked without
+    `-FrozenVm`, so it froze the tree's own `vm.exe` -- which the other track was rebuilding at that
+    moment -- and reported every `enum_*` file as "compiler refused ... but this parser accepted
+    it".  Re-run against the pinned copy it is the PASS quoted above.  The failing run is worth
+    keeping because the red looked exactly like a plugin defect and was a property of the binary.
+  * **A harness instrument, in the same family**: one of this round's edits to `HoverTruth.java`
+    was lost to a concurrent write to the same file and the tool then failed to compile at all --
+    which, under `harness.ps1`'s one-javac-call design, makes *all fifteen* tools fail with a
+    message about the one file.  It was caught by running the tool immediately after editing.

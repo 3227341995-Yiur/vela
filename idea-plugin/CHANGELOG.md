@@ -23,6 +23,91 @@ action registered as a group, and three extension points that were never
 registered (or registered under the wrong attribute name). An entry that says
 "added X, unverified" is worth more than one that says "added X".
 
+## 0.1.10 — the four things §13 could not do: variant names resolve, the popup opens, the colour is its own, the payload is a declaration
+
+**What changed.** 0.1.9 taught the plugin to *parse* `enum`/`match`.  This round is the other half:
+the names the language gained are now names the plugin can navigate, search, rename, hover and
+complete, each proved by a tool that already existed and each with the before/after measured
+against the 0.1.9 build's own classes.
+
+* **A variant name and an enum's name resolve through the reference machinery.**
+  `VelaTargetKind.ENUM` / `VARIANT` and the two sites in `VelaTargets.declarationFor`: a call whose
+  name is a variant (`Circle(2.0)` — and an arm's pattern `Circle(r) { … }`, which is the same
+  shape), a bare enum name in a type position (`c: Shape`), and a payload-free variant written as a
+  value (`Empty`).  The before/after, same harness, same frozen compiler, only the plugin build
+  different, on `tests/build/enum_exhaustive_switch.vel`:
+
+      GotoOracle 0.1.9   variant  3 refs / 0 correct / 3 no-target
+      GotoOracle 0.1.10  variant  3 refs / 3 correct / 0 no-target
+
+      RenameOracle 0.1.9   variant  3 decls / 6 bound / 0 claimed / 6 MISSED / 3 wrong declarations
+      RenameOracle 0.1.10  variant  3 decls / 6 bound / 6 claimed / 0 MISSED / 0 wrong declarations
+
+  Corpus-wide: `GotoOracle` **30,880 references judged, 0 WRONG** (`invisible-member 18`, printed);
+  `RenameOracle` **901 declarations judged, 2,998 bound uses, 0 MISSED, 0 WRONG-SCOPE, wrong 0**
+  with a per-kind row of its own (`enum 1 1 1 0 0 0`, `variant 21 42 42 0 0 0`); `RenameWriteback`
+  drives **830 declarations** through the plugin's own write-back and the compiler refuses the
+  declaration-only rename for **828** of them.  Those 22 declarations were *not judged at all*
+  before this round — `RenameOracle`'s declaration walk enumerated `def`/`struct`/`field`/
+  `param`/`decl`/`for` and knew nothing of §13, so "0 MISSED" was true of a table that could not
+  resolve a variant.
+
+* **Find Usages answers at an enum's or a variant's own name.**  `VelaUsageSearch.canSearchAt` now
+  accepts a leaf that resolves to *itself*: the token-shape rule it used before knows `struct X`,
+  `def f`, `for i` and `name: T`, and §13 writes none of those.  Measured the hard way — with the
+  walk taught §13 but this line missing, `RenameOracle` reported all 22 as
+  `NOT-SEARCHABLE: the platform would refuse Find Usages on this declaration's own name`, and the
+  same message for the *uses* (`the usage on line 17 (offset 553) cannot be searched for from its
+  own name`).  `wrong 22` before the line, `wrong 0` after.
+
+* **Parameter info opens for a variant construction.**  `VelaNames.resolveCall` answers a variant
+  with a payload, and `VelaParameterInfoHandler` shows its payload field names — read off the
+  variant symbol the model built from the `variant` node's own field list, which is the *same*
+  reader the completion's `Circle` → `Circle(radius)` template uses, so the two cannot disagree
+  about one declaration.  `PlatformEntry` row 9 grew by exactly those calls: on the same corpus the
+  0.1.9 plugin counts them in `callee-not-a-declared-def` and the 0.1.10 plugin judges them
+  (`find`/`show`/`update` each +9, all correct).
+
+* **A payload field is a declaration.**  `VelaModel.readEnumFromTree` emits a symbol per payload
+  entry, owned by the variant that carries it, so the hover for `radius` is the declaration the
+  compiler's dump prints (`field radius: float`, owner `Circle`) — and `HoverTruth` *judges* it now
+  instead of counting it: the class `payload-field-not-a-model-declaration` (15 positions) is gone
+  and the row reads **13,028 judged / 81 skipped / wrong 0**.  It went red first and the red was
+  mine, in the harness: the dump reader set the payload's owner and then the common tail overwrote
+  it with `structOf(parent)`, which is empty for a payload because its parent is a variant and not
+  a struct — 15 findings, every one of them saying "the compiler nests it under `-`" about a hover
+  that was right.
+
+* **A variant name has a colour of its own.**  `VelaNameKind.VARIANT`, drawn with the platform's
+  constant colour, for all four positions the language writes a variant in (the declaration, a
+  construction, a pattern, a bare value) — the compiler's own dump is the authority that a variant
+  is a variant and not a plain name.  **Nothing measures this colour**: no harness asks which key a
+  name is drawn with, `FeatureProbe` checks the keys the *lexer* draws against the ones the colour
+  page registers, and these semantic kinds are drawn with platform defaults and registered
+  nowhere.  The decision is written where it is made and it is named here, not implied covered.
+
+**Still not done for §13, named with its cost.**  A **pattern binding's** name (`r` in
+`Circle(r)`) is not resolved: the arm binds a new name positionally and the body's uses of it are
+the `invisible-member` class (`GotoOracle` 18 positions, printed with their lines).  A **payload
+field's** name is not resolvable either, and cannot be — nothing in the language writes one.  Both
+are counted classes, not claims.
+
+**A process finding, because it cost this round its cleanest artefact.**  The 0.1.9 plugin classes
+were nearly lost: `build-offline.ps1` names the dist zip after the version in `plugin.xml`, and the
+version was not bumped until this round's last step, so three intermediate 0.1.10 builds
+**overwrote `dist\vela-idea-plugin-0.1.9.zip` with work in progress**.  The before/after runs above
+were saved by `harness.ps1`'s own per-run class snapshots (`build\tools\harness\classes\classes-snapshot-*`),
+which are the only surviving copy of the 0.1.9 plugin; the version is now bumped *before* the first
+build of a round, which is what the discipline is for.
+
+**What this does not prove.**  No IDE was started: every harness drives the plugin's own entry
+points with stand-ins.  The frozen oracle is `vm.exe` 867,328 bytes, sha256 `1e52032c…`
+(`LLVM-C.dll` 74,159,616 bytes, `1286e894…`), and the corpus was again not frozen — it grew by
+three files while this round ran (`template-names-not-in-spec` 146 → 149), so the position counts
+are one run over the tree as it stood.  `SymbolDiff` and `FoldDiff` remain non-zero by design
+(`wrong 13` and `41`), and their numbers did not move this round: what changed for them is that the
+tree model now also declares a variant's payload fields.
+
 ## 0.1.9 — the plugin follows the language into §13: `enum`, `match`, and the trees they make
 
 **What changed.** `SPEC.md` §13 landed in the compiler while 0.1.8 was being measured: `enum` and

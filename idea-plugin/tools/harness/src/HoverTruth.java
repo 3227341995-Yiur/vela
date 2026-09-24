@@ -894,7 +894,16 @@ public final class HoverTruth {
                 e.indent = depth;
                 e.parent = parent;
                 e.nested = nestedInDef(parent);
-                if (e.kind.equals("field")) e.owner = e.nested ? "" : structOf(parent);
+                // ORDER MATTERS HERE, AND GETTING IT WRONG COST A RED RUN.  The owner of a
+                // *payload* field was decided by the branch above, from the variant that
+                // carries it; the field branch below would overwrite it with
+                // `structOf(parent)`, which answers "" because a payload's parent is a
+                // variant and not a struct.  Measured: 15 findings, every one of them
+                // saying "the compiler nests it under `-`" about a hover that was right
+                // (`field radius: float`, owner `Circle`).
+                if (e.payload) {
+                    // already owned by its variant
+                } else if (e.kind.equals("field")) e.owner = e.nested ? "" : structOf(parent);
                 else if (e.kind.equals("def")) e.owner = e.nested ? "" : structOf(parent);
                 else if (e.kind.equals("param")) {
                     e.owner = parent != null && parent.kind.equals("def") ? parent.name : "";

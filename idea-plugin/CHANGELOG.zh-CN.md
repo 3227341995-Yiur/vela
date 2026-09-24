@@ -4,8 +4,8 @@
 
 <!--
 源文件 : CHANGELOG.md
-源文件字节 : 55447
-源文件 SHA256 : 1e32bf546c92ce2723c5cbd0dee3d41a9352b16a291e49e2ee0e04ca2f595ddb
+源文件字节 : 61944
+源文件 SHA256 : ef0f8e45b17be65c7de903fa029afa6404990027e8042b331bef70bc5ba760e4
 翻译日期 : 2026-09-24
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -23,6 +23,34 @@
 | 本文件 | 一条记录说改了什么，**以及什么被验证过、什么没有** |
 
 最后一列不是仪式。这个项目更老的那条规则是：没有人测量过的声称不存在。而这个插件已经发布过三个完成后完全无作用的功能——一个写错的文件扩展名、一个被当成组注册的动作，以及三个从未被注册（或者注册在错误属性名下）的扩展点。一条写着“加了 X，未验证”的记录，比一条写着“加了 X”的记录更有价值。
+
+## 0.1.10 —— §13 做不到的四件事：变体名可解析、弹窗会开、颜色是自己的、payload 是声明
+
+**改了什么。** 0.1.9 教会插件**解析** `enum` 与 `match`；这一版是另一半：语言新得到的那些名字，现在是插件能跳转、能查找、能重命名、能悬停、能补全的名字。每一件都用已经存在的工具测，每一个「之前」的数字都是用**同一个**工具、跑在 **0.1.9 插件自己的 class 文件**上、对**同一个冻结编译器**测出来的——唯一的差别是插件构建。
+
+* **变体名和枚举名进了引用机制。** 新增 `VelaTargetKind.ENUM` / `VARIANT`，并在 `VelaTargets.declarationFor` 的两处接上：名字是变体的调用（构造 `Circle(2.0)`——arm 的模式 `Circle(r) { … }` 是同一个形状）、类型位置上的裸枚举名（`c: Shape`）、以及当值写的无 payload 变体（`Empty`）。前后对照（同一 harness、同一冻结编译器，唯一差别是插件构建），在 `tests/build/enum_exhaustive_switch.vel` 上：
+
+      GotoOracle 0.1.9    variant  3 个引用 / 0 正确 / 3 个无目标
+      GotoOracle 0.1.10   variant  3 个引用 / 3 正确 / 0 个无目标
+
+      RenameOracle 0.1.9    variant  3 个声明 / 6 个绑定 / 0 个声明/ 6 个 MISSED / 3 个错声明
+      RenameOracle 0.1.10   variant  3 个声明 / 6 个绑定 / 6 个声明 / 0 个 MISSED / 0 个错声明
+
+  全语料：`GotoOracle` **判定 30,880 个引用、错 0**（`invisible-member 18`，逐个打印）；`RenameOracle` **判定 901 个声明、2,998 个编译器实际绑定的使用、0 MISSED、0 WRONG-SCOPE、错 0**，并且自己有一行分类计数（`enum 1 1 1 0 0 0`、`variant 21 42 42 0 0 0`）；`RenameWriteback` 把 **830 个声明**开过插件自己的写回通路，编译器对其中 **828** 个拒绝「只重命名声明」这种改法。这 22 个声明在这一版之前**根本没被判过**——`RenameOracle` 的声明遍历只枚举 `def`/`struct`/`field`/`param`/`decl`/`for`，对 §13 一无所知，所以那个「0 MISSED」其实属于一张连变体都解析不出来的表。
+
+* **查找引用现在能在一个枚举或变体自己的名字上回答。** `VelaUsageSearch.canSearchAt` 现在接受一个「解析到它自己」的叶子：它原来用的 token 形状规则只认 `struct X`、`def f`、`for i` 和 `name: T`，§13 一个都不写。这一条也是测出来的——当遍历已经认识 §13、而这一行还缺着时，`RenameOracle` 把这 22 个全报成 `NOT-SEARCHABLE: the platform would refuse Find Usages on this declaration's own name`，连**使用处**也一样（`the usage on line 17 (offset 553) cannot be searched for from its own name`）。加这一行之前 `wrong 22`，之后 `wrong 0`。
+
+* **变体构造有参数信息弹窗了。** `VelaNames.resolveCall` 回答带 payload 的变体，`VelaParameterInfoHandler` 画出它的 payload 字段名——读的是模型从 `variant` 节点自己的字段表建出来的那个符号，和补全的 `Circle` → `Circle(radius)` 模板用的是**同一个**读取器，所以两者不可能对同一个声明给出两种说法。`PlatformEntry` 第 9 行正好多出这些调用：同一份语料上，0.1.9 插件把它们算进 `callee-not-a-declared-def`，0.1.10 插件判定它们（`find`/`show`/`update` 各 +9，全部正确）。
+
+* **payload 字段是声明了。** `VelaModel.readEnumFromTree` 为每个 payload 条目产出一个符号，归属它的变体，于是 `radius` 的悬停就是编译器 dump 打印的那个声明（`field radius: float`，owner `Circle`）——而 `HoverTruth` 现在**判**它，不再**数**它：计数的类别 `payload-field-not-a-model-declaration`（15 个位置）消失，那一行变成 **判定 13,028 / 跳过 81 / 错 0**。它先红过一次，而红的是我这一版自己的 harness：dump 读取器在识别出该行的地方设了 payload 的 owner，紧接着读取器的公共尾部又把它覆盖成 `structOf(parent)`——而 payload 的父节点是 `variant` 不是 `struct`，所以答案成了空串。15 条 finding，每一条都在说「编译器把它嵌在 `-` 下」，而悬停是对的。
+
+* **变体名有自己的颜色了。** 新增 `VelaNameKind.VARIANT`，用平台的常量色，覆盖语言写变体的全部四种位置（枚举体里的声明、构造、arm 的模式、裸值）——编译器自己的 dump 就是「这是变体、不是普通名字」的权威。**没有任何东西测量这个颜色**：没有 harness 会问一个名字被画成哪个 key，`FeatureProbe` 检查的是**词法器**画的 key 与配色页注册的 key 一致，而这些语义类别用的是平台默认色、哪儿也没注册。这个决定写在做出决定的地方，并在这里点名，而不是暗示它被覆盖了。
+
+**§13 仍然做不到的，点名并带上代价。** **模式绑定**的名字（`Circle(r)` 里的 `r`）不解析：arm 按位置绑定一个新名字，函数体里对它的使用属于 `GotoOracle` 的 `invisible-member` 类别（该文件 3 个，全语料 18 个，逐个带行号打印）。**payload 字段**的名字也不可解析，而且不可能解析——语言里没有任何地方写得出它。两者都是计数的类别，不是声称。
+
+**一条流程上的发现，因为它让这一版差点丢掉最干净的那个物证。** 0.1.9 插件的 class 文件几乎丢了：`build-offline.ps1` 用 `plugin.xml` 里的版本给 dist zip 命名，而这一版的版本号直到最后一步才升，于是三次中间构建把 `dist\vela-idea-plugin-0.1.9.zip`（连同上面每个「之前」数字所测的那份插件）**覆盖成了半成品**。它们靠 `harness.ps1` 自身的设计活下来——它在每次运行前把 `build\classes` 快照到 `build\tools\harness\classes\classes-snapshot-*`，所以并发构建打扰不到它，`classes-snapshot-41940` 就是那次的 0.1.9；上面每一对前后对照都是用同一 harness、同一冻结编译器从它重跑的。规矩现在按另一个顺序执行：**先升版本，再构建。**
+
+**这一版没有证明什么。** 没有启动任何 IDE：每个 harness 都是拿替身驱动插件自己的入口。裁判是冻结的 `vm.exe` 867,328 字节、sha256 `1e52032c…`（`LLVM-C.dll` 74,159,616 字节、`1286e894…`），语料同样没有冻结——这一轮里它从 147 个文件长到 152 个（`template-names-not-in-spec` 146 → 149），所以位置计数是某一次运行在当时的树上的结果。`SymbolDiff` 与 `FoldDiff` 按设计仍非零（错 13 与 41），且这一版没有移动：对它们而言变化的是树模型现在也声明变体的 payload 字段。
 
 ## 0.1.9 —— 插件跟上语言走进 §13：`enum`、`match`，以及它们造出的树
 
