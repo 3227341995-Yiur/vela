@@ -221,6 +221,37 @@ in the previous freeze were measured on the previous compiler; their property (o
 distinct answer, always) is what the suite's own `run` cases assert on every run, and
 re-taking the 25-run counts on this compiler is outstanding rather than assumed.
 
+## The default path's own number, which no row above is about (2026-09-24)
+
+`build` became the LLVM path on 2026-09-24, so **every number above is a number about the C
+back end** (`build-c`), which is no longer what a user gets by default.  The harness builds the
+Vela side with `build-c` because half this corpus is `parallel for` and the LLVM back end
+refuses that by design -- so those rows cannot be compared at all -- and
+`bench\matmul_serial.vel`, which has no `parallel for`, is the one row where the product path
+can be measured.  Built by hand through the LLVM path, five runs, this machine, the same
+protocol (the program prints its own number and its own answer):
+
+    selfhost\build\vm.exe build <scratch>\mm.vel      # `build` is the LLVM path
+    <scratch>\mm.exe                                  # five times
+
+    0.953164  0.940688  0.966658  0.959652  0.955570      median 0.9556 s
+    checksum 1090512707 -- the same value every matmul row above prints
+
+| serial matmul 512x512, same program, median of 5 | this machine |
+|---|---|
+| C++ twin (MSVC /O2, no OpenMP) | 0.2317 s |
+| Vela, C back end (`build-c`) | 0.5554 s -- 2.4x the C++ twin |
+| **Vela, LLVM back end (`build`, the default)** | **0.9556 s -- 4.1x the C++ twin, and 1.72x the C back end** |
+
+That is the honest state of the claim this file exists to answer: **the default path is the
+slow one**, and it is slower than the C path by more than the C path is slower than C++.  The C
+path's advantage is MSVC's optimiser over emitted C, where the subscript arithmetic is inlined
+and partly eliminated; the LLVM emitter calls `vela_llvm_bounds_check`, `vela_llvm_mul_range`
+and `vela_llvm_add_range` once per operation with no elimination of its own, and (as the ladder
+above says) that checked arithmetic is where the time is.  So `selfhost\ELISION_PLAN.md` has a
+sharper target than it had yesterday: the number that decides "faster than C++" is the one the
+**LLVM** emitter produces, not the one MSVC produces from its C.
+
 ## What has been thrown away
 
 One row, and only because it cannot be built: `VELA --fast-int`.  The flag belonged to

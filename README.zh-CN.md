@@ -4,8 +4,8 @@
 
 <!--
 源文件 : README.md
-源文件字节 : 36559
-源文件 SHA256 : 3e37018f72de53e090c2ee18178904735d926ab1633aa6cfdba0c1ea328998ee
+源文件字节 : 36853
+源文件 SHA256 : ff16e025d222ae900f7bbeb938869d648cd2aefa8f7b01ef1f18d325a88f9bec
 翻译日期 : 2026-09-24
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -65,7 +65,7 @@ def main() -> None {
 
 | 断言 | 判定它的命令 | 实测 |
 |---|---|---|
-| **比 C++ 更快** | `powershell -ExecutionPolicy Bypass -File tools\bench.ps1 -Reps 7` | **尚未成立，而差距现在被集中在一处测量出来了。** 在 2026-09-19 的 emitter 修复之后（每个数组下标只计算一次，而不是两次），串行 matmul 512² 比它的 C++ 孪生版本**慢 2.4 倍**（0.5433 s 对 0.2241 s，`bench\RESULTS.md`），并行 matmul 慢 3.1 倍（0.0680 s 对 0.0221 s），sieve 在一个显式未检查的 C++ 行面前慢 1.5 倍*同时又保留着自己的检查*（0.0197 s 对 0.0134 s），而 mandelbrot 精确到微秒地打平（两者都是 0.011950 s）。剩下的 matmul 差距全部是**带检查的下标算术**——下标上的 `vela_mul_range`/`vela_add_range` 约占修复后耗时的 68%，而边界检查只有约 0.04 s——所以决定这条断言的数字是 `selfhost/ELISION_PLAN.md` 将产出的那个数字，而不是本行 |
+| **比 C++ 更快** | `powershell -ExecutionPolicy Bypass -File tools\bench.ps1 -Reps 7` | **尚未成立，而差距现在被集中在一处测量出来了。** 在 2026-09-19 的 emitter 修复之后（每个数组下标只计算一次，而不是两次），串行 matmul 512² 比它的 C++ 孪生版本**慢 2.4 倍**（0.5433 s 对 0.2241 s，`bench\RESULTS.md`），并行 matmul 慢 3.1 倍（0.0680 s 对 0.0221 s），sieve 在一个显式未检查的 C++ 行面前慢 1.5 倍*同时又保留着自己的检查*（0.0197 s 对 0.0134 s），而 mandelbrot 精确到微秒地打平（两者都是 0.011950 s）。剩下的 matmul 差距全部是**带检查的下标算术**——下标上的 `vela_mul_range`/`vela_add_range` 约占修复后耗时的 68%，而单独去掉边界检查只值 **0.029 s**（阶梯表里的 `0.543 − 0.514`；早先的 `~0.04 s` 无法从那张阶梯表里复现，所以被去掉而不是重新猜一个）——所以决定这条断言的数字是 `selfhost/ELISION_PLAN.md` 将产出的那个数字，而不是本行。**而且自 2026-09-24 起，默认路径本身就是 LLVM 那条，它的串行 matmul 是 0.9556 s——是 C 后端的 0.5554 s 的 1.72 倍，也是 C++ 孪生的 4.1 倍**——所以这一行等的数字，是 **LLVM** 发射器产出的那个，而不是 MSVC 从它的 C 里产出的那个（`bench\RESULTS.md`） |
 | **Rust 的安全设计** | 语料中的拒绝用例、`tools\smoke.ps1`、`vm.exe check tests\probes\parallel_alias_*.vel` | 没有指针、没有 `unsafe`、没有 `free`，只有 arena；边界与溢出检查在编译后的代码*以及*解释器里都会触发，而且消息相同；写数组的 `parallel for` 循环体只能在自己的下标处读该数组——**由一次运行证明**：跨迭代的读被拒绝（`'parallel for' reads 'a' at an index other than the one it writes …`），而那四种合法形状仍能编译并照旧发出 `#pragma omp` |
 | **Python 的语法，更严格的语义** | `vm.exe check` | 条件必须是 `bool`，`//` 和 `%` 是地板除，字符串 `+` **连接两个 `str`**（而 `str + int` 被拒绝，没有静默的 `toString`），产生值的语句被拒绝——但一个绑定到 `int` 的 `str` 仍会被 `check` 接受，而未声明的类型名是被 emitter 的 panic 捕获的，不是被诊断捕获的 |
 | **纯血** | 在 `PATH` 上没有 `cl.exe` 的情况下 `vm.exe build selfhost\vm.vel` | 编译器的源码是 Vela，链接器是 Vela，任何地方都没有 Python、没有 C++，并且 `selfhost_fixpoint` 通过——但 **`build` 仍然需要 C 编译器**：C 就是代码生成后端。`run` 什么都不需要（`vm.exe run` 是内置的解释器），而那个要把 C 编译器从 `build` 里拿掉的 LLVM 后端是**已开始、未完成**：它的 M1 已达成（同一个程序，分别经由解释器、C 后端、以及由 `clang-cl` 链接的手写 LLVM IR，逐字节打印出完全相同的字节——`tools\llvm-m1.ps1`），而将要写出那份 IR 的 emitter 尚不存在 |
