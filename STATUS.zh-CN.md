@@ -4,9 +4,9 @@
 
 <!--
 源文件 : STATUS.md
-源文件字节 : 34991
-源文件 SHA256 : 07deeaef154511c0a6796d842e2270ba88332e736569fc1ddb05b4cf023d4cd9
-翻译日期 : 2026-09-24
+源文件字节 : 35416
+源文件 SHA256 : 1ba664c83dc6268f74654316654a93067c5bb806cdef0b9f118ac4ed3313ad56
+翻译日期 : 2026-09-25
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -23,7 +23,7 @@
 | 三方差分 | `powershell -ExecutionPolicy Bypass -File _llvmdiff.ps1` | **现在是一个工具，不是手工跑出来的**：`cases: 23  match: 14  REFUSED: 9  DIVERGE: 0`。那九个是 7 个刻意的 `parallel for` 拒绝，加上 `struct` 参数和 `struct` 局部变量。§0 那句 "7 match, 16 refused" 是两轮收口之前的事 |
 | 自举 | `tools\build.ps1` | `RESULT: ok`，而不动点是按 **C** 判的，不是按 `.exe` 字节：`selfhost\build\vm.c` == `selfhost\vm.c` == `selfhost\build\_fixpoint_gen2.c`，`CF2F0B76…`，944 784 字节。同一份源码的两次构建会产出不同的 `.exe` 哈希（PE 时间戳），所以要比对的产物是发出的 C |
 | 检查器 | 对那六个被耗尽的洞用例运行 `vm.exe check` | 六个洞已关闭，每一个都用记录在案的那套措辞拒绝。在 70 个 safety 行里，仍然开着的两个是被记录下来而不是被藏起来：`hole_mut_scalar_parameter`（`SPEC.md` §3.2 说这个实现对一个标量并不守那条承诺）和 `hole_narrowing_binding_{u8,i32}`，也就是解释器和编译出来的路径给出不同答案（`300` 对 `44`）的那些 **diverge** 行。那处分歧现在被定下来了：三条路径都会在收窄存储处检查可表示性，并用同一条消息拒绝，而不是让其中一条悄悄地保住一个更宽的值 |
-| IDEA 插件 | `idea-plugin\build-offline.ps1` | **0.1.4**：`dist\vela-idea-plugin-0.1.4.zip` 324 186 B，`RESULT: PASS`（154 OK / 0 FAIL），98 个具体顶层类，**0 个死的**。能力清单是 `idea-plugin\FEATURE_PARITY.md`：27 行，**18 个 `implemented`、8 个 `partial`、1 个 `refused-deliberately`、0 个 missing**，而所有者报告的那个参数名缺陷已经关闭，前后对照证据在 `idea-plugin\evidence\` 里 |
+| IDEA 插件 | `idea-plugin\build-offline.ps1` | **0.1.11**：`dist\vela-idea-plugin-0.1.11.zip` 375 184 B，`RESULT: PASS`（`build\logs\verify.log`：**162 行 OK、0 行 FAIL**），111 个具体顶层类，**0 个死的**。能力清单是 `idea-plugin\FEATURE_PARITY.md`：27 行，**26 个 `implemented`、1 个 `refused-deliberately`、0 个 `partial`、0 个 missing**，而所有者报告的那个参数名缺陷已经关闭，前后对照证据在 `idea-plugin\evidence\` 里。0.1.11 里有一条规则是**离开**而不是到达：`VelaStringConcatenation` 被撤下，因为 `+` 拼两个 `str` 已经合法（`SPEC.md` §1.5），而这里的每条规则都必须对得上编译器**自己**给出的拒绝——它的 7 个 finding 就是 `inspection-probe.ps1` 报告里 13 → 7 中的那 7 个，探针对照的是带上这个运算符的那个编译器（`vm.exe` 870 400 B，`aaa0a599…`） |
 | 基准 | `tools\bench.ps1 -Reps 7` | 重新测量并记录在 `bench/RESULTS.md` 里它自己那个带日期的章节中：串行 matmul **慢 2.42×**，并行 **按 7 取最佳是 3.49× / 按中位数是 2.80×**，mandelbrot 是平手，sieve 慢 1.50×。**"比 C++ 快" 仍然没有被确立**，而 §4 的那些阶梯仍然是那个唯一可能改变这件事的杠杆的论据 |
 
 以上这些都没有改变下面这件事，而它仍然是这项工作的形状：`build` 把 C 送给 `cl.exe` 这件事**已经结束了**——`build` 就是 LLVM 路径，只起 `lld-link`；C 后端按名字叫 `build-c`。**带载荷的枚举和 `match` 已经不在「仍缺」那份清单里**（2026-09-24 落地）：解释器构造变体并执行分支，C 后端把一个枚举值降成 tagged union、把穷尽的 `match` 降成没有 `default` 的 `switch`，检查器判定穷尽性（**点名**缺的是哪个变体）、重复分支、`else` 不在最后、以及主语不是枚举，而 LLVM 后端把整个构造**按名字拒绝**——`tests\llvm-refusals.txt` 里的五行，那是双侧账本。`enum` 和 `match` 现在是保留字（`SPEC.md` 1.3），这是语言决定而不是词法细节，因为 `match = 1` 和 `match(x)` 都是合法程序，没有猜的余地。编译器在抬高自己的池子之前根本解析不了用到它们的源码——节点 65,536 → 131,072、token 131,072 → 262,144——而那次抬高必须是独立的一个提交，因为旧的种子编译器解析不了需要超过 65,536 个节点的源码。仍缺的是模块/`import`、`Result`/`?`、泛型、闭包、嵌套函数、字符串拼接、slice、迭代/traits —— 八个功能，其中字符串拼接正在树里做。
