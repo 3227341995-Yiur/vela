@@ -1,7 +1,7 @@
-// The Vela plugin for IntelliJ IDEA.
+﻿// The Vela plugin for IntelliJ IDEA.
 //
 // It is deliberately *thin*: the language's own compiler (`selfhost/build/vm.exe`
-// 鈥?Vela, compiled to C) is the only thing that decides what a program means, and
+// 閳?Vela, compiled to C) is the only thing that decides what a program means, and
 // this plugin never grows a second opinion.  What it adds is what an editor owes a
 // programmer: the file type, highlighting, and diagnostics that come from the real
 // compiler, plus one action that builds and runs.
@@ -22,7 +22,7 @@ group = "dev.vela"
 // Kept in step with <version> in src\main\resources\META-INF\plugin.xml, which is
 // the source of truth the offline build reads.  Every plugin update bumps both,
 // and writes the entry in CHANGELOG.md.
-version = "0.1.11"
+version = "0.1.12"
 
 repositories {
     mavenCentral()

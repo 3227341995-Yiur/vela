@@ -569,6 +569,28 @@ private class VelaParameterNameInlayHintsCollector(
 ) : FactoryInlayHintsCollector(editor) {
 
     /**
+     * WHETHER THIS COLLECTOR HAS ALREADY PAINTED THE FILE.  It is the whole of the
+     * 0.1.12 fix, and the defect it repairs is worth writing down exactly.
+     *
+     * `collect` is called by the platform once per PSI element while the walk runs,
+     * and its `Boolean` result is the platform's "keep walking into the children".
+     * The hint list below is computed from the **whole file's** text, so registering
+     * it on every call paints every hint once per element.  Measured in the editor
+     * (`ide-demo/tour.vel`, 57 lines): 62 call arguments in the file, `abs(self.x)`
+     * on line 19 drew its label thousands of times into the rest of the line, and
+     * the line scrolled off the screen.  The offsets are *document* offsets, so it
+     * does not matter which element the first call arrives with: paint once, then
+     * return `false` and let the walk stop.
+     *
+     * The harness could not have caught this, and that is the other half of the
+     * entry: every hints tool here (`HintDiff`, `HintShapes`, `HintTruth`,
+     * `ParamNames`) measures `VelaHints.parameterHints` — the *list* — and nothing
+     * drove this class, which is the thing the platform actually calls.  A list
+     * that is right and painted N times is a screen that is wrong.
+     */
+    private var painted = false
+
+    /**
      * The document, not `file.text`: the offsets an inlay is registered at index
      * the document, and the document is what the user is looking at.  Falls back
      * to the PSI text when the file has no committed document, which is the state
@@ -585,6 +607,8 @@ private class VelaParameterNameInlayHintsCollector(
     }
 
     override fun collect(element: PsiElement, editor: Editor, sink: InlayHintsSink): Boolean {
+        if (painted) return false
+        painted = true
         val text = text()
         if (text.isEmpty()) return false
 
@@ -599,7 +623,9 @@ private class VelaParameterNameInlayHintsCollector(
                 false, // not placed at the end of the line: it belongs at this offset
             )
         }
-        return true
+        // The whole file was painted in this one call, so there is nothing below it
+        // to visit: `false` stops the walk instead of painting it again per element.
+        return false
     }
 }
 

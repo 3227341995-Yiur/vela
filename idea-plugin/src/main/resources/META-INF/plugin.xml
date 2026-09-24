@@ -1,6 +1,6 @@
-<!--
+﻿<!--
   The whole plugin surface, in one file.  Every extension here answers a question
-  the platform asks, and none of them answers a question about *Vela semantics* 鈥?  that is `vm.exe`'s job, and this plugin's job is to ask it.
+  the platform asks, and none of them answers a question about *Vela semantics* 閳?  that is `vm.exe`'s job, and this plugin's job is to ask it.
 
     fileType                    a `.vel` file has a language, so an editor opens
     syntaxHighlighterFactory    colour while typing, from the same lexer rules
@@ -46,10 +46,10 @@
       was *intended* and 253 is the oldest platform that actually exists on this
       machine.  The sources are compiled against the installed IntelliJ IDEA
       2026.2.1 (262), and are re-compiled and re-linked against PyCharm 2025.3
-      (253) to prove that every class and member they use is present in both 鈥?      so the plugin can honestly claim to load from 253 upward.  until-build is
+      (253) to prove that every class and member they use is present in both 閳?      so the plugin can honestly claim to load from 253 upward.  until-build is
       deliberately absent: no fake upper limit.
     -->
-    <version>0.1.11</version>
+    <version>0.1.12</version>
     <idea-version since-build="253"/>
 
     <depends>com.intellij.modules.platform</depends>
@@ -77,7 +77,7 @@
              `com.intellij.lang.parserDefinition`, and a bare
              `<parserDefinition>` names `com.intellij.parserDefinition`, which no
              installed descriptor declares.  That registration was a silent no-op
-             鈥?48 installed plugins use the `lang.` form and none use the other 鈥?             and without it there is no PSI tree, so completion, hover and
+             閳?48 installed plugins use the `lang.` form and none use the other 閳?             and without it there is no PSI tree, so completion, hover and
              parameter info have no leaves to be handed and never fire. -->
         <lang.parserDefinition language="Vela"
                                implementationClass="dev.vela.plugin.VelaParserDefinition"/>
@@ -92,7 +92,7 @@
              `<lang.structureViewBuilder>`: no such extension point exists, in
              this IDE or in any of the 1987 plugin jars it ships, and a
              registration against an unknown id is a no-op the platform does not
-             report 鈥?the Structure view would simply stay empty.  The value here
+             report 閳?the Structure view would simply stay empty.  The value here
              must be a factory (PsiStructureViewFactory), which is why
              VelaPsiStructureViewFactory exists to hand back the builder. -->
         <lang.psiStructureViewFactory language="Vela"
@@ -151,7 +151,7 @@
              renaming, "write the new name here instead".
 
              The attribute is `implementation`, and this line said
-             `implementationClass` until an audit proved otherwise three ways 鈥?             because this extension point's bean is the one place in the
+             `implementationClass` until an audit proved otherwise three ways 閳?             because this extension point's bean is the one place in the
              platform where the XML name and the Java field name disagree:
 
                * the declaration itself, in
@@ -161,16 +161,16 @@
                * the bean's constant pool:
                  `PsiReferenceContributorEP` has a field named
                  `implementationClass` that is annotated
-                 `@Attribute("implementation")` 鈥?the field name is not the
+                 `@Attribute("implementation")` 閳?the field name is not the
                  attribute name;
                * ten bundled plugins that register this id, every one of them
                  with `implementation=` and none with `implementationClass=`
-                 (angular, css, Groovy, freemarker, hibernate, DatabaseTools, 鈥?.
+                 (angular, css, Groovy, freemarker, hibernate, DatabaseTools, 閳?.
 
              With the wrong name the registration is a silent no-op:
              `registerReferenceProviders` never runs, no reference exists, and
              rename and find-usages start from zero while Ctrl+Click (a
-             different extension point) keeps working 鈥?which is exactly why it
+             different extension point) keeps working 閳?which is exactly why it
              looked fine.  The project's own verifier accepted it too, because it
              treated the two names as aliases; that fallback has been removed
              separately so the next one is caught. -->
@@ -182,14 +182,14 @@
              Declared: `<extensionPoint name="lang.findUsagesProvider">` with
              `<with attribute="implementationClass"
              implements="com.intellij.lang.findUsages.FindUsagesProvider"/>`
-             in intellij.platform.ide.impl.jar!META-INF/LangExtensionPoints.xml 鈥?             beanClass form, so `language` + `implementationClass`.
+             in intellij.platform.ide.impl.jar!META-INF/LangExtensionPoints.xml 閳?             beanClass form, so `language` + `implementationClass`.
 
              Copied from css-plugin.jar!META-INF/plugin.xml:
              <lang.findUsagesProvider language="CSS" implementationClass="com.intellij.psi.css.usages.CssFindUsagesProvider"/>
 
              `getWordsScanner` is the member that matters even though it is not
              abstract: the interface's default returns null, and a null scanner
-             makes the platform search nothing 鈥?so the feature would answer "no
+             makes the platform search nothing 閳?so the feature would answer "no
              usages found" for every name in every file, which is a wrong answer
              rather than a missing one.  The scanner is therefore real, built over
              the plugin's own lexer.
@@ -198,7 +198,7 @@
              below, and each needed a different attribute name, which is the trap
              this file keeps recording: `gotoDeclarationHandler` (Ctrl+Click) takes
              `implementation`, `psi.referenceContributor` (the reference a rename
-             or a search starts from) takes `implementation` too, and this one 鈥?             a beanClass point 鈥?takes `implementationClass`. -->
+             or a search starts from) takes `implementation` too, and this one 閳?             a beanClass point 閳?takes `implementationClass`. -->
         <lang.findUsagesProvider language="Vela"
                                  implementationClass="dev.vela.plugin.VelaFindUsagesProvider"/>
 
@@ -207,8 +207,8 @@
              written and then never registered, so rename would have resolved and
              then done nothing.
 
-             `forClass` is `PsiElement` because Vela's PSI is flat 鈥?one leaf per
-             token, no composite nodes 鈥?so a leaf *is* the thing to rewrite.  It
+             `forClass` is `PsiElement` because Vela's PSI is flat 閳?one leaf per
+             token, no composite nodes 閳?so a leaf *is* the thing to rewrite.  It
              therefore also sees leaves that are not names, and the manipulator's
              own body refuses those rather than rewriting, say, a number. -->
         <lang.elementManipulator forClass="com.intellij.psi.PsiElement"
@@ -222,12 +222,12 @@
              the extension point is `codeInsight.inlayProvider` (NOT
              `codeInsight.inlayHintsProvider`, which no installed descriptor
              declares), and the on/off switch is the registration's
-             `isEnabledByDefault` attribute 鈥?`InlayHintsProvider` has no such
+             `isEnabledByDefault` attribute 閳?`InlayHintsProvider` has no such
              member.  `id` is the key the user's toggle is stored under.
 
-             The provider class was finished 鈥?all six abstract members
+             The provider class was finished 閳?all six abstract members
              implemented, over `NoSettings`, with its decision function kept pure
-             so it can be checked headlessly 鈥?and then sat unregistered.  That
+             so it can be checked headlessly 閳?and then sat unregistered.  That
              is the third time in this plugin's short life that a finished
              feature did nothing for want of a registration line, which is why
              the verifier now checks every registration against the platform's
@@ -270,7 +270,7 @@
              Declared: `<extensionPoint name="lang.formatter"
              beanClass="com.intellij.lang.LanguageExtensionPoint">` with
              `<with attribute="implementationClass" implements="com.intellij.formatting.FormattingModelBuilder"/>`
-             in intellij.platform.ide.impl.jar!META-INF/CodeStyle.xml 鈥?beanClass
+             in intellij.platform.ide.impl.jar!META-INF/CodeStyle.xml 閳?beanClass
              form: `language` + `implementationClass`.
 
              Copied from intellij.json.jar!META-INF/plugin.xml:
@@ -278,7 +278,7 @@
         <lang.formatter language="Vela"
                         implementationClass="dev.vela.plugin.VelaFormattingModelBuilder"/>
 
-        <!-- Settings 鈫?Editor 鈫?Code Style 鈫?Vela, and the language-keyed half of
+        <!-- Settings 閳?Editor 閳?Code Style 閳?Vela, and the language-keyed half of
              it (which language a settings object is about, and the defaults).
 
              Declared: `<extensionPoint name="codeStyleSettingsProvider"
@@ -287,7 +287,7 @@
              `<extensionPoint name="langCodeStyleSettingsProvider"
              interface="com.intellij.psi.codeStyle.LanguageCodeStyleSettingsProvider"/>`
              (intellij.platform.ide.impl.jar!META-INF/FormatterExtensionPoints.xml)
-             鈥?both interface form: `implementation`, and neither takes a
+             閳?both interface form: `implementation`, and neither takes a
              `language` attribute.
 
              Copied from intellij.json.jar!META-INF/plugin.xml, which registers
@@ -302,7 +302,7 @@
              Declared: `<extensionPoint name="lang.foldingBuilder"
              beanClass="com.intellij.lang.LanguageExtensionPoint">` with
              `<with attribute="implementationClass" implements="com.intellij.lang.folding.FoldingBuilder"/>`
-             (intellij.platform.ide.impl.jar!META-INF/LangExtensionPoints.xml) 鈥?             beanClass form.
+             (intellij.platform.ide.impl.jar!META-INF/LangExtensionPoints.xml) 閳?             beanClass form.
 
              Copied from cron.jar!META-INF/plugin.xml:
              <lang.foldingBuilder language="CronExp" implementationClass="com.intellij.cron.CronFoldingBuilder" /> -->
@@ -314,7 +314,7 @@
              Declared: `<extensionPoint qualifiedName="com.intellij.lang.commenter"
              beanClass="com.intellij.lang.LanguageExtensionPoint">` with
              `<with attribute="implementationClass" implements="com.intellij.lang.Commenter"/>`
-             in intellij.platform.core.jar!META-INF/Core.analyzer.xml 鈥?the
+             in intellij.platform.core.jar!META-INF/Core.analyzer.xml 閳?the
              qualified name is why the tag is `lang.commenter` under
              defaultExtensionNs="com.intellij".
 
@@ -325,13 +325,13 @@
 
         <!-- `{ }`, `( )`, `[ ]`: pair matching, caret highlighting, and the
              platform's own closing-bracket insertion.  `<`/`>` are deliberately
-             NOT here 鈥?VelaBraceMatcher's comment records the lexer fact that makes
+             NOT here 閳?VelaBraceMatcher's comment records the lexer fact that makes
              pairing them impossible without also pairing `+` with `<`.
 
              Declared: `<extensionPoint name="lang.braceMatcher"
              beanClass="com.intellij.lang.LanguageExtensionPoint">` with
              `<with attribute="implementationClass" implements="com.intellij.lang.PairedBraceMatcher"/>`
-             (intellij.platform.ide.impl.jar!META-INF/LangExtensionPoints.xml) 鈥?             beanClass form.
+             (intellij.platform.ide.impl.jar!META-INF/LangExtensionPoints.xml) 閳?             beanClass form.
 
              Copied from android-gradle-declarative-lang-ide.jar!META-INF/plugin.xml:
              <lang.braceMatcher language="Declarative" implementationClass="com.android.tools.idea.gradle.dcl.lang.ide.DeclarativePairedBraceMatcher" /> -->
@@ -383,11 +383,11 @@
                          hasStaticDescription="true"
                          implementationClass="dev.vela.plugin.VelaIntFloatMixingInspection"/>
 
-        <!-- Closing what was opened: `{`鈫抈}`, `(`鈫抈)`, `[`鈫抈]`, `"`鈫抈"`, `'`鈫抈'`.
+        <!-- Closing what was opened: `{`閳妶}`, `(`閳妶)`, `[`閳妶]`, `"`閳妶"`, `'`閳妶'`.
 
              Declared: `<extensionPoint name="typedHandler"
              interface="com.intellij.codeInsight.editorActions.TypedHandlerDelegate"/>`
-             in intellij.platform.ide.impl.jar!META-INF/EditorExtensionPoints.xml 鈥?             interface form, so `implementation`.  This point is NOT language-keyed
+             in intellij.platform.ide.impl.jar!META-INF/EditorExtensionPoints.xml 閳?             interface form, so `implementation`.  This point is NOT language-keyed
              (there is no `language` attribute to give), so the class tests the file
              name itself; that is what `velaIsVelaFile` exists for.
 
@@ -400,7 +400,7 @@
 
              Declared: `<extensionPoint name="enterHandlerDelegate"
              interface="com.intellij.codeInsight.editorActions.enter.EnterHandlerDelegate"/>`
-             in the same EditorExtensionPoints.xml 鈥?interface form, also not
+             in the same EditorExtensionPoints.xml 閳?interface form, also not
              language-keyed.
 
              Copied from css-plugin.jar!META-INF/plugin.xml:
@@ -411,11 +411,11 @@
         <enterHandlerDelegate implementation="dev.vela.plugin.VelaEnterHandlerDelegate"
                                order="first"/>
 
-        <!-- Settings 鈫?Editor 鈫?Color Scheme 鈫?Vela.
+        <!-- Settings 閳?Editor 閳?Color Scheme 閳?Vela.
 
              Declared: `<extensionPoint dynamic="true" name="colorSettingsPage"
              interface="com.intellij.openapi.options.colors.ColorSettingsPage"/>`
-             in intellij.platform.ide.impl.jar!META-INF/LangExtensionPoints.xml 鈥?             interface form: `implementation`.
+             in intellij.platform.ide.impl.jar!META-INF/LangExtensionPoints.xml 閳?             interface form: `implementation`.
 
              Copied from freemarker.jar!META-INF/plugin.xml:
              <colorSettingsPage implementation="com.intellij.freemarker.FtlColorSettingsPage" /> -->
@@ -426,11 +426,11 @@
 
              Declared: `<extensionPoint name="defaultLiveTemplates"
              beanClass="com.intellij.codeInsight.template.impl.DefaultLiveTemplateEP"/>`
-             (intellij.platform.ide.impl.jar!META-INF/LangExtensionPoints.xml) 鈥?             its attribute is `file`, resolved against the plugin's own resources;
+             (intellij.platform.ide.impl.jar!META-INF/LangExtensionPoints.xml) 閳?             its attribute is `file`, resolved against the plugin's own resources;
              and `<extensionPoint name="liveTemplateContext"
              beanClass="com.intellij.codeInsight.template.LiveTemplateContextBean">`
              with `<with attribute="implementation" implements="com.intellij.codeInsight.template.TemplateContextType"/>`
-             in intellij.platform.analysis.jar!META-INF/Analysis.xml 鈥?note that
+             in intellij.platform.analysis.jar!META-INF/Analysis.xml 閳?note that
              this beanClass point takes `implementation`, NOT `implementationClass`.
 
              Copied from Groovy.jar!META-INF/plugin.xml and css-plugin.jar!META-INF/plugin.xml:
@@ -451,7 +451,7 @@
           It held three entries and two of them were ceremony: Check duplicated the
           live diagnostics (the annotator draws the compiler's own words as you
           type, which is the same fact earlier), and Run duplicated IDEA's Run
-          worse 鈥?a console instead of the Run window, no re-run history, no gutter
+          worse 閳?a console instead of the Run window, no re-run history, no gutter
           arrow, no Debug.  Running a Vela file now comes from the platform's own
           Run and Debug entries, produced by `VelaRunConfigurationProducer` above,
           which is what gets all of that instead of reimplementing it.

@@ -161,8 +161,8 @@ $javac = Join-Path $best 'jbr\bin\javac.exe'
 foreach ($t in @($java, $javac)) { if (-not (Test-Path -LiteralPath $t)) { Die "missing: $t" } }
 
 $TOOLS = @('GotoOracle', 'HintDiff', 'HintNames', 'HintShapes', 'HintDupes', 'SymbolDiff', 'FoldDiff',
-           'FeatureProbe', 'ParamNames', 'HintTruth', 'HoverTruth', 'RenameOracle', 'InspectionProbe',
-           'RenameWriteback', 'PlatformEntry')
+           'FeatureProbe', 'ParamNames', 'HintTruth', 'InlayProbe', 'HoverTruth', 'RenameOracle',
+           'InspectionProbe', 'RenameWriteback', 'PlatformEntry')
 if ($Tool -eq 'All') { $run = $TOOLS }
 else {
     if ($TOOLS -notcontains $Tool) { Die "-Tool must be one of: $($TOOLS -join ', '), All" }
@@ -422,6 +422,17 @@ foreach ($t in $run) {
         'HintTruth' {
             # The hint labels against an oracle that is not the hint's own model.
             if ($Truncate -gt 0) { $a += @('--truncate', "$Truncate") }
+            if ($Single)         { $a += @('--single', $Single) }
+        }
+        'InlayProbe' {
+            # THE LAYER THE HINTS TOOLS ABOVE DO NOT REACH.  `HintDiff`, `HintShapes`,
+            # `HintTruth` and `ParamNames` all measure `VelaHints.parameterHints` -- the
+            # list.  This one drives the object the platform calls,
+            # `VelaParameterNameInlayHintsProvider.getCollectorFor(...)`'s collector, over
+            # the file's real PSI tree, and counts what it registers.  0.1.12 is the entry
+            # that says why that mattered: the collector painted the whole file's list once
+            # per element (7 hints -> 3430 drawings on `ide-demo/tour.vel`) and every
+            # number above was still green.
             if ($Single)         { $a += @('--single', $Single) }
         }
         default {
