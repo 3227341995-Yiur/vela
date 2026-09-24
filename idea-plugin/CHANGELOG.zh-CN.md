@@ -4,9 +4,9 @@
 
 <!--
 源文件 : CHANGELOG.md
-源文件字节 : 61944
-源文件 SHA256 : ef0f8e45b17be65c7de903fa029afa6404990027e8042b331bef70bc5ba760e4
-翻译日期 : 2026-09-24
+源文件字节 : 69625
+源文件 SHA256 : faced60f75357a4edb044fdc31156d0c95174da73aaac5ca66a01d88e6f4372f
+翻译日期 : 2026-09-25
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -23,6 +23,59 @@
 | 本文件 | 一条记录说改了什么，**以及什么被验证过、什么没有** |
 
 最后一列不是仪式。这个项目更老的那条规则是：没有人测量过的声称不存在。而这个插件已经发布过三个完成后完全无作用的功能——一个写错的文件扩展名、一个被当成组注册的动作，以及三个从未被注册（或者注册在错误属性名下）的扩展点。一条写着“加了 X，未验证”的记录，比一条写着“加了 X”的记录更有价值。
+
+## 0.1.11 —— 一条被撤下的规则，而不是被改造的规则：`+` 拼两个 `str` 现在合法
+
+**改了什么。** 语言学会了字符串拼接：`"ab" + "cd"` 是 `"abcd"`，`s += "b"` 会追加到一个 `mut s: str` 上（`SPEC.md` §1.5，2026-09-24 落地到编译器）。插件里有一条规则恰好以那个让这件事非法的拒绝为准——`type error: string concatenation is not implemented in Vela 0.1`——而**前提已经消失的规则比没有规则更糟，因为它仍然会给出一个修复。** 所以 `VelaStringConcatenation` 被撤下：类本身、它的 `shortName`、它在 `VelaInspectionRules.RULES` 里的条目与它的可接受措辞列表、它的遍历（`stringConcatenations`、`isConcatChain`、`rewriteConcat`），以及只有它才会问的那两个辅助函数（`isStringOperand`、`declaredString`）。插件现在注册 **两** 条 `localInspection`，以前是三条。
+
+* **那个快速修复会把能正常运行的代码改掉。** 它的修复动作是 `"a" + "b"` → `concat("a", "b")`，而这已经不再是「修复」：它是在一条红色波浪线之下，把一个合法程序改写成另一个合法程序。它引用的那句拒绝，这个编译器根本产生不出来，所以这条规则在任何输入上都不可能诚实地触发——它只剩两种活法：永不触发，或者错误触发。`VelaInspections.kt` 把这段论证写在规则原来所在的位置，而不是留下一个悄悄变短的文件让下一个读者去猜。
+
+* **它没有被反向改造成风格规则**（`concat(a, b)` → `a + b`），这是一个决定，不是遗漏。这里的每一条规则只按一个标准挑选，而且那个标准不是「有用」：它的 finding 必须能对上编译器**自己**在那一行给出的拒绝——这正是 `InspectionProbe` 走的那条路，也是让 finding 成为**事实**而不是观点的东西。编译器对两种写法都沉默（`SPEC.md` §8 的 `concat` 行说它们是同一次运行时调用），所以插件对「人该写哪一种」没有意见。
+
+* **一条因为这条规则才成立的悬停文字不再成立，也一并修了。** `VelaModel` 的内建函数表把 `concat` 描述成「the only way to join strings」；现在它写的是「the same operation as `+` on two strings (SPEC.md 1.5)」。那张表是悬停和补全画出来的东西，所以旧文字是对用户关于这门语言的一句声称，而它已经开始说谎。
+
+* **语言的语料动了，所以 harness 的 canonical 文件跟着动。** `tests/safety/cases/strict_no_string_concatenation.vel`——那条被撤下的规则的修复曾经被证明的那个文件——现在叫 `strict_string_concat_operator_ok.vel`：一个编译器**接受**的用例，它有一个孪生 `strict_string_concat_builtin_ok.vel`（同一个程序用命名内建写出来），而 `tests/safety/manifest.txt` 记录了这次替换和它的日期。`InspectionProbe` 的 before/after 表每条已注册规则各有一个 canonical 程序，所以它从三行变成两行；它失去的那一行，是任何东西都已经无法在上面测量的那一行。
+
+* **工具自己数规则数量，而不是把一个数字打进句子里。** `InspectionProbe` 的 VERDICT 行和它「every refusal ... that one of these three rules claims」那一行，现在读的是 `VelaInspectionRules.RULES.size()`。把数量写在散文里，正是这个项目吃过亏的那种声称：它会继续对着一个注册了两条规则的插件说 **three**，而且是在读者当作结论引用的那一句话里。
+
+* **这一次的 oracle 是另一个编译器，所以数字与 0.1.10 不可比。** 探针冻结的是树里的 `vm.exe`——**870,400 字节、sha256 `aaa0a599f3dc3ca55b19ed6ead7debe6586e10d446b38cedc5add6397c61effc`，也就是带上字符串 `+` 的那次构建**——而 0.1.10 那一轮冻结的是 `1e52032c…`（867,328 字节）。这就是这一轮把整个探针重跑、而不是从旧数字里减掉那条被撤下规则的 7 个 finding 的原因。
+
+**已验证，以及由什么验证。**
+
+    powershell -ExecutionPolicy Bypass -File idea-plugin\build-offline.ps1
+        RESULT: PASS —— 结构性、字节码、平台、注册、链接与行为各项检查全部通过；
+        build\logs\verify.log 里有 **162 行 OK、0 行 FAIL**
+        dist\vela-idea-plugin-0.1.11.zip       375,184 字节
+        dist\vela\lib\vela-idea-plugin.jar     398,763 字节，170 个 class 文件，最高 major 65（Java 21）
+        111 个具体顶层类：31 个被 plugin.xml 指名，80 个从另一个 class 文件可达，0 个死类
+        plugin.xml 里的 <localInspection language="Vela"> 条目：2 条（VelaImmutableAssignment、
+                     VelaIntFloatMixing——两条都在 jar 里、两条都是 LocalInspectionTool，
+                     由验证器对着平台自己的 <with ... implements=...> 检查）
+        版本纪律：plugin.xml、build.gradle.kts、dist 文件名和本节标题都是 0.1.11
+
+    还有验证器在本条记录写作期间抓到的那一件事：XML 注释里不能出现 `--`，而这条注释正是
+    在解释一条规则。新注释存在的第一次构建，在第 1 节三条 OK 之后就把自己的日志截断在 992
+    字节上；现在那句话用一个句号收尾，而上面这次运行是同一条命令、同一棵树，只差一个字符。
+    把它留在记录里，因为它是对本项目反复重学的那条规则最便宜的一次演示：抓到它的是闸门，
+    不是阅读。
+
+    powershell -ExecutionPolicy Bypass -File idea-plugin\tools\harness\inspection-probe.ps1
+        COVERAGE: ran 287 / skipped 43 (crashed-file 0, missing-corpus-file 0, too-large 0,
+        compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0,
+        inspection-class-disagrees-with-the-rule 0, does-not-parse 43, empty-or-whitespace-only 0,
+        excluded-by-request 0) / wrong 0
+        VERDICT: [PASS] every finding the 2 registered inspections report was walked to a refusal the
+        frozen compiler itself makes on that line, every fix removes the refusal it was offered for,
+        and no finding lands on a file the compiler accepts -- over 287 judged file(s), wrong 0,
+        no defect category tripped
+        语料 330 个文件：150 个编译器接受、137 个拒绝，**在 150 个被接受的文件上 0 个 finding**
+        （这正是「规则凭空发明一个拒绝」会最先现形的轴），7 个文件的修复全部应用成功
+        逐规则：VelaImmutableAssignment 触发 3 / 验证 3，VelaIntFloatMixing 触发 4 / 验证 4
+        —— 合计 **7 个 finding**；0.1.5 那一轮三条规则、311 个文件的语料上是 13 个，
+        读数 `ran 257 / skipped 54`。`-CompileOnly` 先跑过一次，因为这个 harness 只编译
+        `Coverage.java` 与 `InspectionProbe.java`，本轮对 `.java` 的修改没有别的办法可查
+
+**没有被验证的，仍然是没有被验证的那些。** 没有启动过 IDE：关于快速修复，被测的是**已注册的 `LocalQuickFix` 对象携带的那次编辑**，而不是 `LocalQuickFix.applyFix` 通过一个活的文档写下去；alt-Enter 菜单没有被打开。`InspectionProbe` 读的是编译出来的 class，从不读 `plugin.xml`，所以上面那条注册证据来自验证器而不是 harness。有一个既存缺陷保持可见，而不是在这一轮被顺手藏掉：`VelaImmutableAssignment` 漏掉了 `tests/build/check_cases/mutate_loop_variable.vel:3`（`cannot modify 'i': it was declared immutable`），与 0.1.5 报告里记作 `missed 1` 的是同一个文件、同一行。
 
 ## 0.1.10 —— §13 做不到的四件事：变体名可解析、弹窗会开、颜色是自己的、payload 是声明
 

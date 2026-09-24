@@ -1,0 +1,275 @@
+The retired rule, and the two that remain: `VelaStringConcatenation` in 0.1.11   (2026-09-25 00:50)
+
+WHAT THIS FILE IS
+=================
+
+The language learned `+` on two `str`s and `+=` on a `mut s: str` (`SPEC.md` 1.5, landed in the
+compiler on 2026-09-24, commit 4f06467).  The plugin had a rule that keyed on the refusal which made
+that illegal -- `type error: string concatenation is not implemented in Vela 0.1` -- and offered
+`concat(a, b)` as the repair.  That refusal cannot be produced any more, so the rule could not fire
+honestly: either it never fired, or it fired wrongly on a legal program.  It is retired in 0.1.11 --
+the class, its walk and the two helpers only it asked for -- together with the entries in the harness
+that had been written for it, and the plugin registers two `localInspection` rules where it
+registered three.
+
+This file is the evidence for that round: the descriptor as it stands, the harness run against the
+compiler that carries `+` on strings, and the verifier's own registration and version checks.  Every
+number below was measured on this machine on 2026-09-25; nothing here is carried over from 0.1.10.
+
+WHAT WAS MEASURED AGAINST (pinned)
+==================================
+
+this run's plugin
+    version       0.1.11               (src\main\resources\META-INF\plugin.xml)
+    jar           dist\vela\lib\vela-idea-plugin.jar
+                  398,763 bytes  sha256 4eaa6746d034744cd44de9d66bea4636a6ce3da29c852db489f47d727db8a480
+    dist zip      dist\vela-idea-plugin-0.1.11.zip
+                  375,184 bytes  sha256 0cdad4f13d9238a4a1a536f88ce8917043c8ef027b4542b75cda485aa422b3f9
+    classes       build\classes; `inspection-probe.ps1` copies them into
+                  %TEMP%\vela-plugin-inspection-probe\classes-snapshot (171 files) under
+                  %TEMP%\vela-plugin-build.lock before the run, and every number below is about
+                  that snapshot rather than about build\classes
+
+the frozen compiler (the authority for every wording and every verdict below)
+    vm.exe        870,400 bytes  sha256 aaa0a599f3dc3ca55b19ed6ead7debe6586e10d446b38cedc5add6397c61effc
+    LLVM-C.dll    frozen beside it (vm.exe does not start without it)
+    taken from selfhost\build\vm.exe at 00:50 into %TEMP%\vela-plugin-inspection-probe\, which was
+    empty before this run because every session gets its own %TEMP%.  The 0.1.10 round measured
+    against 867,328 bytes / 1e52032c..., and the two are NOT interchangeable: this round's oracle is
+    the build that accepts `+` on strings, which is the whole reason the round exists.  Every figure
+    0.1.5 or 0.1.10 reported for this tool is therefore replaced here rather than subtracted from.
+
+the corpus
+    330 files under tests\, examples\, ide-demo\, bench\, selfhost\parts\ and selfhost\vela.vel:
+    150 the compiler accepts and 137 it refuses.  0.1.5's run counted 311 files (131 accepted / 126
+    refused) and 0.1.10's 324.  The corpus grew, and one of the changes is the very pair this round
+    is about -- tests\safety\cases\strict_no_string_concatenation.vel, the file the retired rule's
+    fix was proved against, is `strict_string_concat_operator_ok.vel` now (a case the compiler
+    ACCEPTS), with `strict_string_concat_builtin_ok.vel` as its twin, and tests\safety\manifest.txt
+    records the swap and its date.
+
+THE TWO PROGRAMS, AS THE COMPILER SEES THEM
+===========================================
+
+The old rule, on `print("a" + "b")`, reported:
+
+    rule:    VelaStringConcatenation  "'+' on strings"
+    message: Vela has no `+` for strings: the compiler refuses "string concatenation is not
+             implemented in Vela 0.1"
+    fix:     Join with concat(...)   ->  print(concat("a", "b"))
+
+What the same two programs do under this round's compiler, checked one by one:
+
+    $vm = %TEMP%\vela-plugin-inspection-probe\vm.exe        (870,400 bytes, aaa0a599...)
+
+    vm.exe check tests\safety\cases\strict_string_concat_operator_ok.vel  ->  exit 0, prints "ok"
+    vm.exe check tests\safety\cases\strict_string_concat_builtin_ok.vel   ->  exit 0, prints "ok"
+
+`tests\safety\manifest.txt` records the pair and its date:
+
+    # Until 2026-09-24 this pair was `strict_no_string_concatenation` (the operator
+    # refused, exit 2) and `strict_string_concat_builtin_ok` (the builtin accepted).
+    # SPEC 1.5 no longer promises the absence, so the first is repurposed into what the
+    # language promises now -- the operator works, in the compiled program *and* in the
+    # interpreter, printing the same bytes as its builtin twin -- ...
+
+Both programs are accepted, and `SPEC.md` 8's `concat` row says they lower to the same runtime call.
+A rule that reports one of them is not reporting a language error: it is expressing a preference the
+compiler does not have, with a fix that rewrites a working program.  That is the whole argument for
+retiring it instead of inverting it into a style rule (`concat(a, b)` -> `a + b`), and it is written
+in `VelaInspections.kt` where the rule used to be, in `plugin.xml` where its registration used to be,
+and above the retired tool in `InspectionProbe.java`.
+
+THE NUMBERS THAT MOVED, AND WHY THEY MOVED FOR THAT REASON
+==========================================================
+
+                        0.1.5 (three rules)   0.1.10 (three rules)   0.1.11 (two rules)
+    corpus files        311                    324                    330
+    ran / skipped       257 / 54               281 / 43               287 / 43
+    wrong               0                      0                      0
+    findings verified   13 of 13               13 of 13               7 of 7
+    VelaImmutable...    2 fired / 2 verified   --                     3 fired / 3 verified
+    VelaStringConcat    7 fired / 7 verified   --                     (retired -- its 7 went with it)
+    VelaIntFloatMix...  4 fired / 4 verified   --                     4 fired / 4 verified
+    on accepted files   0                      0                      0
+
+The `ran`/`skipped` movement is the corpus, not the rules: `skipped` is `does-not-parse` in every one
+of the three runs (53, 43, 43, plus one `excluded-by-request` in the 0.1.5 run), and the judged count
+is what is left.  0.1.10's 324 is its own two numbers added up (281 + 43); this file did not re-run
+it.  The 2 -> 3 on `VelaImmutableAssignment` is the corpus too -- files the compiler refuses went
+from 126 to 137 -- and what this run shows about it is that all three findings are `verified`, which
+means the compiler refused that very line in the rule's own words, one fix at a time.  What this run
+does *not* show is which file the third one is on: the tool prints a per-file line only for a file
+with something to report, and this run had none.  The 2 it is being compared against is the 0.1.5
+report's own per-rule table, which is a different binary and a smaller corpus.
+
+WHAT IS NOT VERIFIED, AND THE ONE THING THAT IS UNCHANGED
+=========================================================
+
+* No IDE was started.  What is measured of a quick fix is the edit the registered `LocalQuickFix`
+  object carries (its `VelaInspectionFinding.edits`), not `LocalQuickFix.applyFix` writing through a
+  live `Document`.  The alt-Enter menu was not opened.  The tool says so itself, in its own words,
+  and those words are in the log below.
+* `InspectionProbe` reads the compiled classes and never `plugin.xml`, which is why the registration
+  evidence in this file is the verifier's (`build-offline.ps1` step 6) rather than the harness's.  The
+  tool's own log says exactly that in section A, and it said it before this round too.
+* The pre-existing defect stays visible: `VelaImmutableAssignment` misses
+  `tests/build/check_cases/mutate_loop_variable.vel:3` (`cannot modify 'i': it was declared
+  immutable`), the same file and line the 0.1.5 report counted as `missed 1`.  This round did not
+  cause it and does not hide it; the row is in the log below.
+
+--- THE HARNESS LOG, VERBATIM (build\tools\harness\classes\InspectionProbe.log -- which this JVM
+writes as UTF-16LE; it is decoded here, not transcribed)
+application : com.intellij.mock.MockApplication (the platform's own headless application; the holder and the visitor are the real ones)
+repo root   : C:\Users\lu\Downloads\vela
+rules       : VelaImmutableAssignment, VelaIntFloatMixing
+corpus      : 330 file(s)
+
+== A. the registered classes ==
+  VelaImmutableAssignment   VelaImmutableAssignmentInspection       LocalInspectionTool, getShortName()=VelaImmutableAssignment
+  VelaIntFloatMixing        VelaIntFloatMixingInspection            LocalInspectionTool, getShortName()=VelaIntFloatMixing
+  the descriptor line is NOT this round's file; see the evidence file for it.
+
+== B. the authority ==
+  frozen compiler : C:\Users\lu\AppData\Local\Temp\dsh-dCqMET\vela-plugin-inspection-probe\vm.exe (870400 bytes)
+  sha256          : aaa0a599f3dc3ca55b19ed6ead7debe6586e10d446b38cedc5add6397c61effc
+  VelaImmutableAssignment   exit 2  line 3 safety error: cannot assign to 'x': it was declared immutable   <- the rule's own words
+  VelaIntFloatMixing        exit 2  line 2 type error: operator '+' mixes int and float   <- the rule's own words
+
+== D. one fix, before and after: raw `vm.exe check` output ==
+
+  tests/safety/cases/strict_immutability.vel          VelaImmutableAssignment
+    the rule (line 3): Vela refuses this assignment: `x` was declared immutable, and the compiler says "cannot assign to 'x': it was declared immutable"
+    the fix: "Add 'mut' to the declaration of 'x'" ->
+             replace [25,25) with "mut "
+    -- check BEFORE the fix (exit 2):
+         vela: safety error: cannot assign to 'x': it was declared immutable
+         at before.vel:3
+         vela: panic: the program was refused
+    -- check AFTER the fix (exit 0):
+         ok
+
+  tests/safety/cases/strict_no_implicit_conversion.vel  VelaIntFloatMixing
+    the rule (line 2): Vela has no implicit int/float conversion: the compiler refuses "operator '+' mixes int and float"
+    the fix: "Convert the int operand with to_float(...)" ->
+             replace [31,32) with "to_float(1)"
+    -- check BEFORE the fix (exit 2):
+         vela: type error: operator '+' mixes int and float
+         at before.vel:2
+         vela: panic: the program was refused
+    -- check AFTER the fix (exit 0):
+         ok
+
+== C. the corpus ==
+  unit: one file for `ran` / `skipped` / `wrong`; wrong is a file where an inspection reported something the compiler does not, or where a fix did not
+        remove the refusal it was offered for.  Per-rule numbers below.
+
+  files the compiler accepts        : 150
+  files the compiler refuses         : 137
+  findings on files it ACCEPTS       : 0   <- must be 0: an inspection may not invent a refusal
+  files where all fixes were applied : 7
+  findings the walk could not reach   : 0   (an unrelated refusal sat in front of them; they are neither confirmed nor contradicted, and they are listed below)
+  slowest single `check`             : 42 ms (selfhost/parts/emit_llvm.vel)   <- the 60 s timeout is not a slow machine
+
+  per rule (`verified` = the compiler refused that very line with this rule's own words):
+    rule                      fired  verified corrob  unprov  disputed missed  fix-clean fix-partial on-accepted
+    VelaImmutableAssignment   3      3        0       0       0        1       3         0           0
+    VelaIntFloatMixing        4      4        0       0       0        0       4         0           0
+  where a rule missed a refusal it claims (the compiler's words, no finding):
+    VelaImmutableAssignment   tests/build/check_cases/mutate_loop_variable.vel:3 "cannot modify 'i': it was declared immutable"
+
+
+== coverage: what ran, what did not, and why ==
+  ran (judged)            : 287
+  skipped                 : 43
+      crashed-file          0         <- a defect, not a limit
+      missing-corpus-file   0         <- a defect, not a limit
+      too-large             0         <- a defect, not a limit
+      compiler-did-not-run  0         <- a defect, not a limit
+      check-did-not-terminate  0         <- a defect, not a limit
+      fix-wrote-nothing     0         <- a defect, not a limit
+      inspection-class-disagrees-with-the-rule  0         <- a defect, not a limit
+      does-not-parse        43      
+      empty-or-whitespace-only  0       
+      excluded-by-request   0       
+  wrong                   : 0
+  corpus accounted for    : 330  (ran + skipped)
+
+COVERAGE: ran 287 / skipped 43 (crashed-file 0, missing-corpus-file 0, too-large 0, compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0, inspection-class-disagrees-with-the-rule 0, does-not-parse 43, empty-or-whitespace-only 0, excluded-by-request 0) / wrong 0
+
+unverified-headless: LocalQuickFix.applyFix (needs a live Application: project, PsiDocumentManager, write action); the edits it writes ARE measured below.
+unverified-headless: plugin.xml registration (another agent owns the descriptor this round); the XML snippet is in the evidence file beside this log.
+not measured on purpose: rules whose repair is ambiguous or unsafe �?assignments to an immutable parameter, to an array, and `'%'` / `'**'` operand mixing.
+
+VERDICT: [PASS] every finding the 2 registered inspections report was walked to a refusal the frozen compiler itself makes on that line, every fix removes the refusal it was offered for, and no finding lands on a file the compiler accepts -- over 287 judged file(s), wrong 0, no defect category tripped
+
+--- THE DESCRIPTOR, VERBATIM (src\main\resources\META-INF\plugin.xml: the comment that counts the rules, then the two registrations)
+
+             There were THREE until 0.1.11.  The third, `VelaStringConcatenation`, reported
+             `"a" + "b"` against the compiler's `type error: string concatenation is not
+             implemented in Vela 0.1` and repaired it to `concat("a", "b")`.  The language
+             learned `+` on two `str`s (`SPEC.md` 1.5, 2026-09-24), so that refusal is gone,
+             the rule could no longer fire honestly, and its fix would have rewritten a
+             working program.  It is retired, not repurposed, and `VelaInspections.kt`
+             carries the argument.  The retired text is kept here rather than deleted
+             because the count in it is what a reader would otherwise have to reconstruct.
+
+             Attribute names are not from memory: `language`, `implementationClass`,
+             `shortName`, `displayName`, `groupName`, `level`, `enabledByDefault` and
+             `hasStaticDescription` were read off `LocalInspectionEP`'s own `@Attribute`
+             annotations in the installed platform, and the element shape was copied from
+             registrations in `aopCommon.jar` and `clouds-docker-gateway.jar`.
+
+             `shortName` must equal each class's `getShortName()`; the harness reads both
+             back and fails if they differ, because the name in this file is what the user
+             sees in the settings and what a `@SuppressWarnings` would have to spell. -->
+        <localInspection language="Vela"
+                         shortName="VelaImmutableAssignment"
+                         displayName="Assignment to an immutable binding"
+                         groupName="Vela"
+                         enabledByDefault="true"
+                         level="ERROR"
+                         hasStaticDescription="true"
+                         implementationClass="dev.vela.plugin.VelaImmutableAssignmentInspection"/>
+
+        <localInspection language="Vela"
+                         shortName="VelaIntFloatMixing"
+                         displayName="int and float mixed in one operation"
+                         groupName="Vela"
+                         enabledByDefault="true"
+                         level="ERROR"
+                         hasStaticDescription="true"
+                         implementationClass="dev.vela.plugin.VelaIntFloatMixingInspection"/>
+
+--- THE VERIFIER, VERBATIM (idea-plugin\build\logs\verify.log, build-offline.ps1 step 6; UTF-16LE)
+
+    (one line below is not quite verbatim, and it says so: the verifier echoes the changelog heading back,
+     and the em dash in it is damaged on the way -- its own log holds U+FFFD where the dash was, exactly as
+     it does for every earlier heading in that file.  The heading in CHANGELOG.md is not what is damaged, so
+     the dash is written `--` here rather than copied from a log that is damaged.)
+
+jar size   : 398763 bytes
+    OK  localInspection/implementationClass = dev.vela.plugin.VelaImmutableAssignmentInspection  in the jar
+    OK  localInspection/implementationClass = dev.vela.plugin.VelaIntFloatMixingInspection  in the jar
+    170 class files, highest major version = 65 (dev/vela/plugin/ParameterHint.class) -> Java 21
+    OK  <localInspection>                  -> com.intellij.localInspection (declared by the installed platform at intellij.idea.ultimate.customization.jar!META-INF/plugin.xml)
+    OK  <localInspection>                  -> com.intellij.localInspection (declared by the installed platform at intellij.idea.ultimate.customization.jar!META-INF/plugin.xml)
+    OK  <localInspection> attribute       implementationClass=dev.vela.plugin.VelaImmutableAssignmentInspection  (the platform binds [implementationClass])
+    OK  <localInspection> attribute       implementationClass=dev.vela.plugin.VelaIntFloatMixingInspection  (the platform binds [implementationClass])
+    OK  dev.vela.plugin.VelaImmutableAssignmentInspection  is a LocalInspectionTool   [the platform's own <with attribute="implementationClass" implements="com.intellij.codeInspection.LocalInspectionTool">]
+    OK  dev.vela.plugin.VelaIntFloatMixingInspection   is a LocalInspectionTool   [the platform's own <with attribute="implementationClass" implements="com.intellij.codeInspection.LocalInspectionTool">]
+--- 12. version discipline (one number, four places)
+    OK  build.gradle.kts                  version = "0.1.11" (same as plugin.xml)
+    OK  dist file name                    vela-idea-plugin-0.1.11.zip (375184 bytes)
+    OK  CHANGELOG.md                      "## 0.1.11 -- a rule retired rather than repurposed: `+` on two `str`s is legal now"
+--- 13. dead classes (every concrete top-level class must be registered or reached)
+    111 concrete top-level class(es): 31 named by plugin.xml, 80 reached from another class file, 0 dead
+RESULT: PASS - all structural, bytecode, platform, registration, linkage and behavioural checks passed
+
+--- THE FAILED BUILD THAT MADE THE COMMENT ONE CHARACTER DIFFERENT
+
+    The comment above was written with `--` in it, and `--` may not appear inside an XML comment.  The
+    build after it died with `build\logs\verify.log` truncated at 992 bytes -- three OK lines into section
+    1, with an empty FAILED CHECKS list and no check ever reporting the cause.  The verifier was right and
+    the comment was wrong; the sentence ends with a full stop now, and everything in this file is from the
+    run after that edit.  Recorded because a gate that dies is easy to mistake for a gate that passes.

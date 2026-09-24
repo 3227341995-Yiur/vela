@@ -23,6 +23,102 @@ action registered as a group, and three extension points that were never
 registered (or registered under the wrong attribute name). An entry that says
 "added X, unverified" is worth more than one that says "added X".
 
+## 0.1.11 — a rule retired rather than repurposed: `+` on two `str`s is legal now
+
+**What changed.** The language learned string concatenation: `"ab" + "cd"` is `"abcd"` and `s += "b"`
+appends to a `mut s: str` (`SPEC.md` §1.5, landed 2026-09-24 in the compiler).  One of this plugin's
+rules keyed on the refusal that made that illegal — `type error: string concatenation is not
+implemented in Vela 0.1` — and **a rule whose premise is gone is worse than no rule, because it still
+offers a repair.**  So `VelaStringConcatenation` is retired: the class, its `shortName`, its entry in
+`VelaInspectionRules.RULES` and its accepted-wording list, its walk (`stringConcatenations`,
+`isConcatChain`, `rewriteConcat`) and the two helpers only it asked for (`isStringOperand`,
+`declaredString`).  The plugin registers **two** `localInspection` rules where it registered three.
+
+* **The quick fix would have rewritten working code.** Its repair was `"a" + "b"` → `concat("a", "b")`,
+  and that is not a repair any more: it is a rewrite of a legal program into a different legal program,
+  offered under a red squiggle.  The refusal it quoted cannot be produced by this compiler at all, so
+  the rule could not have fired honestly on any input — the only two live possibilities were a rule
+  that never fires and one that fires wrongly.  `VelaInspections.kt` carries that argument where the
+  rule used to be, rather than leaving a silently shorter file for the next reader to puzzle over.
+
+* **It was not replaced by the style rule in the other direction** (`concat(a, b)` → `a + b`), and that
+  is a decision rather than an omission.  Every rule here is chosen on one criterion, and it is not
+  "useful": its finding must come back with a refusal the compiler itself makes on that line, which is
+  what `InspectionProbe` walks and what makes a finding a *fact* rather than an opinion.  The compiler
+  is silent about both spellings — `SPEC.md` §8's `concat` row says they are the same runtime call — so
+  the plugin has no opinion about which one a person writes.
+
+* **A hover string the rule had made true became false, and it is fixed too.**
+  `VelaModel`'s builtin table described `concat` as "the only way to join strings"; it now reads "the
+  same operation as `+` on two strings (SPEC.md 1.5)".  That table is what hover and completion draw,
+  so the old text was a claim to the user about the language, and it had started to lie.
+
+* **The language's corpus moved, so the harness's canonical file moved with it.**
+  `tests/safety/cases/strict_no_string_concatenation.vel` — the file the retired rule's fix was proved
+  against — is `strict_string_concat_operator_ok.vel` now: a case the compiler **accepts**, whose twin
+  `strict_string_concat_builtin_ok.vel` is the same program written with the named builtin, and
+  `tests/safety/manifest.txt` records the pair and the date it changed.  `InspectionProbe`'s
+  before/after table holds one canonical program per registered rule, so it has two rows where it had
+  three; the row it lost is the one nothing could be measured on any more.
+
+* **The tool says its own rule count instead of a number typed into a sentence.**
+  `InspectionProbe`'s verdict line and its "every refusal ... that one of these three rules claims" line
+  now read `VelaInspectionRules.RULES.size()`.  A count written out in prose is exactly the kind of
+  claim this project has been burned by: it would have gone on saying *three* about a plugin that
+  registers two, in the one sentence a reader quotes as the result.
+
+* **The oracle is a different compiler, and the numbers are therefore not comparable to 0.1.10's.**
+  The probe froze the tree's `vm.exe` — **870,400 bytes, sha256
+  `aaa0a599f3dc3ca55b19ed6ead7debe6586e10d446b38cedc5add6397c61effc`, the build that carries `+` on
+  strings** — where the 0.1.10 round froze `1e52032c…` (867,328 bytes).  That is why this round re-ran
+  the whole probe instead of subtracting the retired rule's seven findings from the old figure.
+
+**Verified, and by what.**
+
+    powershell -ExecutionPolicy Bypass -File idea-plugin\build-offline.ps1
+        RESULT: PASS — all structural, bytecode, platform, registration, linkage and behavioural
+        checks passed; `build\logs\verify.log` holds **162 OK lines and 0 FAIL lines**
+        dist\vela-idea-plugin-0.1.11.zip       375,184 bytes
+        dist\vela\lib\vela-idea-plugin.jar     398,763 bytes, 170 class files, highest major 65 (Java 21)
+        111 concrete top-level classes: 31 named by plugin.xml, 80 reached from another class file, 0 dead
+        plugin.xml   <localInspection language="Vela"> entries: 2  (VelaImmutableAssignment,
+                     VelaIntFloatMixing -- both present in the jar and both a LocalInspectionTool,
+                     checked by the verifier against the platform's own <with ... implements=...>)
+        version discipline: plugin.xml, build.gradle.kts, the dist file name and this heading all 0.1.11
+
+    and the one thing the verifier caught while this entry was being written: a comment that
+    explains a rule cannot contain `--` in XML.  The first build after the new comment existed died
+    three OK lines into section 1 with its log truncated at 992 bytes; the comment writes that
+    sentence with a full stop now, and the run above is the same command, the same tree, one
+    character different.  Left in the entry because it is the cheapest possible illustration of the
+    rule this project keeps re-learning: the gate is what found it, not the reading.
+
+    powershell -ExecutionPolicy Bypass -File idea-plugin\tools\harness\inspection-probe.ps1
+        COVERAGE: ran 287 / skipped 43 (crashed-file 0, missing-corpus-file 0, too-large 0,
+        compiler-did-not-run 0, check-did-not-terminate 0, fix-wrote-nothing 0,
+        inspection-class-disagrees-with-the-rule 0, does-not-parse 43, empty-or-whitespace-only 0,
+        excluded-by-request 0) / wrong 0
+        VERDICT: [PASS] every finding the 2 registered inspections report was walked to a refusal the
+        frozen compiler itself makes on that line, every fix removes the refusal it was offered for,
+        and no finding lands on a file the compiler accepts -- over 287 judged file(s), wrong 0,
+        no defect category tripped
+        corpus 330 files: 150 accepted, 137 refused, **0 findings on the 150 accepted** (the axis that
+        catches a rule inventing a refusal), 7 files with every fix applied
+        per rule: VelaImmutableAssignment 3 fired / 3 verified, VelaIntFloatMixing 4 fired / 4 verified
+        -> **7 findings**, against the 0.1.5 run's 13 for the three rules over a 311-file corpus that
+        read `ran 257 / skipped 54`; and `-CompileOnly` was run first, because the harness compiles
+        `Coverage.java` and `InspectionProbe.java` and nothing else, so this round's `.java` edit could
+        not have been checked by it any other way
+
+**What is still not verified is what was never verified here.**  No IDE was started: what is measured
+of a quick fix is the edit the registered `LocalQuickFix` object carries, not `LocalQuickFix.applyFix`
+writing through a live document, and the alt-Enter menu was not opened.  `InspectionProbe` reads the
+compiled classes and not `plugin.xml`, so the registration evidence above is the verifier's, not the
+harness's.  One pre-existing defect is unchanged and stays visible rather than being cleaned up in a
+round that did not cause it: `VelaImmutableAssignment` misses
+`tests/build/check_cases/mutate_loop_variable.vel:3` (`cannot modify 'i': it was declared immutable`),
+the same file and line the 0.1.5 report already counted as `missed 1`.
+
 ## 0.1.10 — the four things §13 could not do: variant names resolve, the popup opens, the colour is its own, the payload is a declaration
 
 **What changed.** 0.1.9 taught the plugin to *parse* `enum`/`match`.  This round is the other half:
