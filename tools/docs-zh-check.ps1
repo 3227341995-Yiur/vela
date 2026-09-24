@@ -136,7 +136,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$repo = Split-Path -Parent $PSScriptRoot
+# Absolute, not `Split-Path -Parent $PSScriptRoot` on its own: invoked as
+# `powershell -File tools\docs-zh-check.ps1` from a `cd`'d directory, `$PSScriptRoot` keeps
+# the *relative* form, so `$repo` became `''`, the sweeps below then listed absolute paths
+# and the skip patterns (which are anchored at `$repo`) matched nothing or everything
+# depending on the caller's directory.  Measured in `.wt\mergecheck`: `pairs: 0`,
+# `RESULT: failed`, because the bare `.wt\` pattern matched the worktree's own root.
+$repo = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $suffix = '.zh-CN.md'
 
 # `powershell -File script.ps1 -Only a,b` hands over one string, because -File
@@ -161,8 +167,15 @@ if ($patterns.Count -eq 0) { $patterns = @('*.zh-CN.md') }
 # have turned *this* gate red for work that was not in the commit being judged.  The
 # gate is supposed to judge the tree it is run in; a verdict that depends on another
 # tree's uncommitted state is not a verdict.
-$skipDirPattern = '\\(\.work|\.git|\.wt)\\'
-$skipBuildPattern = '\\idea-plugin\\build\\'
+# Both patterns are anchored at *this* repository root, because they are matched against
+# absolute paths.  The first version of the `.wt\` rule was the bare pattern `\\(\.work|\.git|\.wt)\\`
+# and that is wrong in the one place that matters: a `git worktree` at `<root>\.wt\<name>` has
+# the string `\.wt\` inside its *own* root, so running this script inside a worktree excluded
+# every file in the tree it was asked to judge -- measured: `pairs: 0`, `RESULT: failed`, in
+# `.wt\mergecheck`.  Anchoring at `$repo` makes the rule mean what it says: directories *below
+# this root* that are not part of the tree being judged.
+$skipDirPattern = [regex]::Escape($repo) + '\\(\.work|\.git|\.wt)\\'
+$skipBuildPattern = [regex]::Escape($repo) + '\\idea-plugin\\build\\'
 
 # The Chinese label for the language, built from code points because this script
 # is read as ANSI by Windows PowerShell 5.1 (see the note in .DESCRIPTION).  Every
