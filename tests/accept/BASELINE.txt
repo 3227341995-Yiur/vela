@@ -5,7 +5,7 @@
 # is what the compiler says today.  A difference is a failure even when it looks like
 # progress: the day a feature lands, this file is what says so, and the program moves
 # into tests\cases.txt with a golden.  Shape:  name | outcome | first diagnostic line
-# recorded against compiler sha256 2dc752e7aed370e89cce8c5df2869bb414b0ba02c642218f425dac81dc89da23
+# recorded against compiler sha256 eeea4524abaccf92a5d2822b90e112b4639c2d1a61bad273e8de7fa0d284b96d
 tests/accept/closure_escaping_refused.vel | REFUSED | vela: syntax error: expected '{' to open a block, found '('
 tests/accept/closure_fn_parameter.vel | REFUSED | vela: syntax error: expected ')' after the parameters
 tests/accept/closure_lambda_as_argument.vel | REFUSED | vela: syntax error: expected ')' after the parameters
@@ -18,14 +18,14 @@ tests/accept/iterate_forin_array.vel | REFUSED | vela: syntax error: this front 
 tests/accept/iterate_forin_array_of_structs.vel | REFUSED | vela: syntax error: this front end iterates range(...) only
 tests/accept/iterate_forin_not_iterable.vel | REFUSED | vela: syntax error: this front end iterates range(...) only
 tests/accept/modules/mathlib.vel | REFUSED | vela: type error: no 'main' function
-tests/accept/modules/module_cycle_a.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'module_cycle_b'
-tests/accept/modules/module_cycle_b.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'module_cycle_a'
-tests/accept/modules/module_import_from.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'mathlib'
-tests/accept/modules/module_import_missing.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'nosuchmodule'
-tests/accept/modules/module_import_qualified.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'mathlib'
-tests/accept/modules/module_import_reserved_name.vel | ACCEPTED | 
-tests/accept/modules/module_import_twice.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'mathlib'
-tests/accept/modules/module_import_unknown_name.vel | REFUSED | vela: syntax error: expected a newline between statements, found 'mathlib'
+tests/accept/modules/module_cycle_a.vel | REFUSED | vela: syntax error: a module name is not this spelling yet (module_cycle_b): a name and the rule that finds it are MODULES_PLAN.md step 6, so the spelling today is a path string -- `import <path>/<name>.vel`
+tests/accept/modules/module_cycle_b.vel | REFUSED | vela: syntax error: a module name is not this spelling yet (module_cycle_a): a name and the rule that finds it are MODULES_PLAN.md step 6, so the spelling today is a path string -- `import <path>/<name>.vel`
+tests/accept/modules/module_import_from.vel | REFUSED | vela: syntax error: `from mathlib import x` is MODULES_PLAN.md step 6: `from` and `as` are ordinary identifiers until then, so the spelling today is a path string -- write `import <path>/<name>.vel`
+tests/accept/modules/module_import_missing.vel | REFUSED | vela: syntax error: `from nosuchmodule import x` is MODULES_PLAN.md step 6: `from` and `as` are ordinary identifiers until then, so the spelling today is a path string -- write `import <path>/<name>.vel`
+tests/accept/modules/module_import_qualified.vel | REFUSED | vela: syntax error: a module name is not this spelling yet (mathlib): a name and the rule that finds it are MODULES_PLAN.md step 6, so the spelling today is a path string -- `import <path>/<name>.vel`
+tests/accept/modules/module_import_reserved_name.vel | REFUSED | vela: syntax error: `import` is a keyword since MODULES_PLAN.md step 1 (SPEC.md 1.3 reserves it for the module system), so it is not a name here -- rename this binding
+tests/accept/modules/module_import_twice.vel | REFUSED | vela: syntax error: a module name is not this spelling yet (mathlib): a name and the rule that finds it are MODULES_PLAN.md step 6, so the spelling today is a path string -- `import <path>/<name>.vel`
+tests/accept/modules/module_import_unknown_name.vel | REFUSED | vela: syntax error: `from mathlib import x` is MODULES_PLAN.md step 6: `from` and `as` are ordinary identifiers until then, so the spelling today is a path string -- write `import <path>/<name>.vel`
 tests/accept/nested_fn_called.vel | REFUSED | vela: type error: nested functions are not supported
 tests/accept/nested_fn_capture_refused.vel | REFUSED | vela: type error: nested functions are not supported
 tests/accept/nested_fn_recurse.vel | REFUSED | vela: type error: nested functions are not supported

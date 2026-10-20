@@ -4,9 +4,9 @@
 
 <!--
 源文件 : SPEC.md
-源文件字节 : 41560
-源文件 SHA256 : 7b64154f555cc51186ff8bc75f3719c951bdbc35151ca50fd62c12e6cdca4477
-翻译日期 : 2026-09-24
+源文件字节 : 42570
+源文件 SHA256 : 703447ea20c9b7e3b70fcdb70596186c1daa5ef981c1f08569002d95f8a88947
+翻译日期 : 2026-10-20
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -50,6 +50,7 @@ def return if elif else while for in range break continue pass
 and or not True False None mut struct parallel pure
 enum match                     # 带载荷的 enum 与 `match`，见 §13
 extern                         # `extern c`, implemented in 0.1 — see §12
+import                         # 模块系统：目前只有语法，见下文
 ```
 
 `enum` 与 `match` 是 §13 落地时成为关键字的。在那之前这两个拼写都是普通标识符，
@@ -59,10 +60,25 @@ extern                         # `extern c`, implemented in 0.1 — see §12
 
 `elif` 会被词法分析，但**被语法分析器拒绝**：Vela 写作 `else if`，诊断信息就是这么说的。
 
-`import`、`from` 和 `as` 在 0.1 里**不是**关键字：它们是普通标识符
-（`mut import: int = 1` 是合法声明），没有任何东西拒绝它们。模块系统会占用它们，
-所以它们是由文档、而非由词法器保留的——某天模块系统到来时，把这些词当作名字使用的
-程序需要改名。
+`import` **已经是**关键字，这是模块系统第 1 步落地时定下的（`MODULES_PLAN.md`
+§3 D2）。本节从 0.1 起就用文档把它保留着，而占用一个词的那一步，欠那些正在用它的
+程序一次实测，而不是一句"以后再说"：`mut import: int = 1` 在 0.1 里是合法声明，
+现在会被**指名**拒绝——"`import` is a keyword since MODULES_PLAN.md step 1 … so it
+is not a name here — rename this binding"——记录这项代价的用例
+`tests/accept/modules/module_import_reserved_name.vel`，在 `selfhost/MODULES_PLAN.md`
+§8 里从 ACCEPTED 变成了 REFUSED。
+
+它拼出的语法是顶层的 `import "path/file.vel"`，但还没有任何东西会真的加载文件：
+加载器是第 2 步，所以每个模式都会指名拒绝它，并把读者写的路径原样带上——
+
+```
+vela: syntax error: `import "b.vel"`: Vela's syntax, and the loader that would
+read it is not written -- MODULES_PLAN.md step 2 adds it (SPEC.md 1.3)
+```
+
+`from` 与 `as` **仍然**是普通标识符。`from mathlib import add` 只会被识别成那个
+"三词形状"并被拒绝为"a module name is not this spelling yet"，而 `from = 1` 依旧是
+合法赋值。裸模块名、那个名字需要的查找规则，以及 `from`/`as` 的拼写，都属于第 6 步。
 
 ### 1.4 数字
 

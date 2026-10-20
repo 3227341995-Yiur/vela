@@ -48,6 +48,7 @@ def return if elif else while for in range break continue pass
 and or not True False None mut struct parallel pure
 enum match                     # enums with payloads and `match`, see §13
 extern                         # `extern c`, implemented in 0.1 — see §12
+import                         # modules: the syntax only, see below
 ```
 
 `enum` and `match` became keywords when §13 landed. Before that both spellings
@@ -59,11 +60,28 @@ which is the decision rather than an accident.
 `elif` is lexed but **refused by the parser**: Vela writes `else if`, and the
 diagnostic says so.
 
-`import`, `from` and `as` are **not** keywords in 0.1: they are ordinary
-identifiers (`mut import: int = 1` is a legal declaration) and nothing refuses
-them. A module system would claim them, so they are reserved by documentation
-and not by the lexer — a program that uses them as names will need renaming the
-day one arrives.
+`import` **is** a keyword as of the module system's step 1 (`MODULES_PLAN.md` §3
+D2). This section had reserved it by documentation since 0.1, and the step that
+claims a word owes the programs using it a measurement rather than a shrug:
+`mut import: int = 1` was a legal declaration in 0.1 and is now refused **by
+name** — "`import` is a keyword since MODULES_PLAN.md step 1 … so it is not a
+name here — rename this binding" — and the case that records the cost,
+`tests/accept/modules/module_import_reserved_name.vel`, moved from ACCEPTED to
+REFUSED in `selfhost/MODULES_PLAN.md` §8.
+
+The syntax it spells is `import "path/file.vel"` at the top level, and nothing
+loads the file yet: the loader is step 2, so every mode refuses it by name,
+quoting the path the reader wrote —
+
+```
+vela: syntax error: `import "b.vel"`: Vela's syntax, and the loader that would
+read it is not written -- MODULES_PLAN.md step 2 adds it (SPEC.md 1.3)
+```
+
+`from` and `as` are **still** ordinary identifiers. `from mathlib import add` is
+recognised only as that three-token shape and refused as "a module name is not
+this spelling yet", while `from = 1` remains a legal assignment. The bare module
+name, the search rule that name needs, and the `from`/`as` spellings are step 6.
 
 ### 1.4 Numbers
 

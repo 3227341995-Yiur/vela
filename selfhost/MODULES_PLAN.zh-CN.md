@@ -4,9 +4,9 @@
 
 <!--
 源文件 : MODULES_PLAN.md
-源文件字节 : 25041
-源文件 SHA256 : 775c71f282e95a6ac44644dd4478b578c270f7ca692e103aefc60519842bdf66
-翻译日期 : 2026-09-25
+源文件字节 : 29907
+源文件 SHA256 : 8afe32e6ac0c105268967a13f4832471b7a51c45341b7a5e5015c2eb5510f3cd
+翻译日期 : 2026-10-20
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -24,6 +24,9 @@
 | 同一句话，从解析器那一侧 | `selfhost/vm.vel` 1320 行（由 `selfhost/parts/parser.vel` 生成） | "…system（`import` 被保留但未实现），所以 `tools/link_selfhost.vel`…" |
 
 ## 2. 今天为真的事实，全部是实测（2026-09-25，`selfhost/build/vm.exe` 870 400 B）
+
+**这一节是第 1 步落地*之前*的状态**——它是这份设计的实测底稿，按当时测得的样子保留。
+第 1 步落地时发生了什么，见 §8。
 
 下面每一行都是**跑出来的**，不是读出来的。命令都写出来了，下一个读者可以自己重测。
 
@@ -119,9 +122,9 @@
 
 ### 第 1 步——语法，和一个点自己名字的拒绝
 
-*改动。* `import` 作为 26 加入 `keyword_id`（`selfhost/vela.vel` 158-244 行）；解析器只在顶层接受 `import "路径"` 并为它建一个节点（接在 `parse_module` 之后，`selfhost/parts/parser.vel` 1611-1646 行，它用 `nx` 把顶层语句连成链）；每一个本该**对它采取行动**的模式按名字拒绝。
-*命令。* `tools\build.ps1`（这个改动必须活过不动点），然后 `tools\refreeze.ps1`（196 个用例的语料），然后在树上每个 `.vel` 文件上跑 `vm.exe check`，来偿还 D2 欠下的那笔账：**哪些文件变了判决，或者没有**。
-*验收。* 含 `import "b.vel"` 的程序被拒绝时，消息点名这个构造和路径，而不是 "expected a newline"；`mut import: int = 1` 现在被拒（关键字冲突），而那条拒绝是一个语料用例，因为它是 D2 可观测的代价；语料是绿的；判决变化清单在步骤自己的证据文件里。**而语料自己那九行会按已经记录下来的方式移动**（2.9）：`module_import_reserved_name.vel` 从 `ACCEPTED` 变成 `REFUSED`（这就是 D2 的代价，正是那个文件自己的注释要求的），另外八个继续被拒、但不再引述错误的理由——那五条 `... found 'mathlib'` / `'nosuchmodule'` 消息变成「模块**名**不是这个拼法，请写 `import \"mathlib.vel\"`」，两个环用例保留一条点名那个环的消息。新的 `tests/accept/BASELINE.txt` 是本步骤证据的一部分，因为旧的那份就此变成假话。
+*改动。* `import` 作为 26 加入 `keyword_id`（`selfhost/vela.vel`）；解析器在语句位置上认出它，并把它的**每一种**形态都按名字拒绝：路径拼法（`import "path/file.vel"`，连读者写的路径一起回显）、裸模块名（`import mathlib`，指向第 6 步）、`from M import x`（按「三个词」的形状识别，因为 `from` 仍然是标识符）、块内的 `import`，以及站在本该是名字的位置上的 `import`（`mut import: int = 1`、函数名、参数、枚举变体），最后这一类用的是 `SPEC.md` §1.3 早就承诺过的那句话。不为它建节点，也没有任何模式对它采取行动：背后没有装载器时，一个「解析了却被忽略」的 `import`，正是一个「嘴上说自己有两个文件、实际按一个文件编译」的程序——D8 存在的意义就是拒绝这一类谎言。
+*命令。* `tools\build.ps1`（这个改动必须活过不动点），然后 `tools\refreeze.ps1`（语料），然后在树上**每一个被跟踪的** `.vel` 文件上跑 `vm.exe check`，来偿还 D2 欠下的那笔账：**哪些文件变了判决，或者没有**。
+*验收。* 含 `import "b.vel"` 的程序被拒绝时，消息点名这个构造和路径；`mut import: int = 1` 现在作为关键字冲突被拒；语料是绿的；判决变化清单在 §8。**而语料自己那九行会按已经记录下来的方式移动**（2.9）：`module_import_reserved_name.vel` 从 `ACCEPTED` 变成 `REFUSED`（这就是 D2 的代价，正是那个文件自己的注释要求的），那五条 `... found 'mathlib'` / `'nosuchmodule'` 消息变成上面那两种具名拒绝，两个环用例也同样变成裸名拒绝——它们自己的主张（一条点名那个环的诊断）在装载器存在之前无法兑现，所以它仍然欠给第 2 步。新的 `tests/accept/BASELINE.txt` 是本步骤证据的一部分，因为旧的那份就此变成假话。
 *文档。* `SPEC.md` §1.3 那一段，以及它的中文孪生；`selfhost/vela.vel` / `parser.vel` 里 "reserved but not implemented" 的注释。
 
 ### 第 2 步——装载、合并、解释执行
@@ -182,10 +185,57 @@
 | 步骤 | 状态 | 证据 |
 |---|---|---|
 | 0. 设计，对照实测 | **完成** 2026-09-25 | 上面 §2：每个数字都在 `selfhost/build/vm.exe` 870 400 B 上跑过，加上语料那九条已记录的判决（2.9） |
-| 1. 语法 + 一个点名的拒绝 | 未开始 | 「之前」是 `tests/accept/BASELINE.txt` 20-28 行；「之后」欠一份新的 baseline |
+| 1. 语法 + 一个点名的拒绝 | **完成** 2026-10-20 | §8：构建与不动点 `RESULT: ok`，语料 228/228，338 个被跟踪文件里只有 1 个判决变化，`tests/accept/BASELINE.txt` 已重新记录 |
 | 2. 装载、合并、解释执行 | 未开始 | — |
 | 3. C 后端 | 未开始 | — |
-| 4. LLVM 后端 | 未开始 | — |
+| 4. LLVM 后端 | 未开始 | §8.1 是这一步路上撞到的后端缺陷：大程序里两个调用的 `or` |
 | 5. 自举切换 | 未开始 | — |
 | 6. 模块名、`from M import x`、以及 `mathlib.add` | 未开始 | `tests/accept/modules/module_import_from.vel`、`module_import_qualified.vel` |
 | 7. 编辑器 | 未开始 | — |
+
+## 8. 第 1 步，实测（2026-10-20）
+
+下面每一行都是**跑出来的**，不是读出来的；命令都写出来了，下一个读者可以自己重测。
+
+| 项目 | 命令 | 结果 |
+|---|---|---|
+| 构建，含不动点 | `tools\build.ps1` | `RESULT: ok`——seed、第 1 代、第 2 代全是 `4568E09E9740A9D5`，1 121 217 B |
+| 语料，在有意重新冻结摘要锁之后 | `tools\refreeze.ps1` | `228 passed, 0 failed (of 228 cases, 303 captures)`；`RESULT: green` |
+| 验收语料 | `tools\accept-status.ps1` | 34 行，8 行变化（见下表），重新记录，复判 `RESULT: ok` |
+| D2 的账：哪些被跟踪的 `.vel` 文件判决变了 | 对 `git ls-files '*.vel'`（338 个文件）跑 `vm.exe check`，旧二进制对新二进制 | **只有一个**：`tests/accept/modules/module_import_reserved_name.vel`，exit 0 -> 2。另有八个文件只改了**消息**：七个模块用例，第八个是 `selfhost/parts/parser.vel`——它是片段，片段级诊断不是程序判决 |
+| 编译器自己是这个关键字的第一桩案子 | `vm.exe check tests/accept/modules/module_import_reserved_name.vel` | `vela: syntax error: \`import\` is a keyword since MODULES_PLAN.md step 1 … rename this binding`，`at line 17` |
+
+八行验收用例，before -> after：
+
+| 用例 | 之前 | 之后 |
+|---|---|---|
+| `module_cycle_a.vel` | `expected a newline between statements, found 'module_cycle_b'` | `a module name is not this spelling yet (module_cycle_b)` |
+| `module_cycle_b.vel` | `… found 'module_cycle_a'` | `a module name is not this spelling yet (module_cycle_a)` |
+| `module_import_from.vel` | `… found 'mathlib'` | `` `from mathlib import x` is MODULES_PLAN.md step 6 `` |
+| `module_import_missing.vel` | `… found 'nosuchmodule'` | `` `from nosuchmodule import x` is MODULES_PLAN.md step 6 `` |
+| `module_import_qualified.vel` | `… found 'mathlib'` | `a module name is not this spelling yet (mathlib)` |
+| `module_import_reserved_name.vel` | **ACCEPTED** | **REFUSED**，上面那条关键字冲突 |
+| `module_import_twice.vel` | `… found 'mathlib'` | `a module name is not this spelling yet (mathlib)` |
+| `module_import_unknown_name.vel` | `… found 'mathlib'` | `` `from mathlib import x` is MODULES_PLAN.md step 6 `` |
+
+这一步学到两件计划没有预料到的事，两件都记录下来而不是抹平：
+
+**8.1 当一个 `if` 的条件是两个调用用 `or` 连起来时，LLVM 后端拒绝构建编译器本身。** `parse_import`
+的第一稿写的是 `if at_eof(tk, cx) or at_nl(tk, cx) { perr(...); return -1 }`，而构建的第 4 步回答：
+
+    vela: llvm: adding an argument:
+    vela: panic: the LLVM back end could not build this program
+
+同一个程序 `vm.exe check` 通过、`emit-c` 写出它的 C、解释器能跑；只有 `vm.exe emit-llvm` 拒绝。
+用替换分支的办法二分：同样的 `or` 但分支里**没有**调用 → 能构建；条件里只有一个调用 → 能构建；
+一个调用 `or` 一个标量比较 → 能构建；两个调用、同一函数里**任何**位置再出现一次调用 → 不能。
+把同一形状放进小的独立程序里则能构建（`.work/` 下的 `or_repro`、`or_repro2`、`or_repro3`、
+`or_repro4` 四个都是绿的），所以决定它的是**程序的体积**，不是形状——这是后端的容量缺陷，
+不是解析器的规则。`at_import_end`（`selfhost/parts/parser.vel`）是绕过它的办法——一次调用，
+发射器吞得下——而这一段就是该缺陷的记录，一直到第 4 步的后端把它接管为止。它不是错码的 bug：
+它拒绝得很响，所以绕着它落地第 1 步不会往树里放进一句假话。
+
+**8.2 在装载器存在之前，环无法被点名。** 计划的验收说两个环用例「保留一条点名那个环的消息」；
+第 1 步里它们拿到的是和其它模块用例一样的裸名拒绝，因为一次从不打开 `module_cycle_b.vel` 的编译
+根本没有环可以点名。它们自己的注释要求的是「拒绝，而不是一直递归到栈底或者永远循环」，那是
+第 2 步的验收，而这两个用例会把它们的主张保留到那时。

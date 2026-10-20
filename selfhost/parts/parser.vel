@@ -1,12 +1,13 @@
 # ---------------------------------------------------------------------------
 # selfhost/parts/parser.vel — the parse stage, written in Vela.
 #
-# This file is one part of the self-hosted front end.  Vela 0.1 has no module
-# system (`import` is reserved but not implemented), so `tools/link_selfhost.vel`
-# splices the parts together with the lexer into `selfhost/vm.vel` — the
-# compiler still compiles exactly one file.  That is the same trick C plays with
-# #include, and it disappears the day Vela grows modules.  The linker used to be
-# `tools/link_selfhost.py`; it is written in Vela now.
+# This file is one part of the self-hosted front end.  Vela has no module *loader*
+# yet (`import` became a keyword at MODULES_PLAN.md step 1 and the loader is step 2,
+# so the word is claimed but the statement is refused by name), so
+# `tools/link_selfhost.vel` splices the parts together with the lexer into
+# `selfhost/vm.vel` — the compiler still compiles exactly one file.  That is the
+# same trick C plays with #include, and it disappears the day step 2 lands.  The
+# linker used to be `tools/link_selfhost.py`; it is written in Vela now.
 #
 # ---------------------------------------------------------------------------
 # Node record — 10 ints per node, nd[i * 10 + k]:
@@ -101,6 +102,41 @@ def perr_kind(mut cx: Ctx, kind: str, msg: str, line: int) -> None {
 
 def perr(mut cx: Ctx, msg: str, line: int) -> None {
     perr_kind(cx, "syntax error", msg, line)
+}
+
+# A keyword standing where a NAME was expected, and it is `import` that needs saying out loud.
+#
+# `import` was an ordinary identifier in 0.1 -- `SPEC.md` 1.3 gave `mut import: int = 1` as the
+# example of a legal declaration and promised that "a program that uses them as names will need
+# renaming the day one arrives".  That day is MODULES_PLAN.md step 1, and the program it happens
+# to is a case in this tree (`tests/accept/modules/module_import_reserved_name.vel`), so the
+# refusal is a *reported* cost rather than a discovery: "expected a variable name after 'mut'"
+# would be true, unhelpful, and would leave the reader to guess which of the two things changed.
+#
+# Returns True when it reported, so each call site reads as one `if` above its generic message.
+def kw_as_name(tk: Array[int, 1572864], mut cx: Ctx, line: int) -> bool {
+    if at_kw(tk, cx, 26) {
+        mut msg: str = concat("`import` is a keyword since MODULES_PLAN.md step 1 (SPEC.md 1.3",
+                             " reserves it for the module system), so it is not a name here")
+        msg = concat(msg, " -- rename this binding")
+        perr_kind(cx, "syntax error", msg, line)
+        return True
+    }
+    return False
+}
+
+# Is the token `k` ahead of the cursor a NAME spelled `word`?  `from` and `as`
+# stay ordinary identifiers until MODULES_PLAN.md step 6 claims them, so the
+# spelling has to be recognised *by looking ahead* rather than by a keyword id:
+# `from = 1` is a legal assignment today and must stay one.
+def name_ahead(src: str, tk: Array[int, 1572864], cx: Ctx, k: int, word: str) -> bool {
+    if tk_kind(tk, cx.ti + k) != 1 {
+        return False
+    }
+    if tk_ival(tk, cx.ti + k) != 0 {
+        return False
+    }
+    return name_eq(src, tk_off(tk, cx.ti + k), tk_len(tk, cx.ti + k), word)
 }
 
 # The token under the cursor, spelled the way the reader wrote it.  Stage 0
@@ -389,7 +425,7 @@ def parse_body(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
             cx.ti += 1
             continue
         }
-        s: int = parse_stmt(src, tk, tkf, nd, ty, flt, cx)
+        s: int = parse_stmt(src, tk, tkf, nd, ty, flt, cx, 0)
         if s >= 0 {
             if head < 0 {
                 head = s
@@ -416,16 +452,143 @@ def parse_body(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return head
 }
 
+def is_name_at(tk: Array[int, 1572864], cx: Ctx, k: int) -> bool {
+    return tk_kind(tk, cx.ti + k) == 1 and tk_ival(tk, cx.ti + k) == 0
+}
+
+def is_kw_at(tk: Array[int, 1572864], cx: Ctx, k: int, id: int) -> bool {
+    return tk_kind(tk, cx.ti + k) == 1 and tk_ival(tk, cx.ti + k) == id
+}
+
+# `tok_text` for a token `k` ahead of the cursor, so a refusal can quote the token
+# it is about without moving `cx.ti` first.
+def tok_text_at(src: str, tk: Array[int, 1572864], cx: Ctx, k: int) -> str {
+    o: int = tk_off(tk, cx.ti + k)
+    mut e: int = o + tk_len(tk, cx.ti + k)
+    if e > len(src) {
+        e = len(src)
+    }
+    if o > e {
+        return ""
+    }
+    return substr(src, o, e)
+}
+
+# `from M import x` is a NAME followed by a NAME followed by the `import` keyword.
+# It is recognised by that *shape* rather than by a keyword, because `from` and
+# `as` are ordinary identifiers until MODULES_PLAN.md step 6 claims them: `from = 1`
+# is a legal assignment today, and a lookahead of three tokens is the only thing
+# that tells the two apart.  Top level only, because that is where the corpus
+# writes it (`tests/accept/modules/module_import_from.vel`).
+def at_from_import_shape(src: str, tk: Array[int, 1572864], cx: Ctx, top: int) -> bool {
+    if top != 1 {
+        return False
+    }
+    if not at_name(tk, cx) {
+        return False
+    }
+    if not name_ahead(src, tk, cx, 0, "from") {
+        return False
+    }
+    if not is_name_at(tk, cx, 1) {
+        return False
+    }
+    return is_kw_at(tk, cx, 2, 26)
+}
+
+# "The `import` line ends here" as one boolean, rather than `at_eof(...) or
+# at_nl(...)` written inline.
+#
+# It is one function for a measured reason: with the two-call `or` inline in
+# `parse_import`, the LLVM back end refuses to build the compiler itself ("vela:
+# llvm: adding an argument:" then "the LLVM back end could not build this
+# program"), while the same program through the C back end and through the
+# interpreter is fine.  The identical shape in a small standalone program builds,
+# so what decides it is the size of the program, not the shape; the defect is
+# recorded in MODULES_STEP1.md rather than hidden here.  Splitting the `or` into a
+# function the emitter calls once keeps step 1 landing on a green build.
+def at_import_end(tk: Array[int, 1572864], cx: Ctx) -> bool {
+    if at_eof(tk, cx) {
+        return True
+    }
+    return at_nl(tk, cx)
+}
+
+# `import` in statement position.  MODULES_PLAN.md step 1 lands the *syntax* and a
+# refusal that names itself; step 2 is the loader that would make it do anything, and
+# step 6 is the bare module name the corpus's other cases propose.
+#
+# Three shapes, three sentences.  They are separate on purpose: `import "b.vel"` is
+# the spelling this step lands, `import mathlib` is a name whose search rule has not
+# been decided, and an `import` inside a block is in the wrong place.  "Not
+# implemented" is the honest answer to exactly one of them, and a single message for
+# all three would send the reader to the wrong document two times out of three.
+def parse_import(src: str, tk: Array[int, 1572864], mut cx: Ctx, line: int, top: int) -> int {
+    if top != 1 {
+        perr(cx,
+             "`import` declares what the file uses, so it belongs at the top level, outside every block",
+             line)
+        return -1
+    }
+    cx.ti += 1
+    if at_import_end(tk, cx) {
+        perr(cx, "expected a module path after `import`: write `import <path>/file.vel`", line)
+        return -1
+    }
+    if tk_kind(tk, cx.ti) == 4 {
+        # The spelling step 1 lands, and the loader it needs does not exist yet.  The
+        # path the reader wrote is in the message because that string is the loader's
+        # whole input: step 2 resolves it against this file's directory and reads it.
+        p: str = tok_text(src, tk, cx)
+        mut msg: str = concat("`import ", p)
+        msg = concat(msg, "`: Vela's syntax, and the loader that would read it is not written --")
+        msg = concat(msg, " MODULES_PLAN.md step 2 adds it (SPEC.md 1.3)")
+        perr_kind(cx, "syntax error", msg, line)
+        return -1
+    }
+    if at_name(tk, cx) {
+        nm: str = tok_text(src, tk, cx)
+        mut msg2: str = concat("a module name is not this spelling yet (", nm)
+        msg2 = concat(msg2, "): a name and the rule that finds it are MODULES_PLAN.md step 6,")
+        msg2 = concat(msg2, " so the spelling today is a path string -- `import <path>/<name>.vel`")
+        perr_kind(cx, "syntax error", msg2, line)
+        return -1
+    }
+    perr(cx, "expected a module path after `import`: write `import <path>/file.vel`", line)
+    return -1
+}
+
 # ---------------------------------------------------------------------------
 # statements
 
 def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
                mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-               mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+               mut flt: Array[float, 65536], mut cx: Ctx, top: int) -> int {
     if cx.err != 0 {
         return -1
     }
     line: int = ti_line(tk, cx)
+    # `import` is keyword 26 as of MODULES_PLAN.md step 1 (vela.vel's keyword_id), and it is
+    # recognised here, above every expression and assignment arm, so the shape `import "b.vel"`
+    # never reaches the expression grammar: before this arm existed it came out as "expected a
+    # newline between statements, found 'b.vel'" -- a complaint about the string that says
+    # nothing about the construct.  `top` separates the two positions the same token can be in:
+    # a declaration of the file (top level) and a statement in the wrong place (any block).
+    if at_kw(tk, cx, 26) {
+        return parse_import(src, tk, cx, line, top)
+    }
+    # The corpus's other spelling, `from mathlib import add`.  Its own step is 6; what this arm
+    # owes today is a refusal that names the shape instead of the token after it, which is what
+    # `tests/accept/modules/module_import_from.vel` and `module_import_missing.vel` record.
+    if at_from_import_shape(src, tk, cx, top) {
+        nm: str = tok_text_at(src, tk, cx, 1)
+        mut fmsg: str = concat("`from ", nm)
+        fmsg = concat(fmsg, " import x` is MODULES_PLAN.md step 6: `from` and `as` are ordinary")
+        fmsg = concat(fmsg, " identifiers until then, so the spelling today is a path string --")
+        fmsg = concat(fmsg, " write `import <path>/<name>.vel`")
+        perr_kind(cx, "syntax error", fmsg, line)
+        return -1
+    }
     if at_kw(tk, cx, 20) {
         cx.ti += 1
         if not at_kw(tk, cx, 1) {
@@ -540,6 +703,9 @@ def parse_funcdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     line: int = ti_line(tk, cx)
     cx.ti += 1
     if not at_name(tk, cx) {
+        if kw_as_name(tk, cx, line) {
+            return -1
+        }
         perr(cx, "expected a function name", line)
         return -1
     }
@@ -561,6 +727,9 @@ def parse_funcdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
                 cx.ti += 1
             }
             if not at_name(tk, cx) {
+                if kw_as_name(tk, cx, ti_line(tk, cx)) {
+                    return -1
+                }
                 perr(cx, "expected a parameter name", ti_line(tk, cx))
                 return -1
             }
@@ -729,6 +898,9 @@ def parse_variant(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
                   mut flt: Array[float, 65536], mut cx: Ctx) -> int {
     line: int = ti_line(tk, cx)
     if not at_name(tk, cx) {
+        if kw_as_name(tk, cx, line) {
+            return -1
+        }
         perr(cx, concat(concat("expected a variant name, found '",
                                tok_text(src, tk, cx)), "'"), line)
         return -1
@@ -1065,6 +1237,12 @@ def parse_simple(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     if at_kw(tk, cx, 19) {
         cx.ti += 1
         if not at_name(tk, cx) {
+            # `mut import: int = 1` is the program SPEC.md 1.3 named as legal in 0.1 and
+            # promised a renaming.  This is that sentence: the refusal says which word
+            # arrived and which document claimed it, rather than "expected a name".
+            if kw_as_name(tk, cx, line) {
+                return -1
+            }
             perr(cx, "expected a variable name after 'mut'", line)
             return -1
         }
@@ -1625,7 +1803,7 @@ def parse_module(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
                  ti_line(tk, cx))
             break
         }
-        s: int = parse_stmt(src, tk, tkf, nd, ty, flt, cx)
+        s: int = parse_stmt(src, tk, tkf, nd, ty, flt, cx, 1)
         if s >= 0 {
             if head < 0 {
                 head = s

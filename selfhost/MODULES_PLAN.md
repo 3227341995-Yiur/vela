@@ -21,6 +21,9 @@ not a design a reader can disagree with.
 
 ## 2. What is true today, measured (2026-09-25, `selfhost/build/vm.exe` 870 400 B)
 
+**This section is the state *before* step 1 landed** — it is the design's ground
+truth, kept as it was measured.  §8 is what changed when the step landed.
+
 Every line below was run, not read.  The commands are given so the next reader can
 re-take any of them.
 
@@ -232,24 +235,30 @@ documents that become false the moment it lands.
 
 ### Step 1 — the syntax, and a refusal that names itself
 
-*Changes.*  `import` joins `keyword_id` as 26 (`selfhost/vela.vel` lines 158-244);
-the parser accepts `import "path"` at top level only and builds a node for it
-(after `parse_module`, `selfhost/parts/parser.vel` lines 1611-1646, which links
-top-level statements through `nx`); every mode that would have to *act* on it
-refuses by name.
+*Changes.*  `import` joins `keyword_id` as 26 (`selfhost/vela.vel`); the parser
+recognises it in statement position and refuses **every** shape of it by name: the
+path spelling (`import "path/file.vel"`, quoting the path the reader wrote), the bare
+module name (`import mathlib`, pointing at step 6), `from M import x` (recognised as a
+three-token shape, because `from` stays an identifier), `import` inside a block, and
+`import` standing where a NAME is expected (`mut import: int = 1`, a function name, a
+parameter, an enum variant) with the sentence `SPEC.md` §1.3 promised.  No node is
+built for it and no mode acts on it: with no loader behind it, a parsed-and-ignored
+`import` would be a program that says it is two files and compiles as one — the class
+of lie D8 exists to refuse.
 *Commands.*  `tools\build.ps1` (the change has to survive the fixpoint), then
-`tools\refreeze.ps1` (the 196-case corpus), then `vm.exe check` over every `.vel` in
+`tools\refreeze.ps1` (the corpus), then `vm.exe check` over every tracked `.vel` in
 the tree to answer D2's debt: **which files changed verdict, if any**.
 *Acceptance.*  A program with `import "b.vel"` is refused with a message that names
-the construct and the path, not "expected a newline"; `mut import: int = 1` is now
-refused as a keyword collision (and that refusal is a corpus case, since it is the
-observable cost of D2); the corpus is green; the verdict-change list is in the
-step's evidence file.  **And the corpus's own nine lines move in a way that is already recorded**
-(2.9): `module_import_reserved_name.vel` goes `ACCEPTED -> REFUSED` (D2's cost, as that file's
-comment asked for), the other eight keep refusing but stop quoting the wrong reason — the five
-`... found 'mathlib'` / `'nosuchmodule'` messages become "a module *name* is not this spelling yet,
-write `import \"mathlib.vel\"`", and the two cycle cases keep a message that names the cycle.  A new
-`tests/accept/BASELINE.txt` is part of this step's evidence, because the old one becomes false.
+the construct and the path; `mut import: int = 1` is now refused as a keyword
+collision; the corpus is green; the verdict-change list is in §8.  **And the corpus's
+own nine lines move in a way that is already recorded** (2.9):
+`module_import_reserved_name.vel` goes `ACCEPTED -> REFUSED` (D2's cost, as that
+file's comment asked for), the five `... found 'mathlib'` / `'nosuchmodule'` messages
+become the two named refusals above, and the two cycle cases become the bare-name
+refusal as well — their own claim, a diagnostic that names the cycle, cannot be
+answered before a loader exists, so it stays owed to step 2.  A new
+`tests/accept/BASELINE.txt` is part of this step's evidence, because the old one
+becomes false.
 *Documents.*  `SPEC.md` §1.3's paragraph, and its Chinese twin; the "reserved but not
 implemented" comments in `selfhost/vela.vel` / `parser.vel`.
 
@@ -367,10 +376,68 @@ documentation-reserved identifiers.
 | step | state | the evidence |
 |---|---|---|
 | 0. the design, against measurements | **done** 2026-09-25 | §2 above: every number run on `selfhost/build/vm.exe` 870 400 B, plus the corpus's nine recorded verdicts (2.9) |
-| 1. syntax + a named refusal | not started | the before is `tests/accept/BASELINE.txt` lines 20-28; the after owes a new baseline |
+| 1. syntax + a named refusal | **done** 2026-10-20 | §8: `RESULT: ok` on the build and its fixpoint, 228/228 on the corpus, 1 verdict change out of 338 tracked files, and a re-recorded `tests/accept/BASELINE.txt` |
 | 2. load, merge, interpret | not started | — |
 | 3. the C back end | not started | — |
-| 4. the LLVM back end | not started | — |
+| 4. the LLVM back end | not started | §8.1 is a defect this step hit on the way: an `or` of two calls in a large program |
 | 5. the self-hosting switch | not started | — |
 | 6. a module name, `from M import x`, and `mathlib.add` | not started | `tests/accept/modules/module_import_from.vel`, `module_import_qualified.vel` |
+
+## 8. Step 1, measured (2026-10-20)
+
+Every line below was run, not read; the commands are given so the next reader can
+re-take them.
+
+| what | command | result |
+|---|---|---|
+| the build, fixpoint included | `tools\build.ps1` | `RESULT: ok` — seed, generation 1 and generation 2 are all `4568E09E9740A9D5`, 1 121 217 B |
+| the corpus, after a deliberate digest re-freeze | `tools\refreeze.ps1` | `228 passed, 0 failed (of 228 cases, 303 captures)`; `RESULT: green` |
+| the acceptance corpus | `tools\accept-status.ps1` | 34 rows, 8 changed (below), re-recorded; re-judged `RESULT: ok` |
+| D2's debt: which tracked `.vel` files change verdict | `vm.exe check` over `git ls-files '*.vel'` (338 files), old binary vs new | **exactly one**: `tests/accept/modules/module_import_reserved_name.vel`, exit 0 -> 2.  Eight files changed *message* only, seven of them the module cases and the eighth `selfhost/parts/parser.vel`, which is a fragment and whose fragment-level diagnostic is not a program verdict |
+| the compiler is the keyword's own case | `vm.exe check tests/accept/modules/module_import_reserved_name.vel` | `vela: syntax error: \`import\` is a keyword since MODULES_PLAN.md step 1 (SPEC.md 1.3 reserves it for the module system), so it is not a name here -- rename this binding`, `at line 17` |
+
+The eight accept rows, before -> after:
+
+| case | before | after |
+|---|---|---|
+| `module_cycle_a.vel` | `expected a newline between statements, found 'module_cycle_b'` | `a module name is not this spelling yet (module_cycle_b)` |
+| `module_cycle_b.vel` | `… found 'module_cycle_a'` | `a module name is not this spelling yet (module_cycle_a)` |
+| `module_import_from.vel` | `… found 'mathlib'` | `` `from mathlib import x` is MODULES_PLAN.md step 6 `` |
+| `module_import_missing.vel` | `… found 'nosuchmodule'` | `` `from nosuchmodule import x` is MODULES_PLAN.md step 6 `` |
+| `module_import_qualified.vel` | `… found 'mathlib'` | `a module name is not this spelling yet (mathlib)` |
+| `module_import_reserved_name.vel` | **ACCEPTED** | **REFUSED**, the keyword collision above |
+| `module_import_twice.vel` | `… found 'mathlib'` | `a module name is not this spelling yet (mathlib)` |
+| `module_import_unknown_name.vel` | `… found 'mathlib'` | `` `from mathlib import x` is MODULES_PLAN.md step 6 `` |
+
+Two things this step learned that the plan did not predict, and both are recorded
+rather than smoothed over:
+
+**8.1 The LLVM back end refuses to build the compiler when an `if` condition is an
+`or` of two calls.**  The first draft of `parse_import` wrote
+`if at_eof(tk, cx) or at_nl(tk, cx) { perr(...); return -1 }` and step 4 of the
+build answered:
+
+    vela: llvm: adding an argument:
+    vela: panic: the LLVM back end could not build this program
+
+`vm.exe check` accepts the same program, `emit-c` writes its C, and the interpreter
+runs it; `vm.exe emit-llvm` is the one that refuses.  Bisected by replacing that
+branch with variants: the same `or` with **no** call in the branch builds; a single
+call in the condition builds; a call `or` a scalar comparison builds; two calls
+followed by *any* call in the same function does not.  The identical shape in a
+small standalone program builds (`or_repro`, `or_repro2`, `or_repro3`, `or_repro4`
+in `.work/`, all four green), so what decides it is the size of the program, not the
+shape, and it is therefore a back-end capacity defect rather than a parser rule.
+`at_import_end` (`selfhost/parts/parser.vel`) is the workaround — one call the
+emitter can take — and this paragraph is the defect's record until step 4's back end
+owns it.  It is not a wrong-code bug: it refuses loudly, which is why landing step 1
+around it does not put a lie in the tree.
+
+**8.2 A cycle cannot be named before a loader exists.**  The plan's acceptance said
+the two cycle cases "keep a message that names the cycle"; at step 1 they get the
+bare-name refusal like the other module cases, because a compile that never opens
+`module_cycle_b.vel` has no cycle to name.  Their own comment asks for a refusal
+"rather than recursing until the stack ends or looping for ever", which is step 2's
+acceptance, and the case keeps its claim until then.
+
 | 7. the editor | not started | — |
