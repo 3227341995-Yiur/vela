@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# selfhost/parts/vm_main.vel 鈥?the driver of the self-hosted front end.
+# selfhost/parts/vm_main.vel 閳?the driver of the self-hosted front end.
 #
 # One command, one mode per stage, so that a disagreement about a program can be
 # pointed at exactly one of them:
@@ -33,7 +33,7 @@
 # LLVM IR has no OpenMP and this project will not ship a loop that says it is
 # parallel while running serially.  What is gone is the *silent* use of it.
 #
-# `check` is not an extra service the front end offers 鈥?the same line this file
+# `check` is not an extra service the front end offers 閳?the same line this file
 # has always taken: a back end that emitted C for a program the checker would
 # refuse would be a back end that lost the language's promises on the way to C,
 # so `emit-c`, `run` and `build` all call `ck_module` first.
@@ -41,7 +41,7 @@
 # The stages are compared to nothing but the recorded goldens now:
 # `tests/cases.txt` holds this compiler's `lex`/`parse`/`emit-c` digests, its
 # refusals and its output to `tests/golden/`.  The Python front end this driver
-# used to be held against 鈥?and the differential suites that did the holding 鈥?# were deleted with it in stage 4 (`DESIGN.md` 搂7).
+# used to be held against 閳?and the differential suites that did the holding 閳?# were deleted with it in stage 4 (`DESIGN.md` 鎼?).
 
 def dump_tokens(tk: Array[int, 1572864], cx: Ctx) -> None {
     mut i: int = 0
@@ -98,7 +98,7 @@ def usage() -> None {
 }
 
 # The raw pool, one line per node, in index order.  The canonical dump shows the
-# tree as it should be read; this shows the ten words it is actually made of 鈥?# two words per number, which is what a disagreement about a chain or a
+# tree as it should be read; this shows the ten words it is actually made of 閳?# two words per number, which is what a disagreement about a chain or a
 # terminator has to be debugged against.
 def dump_nodes(nd: Array[int, 1310720], n: int) -> None {
     mut i: int = 0
@@ -153,7 +153,7 @@ def find_in(s: str, needle: str) -> int {
 
 # Does the C this compiler just wrote need OpenMP?  The answer decides whether
 # the host's C compiler is asked for it, and the question is put to the *file*
-# rather than to the user: asking unconditionally would make every binary 鈥?# including one that has never heard of `parallel for` 鈥?depend on MSVC's OpenMP
+# rather than to the user: asking unconditionally would make every binary 閳?# including one that has never heard of `parallel for` 閳?depend on MSVC's OpenMP
 # runtime, and never asking would leave every `parallel for` on one core while
 # the language said otherwise.
 def needs_openmp(cfile: str) -> bool {
@@ -196,7 +196,7 @@ def exists(path: str) -> bool {
 # ------------------------------------------------------------------ path parts
 #
 # The C a build hands to cl.exe includes `runtime/vela_runtime.h`, and for a long
-# time the driver handed cl the *relative* string `runtime` 鈥?which only resolves
+# time the driver handed cl the *relative* string `runtime` 閳?which only resolves
 # when the caller happens to be standing in the repository root.  Every editor,
 # script and user outside the root therefore could not build anything: opening the
 # IDE on `vela\tests` was enough to turn every run into
@@ -267,7 +267,7 @@ def sep_of(s: str) -> str {
 }
 
 # One directory up, computed *as text*.  This is not tidiness: cl.exe does not
-# resolve `..` inside an `/I` directory 鈥?measured, both `dir/..` and `dir\..`
+# resolve `..` inside an `/I` directory 閳?measured, both `dir/..` and `dir\..`
 # fail with C1083 for a header that is really there, while the same directory
 # spelled out works.  A walk that hands cl a `..` is therefore a walk that finds
 # the runtime and then cannot use it, which is exactly how the first version of
@@ -315,7 +315,7 @@ def join_with(a: str, b: str) -> str {
 # typed, so it can be absolute, relative, or a bare name the host resolved on
 # PATH.  That is exactly why it cannot be used raw: with no separator in it there
 # is nothing to walk up, and joining a runtime directory onto `vm.exe` would
-# produce a path relative to the caller's working directory 鈥?the same bug one
+# produce a path relative to the caller's working directory 閳?the same bug one
 # level down.  The answer is `"."`, which makes the candidates below `./runtime`
 # and `./../runtime`: the caller's directory, which is what a bare name means.
 def exe_dir() -> str {
@@ -331,8 +331,8 @@ def exe_dir() -> str {
 
 # Does this directory hold the header itself?
 #
-# It asks the question the contract asks: `rt` 鈥?the 4th argument, `VELA_RUNTIME`,
-# and the bare `runtime` literal the driver has always passed 鈥?is the directory
+# It asks the question the contract asks: `rt` 閳?the 4th argument, `VELA_RUNTIME`,
+# and the bare `runtime` literal the driver has always passed 閳?is the directory
 # that *contains* `vela_runtime.h`, because that is exactly what cl's `-I` takes.
 #
 # This function used to test `dir/runtime/vela_runtime.h` while `find_runtime`
@@ -345,7 +345,7 @@ def exe_dir() -> str {
 #         'vela_runtime.h': No such file or directory
 #
 # The include directory was the repository root, one level above the file it was
-# looking for 鈥?and the driver printed "found" while doing it, because the *probe*
+# looking for 閳?and the driver printed "found" while doing it, because the *probe*
 # had looked in the right place and the *value* was the wrong one.
 def has_runtime(dir: str) -> bool {
     if len(dir) == 0 {
@@ -361,7 +361,7 @@ def on_windows() -> bool {
 # Where `runtime/vela_runtime.h` is, resolved so that a build does not depend on
 # where the caller is standing.  The order is the whole design:
 #
-#   1. an explicit runtime directory 鈥?the 4th argument, or `VELA_RUNTIME` 鈥?wins
+#   1. an explicit runtime directory 閳?the 4th argument, or `VELA_RUNTIME` 閳?wins
 #      because it is the one answer a user typed on purpose;
 #   2. the compiler's own location, walking up from its directory, because the
 #      compiler is the only thing on the command line that is pinned to the tree;
@@ -369,7 +369,7 @@ def on_windows() -> bool {
 #      has always worked and must keep working byte for byte.
 #
 # Nothing here is a new success path.  When none of the three holds the loop
-# returns `runtime`, which is what the driver passed before 鈥?so a host with no
+# returns `runtime`, which is what the driver passed before 閳?so a host with no
 # runtime anywhere still fails with cl's own C1083, exactly as it did.
 def find_runtime(exe: str) -> str {
     want: str = env("VELA_RUNTIME")
@@ -414,7 +414,7 @@ def shell(c: str) -> str {
 # The function number a name was filed under, or -1.  `find_main` in eval.vel
 # asks the same question of the name `main`; this asks it of a name given here,
 # because the debug driver's exit event has to be reached by the number the
-# resolver handed out 鈥?Vela 0.1 has no function values to pass instead.
+# resolver handed out 閳?Vela 0.1 has no function values to pass instead.
 def find_function(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
                   name: str) -> int {
     h: int = intern(name)
@@ -486,7 +486,7 @@ def msvc_build(self: str, vcv: str, cfile: str, exe: str, obj: str, rt: str,
     # `cl.exe` starts two helpers that outlive it: `vctip.exe` (the telemetry
     # client) and `mspdbsrv.exe` (a PDB server).  They are detached, they inherit
     # the handles of whatever started them, and they sit there for minutes or
-    # hours.  On this project that is not a curiosity 鈥?it is the reason the whole
+    # hours.  On this project that is not a curiosity 閳?it is the reason the whole
     # session died twice.  The harness that runs our commands tracks children in a
     # Windows job object and refuses to complete while that job is not empty, so
     # one build leaving `vctip.exe` alive makes *every* subsequent command fail:
@@ -531,7 +531,7 @@ def msvc_build(self: str, vcv: str, cfile: str, exe: str, obj: str, rt: str,
     # cl.exe writes its diagnostics to *stdout*, not stderr.  Left alone, a build
     # that fails therefore puts the only message that explains why into the
     # caller's stdout, while this driver's own failure message goes to stderr and
-    # says nothing about the error 鈥?which is how `error C3014` (the pragma was
+    # says nothing about the error 閳?which is how `error C3014` (the pragma was
     # not followed by the loop) and `error C3015` (OpenMP 2.0 wants the induction
     # variable already declared) stayed invisible behind `'cc' is not recognized`
     # for a whole debugging cycle.
@@ -539,28 +539,28 @@ def msvc_build(self: str, vcv: str, cfile: str, exe: str, obj: str, rt: str,
     # `1>&2` hands cl's stdout to this process's stderr, which is where both the
     # test suite and a reader of the build report look for the reason a build
     # failed.  It is a handle duplication rather than a file on purpose: cl.exe
-    # spawns a detached vctip.exe that inherits 鈥?and holds for minutes or hours 鈥?    # any file its output was redirected into, so a capture file here would be
+    # spawns a detached vctip.exe that inherits 閳?and holds for minutes or hours 閳?    # any file its output was redirected into, so a capture file here would be
     # unopenable on the next build of the same source.  Duplicating a handle
     # leaves nothing behind to be held.
     c = concat(c, " 1>&2")
     return run_cc(self, vcv, c, tag)
 }
 
-# cl.exe speaks the host's language 鈥?on this machine, Chinese, in the OEM code
-# page, which arrives at every capture as mojibake (`鐠囥儲鏋冩禒璺哄瘶閸?...` for the
-# C4819 warning above, `閺冪姵纭堕幍鎾崇磻閸栧懎鎯堥弬鍥︽` for a missing header).  A
+# cl.exe speaks the host's language 閳?on this machine, Chinese, in the OEM code
+# page, which arrives at every capture as mojibake (`閻犲洢鍎查弸鍐╃鐠哄搫鐦堕柛?...` for the
+# C4819 warning above, `闁哄啰濮电涵鍫曞箥閹惧磭纾婚柛鏍ф噹閹牓寮崶锔筋偨` for a missing header).  A
 # diagnostic nobody can read is a diagnostic nobody has, and Vela's own messages
 # are English, so the child is asked for English with `VSLANG=1033`.
 #
 # It is set *for the child* and nowhere else, through a batch file, because Vela
-# has no way to set an environment variable (SPEC 搂8: three host calls, none of
+# has no way to set an environment variable (SPEC 鎼?: three host calls, none of
 # them `setenv`) and this must not leak into the user's session.  `cmd.exe /d`
 # skips the AutoRun hooks a user may have installed, and `set` before the call is
 # what makes the assignment reach cl: `vcvars64.bat` sets PATH, LIB and friends
 # but never VSLANG, so `call` leaves this one alone.
 # `cl.exe` starts `vctip.exe` (its telemetry client) and `mspdbsrv.exe` (a PDB
 # server) as *detached* processes.  They outlive the compiler by minutes or hours
-# and inherit its handles, and on this project that is not a tidiness problem 鈥?it
+# and inherit its handles, and on this project that is not a tidiness problem 閳?it
 # is why the session died eleven times.
 #
 # Measured mechanism: the harness that runs our commands tracks children in a
@@ -570,8 +570,8 @@ def msvc_build(self: str, vcv: str, cfile: str, exe: str, obj: str, rt: str,
 #     Error: subprocess-local: Windows Job runner exited with exit code 1
 #     before proving its managed range empty
 #
-# and only restarting the host clears it.  Two long background jobs 鈥?a 467 MB
-# download and a test-suite run 鈥?were killed mid-flight that way, and the suite
+# and only restarting the host clears it.  Two long background jobs 閳?a 467 MB
+# download and a test-suite run 閳?were killed mid-flight that way, and the suite
 # is the worst case: it builds about thirty programs, so the helpers accumulate
 # faster than any cleanup at the end of a script can reap them.  `tools\build.ps1`
 # and `tools\smoke.ps1` clean up after themselves; a script that *drives the suite*
@@ -616,14 +616,14 @@ def run_cc(self: str, vcv: str, c: str, tag: str) -> int {
     # The two files this writes are named after `tag` -- the build's own scratch C
     # path -- and NOT after `self`, the compiler binary.  That distinction is a bug
     # fix, and it was measured: naming them after the compiler meant that *every*
-    # build on the machine wrote the same `鈥vm.exe_cc.bat`, so two builds at once
+    # build on the machine wrote the same `閳ヮ泜vm.exe_cc.bat`, so two builds at once
     # clobbered each other's command file.  Reproduced with two concurrent builds of
     # different sources, which is what the test suite does when its cases overlap and
     # what an IDE does when it builds while the user builds:
     #
-    #     a.err: 鈥b.vel.c : fatal error C1083: cannot open compiler generated file:
-    #            鈥b.vel.obj  Permission denied
-    #     b.err: LINK : fatal error LNK1181: cannot open input file 鈥b.vel.obj
+    #     a.err: 閳ヮ泤b.vel.c : fatal error C1083: cannot open compiler generated file:
+    #            閳ヮ泤b.vel.obj  Permission denied
+    #     b.err: LINK : fatal error LNK1181: cannot open input file 閳ヮ泤b.vel.obj
     #
     # -- process A ran the batch file process B had just written, so A compiled B's
     # C and the two fought over B's object file.  The failures arrived later as
@@ -712,7 +712,7 @@ def base_name(path: str) -> str {
 # Keying the scratch directory by the base name was wrong, and the measurement that
 # showed it took a while to find: the corpus holds the same file name in two
 # directories (`tests/build/x.vel` and `tests/build/check_cases/x.vel`), so those two
-# builds shared one `.c` and one `.obj` 鈥?and since `cl.exe` leaves a detached helper
+# builds shared one `.c` and one `.obj` 閳?and since `cl.exe` leaves a detached helper
 # holding any file it touched, the *second* build of that name failed with an error
 # the suite could report only as "could not be built", while the same file built and
 # ran perfectly by hand.  Five cases failed that way, and none of them was a compiler
@@ -741,14 +741,14 @@ def flat_name(path: str) -> str {
 # They are not the product and they do not belong in the directory the reader is
 # working in: `vm.exe build hello.vel` must leave `hello.exe` and nothing else.
 # Vela emits C as its code-generation backend, and that C is a detail of this
-# implementation, not an artifact of the user's program 鈥?so it is written under
+# implementation, not an artifact of the user's program 閳?so it is written under
 # the system temp directory along with the object file, under a directory named
 # after the source **path** (see `flat_name`) so that two builds cannot collide.
 #
-# Creating the directory is the one thing the host has to do: SPEC 搂8 lists the
+# Creating the directory is the one thing the host has to do: SPEC 鎼? lists the
 # host surface and it has no `mkdir`, so this goes through `run_command`, which is
 # the same call the C compiler itself is started with.  Its failure is not fatal
-# here 鈥?a directory that does not exist makes the C write fail, and that failure
+# here 閳?a directory that does not exist makes the C write fail, and that failure
 # names the path it could not write.
 def build_scratch(path: str, ext: str) -> str {
     mut t: str = env("TEMP")
@@ -839,9 +839,9 @@ def do_build(self: str, path: str, rt: str, extra: str) -> None {
     #
     # Measured, before this was written: with `PATH` stripped to Windows itself, `cl`
     # wrote a correct `hello.exe` (150016 bytes, runs, exit 0) and the compound command
-    # still returned non-zero — and this driver panicked
+    # still returned non-zero 鈥?and this driver panicked
     #
-    #     vela: build: the C compiler refused …\hello.vel.c
+    #     vela: build: the C compiler refused 鈥hello.vel.c
     #     vela: panic: build: no C compiler on this host could build the emitted C
     #
     # while leaving that working executable on disk.  The same sequence typed into a
@@ -873,8 +873,8 @@ def do_build(self: str, path: str, rt: str, extra: str) -> None {
             #
             # This is deliberately *not* a second opinion when cl.exe was present
             # and refused the C.  A Windows host with MSVC installed has no `cc`,
-            # so all this fallback could do there is replace cl's diagnostic — now on
-            # stderr, above — with `'cc' is not recognized as an internal or external
+            # so all this fallback could do there is replace cl's diagnostic 鈥?now on
+            # stderr, above 鈥?with `'cc' is not recognized as an internal or external
             # command`, which names the wrong problem and hides the right one.  A user
             # with MinGW and no MSVC still reaches it.
             rc = other_build(self, other_cc(), cfile, exe, dir, omp, cfile, ex)
@@ -1186,6 +1186,352 @@ def do_build_llvm(self: str, path: str, rt: str, nd: Array[int, 1310720],
     emit_nl()
 }
 
+# ------------------------------------------------------------------ the loader
+#
+# MODULES_PLAN.md step 2: a program is a root file plus every `import "path"` it
+# reaches, and the loader is the only part of this compiler that already does I/O.
+# The rules are the plan's decisions in its own numbering:
+#
+#   D4  imported declarations come first, outermost import first, then the root's
+#       own -- the order `tools/link_selfhost.vel` produces today, which is what
+#       makes the fixpoint evidence about the merge rather than about a guess.
+#   D5  `main` belongs to the root file.  A second one is refused by name, from
+#       both sides: the file it is in and the file that owns it.
+#   D6  a path is loaded once, and `a -> b -> a` is refused with the chain printed.
+#   D7  every file gets a line base, and the (first line, path) pairs live in
+#       `mem` (see the tables in vm_state.vel) so every later stage can answer
+#       "which file is this line in" from `mem` and nothing else.
+#
+# The pass is post-order: a file is read and parsed as soon as it is reached, its
+# imports are loaded first, and only then are its own statements appended to the
+# merged chain.  A file that cannot be opened, a cycle, a duplicate top-level name
+# and a second `main` are refusals with the line they came from -- the loader is
+# where "which file" first becomes a question, so it is where the answer has to be
+# exact.
+
+struct Load {
+    head: int      # first statement of the merged program, -1 when empty
+    tail: int
+    count: int
+    next: int      # the first free line number for the next file to load
+}
+
+def load_fail(path: str, line: int, msg: str) -> None {
+    warn_str("vela: type error: ")
+    warn_str(msg)
+    warn_str("\n  at ")
+    warn_str(path)
+    warn_str(":")
+    warn_int(line)
+    warn_nl()
+    panic("the program could not be loaded")
+}
+
+def src_count(mem: Array[int, 3741696]) -> int {
+    return mem[MEM_SRCS()]
+}
+
+def src_path(mem: Array[int, 3741696], i: int) -> str {
+    return interned(mem[MEM_SRCS() + 2 + i * 2])
+}
+
+# The index in the sources table of a path already loaded, or -1.  The path is
+# compared as an interned handle: `intern` is content-addressed, so equal spellings
+# are equal integers and `./x.vel` and `x.vel` are two different files -- which is
+# what "resolved against the importing file's directory" means, and why the
+# resolver is `resolve_import` and not a guess at normalising separators.
+def loaded_before(mem: Array[int, 3741696], name: int) -> int {
+    mut i: int = 0
+    mut n: int = mem[MEM_SRCS()]
+    while i < n {
+        if mem[MEM_SRCS() + 2 + i * 2] == name {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+def stack_at(mem: Array[int, 3741696], name: int) -> int {
+    mut i: int = 0
+    mut n: int = mem[MEM_LSTK()]
+    while i < n {
+        if mem[MEM_LSTK() + 1 + i] == name {
+            return i
+        }
+        i += 1
+    }
+    return -1
+}
+
+def stack_push(mut mem: Array[int, 3741696], name: int) -> None {
+    mut n: int = mem[MEM_LSTK()]
+    if n >= LSTK_MAX() {
+        panic("vela: compiler: the import chain is too deep")
+    }
+    mem[MEM_LSTK() + 1 + n] = name
+    mem[MEM_LSTK()] = n + 1
+}
+
+def stack_pop(mut mem: Array[int, 3741696]) -> None {
+    mem[MEM_LSTK()] = mem[MEM_LSTK()] - 1
+}
+
+# `a.vel -> b.vel -> a.vel`, from the stack entry the cycle closed on.
+def cycle_text(mem: Array[int, 3741696], from: int, name: int) -> str {
+    mut s: str = ""
+    mut i: int = from
+    mut n: int = mem[MEM_LSTK()]
+    while i < n {
+        if i > from {
+            s = concat(s, " -> ")
+        }
+        s = concat(s, interned(mem[MEM_LSTK() + 1 + i]))
+        i += 1
+    }
+    return concat(concat(s, " -> "), interned(name))
+}
+
+def decl_owner(mem: Array[int, 3741696], name: int) -> int {
+    mut i: int = 0
+    mut n: int = mem[MEM_LDECL()]
+    while i < n {
+        if mem[MEM_LDECL() + 1 + i * 2] == name {
+            return mem[MEM_LDECL() + 2 + i * 2]
+        }
+        i += 1
+    }
+    return -1
+}
+
+def decl_record(mut mem: Array[int, 3741696], name: int, file: int) -> None {
+    mut i: int = mem[MEM_LDECL()]
+    if i >= LDECL_MAX() {
+        panic("vela: compiler: too many top-level names to check")
+    }
+    mem[MEM_LDECL() + 1 + i * 2] = name
+    mem[MEM_LDECL() + 2 + i * 2] = file
+    mem[MEM_LDECL()] = i + 1
+}
+
+# A top-level declaration's name, once.  A name declared by *another file* is
+# refused here rather than left to shadow: the resolver would accept the second one
+# and the program would quietly mean whichever the chain reached first.
+#
+# Two declarations in the SAME file are deliberately not this function's business.
+# That is not an oversight: a single file could already declare a name twice, and
+# what happens then is each name's own rule -- the checker refuses two `extern c`
+# prototypes for one C symbol with a message about the prototypes
+# (`extern_conflicting_prototypes` in the corpus), which is a better diagnostic than
+# "duplicate definition" could be.  This pass only adds the question a file could
+# not ask before: is this name already taken by a file I imported?
+def note_decl(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
+              path: str, s: int, file: int) -> None {
+    name: int = nd[s * 10 + 1]
+    owner: int = decl_owner(mem, name)
+    if owner >= 0 {
+        if owner != file {
+            mut msg: str = concat("duplicate definition of '", interned(name))
+            msg = concat(msg, "' -- also declared in '")
+            msg = concat(msg, src_path(mem, owner))
+            msg = concat(msg, "'")
+            load_fail(path, nd_line(nd, s), msg)
+        }
+        return
+    }
+    decl_record(mem, name, file)
+}
+
+def is_abs_path(p: str) -> bool {
+    if len(p) == 0 {
+        return False
+    }
+    c: int = bytes_at(p, 0)
+    if c == 47 {
+        return True
+    }
+    if c == 92 {
+        return True
+    }
+    if len(p) >= 2 {
+        if bytes_at(p, 1) == 58 {
+            return True
+        }
+    }
+    return False
+}
+
+# D1's resolution rule, and the only one: relative to the *importing* file's
+# directory.  There is no search path, no root list and no fallback to the current
+# directory, because a compiler that guesses is a compiler whose programs mean
+# different things in different terminals.
+#
+# The separator is the *importing* path's own (`join_with`, not `join`), and that
+# is not cosmetic: file identity is this string, so `tests\build\a.vel` importing
+# `b.vel` and then `b.vel` importing `a.vel` has to come back to the same spelling
+# or the cycle is not seen -- measured the first time this ran, which is why the
+# cycle case refused as "a second `main`" instead.
+def resolve_import(importer: str, lit: str) -> str {
+    if is_abs_path(lit) {
+        return lit
+    }
+    d: str = dir_of(importer)
+    if d == "." {
+        return lit
+    }
+    return join_with(d, lit)
+}
+
+# D8, until steps 3 and 4 teach the back ends to carry a path per node: a program
+# out of two files is refused *by name* rather than compiled as the one file the
+# back end was handed.  A loop that says it is parallel and runs serially is the
+# failure this repository refuses to ship; a program that says it is two files and
+# is compiled as one is the same class of lie.
+def refuse_multifile(mem: Array[int, 3741696], path: str, mode: str) -> None {
+    if mem[MEM_SRCS()] <= 1 {
+        return
+    }
+    mut msg: str = concat("`", mode)
+    msg = concat(msg, "` takes one file, and '")
+    msg = concat(msg, path)
+    msg = concat(msg, "' imports '")
+    msg = concat(msg, src_path(mem, 1))
+    msg = concat(msg, "' (MODULES_PLAN.md D8: the C and LLVM back ends learn in steps 3 and 4)")
+    load_fail(path, 1, msg)
+}
+
+# The stages' `path` when a program is more than one file: `<first line>` TAB
+# `<path>` per line, root first and ascending by first line, which is what
+# `path_for_line` (vm_state.vel) reads.  A one-file program never calls this --
+# `main` keeps handing the plain path, because a plain path is what every golden
+# and every emitted C byte already contains.
+def encode_sources(mem: Array[int, 3741696]) -> str {
+    mut s: str = ""
+    mut i: int = 0
+    mut n: int = mem[MEM_SRCS()]
+    while i < n {
+        if i > 0 {
+            s = concat(s, "\n")
+        }
+        s = concat(s, ck_int_text(mem[MEM_SRCS() + 1 + i * 2]))
+        s = concat(s, "\t")
+        s = concat(s, interned(mem[MEM_SRCS() + 2 + i * 2]))
+        i += 1
+    }
+    return s
+}
+
+def load_file(path: str, src: str, base: int, depth: int, file: int,
+              mut tk: Array[int, 1572864], mut tkf: Array[float, 65536],
+              mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
+              mut flt: Array[float, 65536], mut cx: Ctx,
+              mut mem: Array[int, 3741696], mut ld: Load) -> None {
+    # D7: this file's first line number, and the path every diagnostic about it
+    # will print.  The root's base is 1, so a one-file program's table has one
+    # entry and `path_for_line` answers exactly the path it was already given.
+    mut ns: int = mem[MEM_SRCS()]
+    if ns >= SRC_MAX() {
+        panic("vela: compiler: too many source files")
+    }
+    mem[MEM_SRCS() + 1 + ns * 2] = base
+    mem[MEM_SRCS() + 2 + ns * 2] = intern(path)
+    mem[MEM_SRCS()] = ns + 1
+
+    mut start: int = cx.ntok
+    cx.pos = 0
+    cx.line = base
+    lex(src, tk, tkf, cx)
+    if cx.err == 1 {
+        panic("the front end stopped after an error")
+    }
+    # the next file's first line: this file owns `base .. cx.line` inclusive, so
+    # the file after it starts on the next line and no two files can share one
+    if ld.next < cx.line + 1 {
+        ld.next = cx.line + 1
+    }
+
+    cx.ti = start
+    mut m: int = parse_module(src, tk, tkf, nd, ty, flt, cx)
+    if cx.err == 1 {
+        panic("the front end stopped after an error")
+    }
+
+    # D5, before anything is appended: an imported file may not define `main`,
+    # and the message names both ends of the disagreement
+    mut s: int = nd[m * 10 + 1]
+    while s >= 0 {
+        if nd_kind(nd, s) == 2 {
+            if nd[s * 10 + 1] == intern("main") {
+                if depth > 0 {
+                    mut msg: str = concat("a second `main` in '", path)
+                    msg = concat(msg, "': the program's `main` belongs to '")
+                    msg = concat(msg, src_path(mem, 0))
+                    msg = concat(msg, "' (MODULES_PLAN.md D5)")
+                    load_fail(path, nd_line(nd, s), msg)
+                }
+            }
+        }
+        s = nd[s * 10 + 7]
+    }
+
+    # D4 + D6: every import first, in the order it is written.  A path already on
+    # the stack is a cycle; a path already loaded is the same file reached twice,
+    # and reaching it twice is one load, not two.
+    s = nd[m * 10 + 1]
+    while s >= 0 {
+        if nd_kind(nd, s) == 40 {
+            lit: str = unescape(substr(src, nd[s * 10 + 1],
+                                       nd[s * 10 + 1] + nd[s * 10 + 2]))
+            target: str = resolve_import(path, lit)
+            tname: int = intern(target)
+            at: int = stack_at(mem, tname)
+            if at >= 0 {
+                load_fail(path, nd_line(nd, s),
+                          concat("import cycle: ", cycle_text(mem, at, tname)))
+            }
+            if loaded_before(mem, tname) < 0 {
+                text: str = read_text(target)
+                if len(text) == 0 {
+                    mut msg: str = concat("no module at '", target)
+                    msg = concat(msg, "' -- the path is read relative to the file it is written in")
+                    load_fail(path, nd_line(nd, s), msg)
+                }
+                stack_push(mem, tname)
+                load_file(target, text, ld.next, depth + 1, src_count(mem),
+                          tk, tkf, nd, ty, flt, cx, mem, ld)
+                stack_pop(mem)
+            }
+        }
+        s = nd[s * 10 + 7]
+    }
+
+    # and this file's own statements last, which is what puts every imported
+    # declaration in front of the root's (D4)
+    s = nd[m * 10 + 1]
+    while s >= 0 {
+        nxt: int = nd[s * 10 + 7]
+        k: int = nd_kind(nd, s)
+        if k != 40 {
+            if k == 2 {
+                note_decl(nd, mem, path, s, file)
+            } else if k == 4 {
+                note_decl(nd, mem, path, s, file)
+            } else if k == 35 {
+                note_decl(nd, mem, path, s, file)
+            }
+            nd[s * 10 + 7] = -1
+            if ld.head < 0 {
+                ld.head = s
+            } else {
+                nd[ld.tail * 10 + 7] = s
+            }
+            ld.tail = s
+            ld.count += 1
+        }
+        s = nxt
+    }
+}
+
 def main() -> None {
     if argc() < 3 {
         usage()
@@ -1207,8 +1553,34 @@ def main() -> None {
     mut ty: Array[int, 262144]
     mut flt: Array[float, 65536]
     mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0)
+    # the arena is allocated here rather than inside each mode, because the
+    # loader's tables live in it (vm_state.vel MEM_SRCS/MEM_LDECL/MEM_LSTK) and
+    # the stages that print locations read them from there
+    mut mem: Array[int, 3741696]
+    mut ld: Load = Load(-1, -1, 0, 1)
 
-    lex(src, tk, tkf, cx)
+    # `lex` and `count` are questions about *one file's bytes* -- what tokens it
+    # has -- so they stay one file.  Every other mode takes the program, which is
+    # the root plus every import it reaches (MODULES_PLAN.md step 2).
+    if mode == "lex" {
+        lex(src, tk, tkf, cx)
+    } else if mode == "count" {
+        lex(src, tk, tkf, cx)
+    } else {
+        stack_push(mem, intern(path))
+        load_file(path, src, 1, 0, 0, tk, tkf, nd, ty, flt, cx, mem, ld)
+        stack_pop(mem)
+        # node 0 is the root's module node; the merged chain is what the
+        # program is, so the root's own head/count are replaced by it
+        nd[1] = ld.head
+        nd[2] = ld.count
+    }
+    # what the stages that raise diagnostics are handed as `path`: the file itself
+    # when there is one, and the encoded sources table when the program has imports
+    mut diag: str = path
+    if mem[MEM_SRCS()] > 1 {
+        diag = encode_sources(mem)
+    }
     if cx.err == 1 {
         # the diagnostic is already on stderr; stop with a non-zero status so a
         # caller can tell a refused file from an accepted one
@@ -1226,57 +1598,36 @@ def main() -> None {
         return
     }
     if mode == "parse" {
-        cx.ti = 0
-        parse_module(src, tk, tkf, nd, ty, flt, cx)
-        if cx.err == 1 {
-            panic("the front end stopped after an error")
-        }
         dump_module(src, nd, ty, flt)
         return
     }
     if mode == "nodes" {
-        cx.ti = 0
-        parse_module(src, tk, tkf, nd, ty, flt, cx)
-        if cx.err == 1 {
-            panic("the front end stopped after an error")
-        }
         dump_nodes(nd, cx.ni)
         return
     }
     if mode == "emit-c" {
-        cx.ti = 0
-        parse_module(src, tk, tkf, nd, ty, flt, cx)
-        if cx.err == 1 {
-            panic("the front end stopped after an error")
-        }
-        mut mem2: Array[int, 3741696]
+        refuse_multifile(mem, path, "emit-c")
         mut vm2: VM = vm_new()
-        resolve_module(nd, ty, mem2, path, vm2)
+        resolve_module(nd, ty, mem, diag, vm2)
         # the verdicts before the code: `check` is not a separate service the
         # front end offers, it is a step this front end takes, and a back end
         # that emitted C for a program the checker would refuse would be a back
         # end that lost the language's promises on the way to C
-        ck_module(nd, ty, mem2, path, vm2)
-        emit_program(nd, ty, flt, src, path, mem2, vm2)
+        ck_module(nd, ty, mem, diag, vm2)
+        emit_program(nd, ty, flt, src, path, mem, vm2)
         return
     }
     if mode == "run" {
-        cx.ti = 0
-        parse_module(src, tk, tkf, nd, ty, flt, cx)
-        if cx.err == 1 {
-            panic("the front end stopped after an error")
-        }
-        mut mem: Array[int, 3741696]
         mut fmem: Array[float, 786432]
         mut ipool: Array[int, 2097152]
         mut fpool: Array[float, 1048576]
         mut bpool: Array[u8, 33554432]
         mut vm: VM = vm_new()
-        resolve_module(nd, ty, mem, path, vm)
-        ck_module(nd, ty, mem, path, vm)
+        resolve_module(nd, ty, mem, diag, vm)
+        ck_module(nd, ty, mem, diag, vm)
         # the empty string is the directory argument `debug` fills in: `run` is
         # the same interpreter with no session, so nothing ever reads it
-        run_main(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, "", vm)
+        run_main(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, diag, "", vm)
         return
     }
     if mode == "debug" {
@@ -1284,7 +1635,7 @@ def main() -> None {
         # `run`, with the vm told to stop.  Nothing about the program changes:
         # the arena, the pools and `run_main` are the same calls in the same
         # order, and the only new thing on the command line is the directory the
-        # driver leaves its command files in 鈥?which is not passed on to the
+        # driver leaves its command files in 閳?which is not passed on to the
         # program (`arg`/`argc` skip it, eval.vel B_ARG).
         #
         # The directory is required rather than defaulted: a debugger with no
@@ -1294,44 +1645,32 @@ def main() -> None {
             usage()
             panic("debug needs a command directory: vela debug FILE <cmddir>")
         }
-        cx.ti = 0
-        parse_module(src, tk, tkf, nd, ty, flt, cx)
-        if cx.err == 1 {
-            panic("the front end stopped after an error")
-        }
-        mut mem4: Array[int, 3741696]
         mut fmem4: Array[float, 786432]
         mut ipool4: Array[int, 2097152]
         mut fpool4: Array[float, 1048576]
         mut bpool4: Array[u8, 33554432]
         mut vm4: VM = vm_new()
-        resolve_module(nd, ty, mem4, path, vm4)
-        ck_module(nd, ty, mem4, path, vm4)
+        resolve_module(nd, ty, mem, diag, vm4)
+        ck_module(nd, ty, mem, diag, vm4)
         # the exit event has to be a *function*, and this compiler cannot hand
         # one over: Vela 0.1 has no function types, so `run_main` is given the
         # number `dbg_exit` was filed under and looks it up in the same table
         # every other call goes through
-        vm4.after_main = find_function(nd, mem4, vm4, "dbg_exit")
+        vm4.after_main = find_function(nd, mem, vm4, "dbg_exit")
         # The one bit that says a session is wanted.  `run_main` cannot infer it
         # from `dir` being non-empty (a `run` of a program with arguments has an
         # empty directory and no session either way) and it cannot infer it from
         # `after_main` (that is a function number, and 0 is a real function), so
         # the driver says so, here, once.
         vm4.dbg_on = 1
-        run_main(nd, ty, mem4, fmem4, flt, ipool4, fpool4, bpool4, src, path,
+        run_main(nd, ty, mem, fmem4, flt, ipool4, fpool4, bpool4, src, diag,
                  arg(3), vm4)
         return
     }
     if mode == "check" {
-        cx.ti = 0
-        parse_module(src, tk, tkf, nd, ty, flt, cx)
-        if cx.err == 1 {
-            panic("the front end stopped after an error")
-        }
-        mut mem3: Array[int, 3741696]
         mut vm3: VM = vm_new()
-        resolve_module(nd, ty, mem3, path, vm3)
-        ck_module(nd, ty, mem3, path, vm3)
+        resolve_module(nd, ty, mem, diag, vm3)
+        ck_module(nd, ty, mem, diag, vm3)
         emit_str("ok")
         emit_nl()
         return
@@ -1340,16 +1679,11 @@ def main() -> None {
         # the second back end: the same parse, resolve and check as `emit-c`,
         # and then the module is built inside this process instead of being
         # printed as C
-        cx.ti = 0
-        parse_module(src, tk, tkf, nd, ty, flt, cx)
-        if cx.err == 1 {
-            panic("the front end stopped after an error")
-        }
-        mut memL: Array[int, 3741696]
+        refuse_multifile(mem, path, "emit-llvm")
         mut vmL: VM = vm_new()
-        resolve_module(nd, ty, memL, path, vmL)
-        ck_module(nd, ty, memL, path, vmL)
-        ll_emit_ir(nd, ty, flt, src, path, memL, vmL)
+        resolve_module(nd, ty, mem, diag, vmL)
+        ck_module(nd, ty, mem, diag, vmL)
+        ll_emit_ir(nd, ty, flt, src, path, mem, vmL)
         return
     }
     if mode == "build" {
@@ -1382,16 +1716,11 @@ def main() -> None {
             warn_str("` (use `build-c` if that is the path you meant)")
             warn_nl()
         }
-        cx.ti = 0
-        parse_module(src, tk, tkf, nd, ty, flt, cx)
-        if cx.err == 1 {
-            panic("the front end stopped after an error")
-        }
-        mut memD: Array[int, 3741696]
+        refuse_multifile(mem, path, "build")
         mut vmD: VM = vm_new()
-        resolve_module(nd, ty, memD, path, vmD)
-        ck_module(nd, ty, memD, path, vmD)
-        do_build_llvm(arg(0), path, rtL, nd, ty, flt, src, memD, vmD)
+        resolve_module(nd, ty, mem, diag, vmD)
+        ck_module(nd, ty, mem, diag, vmD)
+        do_build_llvm(arg(0), path, rtL, nd, ty, flt, src, mem, vmD)
         return
     }
     if mode == "build-llvm" {
@@ -1405,16 +1734,11 @@ def main() -> None {
         if argc() >= 4 {
             rtL2 = arg(3)
         }
-        cx.ti = 0
-        parse_module(src, tk, tkf, nd, ty, flt, cx)
-        if cx.err == 1 {
-            panic("the front end stopped after an error")
-        }
-        mut memB: Array[int, 3741696]
+        refuse_multifile(mem, path, "build-llvm")
         mut vmB: VM = vm_new()
-        resolve_module(nd, ty, memB, path, vmB)
-        ck_module(nd, ty, memB, path, vmB)
-        do_build_llvm(arg(0), path, rtL2, nd, ty, flt, src, memB, vmB)
+        resolve_module(nd, ty, mem, diag, vmB)
+        ck_module(nd, ty, mem, diag, vmB)
+        do_build_llvm(arg(0), path, rtL2, nd, ty, flt, src, mem, vmB)
         return
     }
     if mode == "build-c" {
@@ -1441,6 +1765,7 @@ def main() -> None {
         if argc() >= 5 {
             extra = arg(4)
         }
+        refuse_multifile(mem, path, "build-c")
         do_build(arg(0), path, rt, extra)
         return
     }

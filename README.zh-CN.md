@@ -4,9 +4,9 @@
 
 <!--
 源文件 : README.md
-源文件字节 : 36853
-源文件 SHA256 : ff16e025d222ae900f7bbeb938869d648cd2aefa8f7b01ef1f18d325a88f9bec
-翻译日期 : 2026-09-24
+源文件字节 : 37112
+源文件 SHA256 : dc0e045ed09f8774377a3730c97728146eb94d4e3b865efd50a1bed516d086c9
+翻译日期 : 2026-10-20
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -256,7 +256,7 @@ $ selfhost/build/vm.exe run tests/build/recursion_fib.vel
 
 解释器是让 Vela 在真正要紧的意义上自举的东西：它执行一个含义由语言、而不是由某个 C 编译器固定的程序。它是一个树遍历器，所以比编译形式慢——在一个 MSVC 无法向量化的千万次迭代循环上（每次迭代有一个依赖数据的分支），编译后的二进制要 9.1 ms，解释器要 695 ms，也就是约 76 倍，输出完全相同。
 
-Vela 0.1 没有模块系统（`import` 是保留字），所以一个多文件的 Vela 程序是构建期的拼接：`tools/link_selfhost.vel` 把词法分析器的前半部分（`selfhost/vela.vel`，直到它的驱动小节）与 `selfhost/parts/{vm_state,parser,resolve,check,eval,emit,dump,vm_main}.vel` 拼成 `selfhost/vm.vel`，那才是交给编译器的东西。这是 C 用 `#include` 玩的老把戏，而它会在 Vela 长出模块的那一天消失。链接器是用 Vela 写的，并且在运行之前先被*构建*，因为解释器的 `str` 是一张固定表里的句柄，而一个把上千次拼接组装成 338 KB 文件的程序会把它耗尽——这是解释器值表示的限制，不是编译器的。
+Vela 0.1 已经有模块**装载器**（`import "path/file.vel"`，`MODULES_PLAN.md` 第 2 步：路径相对写它的那个文件解析，多文件程序被当作一个程序检查与解释），但后端仍然只编译一个文件，并按名字拒绝多文件程序（D8，第 3-4 步），所以用多个文件**构建**出来的东西仍然是构建期的拼接：`tools/link_selfhost.vel` 把词法分析器的前半部分（`selfhost/vela.vel`，直到它的驱动小节）与 `selfhost/parts/{vm_state,parser,resolve,check,eval,emit,dump,vm_main}.vel` 拼成 `selfhost/vm.vel`，那才是交给编译器的东西。这是 C 用 `#include` 玩的老把戏，而它会在第 5 步消失。链接器是用 Vela 写的，并且在运行之前先被*构建*，因为解释器的 `str` 是一张固定表里的句柄，而一个把上千次拼接组装成 338 KB 文件的程序会把它耗尽——这是解释器值表示的限制，不是编译器的。
 
 ```bat
 selfhost\build\vm.exe build tools\link_selfhost.vel  :: build the linker

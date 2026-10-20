@@ -57,6 +57,14 @@
 # kind 37 match       a=subject  b=first arm  c=arm count
 # kind 38 arm         a=pattern name(-1 = else)  b=first binding  c=binding count
 #                     d=body first  e=body count   (bindings = kind 25)
+# kind 40 import      a=offset  b=length           flags: 1 = literal has escapes
+#
+# kind 40 is the one node the *driver* consumes rather than the resolver: it is
+# the only statement that is not part of the program, it is part of how the
+# program was assembled (MODULES_PLAN.md step 2), so `resolve_module` never sees
+# it — the loader strips it out while it splices the files together.  It stores
+# its path exactly as a `str` node (kind 22) stores its text, because the loader
+# makes the path out of the same two readings: `substr` and `unescape`.
 #
 # ---------------------------------------------------------------------------
 # Type record — 4 ints per type, ty[i * 4 + k]:
@@ -514,16 +522,20 @@ def at_import_end(tk: Array[int, 1572864], cx: Ctx) -> bool {
     return at_nl(tk, cx)
 }
 
-# `import` in statement position.  MODULES_PLAN.md step 1 lands the *syntax* and a
-# refusal that names itself; step 2 is the loader that would make it do anything, and
-# step 6 is the bare module name the corpus's other cases propose.
+# `import` in statement position.  The spelling is `import "path/file.vel"` (D1),
+# and this function's whole job is to turn that line into one node (kind 40) that
+# carries the path's span: *reading* the file it names is the driver's job
+# (`load_file` in `vm_main.vel`), because a parser that opens files cannot be run
+# on a file it was not given.
 #
-# Three shapes, three sentences.  They are separate on purpose: `import "b.vel"` is
-# the spelling this step lands, `import mathlib` is a name whose search rule has not
-# been decided, and an `import` inside a block is in the wrong place.  "Not
-# implemented" is the honest answer to exactly one of them, and a single message for
-# all three would send the reader to the wrong document two times out of three.
-def parse_import(src: str, tk: Array[int, 1572864], mut cx: Ctx, line: int, top: int) -> int {
+# Three shapes, three sentences, and only the first one is code:
+#
+#   * `import "b.vel"` — the node, and the loader does the rest;
+#   * `import mathlib` — a bare name needs a search rule, which is step 6, so it is
+#     refused with the spelling that works today;
+#   * an `import` inside a block — a declaration of the file in the wrong place.
+def parse_import(src: str, tk: Array[int, 1572864], mut nd: Array[int, 1310720],
+                 mut cx: Ctx, line: int, top: int) -> int {
     if top != 1 {
         perr(cx,
              "`import` declares what the file uses, so it belongs at the top level, outside every block",
@@ -536,15 +548,18 @@ def parse_import(src: str, tk: Array[int, 1572864], mut cx: Ctx, line: int, top:
         return -1
     }
     if tk_kind(tk, cx.ti) == 4 {
-        # The spelling step 1 lands, and the loader it needs does not exist yet.  The
-        # path the reader wrote is in the message because that string is the loader's
-        # whole input: step 2 resolves it against this file's directory and reads it.
-        p: str = tok_text(src, tk, cx)
-        mut msg: str = concat("`import ", p)
-        msg = concat(msg, "`: Vela's syntax, and the loader that would read it is not written --")
-        msg = concat(msg, " MODULES_PLAN.md step 2 adds it (SPEC.md 1.3)")
-        perr_kind(cx, "syntax error", msg, line)
-        return -1
+        # The path as a span, not as a string: the loader decodes it with the same
+        # `substr` + `unescape` pair a string literal gets, so an escape in a path
+        # (`..\\lib\\a.vel` on Windows) means what it means everywhere else.
+        off: int = tk_off(tk, cx.ti)
+        ln: int = tk_len(tk, cx.ti)
+        flag: int = tk_flag(tk, cx.ti)
+        cx.ti += 1
+        n: int = new_node(nd, cx, 40, line)
+        nd[n * 10 + 1] = off
+        nd[n * 10 + 2] = ln
+        nd[n * 10 + 6] = flag
+        return n
     }
     if at_name(tk, cx) {
         nm: str = tok_text(src, tk, cx)
@@ -575,7 +590,7 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     # nothing about the construct.  `top` separates the two positions the same token can be in:
     # a declaration of the file (top level) and a statement in the wrong place (any block).
     if at_kw(tk, cx, 26) {
-        return parse_import(src, tk, cx, line, top)
+        return parse_import(src, tk, nd, cx, line, top)
     }
     # The corpus's other spelling, `from mathlib import add`.  Its own step is 6; what this arm
     # owes today is a refusal that names the shape instead of the token after it, which is what

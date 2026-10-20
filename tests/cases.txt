@@ -17,6 +17,10 @@
 #           construct it is.  There is no fallback inside `build`, so a program
 #           the LLVM back end cannot compile has to be named here, one row at a
 #           time, where a reader can see it
+# interpret the interpreter alone must print tests/golden/<name>.out exactly.
+#           This is how a program out of two files is judged while the back ends
+#           still refuse one by name (MODULES_PLAN.md D8): a `run` row asks
+#           `build` first, and `build` is one of the modes that refuses
 # refuse    `check` must fail with the first bytes of stderr equal to
 #           tests/golden/<name>.err, and must write nothing to stdout
 # panic     it must compile, and the program must then stop at run time with
@@ -496,4 +500,23 @@ refuse enum_else_not_last                    tests/build/enum_else_not_last.vel
 refuse enum_match_non_enum                   tests/build/enum_match_non_enum.vel
 refuse enum_self_payload                     tests/build/enum_self_payload.vel
 refuse enum_nested_pattern                   tests/build/enum_nested_pattern.vel
+
+# ------------------------------------------------------------ modules (step 2)
+# MODULES_PLAN.md step 2 is the loader: a program is a root file plus every
+# `import "path"` it reaches, the path is read relative to the file it is written
+# in, and imported declarations are spliced in front of the root's own (D4).
+# `module_twin` is the same program in one file; the corpus comparing the two
+# answers is the acceptance sentence "a two-file program prints the same answer as
+# its one-file twin", kept alive instead of written down once.
+#
+# The refusals below are the four the plan owes messages for, plus the diagnostic
+# that has to name the *imported* file rather than the root's path.
+interpret module_two_files                   tests/build/modules/two_files.vel
+run       module_twin                        tests/build/modules/twin.vel
+
+refuse module_missing                        tests/build/modules/missing.vel
+refuse module_cycle                          tests/build/modules/cycle_a.vel
+refuse module_dup_name                       tests/build/modules/dup_name.vel
+refuse module_second_main                    tests/build/modules/second_main.vel
+refuse module_diag_in_import                 tests/build/modules/bad_root.vel
 

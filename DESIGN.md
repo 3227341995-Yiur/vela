@@ -120,8 +120,11 @@ decisive for this project:
 `selfhost/build/vm.exe` is that whole pipeline in one binary — a mode per box
 (`lex`, `parse`, `check`, `emit-c`, `build`), plus `run` for the interpreter and
 `count`/`nodes`/`debug` for the tooling — and it is the compiler in the tree.
-`tools/link_selfhost.vel` splices the parts into `selfhost/vm.vel`, because Vela
-0.1 has no module system (§7.1).
+`tools/link_selfhost.vel` splices the parts into `selfhost/vm.vel`: Vela has a
+module *loader* now (`import "path"`, `MODULES_PLAN.md` step 2), but the compiler
+still assembles itself with the linker, because replacing that is step 5 (§7.1),
+and until then the C and LLVM back ends refuse a multi-file program by name
+(§7.1's D8).
 
 ### 2.1 Why Python for stage 0
 

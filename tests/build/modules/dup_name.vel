@@ -1,0 +1,11 @@
+﻿# Refuse-case: two files declaring one top-level name.  Without the refusal the
+# second definition silently wins, and which one that is depends on load order.
+import "helper.vel"
+
+def twice(x: int) -> int {
+    return x * 3
+}
+
+def main() -> None {
+    print(twice(2))
+}

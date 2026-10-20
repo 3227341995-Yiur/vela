@@ -1,0 +1,2 @@
+vela: type error: no module at 'tests/build/modules/nosuch.vel' -- the path is read relative to the file it is written in
+  at tests/build/modules/missing.vel:3

@@ -1,0 +1,2 @@
+vela: type error: operator '+' mixes int and str
+  at tests/build/modules/bad_helper.vel:11

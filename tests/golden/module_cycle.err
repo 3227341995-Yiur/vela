@@ -1,0 +1,2 @@
+vela: type error: import cycle: tests/build/modules/cycle_a.vel -> tests/build/modules/cycle_b.vel -> tests/build/modules/cycle_a.vel
+  at tests/build/modules/cycle_b.vel:10

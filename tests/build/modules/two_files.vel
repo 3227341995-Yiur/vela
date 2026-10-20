@@ -1,0 +1,7 @@
+﻿# The two-file program: `import "helper.vel"` is read relative to this file (D1),
+# and helper.vel's declarations are spliced in front of this file's own (D4).
+import "helper.vel"
+
+def main() -> None {
+    print(twice(21))
+}

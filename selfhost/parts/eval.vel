@@ -28,7 +28,7 @@ def trap(path: str, line: int, msg: str) -> None {
     warn_str("\nvela: panic: ")
     warn_str(msg)
     warn_str("\n  at ")
-    warn_str(path)
+    warn_str(path_for_line(path, line))
     warn_str(":")
     warn_int(line)
     warn_nl()

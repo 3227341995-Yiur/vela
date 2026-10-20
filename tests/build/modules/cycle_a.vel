@@ -1,0 +1,6 @@
+﻿# Refuse-case: half of a cycle.  cycle_b.vel imports this file back.
+import "cycle_b.vel"
+
+def main() -> None {
+    print(1)
+}

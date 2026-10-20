@@ -1,0 +1,6 @@
+﻿# Refuse-case: the imported file defines `main`, and a program has one.
+import "with_main.vel"
+
+def main() -> None {
+    print(1)
+}

@@ -377,11 +377,12 @@ documentation-reserved identifiers.
 |---|---|---|
 | 0. the design, against measurements | **done** 2026-09-25 | §2 above: every number run on `selfhost/build/vm.exe` 870 400 B, plus the corpus's nine recorded verdicts (2.9) |
 | 1. syntax + a named refusal | **done** 2026-10-20 | §8: `RESULT: ok` on the build and its fixpoint, 228/228 on the corpus, 1 verdict change out of 338 tracked files, and a re-recorded `tests/accept/BASELINE.txt` |
-| 2. load, merge, interpret | not started | — |
+| 2. load, merge, interpret | **done** 2026-10-20 | §8.9: `RESULT: ok` on the build, 235/235 on the corpus, the four refusals by name, and a diagnostic inside an imported file naming that file |
 | 3. the C back end | not started | — |
 | 4. the LLVM back end | not started | §8.1 is a defect this step hit on the way: an `or` of two calls in a large program |
 | 5. the self-hosting switch | not started | — |
 | 6. a module name, `from M import x`, and `mathlib.add` | not started | `tests/accept/modules/module_import_from.vel`, `module_import_qualified.vel` |
+| 7. the editor | not started | — |
 
 ## 8. Step 1, measured (2026-10-20)
 
@@ -438,6 +439,70 @@ the two cycle cases "keep a message that names the cycle"; at step 1 they get th
 bare-name refusal like the other module cases, because a compile that never opens
 `module_cycle_b.vel` has no cycle to name.  Their own comment asks for a refusal
 "rather than recursing until the stack ends or looping for ever", which is step 2's
-acceptance, and the case keeps its claim until then.
+acceptance, and the case keeps its claim until then — §8.9 is where it was paid.
+
+## 8.9 Step 2, measured (2026-10-20)
+
+Step 2 is the loader: `import "path"` is read, resolved against the importing
+file's directory, lexed with a line base, parsed into the same pools, and its
+declarations spliced in front of the root's (D4).  `check`, `run` and `parse` take
+a multi-file program; the back ends refuse one by name (D8).
+
+| what | command | result |
+|---|---|---|
+| the build, fixpoint included | `tools\build.ps1` | `RESULT: ok` — seed, generation 1 and generation 2 are all `7D815659CAC565B6`, 1 146 245 B |
+| the corpus, after a deliberate digest re-freeze | `tools\refreeze.ps1` | `235 passed, 0 failed (of 235 cases, 312 captures)` |
+| a two-file program and its one-file twin | `vm.exe run tests\build\modules\two_files.vel`, `… twin.vel` | both print `42`; the corpus rows `module_two_files` (mode `interpret`) and `module_twin` (`run`) are what keeps them equal from now on |
+| a missing module | `vm.exe check tests\build\modules\missing.vel` | ``no module at 'tests\build\modules\nosuch.vel' -- the path is read relative to the file it is written in``, `at tests\build\modules\missing.vel:3` |
+| a cycle | `vm.exe check tests\build\modules\cycle_a.vel` | `import cycle: tests\build\modules\cycle_a.vel -> tests\build\modules\cycle_b.vel -> tests\build\modules\cycle_a.vel`, at the import line in `cycle_b.vel` |
+| a duplicate top-level name | `vm.exe check tests\build\modules\dup_name.vel` | `duplicate definition of 'twice' -- also declared in 'tests\build\modules\helper.vel'` |
+| a second `main` | `vm.exe check tests\build\modules\second_main.vel` | ``a second `main` in '…with_main.vel': the program's `main` belongs to '…second_main.vel' (D5)`` |
+| a diagnostic *inside* the imported file | `vm.exe check tests\build\modules\bad_root.vel` | `operator '+' mixes int and str` … `at tests\build\modules\bad_helper.vel:11` — the imported file's path, not the root's |
+| the back ends still refuse a multi-file program | `vm.exe build`, `emit-c`, `emit-llvm`, `build-c` on `two_files.vel` | `` `build` takes one file, and '…two_files.vel' imports '…helper.vel' (D8: the C and LLVM back ends learn in steps 3 and 4)`` |
+| the LLVM column over both corpora | `tools\llvm-column.ps1` | `match 49  refused-by-design 12/12  DIVERGE 0  unexpected refusal 0  stale ledger 0`, `RESULT: ok` |
+| the acceptance corpus | `tools\accept-status.ps1` | 34 rows, `RESULT: ok` — unchanged, because a one-file program's table has one entry |
+
+**8.10 The sources table travels inside `path`, not in `mem`.**  D7 said "the table
+in a reserved region of `mem`, the count and cursor appended to `struct VM`", and
+that is what a *node* would need — but no node reads it.  The readers are the six
+diagnostic helpers (`fail`, `fail_name`, `fail_kind`, `ck_type`, `ck_safety`,
+`trap`), and every one of them already receives the path and the line, so the driver
+hands the stages one string whose lines are `<first line>` TAB `<path>` and the
+helpers ask `path_for_line` instead of printing `path` raw.  A one-file program has
+no newline in it, so the string *is* the path and every golden and every emitted C
+byte is unchanged; a multi-file program never reaches an emitter (D8).
+
+The alternative was measured and rejected.  Threading `mem` into those helpers puts
+it into every function on the call graph that raises a diagnostic — the first
+closure pass named twenty-odd functions (`ck_arith`, the `eval.vel` arithmetic
+helpers, `ck_pread`, `emit_expr`, …) and about a hundred and fifty call sites across
+resolve, check, eval and emit — to read a table consulted only while a program is
+already being refused.  Steps 3 and 4 will need a per-*node* path anyway (the C and
+LLVM emitters write the path into generated code), and they can call the same
+`path_for_line`; if the string form ever gets in the way there, that is the moment
+to move it, with the emitter's needs deciding the shape.
+
+**8.11 A duplicate is refused across files, not inside one.**  `note_decl` refuses a
+top-level name another *file* already declared — the question a file could not ask
+before.  Two declarations in the same file keep whatever their own rule says: the
+corpus case `extern_conflicting_prototypes` declares one C symbol twice on purpose
+and the checker refuses it with a message about the prototypes, which is a better
+diagnostic than "duplicate definition" could be.  Measured: the first version
+refused it from the loader, the suite said so (`wrong diagnostic`), and the rule
+became "another file".
+
+**8.12 The positive corpus row needed a mode.**  `run` builds first, and `build`
+refuses a multi-file program by name (D8), so no `run` row can say "this two-file
+program prints 42".  `tests\cases.txt` gained one mode, `interpret`: the interpreter
+alone, compared against `tests/golden/<name>.out`.  It exists for exactly this
+moment — the day the back ends take a second file, `module_two_files` becomes a `run`
+row and the mode loses its only client.
+
+**8.13 `selfhost/AST.md`'s node table stops at 34** while the parser has used 35-38
+(`enum`, `variant`, `match`, `arm`) since §13 and now 40 (`import`), whose record is
+the comment block above the node list in `selfhost/parts/parser.vel`.  That gap
+predates this step and is left as it was rather than half-fixed here; the plan's step
+7 owns the editor's copy of the tree.
+
 
 | 7. the editor | not started | — |

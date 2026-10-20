@@ -95,6 +95,96 @@ def MEM_SIZE() -> int { return 3741696 }
 
 def SCOPE_BASE() -> int { return 800000 }       # words; the resolver's scratch
 def SCOPE_MAX() -> int { return 62000 }         # entries of stride 4
+
+# ------------------------------------------------------ the loader's tables
+#
+# MODULES_PLAN.md step 2 loads one program out of several files, and every stage
+# after the loader has to answer one question: *which file is line N in* (D7).
+# The loader gives each file a line base and records the pairs here, in the gap
+# between the enum tables (which end at 1 266 384) and the node table at 1 600 000
+# -- the same reason the scope stack lives in a region of its own: these tables
+# scale with the program, and they are read by stages that are handed `mem` and
+# nothing else.
+#
+# Layout, count first:
+#   MEM_SRCS   count, then (first line, interned path) pairs -- the sources table
+#   MEM_LDECL  count, then (name handle, file index) pairs -- duplicate detection
+#   MEM_LSTK   depth, then the interned paths currently being loaded -- cycles
+def MEM_SRCS() -> int { return 1300000 }
+def MEM_LDECL() -> int { return 1310000 }
+def MEM_LSTK() -> int { return 1320000 }
+def SRC_MAX() -> int { return 512 }
+def LDECL_MAX() -> int { return 4096 }
+def LSTK_MAX() -> int { return 64 }
+
+# Which file a line number belongs to (D7).
+#
+# **The table travels inside `path` itself.**  The plan said "the table in a
+# reserved region of `mem`, the count and cursor appended to `struct VM`", and that
+# is what a *node* would need -- but no node needs it: the only readers are the six
+# diagnostic helpers, and each of them already receives the path and the line.  So
+# the driver hands the stages one string whose lines are `<first line>` TAB `<path>`
+# (root first, ascending), and the helpers ask this function instead of printing
+# `path` raw.  A one-file program has no newline in it, so the string *is* the path
+# and every existing message -- and every emitted C byte -- is unchanged; a
+# multi-file program is refused by the back ends anyway (D8), so nothing that gets
+# embedded in generated code ever sees the encoded form.
+#
+# The alternative was measured and rejected: threading `mem` into the helpers puts
+# it into every function on the call graph that raises a diagnostic -- twenty-odd
+# functions and about a hundred and fifty call sites in resolve, check, eval and
+# emit -- to read a table that is consulted only when a program is already being
+# refused.
+def path_for_line(path: str, line: int) -> str {
+    n: int = len(path)
+    if not has_newline(path) {
+        return path
+    }
+    mut best: str = path
+    mut i: int = 0
+    while i < n {
+        mut k: int = i
+        mut v: int = 0
+        while k < n {
+            c: int = bytes_at(path, k)
+            if c == 9 {
+                break
+            }
+            if c < 48 {
+                break
+            }
+            if c > 57 {
+                break
+            }
+            v = v * 10 + (c - 48)
+            k += 1
+        }
+        mut e: int = k
+        while e < n {
+            if bytes_at(path, e) == 10 {
+                break
+            }
+            e += 1
+        }
+        if v <= line {
+            best = substr(path, k + 1, e)
+        }
+        i = e + 1
+    }
+    return best
+}
+
+def has_newline(s: str) -> bool {
+    mut i: int = 0
+    mut n: int = len(s)
+    while i < n {
+        if bytes_at(s, i) == 10 {
+            return True
+        }
+        i += 1
+    }
+    return False
+}
 # One word per scope entry, in a region of its own rather than a fifth word per
 # entry: `ck_seen` and the accessors read `SCOPE_BASE() + i * 4` directly, and
 # widening the stride would move every one of those read sites for a fact that

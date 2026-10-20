@@ -1,0 +1,4 @@
+﻿# A module with a `main` of its own: importing it is the second `main` D5 refuses.
+def main() -> None {
+    print(9)
+}

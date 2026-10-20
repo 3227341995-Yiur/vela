@@ -1,0 +1,5 @@
+﻿# A module with a type error in it: the diagnostic has to name THIS file and the
+# line in it, not the root's path.
+def broken(x: int) -> int {
+    return x + "text"
+}

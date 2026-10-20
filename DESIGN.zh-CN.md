@@ -4,9 +4,9 @@
 
 <!--
 源文件 : DESIGN.md
-源文件字节 : 64814
-源文件 SHA256 : afe6ccd53dacf7347d47c6c2ffe09ce88927ad6ef9d5ecf3139fd89de2420edf
-翻译日期 : 2026-09-22
+源文件字节 : 65032
+源文件 SHA256 : 19db3474ee39d2fb31d2aae8a11f6f4f9360b8f71bdf1a63fdb523148ad35e59
+翻译日期 : 2026-10-20
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -79,7 +79,7 @@ x + 1         -> refused when it is a statement: it does nothing
    executable  (file.c is kept beside the source: it is the evidence for the proofs)
 ```
 
-`selfhost/build/vm.exe` 就是整条流水线装在一个二进制里——每个方框一个模式（`lex`、`parse`、`check`、`emit-c`、`build`），外加解释器的 `run` 和工具的 `count`/`nodes`/`debug`——而它就是这棵树里的编译器。`tools/link_selfhost.vel` 把各个部件拼接成 `selfhost/vm.vel`，因为 Vela 0.1 没有模块系统（§7.1）。
+`selfhost/build/vm.exe` 就是整条流水线装在一个二进制里——每个方框一个模式（`lex`、`parse`、`check`、`emit-c`、`build`），外加解释器的 `run` 和工具的 `count`/`nodes`/`debug`——而它就是这棵树里的编译器。`tools/link_selfhost.vel` 把各个部件拼接成 `selfhost/vm.vel`：Vela 现在已经有模块**装载器**（`import "path"`，`MODULES_PLAN.md` 第 2 步），但编译器仍然用链接器拼装自己，因为替换它是第 5 步（§7.1）；在那之前，C 与 LLVM 后端按名字拒绝多文件程序（§7.1 的 D8）。
 
 ### 2.1 为什么 stage 0 用 Python
 

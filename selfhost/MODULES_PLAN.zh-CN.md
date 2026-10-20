@@ -4,8 +4,8 @@
 
 <!--
 源文件 : MODULES_PLAN.md
-源文件字节 : 29907
-源文件 SHA256 : 8afe32e6ac0c105268967a13f4832471b7a51c45341b7a5e5015c2eb5510f3cd
+源文件字节 : 35475
+源文件 SHA256 : 63c913c8ea612d58d2fa90501d49c4267f1445a7a76c9f1976a81537861f314e
 翻译日期 : 2026-10-20
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -186,7 +186,7 @@
 |---|---|---|
 | 0. 设计，对照实测 | **完成** 2026-09-25 | 上面 §2：每个数字都在 `selfhost/build/vm.exe` 870 400 B 上跑过，加上语料那九条已记录的判决（2.9） |
 | 1. 语法 + 一个点名的拒绝 | **完成** 2026-10-20 | §8：构建与不动点 `RESULT: ok`，语料 228/228，338 个被跟踪文件里只有 1 个判决变化，`tests/accept/BASELINE.txt` 已重新记录 |
-| 2. 装载、合并、解释执行 | 未开始 | — |
+| 2. 装载、合并、解释执行 | **完成** 2026-10-20 | §8.9：构建 `RESULT: ok`，语料 235/235，四种拒绝都点名，被导入文件里的诊断说出它自己的文件 |
 | 3. C 后端 | 未开始 | — |
 | 4. LLVM 后端 | 未开始 | §8.1 是这一步路上撞到的后端缺陷：大程序里两个调用的 `or` |
 | 5. 自举切换 | 未开始 | — |
@@ -238,4 +238,54 @@
 **8.2 在装载器存在之前，环无法被点名。** 计划的验收说两个环用例「保留一条点名那个环的消息」；
 第 1 步里它们拿到的是和其它模块用例一样的裸名拒绝，因为一次从不打开 `module_cycle_b.vel` 的编译
 根本没有环可以点名。它们自己的注释要求的是「拒绝，而不是一直递归到栈底或者永远循环」，那是
-第 2 步的验收，而这两个用例会把它们的主张保留到那时。
+第 2 步的验收，而这两个用例会把它们的主张保留到那时——§8.9 就是兑现它的地方。
+
+## 8.9 第 2 步，实测（2026-10-20）
+
+第 2 步是装载器：`import "path"` 会被读取、按导入文件所在目录解析、带行基数词法化、解析进同一批
+池子，它的声明被拼到根文件自己的声明前面（D4）。`check`、`run` 与 `parse` 接受多文件程序；后端
+按名字拒绝多文件（D8）。
+
+| 项目 | 命令 | 结果 |
+|---|---|---|
+| 构建，含不动点 | `tools\build.ps1` | `RESULT: ok`——seed、第 1 代、第 2 代全是 `7D815659CAC565B6`，1 146 245 B |
+| 语料，在有意重新冻结摘要锁之后 | `tools\refreeze.ps1` | `235 passed, 0 failed (of 235 cases, 312 captures)` |
+| 两文件程序与它的单文件孪生 | `vm.exe run tests\build\modules\two_files.vel`、`… twin.vel` | 都打印 `42`；语料里 `module_two_files`（模式 `interpret`）与 `module_twin`（`run`）从此负责让这两个答案保持相等 |
+| 缺模块 | `vm.exe check tests\build\modules\missing.vel` | ``no module at 'tests\build\modules\nosuch.vel' -- the path is read relative to the file it is written in``，`at tests\build\modules\missing.vel:3` |
+| 环 | `vm.exe check tests\build\modules\cycle_a.vel` | `import cycle: …cycle_a.vel -> …cycle_b.vel -> …cycle_a.vel`，位置在 `cycle_b.vel` 里那行 import |
+| 重复顶层名 | `vm.exe check tests\build\modules\dup_name.vel` | `duplicate definition of 'twice' -- also declared in '…helper.vel'` |
+| 第二个 `main` | `vm.exe check tests\build\modules\second_main.vel` | ``a second `main` in '…with_main.vel': the program's `main` belongs to '…second_main.vel' (D5)`` |
+| **被导入文件里**的诊断 | `vm.exe check tests\build\modules\bad_root.vel` | `operator '+' mixes int and str` … `at tests\build\modules\bad_helper.vel:11`——说的是被导入文件，不是根路径 |
+| 后端仍然拒绝多文件 | 对 `two_files.vel` 跑 `build`、`emit-c`、`emit-llvm`、`build-c` | `` `build` takes one file, and '…two_files.vel' imports '…helper.vel' (D8: the C and LLVM back ends learn in steps 3 and 4)`` |
+| 两个语料上的 LLVM 列 | `tools\llvm-column.ps1` | `match 49  refused-by-design 12/12  DIVERGE 0  unexpected refusal 0  stale ledger 0`，`RESULT: ok` |
+| 验收语料 | `tools\accept-status.ps1` | 34 行，`RESULT: ok`——没有变化，因为单文件程序的表只有一项 |
+
+**8.10 源表放在 `path` 里走，而不是放在 `mem` 里。** D7 说的是「表放在 `mem` 的一个保留区，
+计数与游标追加进 `struct VM`」，那是**节点**需要的东西——但没有任何节点读它。真正的读者是六个
+诊断助手（`fail`、`fail_name`、`fail_kind`、`ck_type`、`ck_safety`、`trap`），而它们每一个
+本来就已经拿到路径和行号，所以驱动交给各阶段的是一行一行的 `<首行>` TAB `<路径>` 字符串，助手
+改问 `path_for_line` 而不是直接打印 `path`。单文件程序里它没有换行符，所以这个字符串**就是**
+那条路径，于是所有 golden、所有发出的 C 字节都不变；多文件程序根本到不了发射器（D8）。
+
+另一条路是量过之后才否掉的。把 `mem` 穿进那些助手，等于把它穿进调用图上每一个会抛诊断的函数——
+第一遍闭包就点出二十来个函数（`ck_arith`、`eval.vel` 的那批算术助手、`ck_pread`、`emit_expr`……）
+和 resolve、check、eval、emit 里约一百五十个调用点——只为了读一张只在程序已经被拒绝时才会被查的
+表。第 3、4 步无论如何都需要**每节点**自己的路径（C 与 LLVM 发射器把路径写进生成代码），它们
+可以调用同一个 `path_for_line`；如果字符串形式到那时碍事了，那才是把它挪走的时候，由发射器的
+需要来决定形状。
+
+**8.11 重复只在**文件之间**拒绝，不在文件内部。** `note_decl` 拒绝的是另一个**文件**已经声明过的
+顶层名——这是一个文件从前问不出的问题。同一个文件里的两个声明，各自按自己的规则处理：语料用例
+`extern_conflicting_prototypes` 故意为同一个 C 符号写两条声明，检查器用一条关于原型的消息拒绝它，
+那比「重复定义」更准确。实测：第一版由装载器拒绝了它，语料直接说了出来（`wrong diagnostic`），
+规则于是改成「另一个文件」。
+
+**8.12 正向语料行需要一个新模式。** `run` 会先构建，而 `build` 按名字拒绝多文件（D8），所以没有
+任何 `run` 行能说「这个两文件程序打印 42」。`tests\cases.txt` 于是多了一个模式 `interpret`：
+只跑解释器，与 `tests/golden/<name>.out` 比较。它就是为这一刻存在的——等后端能收第二个文件的那天，
+`module_two_files` 变成 `run` 行，这个模式也就没有客户了。
+
+**8.13 `selfhost/AST.md` 的节点表停在 34**，而解析器从 §13 起就用到了 35-38（`enum`、`variant`、
+`match`、`arm`），现在又多 40（`import`），后者的记录在 `selfhost/parts/parser.vel` 节点列表上方
+的注释块里。这个缺口早于本步骤，这里不去半修它；计划的第 7 步负责编辑器那一份语法树。
+

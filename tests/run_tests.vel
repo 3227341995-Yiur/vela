@@ -495,6 +495,38 @@ def case_run(mut t: Tally, name: str, path: str, record: bool,
     scored(t, True, name, "compiled + interpreted", "")
 }
 
+# `interpret` — the interpreter alone, with no build in front of it.
+#
+# It exists for one moment in this tree's life: step 2 of MODULES_PLAN.md makes
+# `check`, `run` and `parse` take a program out of several files, while `build` and
+# `build-c` still refuse one *by name* (D8).  A `run` row cannot express "this
+# program prints this" there -- `case_run` builds first and the build refuses -- so
+# the positive half of the loader's corpus is this mode, and `module_twin` is the
+# same program in one file so the two answers can be compared by the corpus rather
+# than by a paragraph.
+def case_interpret(mut t: Tally, name: str, path: str, record: bool) -> None {
+    mut rc: int = run_capture(t, concat(concat(q(cli()), " run "), q(path)), "interp")
+    got: str = reads(cap_file(t.ncap, "interp", ".out"))
+    if rc != 0 {
+        scored(t, False, name, "", concat("the interpreter exited non-zero: ", reads(cap_file(t.ncap, "interp", ".err"))))
+        return
+    }
+    if record {
+        if not write_text(golden(name, ".out"), got) {
+            scored(t, False, name, "", concat("could not write ", golden(name, ".out")))
+            return
+        }
+        scored(t, True, name, "recorded", "")
+        return
+    }
+    want: str = reads(golden(name, ".out"))
+    if got != want {
+        scored(t, False, name, "", "the interpreter printed something else")
+        return
+    }
+    scored(t, True, name, "interpreted", "")
+}
+
 # `refuse` — the program must not compile, the diagnostic must be the one on
 # record, and nothing may reach stdout.  run_tests.py's reject half, plus the
 # byte-for-byte part of diff_check.py.
@@ -855,6 +887,9 @@ def main() -> None {
                     } else if m == "native-c" {
                         total += 1
                         case_run(t, name, path, record, False, True)
+                    } else if m == "interpret" {
+                        total += 1
+                        case_interpret(t, name, path, record)
                     } else if m == "refuse" {
                         total += 1
                         case_refuse(t, name, path, record)

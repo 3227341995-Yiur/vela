@@ -1,0 +1,2 @@
+vela: type error: a second `main` in 'tests/build/modules/with_main.vel': the program's `main` belongs to 'tests/build/modules/second_main.vel' (MODULES_PLAN.md D5)
+  at tests/build/modules/with_main.vel:9

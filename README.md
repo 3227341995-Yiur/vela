@@ -438,12 +438,16 @@ iteration loop that MSVC cannot vectorize (a data-dependent branch per
 iteration), the compiled binary takes 9.1 ms and the interpreter 695 ms, i.e.
 about 76x, with identical output.
 
-Vela 0.1 has no module system (`import` is reserved), so a multi-file Vela
-program is a build-time concatenation: `tools/link_selfhost.vel` splices the
+Vela 0.1 has a module *loader* (`import "path/file.vel"`, `MODULES_PLAN.md` step 2:
+the path is read relative to the file that writes it, and a program out of several
+files is checked and interpreted as one), but the back ends still compile exactly
+one file and refuse a multi-file program by name (D8, steps 3-4), so what is
+*built* from several files is still a build-time concatenation:
+`tools/link_selfhost.vel` splices the
 lexer's front half (`selfhost/vela.vel`, up to its driver section) with
 `selfhost/parts/{vm_state,parser,resolve,check,eval,emit,dump,vm_main}.vel` into
 `selfhost/vm.vel`, which is what the compiler is handed. That is the same trick
-C plays with `#include`, and it disappears the day Vela grows modules. The linker
+C plays with `#include`, and it disappears at step 5. The linker
 is written in Vela and *built* before it runs, because the interpreter's `str` is
 a handle into a fixed table and a program that assembles a 338 KB file out of a
 thousand concatenations exhausts it — a limitation of the interpreter's value

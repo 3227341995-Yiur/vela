@@ -340,6 +340,17 @@ def d_node(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
         d_body(src, nd, ty, flt, nd[n * 10 + 4], depth + 1)
         return
     }
+    if k == 40 {
+        # The one statement that is not part of the program: it says which file the
+        # loader has to read, and the loader takes it out of the chain again.  It is
+        # dumped like a string literal because that is exactly what it carries.
+        d_indent(depth)
+        emit_str("import \"")
+        d_str(src, nd[n * 10 + 1], nd[n * 10 + 2], nd[n * 10 + 6])
+        emit_str("\"")
+        emit_nl()
+        return
+    }
     if k == 6 {
         if (nd[n * 10 + 6] & 2) != 0 {
             d_indent(depth)

@@ -1,0 +1,4 @@
+﻿# A module: functions a program imports.  No `main` -- `main` is the root's (D5).
+def twice(x: int) -> int {
+    return x * 2
+}

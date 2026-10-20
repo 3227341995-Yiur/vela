@@ -1,0 +1,7 @@
+﻿# The other half of the cycle.  Not a case on its own: a two-file cycle is refused
+# when cycle_a.vel is the program.
+import "cycle_a.vel"
+
+def value() -> int {
+    return 3
+}
