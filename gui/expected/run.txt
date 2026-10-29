@@ -1,0 +1,24 @@
+# A real run of gui/app.exe 200, captured on 2026-10-30.
+
+# The numbers vary run to run (they are measurements, not constants); the SHAPE is
+
+# what is expected, and any line that stops appearing is a regression.
+
+#
+
+#   startup    :  <integer> ms   -- process start to the first blit
+
+#   frames     :  200
+
+#   frame time :  <integer> ms   -- average of the program's own deltas
+
+#   fps        :  <integer>      -- uncapped
+
+#   clicks     :  0              -- nothing can click a headless window
+
+
+startup    : 16 ms
+frames     : 200
+frame time : 0 ms
+fps        : 12500
+clicks     : 0
