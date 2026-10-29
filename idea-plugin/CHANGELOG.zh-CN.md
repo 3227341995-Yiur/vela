@@ -4,9 +4,9 @@
 
 <!--
 源文件 : CHANGELOG.md
-源文件字节 : 74080
-源文件 SHA256 : 8f829d9aa750e7ee62229cd8f040eb12a6bc41e51fe323b0fee5e096510da5d9
-翻译日期 : 2026-09-25
+源文件字节 : 77965
+源文件 SHA256 : 2ff16a2c4971714f949f10c07eb8641d4704eb2230f9d5b38622a4bc842b9677
+翻译日期 : 2026-10-30
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -23,6 +23,23 @@
 | 本文件 | 一条记录说改了什么，**以及什么被验证过、什么没有** |
 
 最后一列不是仪式。这个项目更老的那条规则是：没有人测量过的声称不存在。而这个插件已经发布过三个完成后完全无作用的功能——一个写错的文件扩展名、一个被当成组注册的动作，以及三个从未被注册（或者注册在错误属性名下）的扩展点。一条写着“加了 X，未验证”的记录，比一条写着“加了 X”的记录更有价值。
+
+## 0.1.13 —— 编辑器学会了 `import`，而证明它的那道闸门抓到了编译器
+
+**改了什么。** `import` 在这个插件里现在是关键字和一个节点，不再是一个名字：`VelaKw.IMPORT = 26`（编译器自己的编号）、`VELA_KEYWORDS` 里的这个词、`VelaNodeKind.IMPORT`（编译器的节点 kind 40）、`VelaNodeTypes.IMPORT`、`parseImport()`，以及 `VelaSyntaxDump` 里打印 `import "path"`（字面量按自己的转义打印）的一行。三种形态和三句话都是编译器的：路径拼法建节点，裸模块名属于 `MODULES_PLAN.md` 第 6 步、按今天能用的拼法拒绝，块内的 `import` 是放错位置的声明。
+
+* **AST 闸门必须先学会「什么是一个程序」。** `vm.exe parse` 现在会装载，所以它的树是合并后的程序——被导入的声明在前、外层 import 在前、本文件自己的在最后（计划里的 D4）。`AstDiff` 用这个插件自己的解析器复刻同一次拼接：解析根文件，把每个顶层 `import` 的目标相对根文件解析出来，并先取那个文件的正文。import 语句本身从合并后的 dump 里被去掉，因为编译器的树是**程序**，它的装载器会把 import 节点从链上摘掉——所以这里若不一致，就意味着插件读错了路径，而这次拼接正是证明它没读错的东西。
+
+* **它抓到了编译器里一个错误的答案，这才是这条记录真正的内容。** 在 `tests/build/modules/bad_root.vel` 上，编译器打印的是 `str ""`，而这个解析器打印 `str "text"`：被导入文件里的字符串字面量，被当成**根**文件源码里的字节区间在读。这不只是 dump 的假象——`vm.exe run` 从那个字面量打出来的也是空串。现在编译器把每个文件的文本接进同一个源缓冲，并把这个文件的字面量偏移整体平移到它落在缓冲里的位置，平移发生在解析之后（名字仍然按本文件自己的文本读）；单文件程序的缓冲**就是**那个文件，所以所有 golden、所有发出的 C 字节都不变。`tests/build/modules/str_module.vel` 就是钉住它的用例：被导入文件返回一个字符串，程序打印 `hello from a module`。
+
+* **0.1.13 的实测**（`build-offline.ps1` PASS；对拍时冻结的编译器 888 320 字节 / `f6a74bd3…`）：
+  - `ast-diff.ps1`：**语料 167 个文件，148 个与 `vm.exe parse` 完全一致，152 296 行节点，0 个不同、0 个可疑、0 个缺失、0 个崩溃；19 个被编译器拒绝——其中 14 个这个解析器也拒绝——`VERDICT: PASS`，exit 0**，覆盖行 `ran 148 / skipped 19 (compiler-refused 19) / wrong 0`。编译器拒绝而它不拒绝的那 5 个，是**解析合法、拒绝来自装载器**的模块用例：缺文件、环、重名、第二个 `main`——只看解析器的闸门看不到装载器，并且它把这一点说出来。
+  - `psi-tree-diff.ps1`：**167 个文件全部**经平台自己的 `PsiBuilderImpl` 重放，比较了 152 338 个复合节点和 413 594 个叶子 token，`failed 0`，`VERDICT : PASS`，`COVERAGE: ran 167 / skipped 0 (missing-corpus-file 0, replay-threw 0, too-large 0) / wrong 0`。
+  - 编译器自己的套件：**236 passed, 0 failed**；不动点是 `B630FE56B4D74A4A`（1 149 086 字节）——seed、第 1 代、第 2 代三者相同。
+
+* **`ide-demo` 多了一个模块示例**：`geometry.vel`（一个模块：`area`、`perimeter`）与 `modules.vel`（`import "geometry.vel"`），`expected/modules.txt` 是解释器跑出来的真实输出：`12` 与 `14`。
+
+**这个版本不是什么。** 跨文件的**名字解析**是 `MODULES_PLAN.md` 第 7 步，不在这次发布里：编辑器建立 `import` 所描述的树、并找到它点名的文件，但 `modules.vel` 里的 `area` 由编译器解析，而不是 `VelaTargets.declarationFor`。`FEATURE_PARITY.md` 第 10 行仍然这么写着。
 
 ## 0.1.12 —— 每一个参数名提示都被画了 490 遍，而这里没有任何工具能说出这件事
 

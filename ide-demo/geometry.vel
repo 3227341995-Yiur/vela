@@ -1,0 +1,10 @@
+﻿# A module: declarations a program imports.  It has no `main` -- `main` belongs to
+# the file you run (MODULES_PLAN.md D5), and the editor resolves `area` here from
+# `modules.vel` because the plugin finds a file next to this one.
+def area(w: int, h: int) -> int {
+    return w * h
+}
+
+def perimeter(w: int, h: int) -> int {
+    return 2 * (w + h)
+}

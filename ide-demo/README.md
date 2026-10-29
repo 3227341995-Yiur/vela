@@ -20,8 +20,11 @@ checkout" below.  It has nothing to do with `vela\tests\` and depends on nothing
 | `hello.vel` | the smallest legal program, printing three lines.  Used to confirm that "it runs from inside IDEA" |
 | `tour.vel` | the file that demonstrates the editing features: a struct + methods, functions with parameters, a function calling a function, one `mut` local, and one legal `parallel for` |
 | `broken.vel` | **deliberately wrong**: an intentional type error, which the plugin draws as a diagnostic in the editor |
+| `modules.vel` | a program out of **two files**: `import "geometry.vel"` (`MODULES_PLAN.md` step 2).  The compiler's `check` and `run` take it; `build` still refuses a multi-file program by name (D8), so this one is run through the interpreter |
+| `geometry.vel` | the module `modules.vel` imports: `area` and `perimeter`, and no `main` — `main` belongs to the file you run (D5) |
 | `expected\hello.txt` | the exact stdout `hello.vel` must print (the real machine's own output, byte for byte) |
 | `expected\tour.txt` | the exact stdout `tour.vel` must print (likewise) |
+| `expected\modules.txt` | the exact stdout `modules.vel` must print (likewise, measured with `vm.exe run`) |
 | `README.md` | this file |
 
 After a run, the directory grows `hello.c` / `hello.exe` / `hello.obj` / `tour.c` /
@@ -174,6 +177,42 @@ thread counts, and identical to the interpreter's too — one SHA256 for all fou
 | `tour.exe` with `OMP_NUM_THREADS=8` | `3D766FE0…93FF` |
 | `tour.exe` with `OMP_NUM_THREADS` unset (the default) | `3D766FE0…93FF` |
 | `vm.exe run ide-demo\tour.vel` (the interpreter) | `3D766FE0…93FF` |
+
+### `modules.vel` — a program out of two files
+
+`modules.vel` is the only file here that is not a whole program on its own:
+`import "geometry.vel"` names a file **next to it**, and the compiler reads the path
+relative to the importing file (`MODULES_PLAN.md` D1).  `geometry.vel`'s declarations
+are spliced in front of `modules.vel`'s own (D4), which is why `area` and `perimeter`
+are in scope below.
+
+```bat
+selfhost\build\vm.exe check ide-demo\modules.vel
+selfhost\build\vm.exe run   ide-demo\modules.vel
+```
+
+`check` prints `ok`; `run` prints:
+
+```
+12
+14
+```
+
+8 bytes, SHA256 `F52747F62B08DBE87F5EDE30236873C8F92533EA31BAEE9A9EF613D9205BD7B7`
+(the hash of `expected\modules.txt` is identical to it).  `3 × 4 = 12` is `area` and
+`2 × (3 + 4) = 14` is `perimeter`, both from the imported file.
+
+**`build` refuses this one, by name** — the C and LLVM back ends compile one file
+until `MODULES_PLAN.md` steps 3 and 4 teach them a path per node (D8):
+
+```
+vela: type error: `build` takes one file, and 'ide-demo\modules.vel' imports 'ide-demo\geometry.vel' (MODULES_PLAN.md D8: the C and LLVM back ends learn in steps 3 and 4)
+  at ide-demo\modules.vel:1
+```
+
+That is a refusal, not a failure: the interpreter is the path that takes a program
+out of two files today, and `0.1.13`'s `ast-diff.ps1` compares exactly this pair of
+files' merged tree with the compiler's.
 
 ### `broken.vel` — the expected outcome is "refused"
 

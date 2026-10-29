@@ -1,0 +1,13 @@
+﻿# The demo's modules example: a program out of two files.
+#
+# `MODULES_PLAN.md` step 2 makes `import "geometry.vel"` load that file -- the path
+# is read relative to THIS file -- and the imported declarations come first, so
+# `area` and `perimeter` are in scope below.  The compiler's `check` and `run` take
+# this program; `build` still refuses a multi-file program by name (D8, steps 3-4),
+# which is why the expected output below is the interpreter's.
+import "geometry.vel"
+
+def main() -> None {
+    print(area(3, 4))
+    print(perimeter(3, 4))
+}

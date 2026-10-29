@@ -1,4 +1,6 @@
+import dev.vela.plugin.VelaNodeKind;
 import dev.vela.plugin.VelaSyntaxDump;
+import dev.vela.plugin.VelaSyntaxNode;
 import dev.vela.plugin.VelaSyntaxParser;
 import dev.vela.plugin.VelaSyntaxProblem;
 import dev.vela.plugin.VelaSyntaxTree;
@@ -246,7 +248,7 @@ public final class AstDiff {
             String src = new String(raw, StandardCharsets.ISO_8859_1);
 
             VelaSyntaxTree tree = VelaSyntaxParser.parse(src);
-            String mine = VelaSyntaxDump.INSTANCE.dump(tree);
+            String mine = mergedDump(p, tree);
             CompilerRun run = runCompiler(rel);
 
             int mineNodes = nodeCount(mine);
@@ -510,6 +512,108 @@ public final class AstDiff {
         int exit;
         String out = "";
         String err = "";
+    }
+
+    /**
+     * The plugin's dump of *the program*, not of one file.
+     *
+     * `MODULES_PLAN.md` step 2 makes `vm.exe parse` load: an `import "path"` reads
+     * the file it names, and the dumped tree is the merged one -- imported
+     * declarations first, outermost import first, the file's own statements last
+     * (D4).  The plugin parses one file, so this walks the same rule with the same
+     * parser: parse the root, and for each top-level `import` take the imported
+     * file's body before the root's own statements.  It resolves nothing and checks
+     * nothing; the tree is the whole question this gate asks.
+     *
+     * The compiler refuses a program with a missing import or a cycle, and a refused
+     * program's tree is never compared (the table counts those rows separately), so
+     * those cases fall back to the file's own dump.
+     */
+    private static String mergedDump(Path file, VelaSyntaxTree tree) throws IOException {
+        StringBuilder body = new StringBuilder();
+        if (!splice(file, body, new LinkedHashSet<>(), new ArrayList<>())) {
+            return VelaSyntaxDump.INSTANCE.dump(tree);
+        }
+        return "module\n  block\n" + body;
+    }
+
+    /** Post-order, like `load_file`: a file's imports, then the file itself. */
+    private static boolean splice(Path file, StringBuilder body,
+                                  Set<Path> loaded, List<Path> stack) throws IOException {
+        Path key = file.toAbsolutePath().normalize();
+        if (stack.contains(key)) {
+            return false;
+        }
+        stack.add(key);
+        byte[] raw = Files.readAllBytes(file);
+        String src = new String(raw, StandardCharsets.ISO_8859_1);
+        VelaSyntaxTree tree = VelaSyntaxParser.parse(src);
+        if (tree.root.children.isEmpty()) {
+            stack.remove(key);
+            return false;
+        }
+        List<VelaSyntaxNode> stmts = tree.root.children.get(0).children;
+        for (VelaSyntaxNode s : stmts) {
+            if (s.kind != VelaNodeKind.IMPORT) {
+                continue;
+            }
+            String lit = s.strEscapes ? decodePath(s.text) : s.text;
+            Path parent = file.toAbsolutePath().getParent();
+            Path target = parent.resolve(lit).normalize();
+            if (!Files.isRegularFile(target)) {
+                stack.remove(key);
+                return false;
+            }
+            if (stack.contains(target)) {
+                stack.remove(key);
+                return false;
+            }
+            if (loaded.contains(target)) {
+                continue;
+            }
+            if (!splice(target, body, loaded, stack)) {
+                stack.remove(key);
+                return false;
+            }
+        }
+        String dump = VelaSyntaxDump.INSTANCE.dump(tree);
+        String[] lines = dump.split("\n", -1);
+        // The first two lines are `module` and `  block`, which the merged dump
+        // prints once; everything after them is this file's statements.  An
+        // `import` line is dropped: the compiler's tree is the *program*, and its
+        // loader takes the import statements out of the chain again (the node says
+        // how the program was assembled, not what it contains).  The splice above
+        // is what proves the plugin read the path right.
+        for (int i = 2; i < lines.length - 1; i++) {
+            if (lines[i].startsWith("    import \"") && !lines[i].startsWith("     ")) {
+                continue;
+            }
+            body.append(lines[i]).append('\n');
+        }
+        loaded.add(key);
+        stack.remove(key);
+        return true;
+    }
+
+    /** The loader's `unescape`, for a path written with escapes. */
+    private static String decodePath(String raw) {
+        StringBuilder out = new StringBuilder(raw.length());
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (c != '\\' || i + 1 >= raw.length()) {
+                out.append(c);
+                continue;
+            }
+            char n = raw.charAt(++i);
+            switch (n) {
+                case 'n' -> out.append('\n');
+                case 't' -> out.append('\t');
+                case 'r' -> out.append('\r');
+                case '0' -> out.append('\0');
+                default -> out.append(n);
+            }
+        }
+        return out.toString();
     }
 
     /**

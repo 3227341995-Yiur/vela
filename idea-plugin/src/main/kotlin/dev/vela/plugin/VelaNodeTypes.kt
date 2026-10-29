@@ -56,6 +56,8 @@ internal object VelaNodeTypes {
     @JvmField val LIST: IElementType = IElementType("VELA_LIST", VelaLanguage)
     @JvmField val SLICE: IElementType = IElementType("VELA_SLICE", VelaLanguage)
     @JvmField val ERROR: IElementType = IElementType("VELA_ERROR", VelaLanguage)
+    // MODULES_PLAN.md step 2: `import "path/file.vel"` (the compiler's node kind 40).
+    @JvmField val IMPORT: IElementType = IElementType("VELA_IMPORT", VelaLanguage)
     // SPEC.md §13: an enum declaration, its variants, a `match` statement, the subject
     // it matches on, one arm, and one name a pattern binds.
     @JvmField val ENUM: IElementType = IElementType("VELA_ENUM", VelaLanguage)
@@ -103,6 +105,7 @@ internal object VelaNodeTypes {
         VelaNodeKind.LIST -> LIST
         VelaNodeKind.SLICE -> SLICE
         VelaNodeKind.ERROR -> ERROR
+        VelaNodeKind.IMPORT -> IMPORT
         VelaNodeKind.ENUM -> ENUM
         VelaNodeKind.VARIANT -> VARIANT
         VelaNodeKind.MATCH -> MATCH

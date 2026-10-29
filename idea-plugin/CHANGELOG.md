@@ -23,6 +23,63 @@ action registered as a group, and three extension points that were never
 registered (or registered under the wrong attribute name). An entry that says
 "added X, unverified" is worth more than one that says "added X".
 
+## 0.1.13 — the editor learned `import`, and the gate that proves it caught the compiler
+
+**What changed.** `import` is a keyword and a node in this plugin now, not a name:
+`VelaKw.IMPORT = 26` (the compiler's own id), the word in `VELA_KEYWORDS`,
+`VelaNodeKind.IMPORT` (the compiler's node kind 40), `VelaNodeTypes.IMPORT`,
+`parseImport()` and a `VelaSyntaxDump` line that prints `import "path"` with the
+literal's own escapes.  The three shapes and their sentences are the compiler's: the
+path spelling builds the node, a bare module name is `MODULES_PLAN.md` step 6 and is
+refused with the spelling that works today, and an `import` inside a block is a
+declaration in the wrong place.
+
+* **The AST gate had to learn what a program is.**  `vm.exe parse` loads now, so its
+  tree is the merged program — imported declarations first, outermost import first,
+  the file's own last (D4 of the plan).  `AstDiff` mirrors that splice with this
+  plugin's parser: parse the root, take each top-level `import`'s target relative to
+  the root, and take that file's body before the root's own statements.  The import
+  statement itself is dropped from the merged dump, because the compiler's tree is
+  the *program* and its loader takes the import node out of the chain again — so a
+  mismatch here would mean the plugin misread a path, which is exactly what the
+  splice proves it did not.
+
+* **It caught a wrong answer in the compiler, and that is the entry's real content.**
+  On `tests/build/modules/bad_root.vel` the compiler printed `str ""` where this
+  parser printed `str "text"`: an imported file's string literal was being read as a
+  byte range of the *root's* source.  It was not only a dump artefact — `vm.exe run`
+  printed empty text from that literal.  The compiler now appends every file to one
+  source buffer and moves that file's literal offsets by where it landed, after the
+  parse (names are still read against the file's own text); a one-file program's
+  buffer *is* the file, so every golden and every emitted C byte is unchanged.
+  `tests/build/modules/str_module.vel` is the case that keeps it: a program whose
+  imported file returns a string, printing `hello from a module`.
+
+* **Measured on 0.1.13** (`build-offline.ps1` PASS; the compiler frozen at 888 320
+  bytes / `f6a74bd3…`):
+  - `ast-diff.ps1`: **167 files in the corpus, 148 identical to `vm.exe parse`,
+    152 296 node lines, 0 different, 0 suspect, 0 missing, 0 crashed; 19 refused by
+    the compiler — 14 of which this parser refuses too — `VERDICT: PASS`, exit 0**,
+    coverage `ran 148 / skipped 19 (compiler-refused 19) / wrong 0`.  The five the
+    compiler refuses and this parser does not are the module cases whose *parse* is
+    legal and whose refusal is the loader's: missing file, cycle, duplicate name,
+    second `main` — a parser-only gate cannot see the loader, and says so.
+  - `psi-tree-diff.ps1`: **167 of 167 files** replayed through the platform's own
+    `PsiBuilderImpl`, 152 338 composite nodes and 413 594 leaf tokens compared,
+    `failed 0`, `VERDICT : PASS`, `COVERAGE: ran 167 / skipped 0 (missing-corpus-file
+    0, replay-threw 0, too-large 0) / wrong 0`.
+  - The compiler's own suite: **236 passed, 0 failed**; the fixpoint is
+    `B630FE56B4D74A4A` (1 149 086 bytes) — seed, generation 1 and generation 2.
+
+* **`ide-demo` has a modules example**: `geometry.vel` (a module: `area`,
+  `perimeter`) and `modules.vel` (`import "geometry.vel"`), with
+  `expected/modules.txt` holding the interpreter's real output, `12` and `14`.
+
+**What this is not.**  Cross-file *name resolution* is `MODULES_PLAN.md` step 7 and is
+not in this release: the editor builds the tree `import` describes and finds the file
+it names, but `area` in `modules.vel` is resolved by the compiler, not by
+`VelaTargets.declarationFor`.  `FEATURE_PARITY.md` row 10 keeps saying so.
+
 ## 0.1.12 — every parameter-name hint was painted 490 times, and no tool here could have said so
 
 **What changed.** `VelaParameterNameInlayHintsCollector.collect` ignored the element it was handed,

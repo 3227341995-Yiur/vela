@@ -512,6 +512,7 @@ refuse enum_nested_pattern                   tests/build/enum_nested_pattern.vel
 # The refusals below are the four the plan owes messages for, plus the diagnostic
 # that has to name the *imported* file rather than the root's path.
 interpret module_two_files                   tests/build/modules/two_files.vel
+interpret module_str                         tests/build/modules/str_module.vel
 run       module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel

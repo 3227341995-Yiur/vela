@@ -382,7 +382,7 @@ documentation-reserved identifiers.
 | 4. the LLVM back end | not started | §8.1 is a defect this step hit on the way: an `or` of two calls in a large program |
 | 5. the self-hosting switch | not started | — |
 | 6. a module name, `from M import x`, and `mathlib.add` | not started | `tests/accept/modules/module_import_from.vel`, `module_import_qualified.vel` |
-| 7. the editor | not started | — |
+| 7. the editor | **started** 2026-10-20: the *parser* half | `idea-plugin/CHANGELOG.md` 0.1.13 and §8.14: `import` is a keyword, a node (kind 40) and a dump line; `ast-diff.ps1` **167 files, 148 identical, 0 different, exit 0**; `psi-tree-diff.ps1` **167/167, failed 0**.  Cross-file *resolution* is still owed |
 
 ## 8. Step 1, measured (2026-10-20)
 
@@ -504,5 +504,21 @@ the comment block above the node list in `selfhost/parts/parser.vel`.  That gap
 predates this step and is left as it was rather than half-fixed here; the plan's step
 7 owns the editor's copy of the tree.
 
+**8.14 The editor's gate found a wrong answer, not a missing feature.**  Step 7 was
+not planned for this round, but `ast-diff.ps1` had to learn what a *program* is before
+it could compare one (the plugin parses a file; `vm.exe parse` now loads), and on
+`tests/build/modules/bad_root.vel` it reported `str ""` where the plugin printed
+`str "text"`.  An imported file's string literal was being read as a byte range of the
+*root's* source — and it was not a dump artefact: `vm.exe run` printed empty text from
+that literal.  So the loader now appends every file to one source buffer
+(`Load.all`) and, after the parse, moves that file's literal offsets by where the
+buffer put it.  After, not before: the parser reads names and literals against the
+file's own text, and the import pass reads the path the same way.  A one-file
+program's buffer *is* the file (offset 0), so every golden and every emitted C byte is
+unchanged; `tests/build/modules/str_module.vel` is the case that keeps it honest.
 
-| 7. the editor | not started | — |
+What the editor has of step 7 today is the **parse** half: `import` is a keyword
+(`VelaKw.IMPORT = 26`), a node (`VelaNodeKind.IMPORT`, the compiler's kind 40) and a
+dump line, and `AstDiff` mirrors the loader's splice so a two-file program is compared
+as the program it is.  Cross-file *name resolution* — `VelaTargets.declarationFor`
+reaching into an imported file — is still owed, and `FEATURE_PARITY.md` row 10 says so.

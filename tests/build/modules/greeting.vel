@@ -1,0 +1,7 @@
+﻿# A module with a string literal in it.  The literal's value is a byte range of
+# THIS file's text, and the stages are handed one `src` for the whole program, so
+# the loader appends every file to one buffer and shifts each file's offsets by
+# where it landed.  Without that, this `str` prints as `str ""`.
+def greeting() -> str {
+    return "hello from a module"
+}

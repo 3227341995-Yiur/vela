@@ -1,0 +1,8 @@
+﻿# Refuse-nothing: a program whose imported file contains a string literal, and
+# whose answer is that literal.  It is the case that keeps the loader's source
+# buffer honest (the dump and the interpreter both read literals through it).
+import "greeting.vel"
+
+def main() -> None {
+    print(greeting())
+}

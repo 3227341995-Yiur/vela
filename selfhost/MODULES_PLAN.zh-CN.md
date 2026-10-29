@@ -4,9 +4,9 @@
 
 <!--
 源文件 : MODULES_PLAN.md
-源文件字节 : 35475
-源文件 SHA256 : 63c913c8ea612d58d2fa90501d49c4267f1445a7a76c9f1976a81537861f314e
-翻译日期 : 2026-10-20
+源文件字节 : 37137
+源文件 SHA256 : 2981f03d8b3de944031d50880bd46f1445d56b1abf564dbc53b0f22618d6a0ae
+翻译日期 : 2026-10-30
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -191,7 +191,7 @@
 | 4. LLVM 后端 | 未开始 | §8.1 是这一步路上撞到的后端缺陷：大程序里两个调用的 `or` |
 | 5. 自举切换 | 未开始 | — |
 | 6. 模块名、`from M import x`、以及 `mathlib.add` | 未开始 | `tests/accept/modules/module_import_from.vel`、`module_import_qualified.vel` |
-| 7. 编辑器 | 未开始 | — |
+| 7. 编辑器 | **已开始** 2026-10-20：**解析**那一半 | `idea-plugin/CHANGELOG.md` 0.1.13 与 §8.14：`import` 是关键字、是节点（kind 40）、是一行 dump；`ast-diff.ps1` **167 个文件，148 个一致，0 个不同，exit 0**；`psi-tree-diff.ps1` **167/167，failed 0**。跨文件**名字解析**仍然欠着 |
 
 ## 8. 第 1 步，实测（2026-10-20）
 
@@ -288,4 +288,19 @@
 **8.13 `selfhost/AST.md` 的节点表停在 34**，而解析器从 §13 起就用到了 35-38（`enum`、`variant`、
 `match`、`arm`），现在又多 40（`import`），后者的记录在 `selfhost/parts/parser.vel` 节点列表上方
 的注释块里。这个缺口早于本步骤，这里不去半修它；计划的第 7 步负责编辑器那一份语法树。
+
+**8.14 编辑器的闸门抓到的是一个错误答案，不是缺一个功能。** 第 7 步本来不在这轮的计划里，但
+`ast-diff.ps1` 必须先学会「什么是一个**程序**」才能比较（插件只解析一个文件，而 `vm.exe parse`
+现在会装载），而它在 `tests/build/modules/bad_root.vel` 上报出：插件打印 `str "text"`，编译器打印
+`str ""`。被导入文件里的字符串字面量，被当成**根**文件源码里的字节区间在读——而且这不是 dump 的
+假象：`vm.exe run` 从那个字面量打出来的也是空串。于是装载器把每个文件的文本接进同一个源缓冲
+（`Load.all`），并在解析**之后**把这个文件的字面量偏移平移到它在缓冲里的位置。是之后不是之前：
+解析器按本文件自己的文本读名字和字面量，import 那一趟也按同样的方式读路径。单文件程序的缓冲
+**就是**那个文件（偏移 0），所以所有 golden、所有发出的 C 字节都不变；
+`tests/build/modules/str_module.vel` 是钉住它的用例。
+
+编辑器今天拿到的第 7 步是**解析**那一半：`import` 是关键字（`VelaKw.IMPORT = 26`）、是一个节点
+（`VelaNodeKind.IMPORT`，编译器的 kind 40）、是一行 dump，而 `AstDiff` 复刻了装载器的拼接，所以
+两文件程序是按「程序」来比的。跨文件的**名字解析**——`VelaTargets.declarationFor` 伸进被导入
+文件——仍然欠着，`FEATURE_PARITY.md` 第 10 行就是这么写的。
 

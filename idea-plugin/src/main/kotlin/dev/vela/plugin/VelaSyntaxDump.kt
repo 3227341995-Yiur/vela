@@ -373,6 +373,15 @@ object VelaSyntaxDump {
                 sb.append("str \"").append(escapedLiteral(n)).append("\"\n")
             }
 
+            // MODULES_PLAN.md step 2.  `dump.vel` prints the path spelling with the
+            // literal's own escapes (`d_str`) -- the same call the `str` case makes --
+            // so this is that case under another word.  `import` with a bare module
+            // name never reaches here: it is refused, and an error node prints nothing.
+            VelaNodeKind.IMPORT -> {
+                indent(sb, depth)
+                sb.append("import \"").append(escapedLiteral(n)).append("\"\n")
+            }
+
             VelaNodeKind.BOOL -> {
                 indent(sb, depth)
                 sb.append("bool ").append(n.intValue).append('\n')

@@ -1214,6 +1214,7 @@ struct Load {
     tail: int
     count: int
     next: int      # the first free line number for the next file to load
+    all: str       # every file's text, appended in load order: the stages' `src`
 }
 
 def load_fail(path: str, line: int, msg: str) -> None {
@@ -1438,8 +1439,20 @@ def load_file(path: str, src: str, base: int, depth: int, file: int,
     mem[MEM_SRCS()] = ns + 1
 
     mut start: int = cx.ntok
+    mut ni0: int = cx.ni
     cx.pos = 0
     cx.line = base
+    # A string literal's *value* is a byte range of the source (`d_str`, and
+    # `unescape(substr(...))` in the interpreter), and the stages after this one are
+    # handed one `src`.  So there is one buffer: every file's text is appended to it
+    # before it is parsed, and the literal offsets in *this* file's nodes are moved
+    # by where it landed -- after the parse, because the parser reads names and
+    # literals against this file's own text.  One file makes the buffer *be* the file
+    # (base 0, nothing moved, byte-identical); several files make every literal
+    # address the right bytes.  Measured: before this, an imported file's `str`
+    # printed as `str ""` in `vm.exe parse` and reached `print` as "".
+    mut at: int = len(ld.all)
+    ld.all = concat(ld.all, src)
     lex(src, tk, tkf, cx)
     if cx.err == 1 {
         panic("the front end stopped after an error")
@@ -1505,6 +1518,25 @@ def load_file(path: str, src: str, base: int, depth: int, file: int,
         s = nd[s * 10 + 7]
     }
 
+    # every literal in this file now addresses the buffer instead of this file's own
+    # text (the import pass above has already read the paths it needed from `src`,
+    # and the parser read names and literals before that -- which is why the shift is
+    # here and not before the parse)
+    if at > 0 {
+        mut n0: int = ni0
+        while n0 < cx.ni {
+            k0: int = nd[n0 * 10]
+            if k0 == 22 {
+                nd[n0 * 10 + 1] = nd[n0 * 10 + 1] + at
+            } else if k0 == 21 {
+                nd[n0 * 10 + 2] = nd[n0 * 10 + 2] + at
+            } else if k0 == 40 {
+                nd[n0 * 10 + 1] = nd[n0 * 10 + 1] + at
+            }
+            n0 += 1
+        }
+    }
+
     # and this file's own statements last, which is what puts every imported
     # declaration in front of the root's (D4)
     s = nd[m * 10 + 1]
@@ -1557,7 +1589,7 @@ def main() -> None {
     # loader's tables live in it (vm_state.vel MEM_SRCS/MEM_LDECL/MEM_LSTK) and
     # the stages that print locations read them from there
     mut mem: Array[int, 3741696]
-    mut ld: Load = Load(-1, -1, 0, 1)
+    mut ld: Load = Load(-1, -1, 0, 1, "")
 
     # `lex` and `count` are questions about *one file's bytes* -- what tokens it
     # has -- so they stay one file.  Every other mode takes the program, which is
@@ -1575,6 +1607,9 @@ def main() -> None {
         nd[1] = ld.head
         nd[2] = ld.count
     }
+    # the program's text: one file's bytes, or every file's appended in load order
+    # (the loader shifted each file's token offsets to match -- see `load_file`)
+    mut prog: str = ld.all
     # what the stages that raise diagnostics are handed as `path`: the file itself
     # when there is one, and the encoded sources table when the program has imports
     mut diag: str = path
@@ -1598,7 +1633,7 @@ def main() -> None {
         return
     }
     if mode == "parse" {
-        dump_module(src, nd, ty, flt)
+        dump_module(prog, nd, ty, flt)
         return
     }
     if mode == "nodes" {
@@ -1614,7 +1649,7 @@ def main() -> None {
         # that emitted C for a program the checker would refuse would be a back
         # end that lost the language's promises on the way to C
         ck_module(nd, ty, mem, diag, vm2)
-        emit_program(nd, ty, flt, src, path, mem, vm2)
+        emit_program(nd, ty, flt, prog, path, mem, vm2)
         return
     }
     if mode == "run" {
@@ -1627,7 +1662,7 @@ def main() -> None {
         ck_module(nd, ty, mem, diag, vm)
         # the empty string is the directory argument `debug` fills in: `run` is
         # the same interpreter with no session, so nothing ever reads it
-        run_main(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, diag, "", vm)
+        run_main(nd, ty, mem, fmem, flt, ipool, fpool, bpool, prog, diag, "", vm)
         return
     }
     if mode == "debug" {
@@ -1663,7 +1698,7 @@ def main() -> None {
         # `after_main` (that is a function number, and 0 is a real function), so
         # the driver says so, here, once.
         vm4.dbg_on = 1
-        run_main(nd, ty, mem, fmem4, flt, ipool4, fpool4, bpool4, src, diag,
+        run_main(nd, ty, mem, fmem4, flt, ipool4, fpool4, bpool4, prog, diag,
                  arg(3), vm4)
         return
     }
@@ -1683,7 +1718,7 @@ def main() -> None {
         mut vmL: VM = vm_new()
         resolve_module(nd, ty, mem, diag, vmL)
         ck_module(nd, ty, mem, diag, vmL)
-        ll_emit_ir(nd, ty, flt, src, path, mem, vmL)
+        ll_emit_ir(nd, ty, flt, prog, path, mem, vmL)
         return
     }
     if mode == "build" {
@@ -1720,7 +1755,7 @@ def main() -> None {
         mut vmD: VM = vm_new()
         resolve_module(nd, ty, mem, diag, vmD)
         ck_module(nd, ty, mem, diag, vmD)
-        do_build_llvm(arg(0), path, rtL, nd, ty, flt, src, mem, vmD)
+        do_build_llvm(arg(0), path, rtL, nd, ty, flt, prog, mem, vmD)
         return
     }
     if mode == "build-llvm" {
@@ -1738,7 +1773,7 @@ def main() -> None {
         mut vmB: VM = vm_new()
         resolve_module(nd, ty, mem, diag, vmB)
         ck_module(nd, ty, mem, diag, vmB)
-        do_build_llvm(arg(0), path, rtL2, nd, ty, flt, src, mem, vmB)
+        do_build_llvm(arg(0), path, rtL2, nd, ty, flt, prog, mem, vmB)
         return
     }
     if mode == "build-c" {

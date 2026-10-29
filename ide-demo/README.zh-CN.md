@@ -4,9 +4,9 @@
 
 <!--
 源文件 : README.md
-源文件字节 : 16721
-源文件 SHA256 : d47c371ade8f3ff5c2736512e41a1e8b04d5dd22a9cd5d0035f007bb9f5745f0
-翻译日期 : 2026-09-22
+源文件字节 : 18587
+源文件 SHA256 : a11966dc498abdeabf1691240b308dfee027d5fca46b02569456acbe1bf72768
+翻译日期 : 2026-10-30
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -31,8 +31,11 @@ A small, real project for trying the Vela plugin in IntelliJ IDEA. 每个文件�
 | `hello.vel` | 最小的合法程序，打印三行。用来确认"从 IDEA 里能跑起来"。 |
 | `tour.vel` | 演示编辑功能的文件：struct + 方法、带参数的函数、函数调用函数、一个 `mut` 局部变量、一个合法的 `parallel for`。 |
 | `broken.vel` | **故意写错**的一个文件：故意的类型错误，插件会在编辑器里画出诊断。 |
+| `modules.vel` | 一个**两文件**的程序：`import "geometry.vel"`（`MODULES_PLAN.md` 第 2 步）。编译器的 `check` 与 `run` 接受它；`build` 仍按名字拒绝多文件程序（D8），所以这一个用解释器跑。 |
+| `geometry.vel` | `modules.vel` 导入的那个模块：`area` 与 `perimeter`，没有 `main`——`main` 属于你运行的那个文件（D5）。 |
 | `expected\hello.txt` | `hello.vel` 必须打印的确切 stdout（就是真机输出本身，逐字节）。 |
 | `expected\tour.txt` | `tour.vel` 必须打印的确切 stdout（同上）。 |
+| `expected\modules.txt` | `modules.vel` 必须打印的确切 stdout（同上，用 `vm.exe run` 实测）。 |
 | `README.md` | 本文件。 |
 
 运行之后目录里会多出 `hello.c` / `hello.exe` / `hello.obj` / `tour.c` / `tour.exe` /
@@ -173,6 +176,40 @@ out[7] = 16
 | `OMP_NUM_THREADS=8` 跑 `tour.exe` | `3D766FE0…93FF` |
 | 不设 `OMP_NUM_THREADS`（默认）跑 `tour.exe` | `3D766FE0…93FF` |
 | `vm.exe run ide-demo\tour.vel`（解释器） | `3D766FE0…93FF` |
+
+### `modules.vel` —— 两个文件的程序
+
+`modules.vel` 是这里唯一一个自己不是一个完整程序的文件：`import "geometry.vel"`
+点名的是**与它相邻**的文件，而编译器按导入文件所在目录解析这个路径
+（`MODULES_PLAN.md` D1）。`geometry.vel` 的声明被拼到 `modules.vel` 自己的声明前面
+（D4），所以下面的 `area` 与 `perimeter` 在作用域里。
+
+```bat
+selfhost\build\vm.exe check ide-demo\modules.vel
+selfhost\build\vm.exe run   ide-demo\modules.vel
+```
+
+`check` 打印 `ok`；`run` 打印：
+
+```
+12
+14
+```
+
+8 字节，SHA256 `F52747F62B08DBE87F5EDE30236873C8F92533EA31BAEE9A9EF613D9205BD7B7`
+（`expected\modules.txt` 的哈希与它完全相同）。`3 × 4 = 12` 是 `area`，
+`2 × (3 + 4) = 14` 是 `perimeter`，两个都来自被导入的文件。
+
+**`build` 会按名字拒绝这一个**——在 `MODULES_PLAN.md` 第 3、4 步让 C 与 LLVM 后端
+学会逐节点带路径之前，它们只编译一个文件（D8）：
+
+```
+vela: type error: `build` takes one file, and 'ide-demo\modules.vel' imports 'ide-demo\geometry.vel' (MODULES_PLAN.md D8: the C and LLVM back ends learn in steps 3 and 4)
+  at ide-demo\modules.vel:1
+```
+
+这是拒绝，不是失败：今天能接受两文件程序的是解释器那条路，而 0.1.13 的
+`ast-diff.ps1` 比较的正是这两个文件的合并树与编译器的树。
 
 ### `broken.vel` — 预期就是"被拒绝"
 

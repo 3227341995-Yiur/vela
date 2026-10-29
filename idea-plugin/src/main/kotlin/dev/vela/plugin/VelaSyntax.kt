@@ -228,6 +228,16 @@ object VelaKw {
      */
     @JvmField val ENUM = 24
     @JvmField val MATCH = 25
+
+    /*
+     * 26 is `import`, and it is the compiler's number too: `keyword_id` in
+     * `selfhost/vela.vel` claimed it at `MODULES_PLAN.md` step 1 (SPEC.md §1.3 had
+     * reserved the word since 0.1).  The *statement* landed at step 2 — the parser
+     * below builds the compiler's kind-40 node for `import "path/file.vel"` — so the
+     * number and the node have to agree with `vm.exe parse` for `ast-diff.ps1` to
+     * stay green, which is the whole point of this vocabulary being shared.
+     */
+    @JvmField val IMPORT = 26
 }
 
 /**
@@ -316,6 +326,7 @@ val VELA_KEYWORDS: Map<String, Int> = run {
     m["extern"] = VelaKw.EXTERN
     m["enum"] = VelaKw.ENUM
     m["match"] = VelaKw.MATCH
+    m["import"] = VelaKw.IMPORT
     m
 }
 
@@ -896,6 +907,18 @@ enum class VelaNodeKind {
      * and a pattern binding is not a declaration, and a reader comparing two dumps
      * should not have to know that one implementation reuses a node.
      */
+    /*
+     * MODULES_PLAN.md step 2: `import "path/file.vel"`, the compiler's node kind 40.
+     *
+     * It carries the literal's text the way a `str` node does, because that is what
+     * the compiler stores (an offset and a length into the file, plus the escapes
+     * flag) and because the loader is the only thing that ever reads it: the node is
+     * a statement of *how the program was assembled*, not part of the program, which
+     * is why the resolver never sees one.  This parser keeps the same text so the
+     * two dumps print the same line; it does not load anything.  Loading is the
+     * compiler's job, and the editor's cross-file resolution is step 7 of the plan.
+     */
+    IMPORT,
     ENUM,
     VARIANT,
     MATCH,
@@ -1186,6 +1209,53 @@ class VelaSyntaxParser private constructor(
         return err
     }
 
+    /**
+     * Is the statement being parsed a *file* statement rather than one inside a
+     * block?  `import` is the first rule in this grammar that depends on the answer
+     * (`MODULES_PLAN.md` step 2 refuses it inside a block), and the flag is set by
+     * the two loops that call [parseStatement]: [parseModule] and [parseBody].
+     */
+    private var topLevel = false
+
+    /**
+     * `import "path/file.vel"` — the compiler's node kind 40.
+     *
+     * The three shapes and their sentences are the compiler's (`parser.vel`'s
+     * `parse_import`): the path spelling builds the node, a bare module name is step
+     * 6 and is refused with the spelling that works today, and an `import` inside a
+     * block is a declaration in the wrong place.  A reader who sees one of these in
+     * the editor should see what `vm.exe check` would say, which is the only reason
+     * an editor's diagnostics are worth having.
+     */
+    private fun parseImport(at: Int): VelaSyntaxNode {
+        advance()
+        if (!topLevel) {
+            return recover("`import` declares what the file uses, so it belongs at the top level, outside every block")
+        }
+        if (atEof() || atNl()) {
+            return recover("expected a module path after `import`: write `import <path>/file.vel`")
+        }
+        val t = tok()
+        if (t.kind == VelaTokKind.STRING) {
+            advance()
+            val n = VelaSyntaxNode(VelaNodeKind.IMPORT, at, at)
+            n.text = if (t.end > t.start) src.substring(t.start, t.end) else ""
+            n.strEscapes = t.stringFlag == 1
+            // the same decoded bytes a `str` node carries: the dump prints them
+            // through `escapedLiteral`, which reads `bytes`, not `text`
+            n.bytes = VelaStrings.literalBytes(n.text, n.strEscapes)
+            return n
+        }
+        if (t.kind == VelaTokKind.NAME) {
+            val nm = tokText()
+            return recover(
+                "a module name is not this spelling yet (" + nm +
+                    "): a name and the rule that finds it are MODULES_PLAN.md step 6, so the spelling today is a path string -- `import <path>/<name>.vel`",
+            )
+        }
+        return recover("expected a module path after `import`: write `import <path>/file.vel`")
+    }
+
     // -------------------------------------------------------------- the file
 
     /**
@@ -1228,6 +1298,9 @@ class VelaSyntaxParser private constructor(
                 if (pos == before) advance()
                 continue
             }
+            // a statement of the file itself: `import` is legal here and nowhere
+            // else, and `parseBody` clears the flag for the statements inside a block
+            topLevel = true
             val s = parseStatement()
             if (s != null) {
                 block.add(s)
@@ -1273,6 +1346,7 @@ class VelaSyntaxParser private constructor(
                 VelaKw.STRUCT -> return parseStructdef(at)
                 VelaKw.ENUM -> return parseEnumdef(at)
                 VelaKw.MATCH -> return parseMatch(at)
+                VelaKw.IMPORT -> return parseImport(at)
                 VelaKw.IF -> return parseIf(at)
                 VelaKw.ELIF -> {
                     advance()
@@ -1764,6 +1838,9 @@ class VelaSyntaxParser private constructor(
         }
         val open = pos
         advance()
+        // everything inside a block is a *statement*, not a file declaration:
+        // `import` in here is refused by name, exactly as the compiler refuses it
+        topLevel = false
         val block = VelaSyntaxNode(VelaNodeKind.BLOCK, open, open)
         while (!atClose() && !atEof()) {
             guard++

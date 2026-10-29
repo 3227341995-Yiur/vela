@@ -87,6 +87,11 @@ object VelaTokenTypes {
         // anything) -- so one list is what keeps all three from disagreeing about
         // what the language owns.
         "enum", "match",
+        // MODULES_PLAN.md step 1 claimed `import` in the compiler (`keyword_id`
+        // returns 26), so the editor has to colour it as a keyword, offer it in
+        // completion, and stop treating it as a reference to some declaration --
+        // all three read this one set.
+        "import",
     )
 }
 
