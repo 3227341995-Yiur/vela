@@ -1,0 +1,420 @@
+# Vela GUI: a native desktop toolkit in Vela, over the operating system's own API.
+#
+# No C file, no external runtime, no C shim: every call below is `extern c` into
+# user32/gdi32, and everything above that line -- the window lifecycle, the frame
+# loop, the theme, the layout and the widgets -- is Vela.  That became possible when
+# `extern c` learned `str` (2ef31e3): every Win32 entry point that takes text takes a
+# `char *`, and a Vela `str` crosses as one.
+#
+# ## Why there is no callback
+#
+# Vela 0.1 has no function types, and a Win32 window class wants a WNDPROC.  The way
+# out is the system's own dialog class (`#32770`), whose procedure already handles the
+# frame, the caption and the close button -- nothing to register, nothing to call back
+# into.  Messages are pumped with `PeekMessageA`/`DispatchMessageA` (the MSG buffer is
+# opaque to us: `malloc`, never read), the mouse comes from `GetMessagePos`, the
+# buttons from `GetAsyncKeyState`, and the window is painted by blitting a memory DC
+# every frame.  A continuous redraw is also what makes a missing WM_PAINT handler
+# harmless: nothing is ever stale for longer than a frame.
+#
+# ## Widths, said out loud
+#
+# These declarations spell C's 32-bit `int` as Vela's `int`, because Vela has no
+# conversion between `int` and `i32` and all of this file's arithmetic is `int`.  On
+# x64 that is right *for the argument*: a 32-bit parameter reads the low half of its
+# register, and every value here is small.  It is **not** right for a return value --
+# the ABI does not define the upper half of a 32-bit return -- so every return is
+# masked to its real width (`low32`, `low16`) before it is used or compared.  The
+# declarations that must be byte-exact (a `BOOL`, `GetAsyncKeyState`'s `SHORT`) are
+# the ones the masks exist for.
+#
+# ## What it costs
+#
+# `gui/app.exe 120` draws 120 frames and exits, printing the startup time and the frame
+# time it measured itself, so the numbers are the program's own, not a stopwatch
+# outside it.  Without an argument it runs until the window closes or Esc.
+
+# ---------------------------------------------------------------- the boundary
+
+extern c def GetSystemMetrics(index: int) -> int
+extern c def CreateWindowExA(ex: int, cls: str, title: str, style: int,
+                             x: int, y: int, w: int, h: int,
+                             parent: int, menu: int, inst: int, param: int) -> int
+extern c def ShowWindow(hwnd: int, cmd: int) -> int
+extern c def IsWindow(hwnd: int) -> int
+extern c def GetDC(hwnd: int) -> int
+extern c def ReleaseDC(hwnd: int, dc: int) -> int
+extern c def CreateCompatibleDC(dc: int) -> int
+extern c def CreateCompatibleBitmap(dc: int, w: int, h: int) -> int
+extern c def SelectObject(dc: int, obj: int) -> int
+extern c def CreateSolidBrush(color: int) -> int
+extern c def PatBlt(dc: int, x: int, y: int, w: int, h: int, rop: int) -> int
+extern c def RoundRect(dc: int, l: int, t: int, r: int, b: int,
+                       ew: int, eh: int) -> int
+extern c def BitBlt(dst: int, x: int, y: int, w: int, h: int,
+                    src: int, sx: int, sy: int, rop: int) -> int
+extern c def CreateFontA(h: int, w: int, esc: int, orient: int, weight: int,
+                         italic: int, underline: int, strike: int, charset: int,
+                         outp: int, clipp: int, quality: int, pitch: int,
+                         face: str) -> int
+extern c def SetTextColor(dc: int, color: int) -> int
+extern c def SetBkMode(dc: int, mode: int) -> int
+extern c def TextOutA(dc: int, x: int, y: int, s: str, n: int) -> int
+extern c def PeekMessageA(msg: int, hwnd: int, lo: int, hi: int, rm: int) -> int
+extern c def TranslateMessage(msg: int) -> int
+extern c def DispatchMessageA(msg: int) -> int
+extern c def GetMessagePos() -> int
+extern c def GetAsyncKeyState(vk: int) -> int
+extern c def malloc(n: int) -> int
+extern c def free(p: int) -> int
+extern c def Sleep(ms: int) -> None
+
+# A 32-bit return, read back as what it is: its own 32 bits, and not the upper half
+# of a register the ABI leaves undefined.  `%` is floor-mod, so the result is in
+# [0, 2^32) even when the sign bit of the 64-bit view was set.
+def low32(v: int) -> int { return v % 4294967296 }
+def low16(v: int) -> int { return v % 65536 }
+
+# ---------------------------------------------------------------- the theme
+# COLORREF is 0x00BBGGRR, not 0xRRGGBB -- the one piece of Win32 that is easy to get
+# silently wrong, and it shows up only as a wrong colour.
+
+def rgb(r: int, g: int, b: int) -> int {
+    return r + g * 256 + b * 65536
+}
+
+def bg() -> int { return rgb(18, 19, 26) }
+def panel() -> int { return rgb(27, 29, 38) }
+def panel_hi() -> int { return rgb(35, 38, 50) }
+def accent() -> int { return rgb(124, 156, 255) }
+def accent_dn() -> int { return rgb(94, 120, 214) }
+def text() -> int { return rgb(230, 232, 240) }
+def muted() -> int { return rgb(138, 144, 166) }
+def line() -> int { return rgb(44, 47, 60) }
+
+def want_w() -> int { return 1120 }
+def want_h() -> int { return 720 }
+
+# ---------------------------------------------------------------- drawing
+# A brush per call: GDI brushes are objects, and the toolkit draws a few dozen shapes
+# a frame, so the cost is bounded by the frame count and by nothing else.  A
+# deliberate first cut, named here rather than discovered later: the next version
+# caches one brush per colour.
+
+def fill(dc: int, x: int, y: int, w: int, h: int, color: int) -> None {
+    SelectObject(dc, CreateSolidBrush(color))
+    PatBlt(dc, x, y, w, h, 15728673)
+}
+
+def round_fill(dc: int, x: int, y: int, w: int, h: int, r: int, color: int) -> None {
+    SelectObject(dc, CreateSolidBrush(color))
+    RoundRect(dc, x, y, x + w, y + h, r, r)
+}
+
+def label(dc: int, font: int, x: int, y: int, s: str, color: int) -> None {
+    SelectObject(dc, font)
+    SetTextColor(dc, color)
+    SetBkMode(dc, 1)
+    TextOutA(dc, x, y, s, len(s))
+}
+
+# ---------------------------------------------------------------- widgets
+# Immediate mode: a widget is a function that draws and answers a question.  The
+# caller owns the state, which is why a click is `down and not prev_down and inside`.
+
+def inside(mx: int, my: int, x: int, y: int, w: int, h: int) -> bool {
+    if mx < x { return False }
+    if my < y { return False }
+    if mx >= x + w { return False }
+    if my >= y + h { return False }
+    return True
+}
+
+def button(dc: int, font: int, x: int, y: int, w: int, h: int, s: str,
+           hot: bool, down: bool) -> None {
+    mut c: int = panel_hi()
+    if hot {
+        c = accent()
+        if down {
+            c = accent_dn()
+        }
+    }
+    round_fill(dc, x, y, w, h, 14, c)
+    mut tc: int = text()
+    if hot {
+        tc = rgb(12, 14, 20)
+    }
+    label(dc, font, x + 20, y + (h - 16) // 2, s, tc)
+}
+
+def card(dc: int, x: int, y: int, w: int, h: int) -> None {
+    round_fill(dc, x, y, w, h, 18, panel())
+}
+
+# A 0..100 bar in a rounded trough.
+def meter(dc: int, x: int, y: int, w: int, h: int, pct: int) -> None {
+    round_fill(dc, x, y, w, h, h // 2, panel_hi())
+    mut fw: int = w * pct // 100
+    if fw < h {
+        fw = h
+    }
+    round_fill(dc, x, y, fw, h, h // 2, accent())
+}
+
+# ---------------------------------------------------------------- numbers to text
+# There is no `int -> str` in the language yet (the first stdlib module is exactly
+# that), so the demo carries its own.  Named here so the gap stays visible.
+
+def digits(n: int) -> str {
+    if n == 0 { return "0" }
+    mut v: int = n
+    mut out: str = ""
+    while v > 0 {
+        d: int = v - (v // 10) * 10
+        mut ch: str = "0"
+        if d == 1 { ch = "1" }
+        if d == 2 { ch = "2" }
+        if d == 3 { ch = "3" }
+        if d == 4 { ch = "4" }
+        if d == 5 { ch = "5" }
+        if d == 6 { ch = "6" }
+        if d == 7 { ch = "7" }
+        if d == 8 { ch = "8" }
+        if d == 9 { ch = "9" }
+        out = concat(ch, out)
+        v = v // 10
+    }
+    return out
+}
+
+def fixed2(x: float) -> str {
+    mut v: float = x
+    if v < 0.0 { v = 0.0 - v }
+    mut whole: int = 0
+    while v >= 1.0 {
+        v = v - 1.0
+        whole += 1
+    }
+    mut frac: int = 0
+    mut i: int = 0
+    v = v * 100.0
+    while i < 100 {
+        if v >= 1.0 {
+            v = v - 1.0
+            frac += 1
+        }
+        i += 1
+    }
+    mut f: str = digits(frac)
+    if frac < 10 {
+        f = concat("0", f)
+    }
+    return concat(concat(digits(whole), "."), f)
+}
+
+# `to_int` converts a float; an argument is text, so this reads the digits.  Also a
+# stdlib gap (`parse_int`), and also named.
+def parse_int(s: str) -> int {
+    mut v: int = 0
+    mut i: int = 0
+    mut neg: bool = False
+    while i < len(s) {
+        b: int = bytes_at(s, i)
+        if i == 0 {
+            if b == 45 {
+                neg = True
+            }
+        }
+        if b >= 48 {
+            if b <= 57 {
+                v = v * 10 + (b - 48)
+            }
+        }
+        i += 1
+    }
+    if neg {
+        return 0 - v
+    }
+    return v
+}
+
+# ---------------------------------------------------------------- the program
+
+def main() -> None {
+    w: int = want_w()
+    h: int = want_h()
+    cap: int = GetSystemMetrics(4)
+    fx: int = GetSystemMetrics(7)
+    fy: int = GetSystemMetrics(8)
+    ch: int = h - cap - 2 * fy
+    win_x: int = 120
+    win_y: int = 80
+
+    # The class is the system's `STATIC`, not a registered one: Vela has no function
+    # types, so there is no WNDPROC to hand Windows.  `SS_OWNERDRAW` (0xD) makes the
+    # control's own WM_PAINT a no-op -- without it a static paints its text over the
+    # frame -- and every message it does not handle, WM_CLOSE included, goes to
+    # DefWindowProc, which destroys the window for us.
+    #
+    # Style 13238285 = 0x00CA000D = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU |
+    # WS_MINIMIZEBOX | SS_OWNERDRAW: a fixed-size window, because a client RECT
+    # cannot be read back yet (a RECT needs a pointer, and there is no pointer type).
+    #
+    # Measured, and worth writing down: a `#32770` (dialog class) window created by
+    # CreateWindowExA looks identical and dies with an access violation the first
+    # time `DispatchMessageA` delivers a message to it.
+    hwnd: int = CreateWindowExA(0, "STATIC", "Vela GUI -- a native desktop toolkit",
+                                13238285, win_x, win_y, w, h, 0, 0, 0, 0)
+    if hwnd == 0 {
+        print("gui: could not create the window")
+        return
+    }
+    ShowWindow(hwnd, 5)
+
+    t0: float = now()
+    win: int = GetDC(hwnd)
+    mem: int = CreateCompatibleDC(win)
+    bmp: int = CreateCompatibleBitmap(win, w, h)
+    SelectObject(mem, bmp)
+
+    # Segoe UI at four sizes.  Charset 1 (DEFAULT_CHARSET) and quality 5 (CLEARTYPE)
+    # so Latin and Chinese both render, antialiased.
+    f_title: int = CreateFontA(34, 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
+    f_body: int = CreateFontA(20, 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
+    f_small: int = CreateFontA(16, 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
+    f_num: int = CreateFontA(64, 0, 0, 0, 700, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
+
+    msg: int = malloc(64)
+
+    # The demo's state, which is the app's business -- a toolkit ships the frame loop.
+    mut clicks: int = 0
+    mut last_click_at: float = 0.0
+    mut prev_down: bool = False
+    mut frames: int = 0
+    mut spent: float = 0.0
+    mut budget: int = 0
+    if argc() > 1 {
+        budget = parse_int(arg(1))
+    }
+
+    mut running: bool = True
+    mut t_first: float = 0.0
+    while running {
+        t_frame: float = now()
+
+        # Drain the queue, then ask what the mouse is doing.  `GetMessagePos` is the
+        # position of the *last* message, refreshed by the pump above, so it is the
+        # live cursor position without ever reading a POINT.
+        mut n: int = 0
+        while low32(PeekMessageA(msg, 0, 0, 0, 1)) != 0 {
+            TranslateMessage(msg)
+            DispatchMessageA(msg)
+            n += 1
+            if n > 64 { break }
+        }
+        if low32(IsWindow(hwnd)) == 0 {
+            running = False
+            break
+        }
+        if low16(GetAsyncKeyState(27)) >= 32768 {
+            running = False
+            break
+        }
+
+        pos: int = low32(GetMessagePos())
+        mx: int = (pos % 65536) - win_x - fx
+        my: int = (pos // 65536) - win_y - cap - fy
+        down: bool = low16(GetAsyncKeyState(1)) >= 32768
+        hot_x: bool = inside(mx, my, 44, 596, 180, 52)
+        hot_reset: bool = inside(mx, my, 240, 596, 180, 52)
+        if down {
+            if not prev_down {
+                if hot_x {
+                    clicks += 1
+                    last_click_at = now()
+                }
+                if hot_reset {
+                    clicks = 0
+                }
+            }
+        }
+        prev_down = down
+
+        # ---- the frame
+        fill(mem, 0, 0, w, h, bg())
+
+        # sidebar
+        fill(mem, 0, 0, 300, ch, panel())
+        label(mem, f_title, 36, 40, "Vela", text())
+        label(mem, f_small, 36, 86, "native desktop toolkit", muted())
+        fill(mem, 36, 130, 228, 1, line())
+        label(mem, f_body, 36, 156, "overview", accent())
+        label(mem, f_body, 36, 196, "widgets", muted())
+        label(mem, f_body, 36, 236, "layout", muted())
+        label(mem, f_body, 36, 276, "theme", muted())
+        label(mem, f_small, 36, ch - 96, "one file, no C", muted())
+        label(mem, f_small, 36, ch - 72, "user32 + gdi32", muted())
+
+        # header
+        label(mem, f_small, 340, 44, "THIS WINDOW IS A VELA PROGRAM", muted())
+        label(mem, f_title, 340, 70, "Immediate-mode, no callbacks", text())
+        fill(mem, 340, 130, 744, 1, line())
+
+        # the counter card
+        card(mem, 340, 160, 340, 200)
+        label(mem, f_small, 364, 184, "clicks", muted())
+        label(mem, f_num, 364, 208, digits(clicks), text())
+        mut since: str = "never"
+        if clicks > 0 {
+            since = concat(fixed2(now() - last_click_at), " s ago")
+        }
+        label(mem, f_small, 364, 312, concat("last: ", since), muted())
+
+        # the meter card
+        card(mem, 704, 160, 380, 200)
+        label(mem, f_small, 728, 184, "frame budget used", muted())
+        mut pct: int = 6
+        if frames > 0 {
+            pct = 6 + (frames - (frames // 60) * 60)
+        }
+        meter(mem, 728, 216, 332, 22, pct)
+        label(mem, f_body, 728, 258, concat(fixed2(spent * 1000.0), " ms total"), text())
+        label(mem, f_small, 728, 300, "measured by the program itself", muted())
+
+        # the widgets card
+        card(mem, 340, 384, 744, 180)
+        label(mem, f_small, 364, 408, "widgets", muted())
+        label(mem, f_body, 364, 436, "hover and press are polled, not delivered", text())
+        meter(mem, 364, 480, 332, 18, 62)
+        label(mem, f_small, 364, 512, concat(digits(frames), " frames drawn"), muted())
+        label(mem, f_small, 720, 512, "Esc, or the close button, ends the demo", muted())
+
+        # buttons
+        button(mem, f_body, 44, 596, 180, 52, "click me", hot_x, down)
+        button(mem, f_body, 240, 596, 180, 52, "reset", hot_reset, down)
+
+        BitBlt(win, 0, 0, w, h, mem, 0, 0, 13369376)
+        if frames == 0 {
+            t_first = now() - t0
+        }
+
+        frames += 1
+        spent += now() - t_frame
+        if budget > 0 {
+            if frames >= budget {
+                running = False
+            }
+        }
+        Sleep(1)
+    }
+
+    free(msg)
+    ReleaseDC(hwnd, win)
+
+    print(concat("startup    : ", concat(fixed2(t_first * 1000.0), " ms")))
+    print(concat("frames     : ", digits(frames)))
+    if frames > 0 {
+        print(concat("frame time : ", concat(fixed2(spent * 1000.0), " ms")))
+    }
+    print(concat("clicks     : ", digits(clicks)))
+}
