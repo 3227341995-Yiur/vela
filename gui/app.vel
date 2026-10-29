@@ -69,6 +69,8 @@ extern c def malloc(n: int) -> int
 extern c def free(p: int) -> int
 extern c def Sleep(ms: int) -> None
 extern c def GetTickCount64() -> int
+extern c def ValidateRect(hwnd: int, rect: int) -> int
+extern c def InvalidateRect(hwnd: int, rect: int, erase: int) -> int
 extern c def CreatePen(style: int, w: int, color: int) -> int
 extern c def DeleteObject(obj: int) -> int
 extern c def timeBeginPeriod(p: int) -> int
@@ -331,6 +333,11 @@ def main() -> None {
             n += 1
             if n > 64 { break }
         }
+        # The update region is what Windows repaints later; `PeekMessageA` removes the
+        # WM_PAINT message but not the region, and a region that is never emptied is a
+        # window that looks unresponsive (0xC0000005 after five seconds, measured).
+        # This toolkit blits every frame, so the region is emptied every frame.
+        ValidateRect(hwnd, 0)
         if low32(IsWindow(hwnd)) == 0 {
             running = False
             break

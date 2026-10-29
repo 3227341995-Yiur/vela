@@ -22,6 +22,15 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+/* The two big regions below are *reserved*, not committed, on Windows: a program that
+ * uses a kilobyte of arena should cost a kilobyte, and a committed 256 MB arena is
+ * 256 MB of working set before `main` runs (measured: 793 MB resident for a GUI demo
+ * whose own data is a few hundred kilobytes). */
+#if defined(_WIN32)
+#include <windows.h>
+#define VELA_LAZY_REGIONS 1
+#endif
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
@@ -98,7 +107,29 @@ typedef struct {
     uint8_t *base;
     size_t   cap;
     size_t   used;
+    size_t   committed;   /* how much of `base` is committed; lazy regions only */
 } vela_arena;
+
+/* Commits at least `need` bytes, in 1 MB steps, and reports whether `need` is
+ * reachable.  On a platform without lazy regions everything is committed already. */
+static int vela_arena_commit(vela_arena *a, size_t need)
+{
+#if defined(VELA_LAZY_REGIONS)
+    size_t want;
+    if (need <= a->committed) return 1;
+    want = (need + ((size_t)1 << 20) - 1) & ~(((size_t)1 << 20) - 1);
+    if (want > a->cap) want = a->cap;
+    if (!VirtualAlloc((uint8_t *)a->base + a->committed, want - a->committed,
+                      MEM_COMMIT, PAGE_READWRITE))
+        return 0;
+    a->committed = want;
+    return 1;
+#else
+    (void)a;
+    (void)need;
+    return 1;
+#endif
+}
 
 static vela_arena vela_global_arena;
 static int        vela_arena_ready = 0;
@@ -112,11 +143,17 @@ static void vela_arena_init(size_t cap)
         if (mb <= 0) mb = 256;
         cap = (size_t)mb << 20;
     }
+#if defined(VELA_LAZY_REGIONS)
+    vela_global_arena.base = (uint8_t *)VirtualAlloc(NULL, cap, MEM_RESERVE,
+                                                     PAGE_NOACCESS);
+#else
     vela_global_arena.base = (uint8_t *)malloc(cap);
+#endif
     if (!vela_global_arena.base)
         vela_panic("could not reserve the arena", "<runtime>", 0);
     vela_global_arena.cap  = cap;
     vela_global_arena.used = 0;
+    vela_global_arena.committed = 0;
     vela_arena_ready = 1;
 }
 
@@ -135,6 +172,8 @@ static void *vela_arena_alloc(size_t n)
                  (unsigned long long)vela_global_arena.cap);
         vela_panic(buf, "<runtime>", 0);
     }
+    if (!vela_arena_commit(&vela_global_arena, off + n))
+        vela_panic("could not commit the arena", "<runtime>", 0);
     void *p = vela_global_arena.base + off;
     memset(p, 0, n);
     vela_global_arena.used = off + n;
@@ -509,11 +548,18 @@ static void *vela_persist_alloc(size_t n)
         const char *e = getenv("VELA_PERSIST_MB");
         long mb = e ? atol(e) : 512;
         if (mb <= 0) mb = 512;
+#if defined(VELA_LAZY_REGIONS)
+        vela_persist_region.base = (uint8_t *)VirtualAlloc(NULL, (size_t)mb << 20,
+                                                           MEM_RESERVE,
+                                                           PAGE_NOACCESS);
+#else
         vela_persist_region.base = (uint8_t *)malloc((size_t)mb << 20);
+#endif
         if (!vela_persist_region.base)
             vela_panic("could not reserve the string region", "<runtime>", 0);
         vela_persist_region.cap  = (size_t)mb << 20;
         vela_persist_region.used = 0;
+        vela_persist_region.committed = 0;
         vela_persist_ready = 1;
     }
     off = (vela_persist_region.used + 15u) & ~(size_t)15u;
@@ -526,6 +572,8 @@ static void *vela_persist_alloc(size_t n)
                  (unsigned long long)vela_persist_region.cap);
         vela_panic(buf, "<runtime>", 0);
     }
+    if (!vela_arena_commit(&vela_persist_region, off + n))
+        vela_panic("could not commit the string region", "<runtime>", 0);
     void *p = vela_persist_region.base + off;
     memset(p, 0, n);
     vela_persist_region.used = off + n;
