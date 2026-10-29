@@ -527,7 +527,7 @@ def msvc_build(self: str, vcv: str, cfile: str, exe: str, obj: str, rt: str,
     # libraries.  They are link inputs, so a program that references nothing in them
     # imports nothing -- the same executable and import table as before.
     if on_windows() {
-        c = concat(c, " user32.lib gdi32.lib")
+        c = concat(c, " user32.lib gdi32.lib winmm.lib")
     }
     if len(extra) > 0 {
         # before the redirection, and separated from what is already there: the
@@ -1090,7 +1090,7 @@ def link_llvm(vcv: str, lld: str, obj: str, rtobj: str, exe: str,
     # the operating system's desktop entry points (import libraries: nothing is
     # imported unless a symbol in them is referenced)
     if on_windows() {
-        c = concat(c, " user32.lib gdi32.lib")
+        c = concat(c, " user32.lib gdi32.lib winmm.lib")
     }
     log: str = concat(tag, "_lld_cmd.txt")
     warn_str("vela: link: ")

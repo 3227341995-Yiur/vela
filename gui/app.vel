@@ -68,6 +68,10 @@ extern c def GetAsyncKeyState(vk: int) -> int
 extern c def malloc(n: int) -> int
 extern c def free(p: int) -> int
 extern c def Sleep(ms: int) -> None
+extern c def GetTickCount64() -> int
+extern c def CreatePen(style: int, w: int, color: int) -> int
+extern c def DeleteObject(obj: int) -> int
+extern c def timeBeginPeriod(p: int) -> int
 
 # A 32-bit return, read back as what it is: its own 32 bits, and not the upper half
 # of a register the ABI leaves undefined.  `%` is floor-mod, so the result is in
@@ -102,13 +106,19 @@ def want_h() -> int { return 720 }
 # caches one brush per colour.
 
 def fill(dc: int, x: int, y: int, w: int, h: int, color: int) -> None {
-    SelectObject(dc, CreateSolidBrush(color))
+    br: int = CreateSolidBrush(color)
+    old: int = SelectObject(dc, br)
     PatBlt(dc, x, y, w, h, 15728673)
+    SelectObject(dc, old)
+    DeleteObject(br)
 }
 
 def round_fill(dc: int, x: int, y: int, w: int, h: int, r: int, color: int) -> None {
-    SelectObject(dc, CreateSolidBrush(color))
+    br: int = CreateSolidBrush(color)
+    old: int = SelectObject(dc, br)
     RoundRect(dc, x, y, x + w, y + h, r, r)
+    SelectObject(dc, old)
+    DeleteObject(br)
 }
 
 def label(dc: int, font: int, x: int, y: int, s: str, color: int) -> None {
@@ -271,7 +281,10 @@ def main() -> None {
     }
     ShowWindow(hwnd, 5)
 
-    t0: float = now()
+    # 1 ms timer resolution: without it `Sleep(1)` is up to 15.6 ms, which is
+    # three quarters of a 60 fps frame spent asleep for nothing
+    timeBeginPeriod(1)
+    t0: int = GetTickCount64()
     win: int = GetDC(hwnd)
     mem: int = CreateCompatibleDC(win)
     bmp: int = CreateCompatibleBitmap(win, w, h)
@@ -288,27 +301,33 @@ def main() -> None {
 
     # The demo's state, which is the app's business -- a toolkit ships the frame loop.
     mut clicks: int = 0
-    mut last_click_at: float = 0.0
+    mut last_click_at: int = 0
     mut prev_down: bool = False
     mut frames: int = 0
-    mut spent: float = 0.0
+    mut spent: int = 0
     mut budget: int = 0
     if argc() > 1 {
         budget = parse_int(arg(1))
     }
 
     mut running: bool = True
-    mut t_first: float = 0.0
+    mut t_first: int = 0
     while running {
-        t_frame: float = now()
+        t_frame: int = GetTickCount64()
 
-        # Drain the queue, then ask what the mouse is doing.  `GetMessagePos` is the
-        # position of the *last* message, refreshed by the pump above, so it is the
-        # live cursor position without ever reading a POINT.
+        # Drain the queue -- and never dispatch.  Measured: `DispatchMessageA` on this
+        # window crashes the process with 0xC0000005 after a second or two, while the
+        # identical loop with it removed runs for as long as you like (a parentless
+        # `STATIC` is not a control its procedure was written for).  Nothing needs
+        # dispatching: the toolkit paints itself, polls the input itself, and reads the
+        # one message that matters -- a pending `WM_CLOSE` -- straight out of the queue.
+        if low32(PeekMessageA(msg, hwnd, 16, 16, 1)) != 0 {
+            running = False
+            break
+        }
         mut n: int = 0
         while low32(PeekMessageA(msg, 0, 0, 0, 1)) != 0 {
             TranslateMessage(msg)
-            DispatchMessageA(msg)
             n += 1
             if n > 64 { break }
         }
@@ -331,7 +350,7 @@ def main() -> None {
             if not prev_down {
                 if hot_x {
                     clicks += 1
-                    last_click_at = now()
+                    last_click_at = GetTickCount64()
                 }
                 if hot_reset {
                     clicks = 0
@@ -366,7 +385,7 @@ def main() -> None {
         label(mem, f_num, 364, 208, digits(clicks), text())
         mut since: str = "never"
         if clicks > 0 {
-            since = concat(fixed2(now() - last_click_at), " s ago")
+            since = concat(digits(GetTickCount64() - last_click_at), " ms ago")
         }
         label(mem, f_small, 364, 312, concat("last: ", since), muted())
 
@@ -378,7 +397,7 @@ def main() -> None {
             pct = 6 + (frames - (frames // 60) * 60)
         }
         meter(mem, 728, 216, 332, 22, pct)
-        label(mem, f_body, 728, 258, concat(fixed2(spent * 1000.0), " ms total"), text())
+        label(mem, f_body, 728, 258, concat(digits(spent), " ms total"), text())
         label(mem, f_small, 728, 300, "measured by the program itself", muted())
 
         # the widgets card
@@ -395,26 +414,34 @@ def main() -> None {
 
         BitBlt(win, 0, 0, w, h, mem, 0, 0, 13369376)
         if frames == 0 {
-            t_first = now() - t0
+            t_first = GetTickCount64() - t0
         }
 
         frames += 1
-        spent += now() - t_frame
+        spent += GetTickCount64() - t_frame
         if budget > 0 {
             if frames >= budget {
                 running = False
             }
         }
+        # Uncapped, and said so: the frame rate is whatever the drawing costs, which
+        # the program prints at the end.  A computed sleep (`Sleep(left_ms)`) crashes
+        # this program after ~100 frames with 0xC0000005 while `Sleep(1)` does not --
+        # measured in `.work/gui/`, and left as a defect for the compiler track rather
+        # than shimmed here.
         Sleep(1)
     }
 
     free(msg)
     ReleaseDC(hwnd, win)
 
-    print(concat("startup    : ", concat(fixed2(t_first * 1000.0), " ms")))
+    print(concat("startup    : ", concat(digits(t_first), " ms")))
     print(concat("frames     : ", digits(frames)))
     if frames > 0 {
-        print(concat("frame time : ", concat(fixed2(spent * 1000.0), " ms")))
+        print(concat("frame time : ", concat(digits(spent // frames), " ms")))
+        if spent > 0 {
+            print(concat("fps        : ", digits(frames * 1000 // spent)))
+        }
     }
     print(concat("clicks     : ", digits(clicks)))
 }

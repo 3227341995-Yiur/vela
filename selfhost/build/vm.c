@@ -17374,7 +17374,7 @@ static int64_t vl_msvc_build(vela_str vl_self, vela_str vl_vcv, vela_str vl_cfil
     vl_c = (vela_concat(vl_c, vela_str_lit(" /Fo:", 5)));
     vl_c = (vela_concat(vl_c, vl_quoted(vl_obj)));
     if (vl_on_windows()) {
-        vl_c = (vela_concat(vl_c, vela_str_lit(" user32.lib gdi32.lib", 21)));
+        vl_c = (vela_concat(vl_c, vela_str_lit(" user32.lib gdi32.lib winmm.lib", 31)));
     }
     if (((((int64_t)vl_extra.len)) > 0LL)) {
         vl_c = (vela_concat(vl_c, vela_str_lit(" ", 1)));
@@ -17681,7 +17681,7 @@ static int64_t vl_link_llvm(vela_str vl_vcv, vela_str vl_lld, vela_str vl_obj, v
         vl_c = (vela_concat(vl_c, vl_quoted(vl_lvmlib)));
     }
     if (vl_on_windows()) {
-        vl_c = (vela_concat(vl_c, vela_str_lit(" user32.lib gdi32.lib", 21)));
+        vl_c = (vela_concat(vl_c, vela_str_lit(" user32.lib gdi32.lib winmm.lib", 31)));
     }
     vela_str vl_log = (vela_concat(vl_tag, vela_str_lit("_lld_cmd.txt", 12)));
     (void)((vela_warn_str(vela_str_lit("vela: link: ", 12))));
