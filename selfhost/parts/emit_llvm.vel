@@ -54,7 +54,9 @@
 # so a mismatched reference is refused rather than silently reading another
 # variable's storage, and `lit` by node id for the literal slots -- that last
 # table carries a fourth, disjoint entry as well: the *upper half* of it, above
-# `LL_NODES()`, is the one-int-per-struct cache of LLVM struct type handles, so
+# `LL_NODES()` (the parser's own node-pool size, 131 072), is the
+# one-int-per-struct cache of LLVM struct type handles -- 1 024 of them, which
+# is MEM_STB's row count -- so
 # that the type table does not have to be a tenth parameter on twenty-four
 # functions.  See `ll_sty_of` for why that cache is sound).
 #
@@ -248,7 +250,7 @@ def ll_zero() -> LG {
 # this repository is far below - so that the limit is a sentence rather than a
 # silent wrap.
 def LL_SLOTS() -> int { return 4096 }
-def LL_NODES() -> int { return 65536 }
+def LL_NODES() -> int { return 131072 }
 def LL_FNS() -> int { return 8192 }
 
 # ------------------------------------------------------------ the byte table
@@ -399,7 +401,7 @@ def ll_sty_slot(sid: int) -> int {
 
 # The IR type of one struct, built on the first mention of it.
 def ll_sty_of(mut lg: LG, mem: Array[int, 3741696],
-              mut sty: Array[int, 69632], sid: int, path: str, line: int) -> int {
+              mut sty: Array[int, 132096], sid: int, path: str, line: int) -> int {
     if sid < 0 or sid >= LL_STY_MAX() {
         trap(path, line,
              "this struct id is past the back end's struct-type cache")
@@ -469,7 +471,7 @@ def ll_addr(mut lg: LG, slots: Array[int, 4096], slotkind: Array[int, 4096],
 # kind whose spelling needs the struct table, which is why `ll_type_of_st` exists
 # and this is the no-struct-table form of it.
 def ll_type_of_st(mut lg: LG, mem: Array[int, 3741696],
-                  mut sty: Array[int, 69632], path: str, line: int,
+                  mut sty: Array[int, 132096], path: str, line: int,
                   k: int, sid: int) -> int {
     if k == K_INT() { return lg.t_i64 }
     if k == K_FLT() { return lg.t_f64 }
@@ -506,7 +508,7 @@ def ll_type_of(lg: LG, k: int) -> int {
 # the string-literal table.
 def ll_field_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-                  slotkind: Array[int, 4096], mut lit: Array[int, 69632],
+                  slotkind: Array[int, 4096], mut lit: Array[int, 132096],
                   path: str, e: int) -> int {
     base: int = nd[e * 10 + 1]
     if nd_kind(nd, base) != 25 {
@@ -556,7 +558,7 @@ def ll_field_kind_at(mem: Array[int, 3741696], sid: int, i: int) -> int {
 def ll_store_into(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   flt: Array[float, 65536], src: str, path: str,
                   mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-                  slotkind: Array[int, 4096], lit: Array[int, 69632],
+                  slotkind: Array[int, 4096], lit: Array[int, 132096],
                   fns: Array[int, 8192], fk: int, fa: int, v: int) -> None {
     k: int = unpack_kind(fk)
     if k == K_BAD() {
@@ -597,7 +599,7 @@ def ll_store_into(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_construct(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                  flt: Array[float, 65536], src: str, path: str,
                  mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-                 slotkind: Array[int, 4096], lit: Array[int, 69632],
+                 slotkind: Array[int, 4096], lit: Array[int, 132096],
                  fns: Array[int, 8192], e: int) -> int {
     line: int = nd_line(nd, e)
     bp: int = expr_packed(nd, ty, mem, vm, e)
@@ -633,7 +635,7 @@ def ll_construct(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 # One `load` of a struct, spelled as a helper because both the field reader and
 # the assignment path want it and a struct load has to name the same type in both
 # places or LLVM refuses the module.
-def ll_load_st(mut lg: LG, mem: Array[int, 3741696], mut sty: Array[int, 69632],
+def ll_load_st(mut lg: LG, mem: Array[int, 3741696], mut sty: Array[int, 132096],
                sid: int, addr: int, path: str, line: int) -> int {
     return ll_ck(lg, "loading a struct",
                  vshim_build_load(lg.m, ll_sty_of(lg, mem, sty, sid, path, line),
@@ -1259,7 +1261,7 @@ def ll_fn_name(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
 # table; see `ll_sty_of`), which is why this takes it: the pointee type *is* the
 # named `%vl_X`, and building it twice would produce two types with one name.
 def ll_sret_of(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
-               mem: Array[int, 3741696], vm: VM, mut lit: Array[int, 69632],
+               mem: Array[int, 3741696], vm: VM, mut lit: Array[int, 132096],
                path: str, f: int) -> int {
     if ft_get(mem, f, FT_BODY()) < 0 {
         # somebody else's symbol: the C ABI is theirs, not this back end's, and a
@@ -1376,7 +1378,7 @@ def ll_param_type(lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 }
 
 def ll_declare_fn(lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
-                  mem: Array[int, 3741696], vm: VM, mut lit: Array[int, 69632],
+                  mem: Array[int, 3741696], vm: VM, mut lit: Array[int, 132096],
                   path: str, f: int) -> int {
     sr: int = ll_sret_of(lg, nd, ty, mem, vm, lit, path, f)
     mut sig: int = vshim_sig_begin(lg.m, ll_fn_ret_type(lg, nd, ty, mem, vm,
@@ -1442,7 +1444,7 @@ def ll_declare_fn(lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_reserve_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                     flt: Array[float, 65536], src: str, path: str,
                     mut mem: Array[int, 3741696], vm: VM,
-                    mut slots: Array[int, 4096], mut lit: Array[int, 69632],
+                    mut slots: Array[int, 4096], mut lit: Array[int, 132096],
                     e: int) -> None {
     if e <= 0 {
         return
@@ -1588,7 +1590,7 @@ def ll_reserve_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_reserve_decl(mut lg: LG, nd: Array[int, 1310720],
                     mut mem: Array[int, 3741696],
                     mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
-                    mut lit: Array[int, 69632], path: str, s: int) -> None {
+                    mut lit: Array[int, 132096], path: str, s: int) -> None {
     k: int = unpack_kind(nt_get(mem, s, NT_LIT()))
     line: int = nd_line(nd, s)
     slot: int = nt_get(mem, s, NT_SLOT())
@@ -1627,7 +1629,7 @@ def ll_reserve_body(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                     flt: Array[float, 65536], src: str, path: str,
                     mut mem: Array[int, 3741696], vm: VM,
                     mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
-                    mut lit: Array[int, 69632], head: int) -> None {
+                    mut lit: Array[int, 132096], head: int) -> None {
     mut s: int = head
     while s > 0 {
         ll_reserve_stmt(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
@@ -1640,7 +1642,7 @@ def ll_reserve_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                     flt: Array[float, 65536], src: str, path: str,
                     mut mem: Array[int, 3741696], vm: VM,
                     mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
-                    mut lit: Array[int, 69632], s: int) -> None {
+                    mut lit: Array[int, 132096], s: int) -> None {
     k: int = nd_kind(nd, s)
     if k == 6 {
         if (nd[s * 10 + 6] & 2) == 2 {
@@ -1794,7 +1796,7 @@ def ll_bounds(mut lg: LG, index: int, len: int, path: str, line: int) -> None {
 def ll_index_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   flt: Array[float, 65536], src: str, path: str,
                   mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-                  slotkind: Array[int, 4096], lit: Array[int, 69632],
+                  slotkind: Array[int, 4096], lit: Array[int, 132096],
                   fns: Array[int, 8192], e: int) -> int {
     base: int = nd[e * 10 + 1]
     line: int = nd_line(nd, e)
@@ -1823,7 +1825,7 @@ def ll_index_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_array_decl(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   flt: Array[float, 65536], src: str, path: str,
                   mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-                  slotkind: Array[int, 4096], lit: Array[int, 69632],
+                  slotkind: Array[int, 4096], lit: Array[int, 132096],
                   fns: Array[int, 8192], s: int, h: int, kp: int) -> None {
     line: int = nd_line(nd, s)
     # `kp` is the *packed* binding kind, not the kind: the length is the whole
@@ -1935,7 +1937,7 @@ def ll_lit_into(mut lg: LG, dst: int, nd: Array[int, 1310720],
 def ll_binop(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-             slotkind: Array[int, 4096], lit: Array[int, 69632],
+             slotkind: Array[int, 4096], lit: Array[int, 132096],
              fns: Array[int, 8192], e: int) -> int {
     op: int = nd[e * 10 + 1]
     line: int = nd_line(nd, e)
@@ -2075,7 +2077,7 @@ def ll_call4(lg: LG, fn: int, x0: int, x1: int, x2: int, x3: int) -> int {
 def ll_cmp(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
            flt: Array[float, 65536], src: str, path: str,
            mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-           slotkind: Array[int, 4096], lit: Array[int, 69632],
+           slotkind: Array[int, 4096], lit: Array[int, 132096],
            fns: Array[int, 8192], e: int) -> int {
     op: int = nd[e * 10 + 1]
     line: int = nd_line(nd, e)
@@ -2150,7 +2152,7 @@ def ll_cmp(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_unary(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-             slotkind: Array[int, 4096], lit: Array[int, 69632],
+             slotkind: Array[int, 4096], lit: Array[int, 132096],
              fns: Array[int, 8192], e: int) -> int {
     op: int = nd[e * 10 + 1]
     line: int = nd_line(nd, e)
@@ -2214,7 +2216,7 @@ def ll_unary(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_logic(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-             slotkind: Array[int, 4096], lit: Array[int, 69632],
+             slotkind: Array[int, 4096], lit: Array[int, 132096],
              fns: Array[int, 8192], e: int) -> int {
     op: int = nd[e * 10 + 1]
     line: int = nd_line(nd, e)
@@ -2307,7 +2309,7 @@ def ll_builtin_name(b: int) -> str {
 def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                  flt: Array[float, 65536], src: str, path: str,
                  mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-                 slotkind: Array[int, 4096], lit: Array[int, 69632],
+                 slotkind: Array[int, 4096], lit: Array[int, 132096],
                  fns: Array[int, 8192], e: int) -> int {
     callee: int = nd[e * 10 + 1]
     if nd_kind(nd, callee) == 32 {
@@ -2769,7 +2771,7 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             flt: Array[float, 65536], src: str, path: str,
             mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-            slotkind: Array[int, 4096], lit: Array[int, 69632],
+            slotkind: Array[int, 4096], lit: Array[int, 132096],
             fns: Array[int, 8192], e: int) -> int {
     k: int = nd_kind(nd, e)
     if k == 20 {
@@ -2886,7 +2888,7 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_print(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-             slotkind: Array[int, 4096], lit: Array[int, 69632],
+             slotkind: Array[int, 4096], lit: Array[int, 132096],
              fns: Array[int, 8192], e: int) -> None {
     mut a: int = nd[e * 10 + 2]
     mut n: int = 0
@@ -2930,7 +2932,7 @@ def ll_print(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_assign(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
               flt: Array[float, 65536], src: str, path: str,
               mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-              slotkind: Array[int, 4096], lit: Array[int, 69632],
+              slotkind: Array[int, 4096], lit: Array[int, 132096],
               fns: Array[int, 8192], s: int) -> None {
     tgt: int = nd[s * 10 + 1]
     v: int = nd[s * 10 + 2]
@@ -3038,7 +3040,7 @@ def ll_assign(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_aug(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
            flt: Array[float, 65536], src: str, path: str,
            mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-           slotkind: Array[int, 4096], lit: Array[int, 69632],
+           slotkind: Array[int, 4096], lit: Array[int, 132096],
            fns: Array[int, 8192], s: int) -> None {
     tgt: int = nd[s * 10 + 1]
     v: int = nd[s * 10 + 2]
@@ -3148,7 +3150,7 @@ def ll_aug(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                    flt: Array[float, 65536], src: str, path: str,
                    mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-                   slotkind: Array[int, 4096], lit: Array[int, 69632],
+                   slotkind: Array[int, 4096], lit: Array[int, 132096],
                    fns: Array[int, 8192], s: int) -> None {
     v: int = nd[s * 10 + 1]
     rk: int = unpack_kind(lg.retk)
@@ -3207,7 +3209,7 @@ def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_if(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
           flt: Array[float, 65536], src: str, path: str,
           mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-          slotkind: Array[int, 4096], lit: Array[int, 69632],
+          slotkind: Array[int, 4096], lit: Array[int, 132096],
           fns: Array[int, 8192], s: int) -> None {
     # Appending a block moves the builder, so the block the condition belongs to
     # is remembered first and the builder is returned to it before anything is
@@ -3248,7 +3250,7 @@ def ll_if(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_while(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              flt: Array[float, 65536], src: str, path: str,
              mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-             slotkind: Array[int, 4096], lit: Array[int, 69632],
+             slotkind: Array[int, 4096], lit: Array[int, 132096],
              fns: Array[int, 8192], s: int) -> None {
     here: int = lg.cur
     condb: int = ll_new(lg, "cond")
@@ -3291,7 +3293,7 @@ def ll_while(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_for(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
            flt: Array[float, 65536], src: str, path: str,
            mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-           slotkind: Array[int, 4096], lit: Array[int, 69632],
+           slotkind: Array[int, 4096], lit: Array[int, 132096],
            fns: Array[int, 8192], s: int) -> None {
     line: int = nd_line(nd, s)
     if (nd[s * 10 + 6] & 1) == 1 {
@@ -3365,7 +3367,7 @@ def ll_for(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             flt: Array[float, 65536], src: str, path: str,
             mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-            slotkind: Array[int, 4096], lit: Array[int, 69632],
+            slotkind: Array[int, 4096], lit: Array[int, 132096],
             fns: Array[int, 8192], s: int) -> None {
     ll_open(lg)
     k: int = nd_kind(nd, s)
@@ -3445,7 +3447,7 @@ def ll_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 def ll_body(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             flt: Array[float, 65536], src: str, path: str,
             mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
-            slotkind: Array[int, 4096], lit: Array[int, 69632],
+            slotkind: Array[int, 4096], lit: Array[int, 132096],
             fns: Array[int, 8192], head: int) -> None {
     mut s: int = head
     while s > 0 {
@@ -3460,7 +3462,7 @@ def ll_function(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                 flt: Array[float, 65536], src: str, path: str,
                 mut mem: Array[int, 3741696], vm: VM,
                 mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
-                mut lit: Array[int, 69632], fns: Array[int, 8192],
+                mut lit: Array[int, 132096], fns: Array[int, 8192],
                 f: int) -> None {
     lg.fnn = fns[f]
     lg.brkb = 0
@@ -3629,7 +3631,7 @@ def ll_program(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                flt: Array[float, 65536], src: str, path: str,
                mut mem: Array[int, 3741696], mut vm: VM,
                mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
-               mut lit: Array[int, 69632], mut fns: Array[int, 8192]) -> None {
+               mut lit: Array[int, 132096], mut fns: Array[int, 8192]) -> None {
     ll_open_module(lg)
     # `nstruct` is the resolver's struct count, and it is the bound every
     # struct-id check in this back end uses (`ll_type_of_st`, `ll_field_addr`).
@@ -3667,7 +3669,7 @@ def ll_build(nd: Array[int, 1310720], ty: Array[int, 262144],
     lg.tbl = ll_table()
     mut slots: Array[int, 4096]
     mut slotkind: Array[int, 4096]
-    mut lit: Array[int, 69632]
+    mut lit: Array[int, 132096]
     mut fns: Array[int, 8192]
     ll_program(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns)
     return lg
