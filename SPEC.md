@@ -275,7 +275,7 @@ mut buf: Array[float, 1024]    # zero-filled array; scalars need an initialiser
 |---|---|
 | `def f(a: T, mut b: U) -> R { ... }` | every parameter and the return type annotated, always |
 | `pure def f(...) -> R { ... }` | promises no side effects; required to call it from a `parallel for` |
-| `extern c def f(x: T) -> R` / `extern c pure def ...` | a C function, declared: no body, scalar types only, see §12 |
+| `extern c def f(x: T) -> R` / `extern c pure def ...` | a C function, declared: no body, scalar parameters and results plus a `str` parameter, see §12 |
 | `struct S { field: T ... def m(self: S, ...) -> R { ... } }` | value type with methods; **fields may not be arrays** |
 | `enum E { V1(f: T) V2 }` | a nominal sum type; see §13 |
 | `match e { V1(x) { ... } else { ... } }` | a statement, not an expression; see §13 |
@@ -681,12 +681,19 @@ extern c pure def sqrt(x: float) -> float    # `double sqrt(double)`, no side ef
   name that the back end already emits for an operator is the same symbol and
   reuses that declaration (`sqrt`, `pow`, `floor`, `fabs`); a declared name whose
   type disagrees with an existing one is refused, not renamed.
-* **The types are scalars.** `int` is C's `long long`, `i32` C's `int`, `u8` C's
-  `unsigned char`, `float` C's `double`, `bool` C's `bool`; `-> None` is C's
-  `void` result. A `str`, an array and a struct are refused where they are
-  written, at the line of the declaration — Vela would have to invent an ABI to
+* **The types are scalars, and a `str` parameter.** `int` is C's `long long`, `i32`
+  C's `int`, `u8` C's `unsigned char`, `float` C's `double`, `bool` C's `bool`;
+  `-> None` is C's `void` result. A **`str` parameter** is C's `const char *`: the
+  caller's bytes are copied into permanent memory with a NUL after them
+  (`vela_cstr`) and the declaration is spelled `const char *` in the emitted C. A
+  `str` *result* is still refused, and an array and a struct are refused where they
+  are written, at the line of the declaration — Vela would have to invent an ABI to
   hand any of them over, and inventing an ABI is how a safe language stops being
   one. A pointer is not expressible at all, which is why the list stops there.
+  `str` parameters are what make the operating system's own API reachable at all:
+  every Win32 entry point that takes text takes a `char *`, and the driver links
+  the import libraries that surface lives in (`user32.lib`, `gdi32.lib` — link
+  inputs, so nothing is imported unless a symbol in them is referenced).
 * **`pure`** says the foreign function has no side effects. The compiler cannot
   see a foreign body, so this is the only word available for it, and it is what
   lets a C function be called from a `pure def` or inside a `parallel for`.
@@ -702,16 +709,19 @@ extern c pure def sqrt(x: float) -> float    # `double sqrt(double)`, no side ef
   (`this value cannot be printed`), and a call whose result is thrown away is
   silently a no-op, side effects included — a gap in `eval.vel`, named in
   `DESIGN.md` §7.4 and §9.2 rather than hidden.
-* **Deliberately absent:** `extern c "lib" { ... }` blocks, `cstr`, arrays
-  crossing as `(T*, N)`, `extern struct`, variadics, callbacks, library-retained
-  pointers, and any unsigned type wider than `u8`. `DESIGN.md` §9 has the
-  reasons for each, and the gaps.
+* **Deliberately absent:** `extern c "lib" { ... }` blocks, a `str` *result*,
+  arrays crossing as `(T*, N)`, `extern struct`, variadics, callbacks,
+  library-retained pointers, and any unsigned type wider than `u8`. `DESIGN.md` §9
+  has the reasons for each, and the gaps. A `str` *parameter* is no longer absent:
+  it crosses as `const char *` and the copy is Vela's own.
 
 The safety claim in §6 stays *mechanical* because of how small this is: what a
-declaration can say is a scalar C call and nothing else, so no pointer needs a
-type, nothing can be freed, and nothing can be stored. What no boundary can
-promise is what the library does with what it is given — a C function can corrupt
-memory, and one that calls `abort()` still aborts. Rust has FFI too, and that is
+declaration can say is a scalar-or-`str` C call and nothing else, so no pointer
+needs a type, nothing can be freed, and nothing can be stored. The one value that
+does cross by reference is a `str`, and it crosses as a copy the callee may keep
+but not grow. What no boundary can promise is what the library does with what it is
+given — a C function can corrupt memory, and one that calls `abort()` still
+aborts. Rust has FFI too, and that is
 exactly why `unsafe` exists there. C++ is out of scope by decision, because it
 has no stable ABI (`DESIGN.md` §9.3).
 

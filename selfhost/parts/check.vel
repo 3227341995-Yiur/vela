@@ -3352,6 +3352,18 @@ def ck_extern_ok(pk: int) -> bool {
     return ck_is_extern_scalar(pk)
 }
 
+# What an `extern c` *parameter* may be: the scalars above, plus `str`.
+#
+# A `str` crosses as a `const char *` -- the emitter wraps the argument in
+# `vela_cstr` and spells the declaration `const char *` -- which is the shape every
+# Win32 entry point that takes text takes.  The *return* stays scalar-only: a C
+# function returning a `char *` would need a length, and `strlen` is a guess at a
+# contract rather than a fact the boundary knows.
+def ck_is_extern_param(pk: int) -> bool {
+    if unpack_kind(pk) == K_STR() { return True }
+    return ck_is_extern_scalar(pk)
+}
+
 # --------------------------------------------------- the same rule, call site
 #
 # A declaration above says what a C function takes.  Handing it something else is
@@ -3564,7 +3576,7 @@ def ck_function(nd: Array[int, 1310720], ty: Array[int, 262144],
         }
         pk: int = type_packed(ty, nd[p * 10 + 2], mem, vm)
         if ext {
-            if not ck_is_extern_scalar(pk) {
+            if not ck_is_extern_param(pk) {
                 ck_type(path, nd_line(nd, p),
                         ck_quoted("'extern c' parameter '", name,
                                   concat("' has type ", ck_spell_ck(pk))))

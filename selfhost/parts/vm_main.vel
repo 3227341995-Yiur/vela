@@ -522,6 +522,13 @@ def msvc_build(self: str, vcv: str, cfile: str, exe: str, obj: str, rt: str,
     c = concat(c, quoted(exe))
     c = concat(c, " /Fo:")
     c = concat(c, quoted(obj))
+    # The desktop surface: a program that opens a window calls the operating
+    # system's own API through `extern c`, and those entry points live in two import
+    # libraries.  They are link inputs, so a program that references nothing in them
+    # imports nothing -- the same executable and import table as before.
+    if on_windows() {
+        c = concat(c, " user32.lib gdi32.lib")
+    }
     if len(extra) > 0 {
         # before the redirection, and separated from what is already there: the
         # list of inputs cl is handed ends here
@@ -1079,6 +1086,11 @@ def link_llvm(vcv: str, lld: str, obj: str, rtobj: str, exe: str,
     if len(lvmlib) > 0 {
         c = concat(c, " ")
         c = concat(c, quoted(lvmlib))
+    }
+    # the operating system's desktop entry points (import libraries: nothing is
+    # imported unless a symbol in them is referenced)
+    if on_windows() {
+        c = concat(c, " user32.lib gdi32.lib")
     }
     log: str = concat(tag, "_lld_cmd.txt")
     warn_str("vela: link: ")

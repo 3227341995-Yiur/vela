@@ -587,9 +587,19 @@ narrowed instead of abandoned:
   none of the `vl_` prefix a Vela function gets. One line per function is the
   whole review surface, which is the opposite of `unsafe` blocks scattered
   through a codebase.
-* **the types are the ABI's own handful of scalars.** `int` is C's `long long`
-  (`int64_t`), `i32` is C's `int`, `u8` is `unsigned char` (`uint8_t`), `float`
-  is C's `double`, `bool` is C's `bool`, and a `-> None` result is C's `void`.
+* **the types are the ABI's own handful of scalars, plus a `str` parameter.** `int`
+  is C's `long long` (`int64_t`), `i32` is C's `int`, `u8` is `unsigned char`
+  (`uint8_t`), `float` is C's `double`, `bool` is C's `bool`, and a `-> None` result
+  is C's `void`. `i32` and `u8` exist so a C prototype can be written *exactly*:
+  whether the declaration matches the library is the user's to get right, and the
+  compiler spells what they wrote and nothing more. A **`str` parameter** is C's
+  `const char *`, and it is the one type here that had to be *chosen* rather than
+  copied: the bytes are copied into permanent memory with a NUL after them
+  (`vela_cstr`) at the call, because a Vela `str` is a byte range whose next byte
+  belongs to other text. That single line is what makes the operating system's own
+  API reachable — every Win32 entry point that takes text takes a `char *` — and it
+  is also why a `str` *result* stays refused: a `char *` coming back has no length,
+  and `strlen` is a guess at a contract, not a fact the boundary knows.
   `i32` and `u8` exist so a C prototype can be written *exactly*: whether the
   declaration matches the library is the user's to get right, and the compiler
   spells what they wrote and nothing more.
@@ -614,14 +624,16 @@ narrowed instead of abandoned:
 Both halves of the boundary are refusals that name a line, and the line is the
 one the reader has to change.
 
-**At the declaration.** The rule is one sentence: **the types are scalars**.
+**At the declaration.** The rule is one sentence: **the types are scalars, and a
+`str` parameter**.
 
-* a **`str`** parameter or result — a Vela `str` is a length plus a pointer into
-  Vela's own string region, not a `char *`. Handing one over would mean inventing
-  an ABI (a NUL-terminated copy whose length C is then free to misread), and a
-  `char *` coming back has no length, so Vela could not make a `str` of it:
-  `'extern c' parameter 's' has type str`, `'extern c' function 'name' may not
-  return str`.
+* a **`str` result** — a Vela `str` is a length plus a pointer into Vela's own
+  string region, and a `char *` coming back has no length, so Vela could not make a
+  `str` of it: `'extern c' function 'name' may not return str`. A `str`
+  **parameter** crosses (a NUL-terminated copy, `vela_cstr`), because the length is
+  still Vela's: C receives a `const char *` and reads it as C reads any string.
+  The asymmetry is the point — going out, Vela knows the length and makes the
+  copy; coming back, nobody does.
 * an **array** parameter or result — storage whose length Vela owns. Returning
   one would hand the caller memory that is released as the frame unwinds, and
   passing one would drop the length, which is half of what Vela knows:

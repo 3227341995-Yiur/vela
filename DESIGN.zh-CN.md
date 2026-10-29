@@ -4,9 +4,9 @@
 
 <!--
 源文件 : DESIGN.md
-源文件字节 : 65032
-源文件 SHA256 : 19db3474ee39d2fb31d2aae8a11f6f4f9360b8f71bdf1a63fdb523148ad35e59
-翻译日期 : 2026-10-20
+源文件字节 : 65975
+源文件 SHA256 : cd77394ace8e32a6f07297940c695e5c9b029249507b921d3a68eaba5d99a926
+翻译日期 : 2026-10-30
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -280,7 +280,7 @@ SPEC §6 规则 1（"no pointers, no unsafe, no FFI"）是让 Vela 的承诺可�
 
 * **仍然为真：** *在 Vela 源码里*无法表达未定义行为。没有指针类型、没有指针算术、没有 `free`、没有未初始化值、没有强制转换、没有回调——而这条边界所接受的东西里也没有任何一件会把指针放进声明（§9.2），所以一个外部签名不用指针也拼得出来。
 * **声明是原型，不是块。** 没有库名要写，也没有头文件要包含：声明*就是* C 原型，声明的名字*就是* C 名字——后端按它的裸名字调用它，没有 Vela 函数会得到的那个 `vl_` 前缀。每个函数一行就是全部的审查面，这与散落在整个代码库里的 `unsafe` 块正好相反。
-* **类型就是 ABI 自己那一小把标量。** `int` 是 C 的 `long long`（`int64_t`），`i32` 是 C 的 `int`，`u8` 是 `unsigned char`（`uint8_t`），`float` 是 C 的 `double`，`bool` 是 C 的 `bool`，而 `-> None` 的结果是 C 的 `void`。`i32` 和 `u8` 存在的目的就是让一个 C 原型能被*精确地*写出：声明是否与库匹配是使用者要弄对的事，而编译器只拼写他们写下的东西，不多写一个字。
+* **类型就是 ABI 自己那一小把标量，外加一个 `str` 参数。** `int` 是 C 的 `long long`（`int64_t`），`i32` 是 C 的 `int`，`u8` 是 `unsigned char`（`uint8_t`），`float` 是 C 的 `double`，`bool` 是 C 的 `bool`，而 `-> None` 的结果是 C 的 `void`。`i32` 和 `u8` 存在的目的就是让一个 C 原型能被*精确地*写出：声明是否与库匹配是使用者要弄对的事，而编译器只拼写他们写下的东西，不多写一个字。一个 **`str` 参数**是 C 的 `const char *`，而这是这里唯一一个必须被*选择*、而不是被照抄的类型：字节在调用时被复制进永久内存并在末尾补一个 NUL（`vela_cstr`），因为一个 Vela `str` 是一个字节区间，它后面的那个字节属于别的文本。正是这一行让操作系统自己的 API 变得可达——Win32 里每一个接受文本的入口点接受的都是 `char *`——也正是它让 `str` *结果*仍然被拒绝：一个回来的 `char *` 没有长度，而 `strlen` 只是对一个约定的猜测，不是边界知道的事实。
 * **`pure` 是使用者对编译器看不见的副作用所作的陈述。** 一个外部函数正是编译器没有其函数体的那种函数，所以 `extern c pure def sqrt(...)` 就是让一个 C 函数能从 `pure def` 或 `parallel for` 里被调用的东西；没有它，这次调用会像任何其他非纯调用一样被拒绝（`a 'pure' function may not call 'f', which is not declared 'pure'`）。这个词不被验证，也无法被验证——而它是承重的：`pure` 是把一个外部调用放进 `parallel for` 的东西，而在那里，一个确实有副作用的函数会产生竞争。一个错的 `pure` 就是一个错的声明，与一个不匹配库的原型属于同一族（§9.5）。
 * **新出现的风险，并且大声说出来：** 库拿给它的东西做了什么。一个 C 函数可以破坏内存，而一个调用 `abort()`、`exit()` 或 `longjmp()` 的函数仍然如此——被解释或编译的 Vela 程序抓不住它，假装能抓住就是在控制流上说谎。Vela 的工作是把这条边界做得小、显式、有类型，并如实说明它检查了什么。
 
@@ -288,9 +288,9 @@ SPEC §6 规则 1（"no pointers, no unsafe, no FFI"）是让 Vela 的承诺可�
 
 这条边界的两半都是点名某一行的拒绝，而那一行正是读者要改的那一行。
 
-**在声明处。** 规则是一句话：**类型是标量**。
+**在声明处。** 规则是一句话：**类型是标量，外加一个 `str` 参数**。
 
-* 一个 **`str`** 参数或结果——Vela 的 `str` 是长度加上一个指向 Vela 自己字符串区的指针，不是 `char *`。把它交出去意味着发明一套 ABI（一个 NUL 结尾的副本，而 C 之后可以自由地误读它的长度），而返回来的 `char *` 没有长度，所以 Vela 无法用它做出 `str`：`'extern c' parameter 's' has type str`、`'extern c' function 'name' may not return str`。
+* 一个 **`str` 结果**——Vela 的 `str` 是长度加上一个指向 Vela 自己字符串区的指针，而返回来的 `char *` 没有长度，所以 Vela 无法用它做出 `str`：`'extern c' function 'name' may not return str`。一个 `str` **参数**是可以跨界的（一份 NUL 结尾的副本，`vela_cstr`），因为长度仍然归 Vela 所有：C 收到的是一个 `const char *`，并按 C 读任何字符串的方式读它。这种不对称就是重点——出去的时候 Vela 知道长度并做那份复制；回来的时候没有人知道。
 * 一个**数组**参数或结果——长度归 Vela 所有的存储。返回一个会把栈帧展开时被释放的内存交给调用者，而传一个会丢掉长度，而长度是 Vela 所知的一半：`'extern c' parameter 'a' has type Array[int, 4]`。
 * 一个**结构体**——C 需要一个使用者从未声明过的布局（`'extern c' parameter 'p' has type struct`）。这同样也是**没有外部方法**的原因：一个方法的第一个参数是它的接收者，而一个作用于 `P` 的方法的接收者是一个 `P`，所以方法上的 `extern c` 被同一条参数规则拒绝，指向那个没人写过的参数（`'extern c' parameter 'self' has type struct`）。
 * 一个 ABI 无法承载的结果——结果位置上的 `None` 是 C 的 `void` 并被接受（发出的原型是 `void f(int32_t);`）；其他一切就是从另一个方向的同样三种拒绝（`'extern c' function 'name' may not return str`）。

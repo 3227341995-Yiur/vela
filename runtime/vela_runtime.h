@@ -587,6 +587,20 @@ static vela_str vela_concat(vela_str a, vela_str b)
     return vela_str_lit((const char *)mem, a.len + b.len);
 }
 
+/* A NUL-terminated copy of a Vela string, for a C function that takes a
+ * `const char *`.  `extern c` spells a `str` parameter as `const char *`, and every
+ * such argument is wrapped in this call by the emitters: a `str` is a byte range,
+ * and the byte after it belongs to whatever else lives in that buffer. */
+static const char *vela_cstr(vela_str s)
+{
+    uint8_t *mem;
+    if (s.len < 0) return "";
+    mem = (uint8_t *)vela_persist_alloc((size_t)s.len + 1);
+    if (s.len > 0) memcpy(mem, s.data, (size_t)s.len);
+    mem[s.len] = 0;
+    return (const char *)mem;
+}
+
 #define VELA_READ_MAX ((size_t)256 << 20)   /* a source file, not a database */
 
 static vela_str vela_read_text(vela_str path)

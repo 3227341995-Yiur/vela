@@ -1,0 +1,19 @@
+﻿# `str` crosses into C -- the case that used to be refused and is now the proof.
+#
+# A Vela `str` is a length plus a pointer into Vela's own string region, so the
+# boundary makes a NUL-terminated copy (`vela_cstr`) and the declaration is spelled
+# `const char *` in the C.  That is what makes the operating system's own API
+# reachable at all: every Win32 entry point that takes text takes a `char *`.
+#
+# `strlen` is the CRT's, so this exercises the boundary without any OS window:
+# `strlen("hello")` must be 5, and a string built at run time (`concat`) must cross
+# the same way -- a literal and a heap string are different buffers.
+extern c def strlen(s: str) -> int
+
+def main() -> None {
+    print(strlen("hello"))
+    mut s: str = "hel"
+    s = concat(s, "lo again")
+    print(strlen(s))
+    print(s)
+}

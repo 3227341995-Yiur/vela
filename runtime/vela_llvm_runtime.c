@@ -188,6 +188,11 @@ vela_str vela_llvm_interned(int64_t h, const char *file, int line)
 
 vela_str vela_llvm_unescape(vela_str s) { return vela_unescape(s); }
 
+/* The NUL-terminated view of a `str`, for an `extern c` call's `str` argument.
+ * `vela_cstr` is the C back end's spelling of the same thing; this export exists
+ * because the header declares that one `static`. */
+const char *vela_llvm_cstr(vela_str s) { return vela_cstr(s); }
+
 double vela_llvm_now(void) { return vela_now(); }
 
 vela_str vela_llvm_env(vela_str name) { return vela_env(name); }

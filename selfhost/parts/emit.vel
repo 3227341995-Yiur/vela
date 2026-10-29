@@ -854,7 +854,8 @@ def emit_call(nd: Array[int, 1310720], ty: Array[int, 262144],
         emit_fn_name(nd, mem, sv)
         emit_str("(")
         emit_args_vs_params(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2],
-                            ft_get(mem, sv, FT_PARAM()))
+                            ft_get(mem, sv, FT_PARAM()),
+                            ft_get(mem, sv, FT_BODY()) < 0)
         emit_str(")")
         return ft_ret_kind(nd, ty, mem, vm, sv)
     }
@@ -953,11 +954,11 @@ def emit_method_call(nd: Array[int, 1310720], ty: Array[int, 262144],
     # arrives as a pointer exactly when the method declares `mut self`
     emit_arg_for_param(nd, ty, flt, src, path, mem, vm, recv,
                        param_packed(nd, ty, mem, vm,
-                                    ft_get(mem, fn, FT_PARAM())))
+                                    ft_get(mem, fn, FT_PARAM())), False)
     if nd[e * 10 + 2] > 0 {
         emit_str(", ")
         emit_args_vs_params(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2],
-                            nd_nx(nd, ft_get(mem, fn, FT_PARAM())))
+                            nd_nx(nd, ft_get(mem, fn, FT_PARAM())), False)
     }
     emit_str(")")
     return ft_ret_kind(nd, ty, mem, vm, fn)
@@ -1005,7 +1006,19 @@ def builtin_kind(b: int) -> int {
 def emit_arg_for_param(nd: Array[int, 1310720], ty: Array[int, 262144],
                        flt: Array[float, 65536], src: str, path: str,
                        mem: Array[int, 3741696], mut vm: VM, arg: int,
-                       parampacked: int) -> None {
+                       parampacked: int, ext: bool) -> None {
+    mut cstr: int = 0
+    if ext {
+        if unpack_kind(parampacked) == K_STR() {
+            emit_str("vela_cstr(")
+            emit_expr(nd, ty, flt, src, path, mem, vm, arg)
+            emit_str(")")
+            cstr = 1
+        }
+    }
+    if cstr == 1 {
+        return
+    }
     if unpack_kind(parampacked) != K_ST() {
         emit_expr(nd, ty, flt, src, path, mem, vm, arg)
         return
@@ -1042,7 +1055,7 @@ def emit_arg_for_param(nd: Array[int, 1310720], ty: Array[int, 262144],
 def emit_args_vs_params(nd: Array[int, 1310720], ty: Array[int, 262144],
                         flt: Array[float, 65536], src: str, path: str,
                         mem: Array[int, 3741696], mut vm: VM, args: int,
-                        p: int) -> None {
+                        p: int, ext: bool) -> None {
     mut a: int = args
     mut pi: int = p
     mut n: int = 0
@@ -1055,7 +1068,7 @@ def emit_args_vs_params(nd: Array[int, 1310720], ty: Array[int, 262144],
             pp = param_packed(nd, ty, mem, vm, pi)
             pi = nd_nx(nd, pi)
         }
-        emit_arg_for_param(nd, ty, flt, src, path, mem, vm, a, pp)
+        emit_arg_for_param(nd, ty, flt, src, path, mem, vm, a, pp, ext)
         a = nd_nx(nd, a)
         n += 1
     }
@@ -2487,7 +2500,10 @@ def emit_proto(nd: Array[int, 1310720], ty: Array[int, 262144],
     emit_str(" ")
     emit_fn_name(nd, mem, f)
     emit_str("(")
-    emit_params(nd, ty, mem, vm, path, f, False)
+    # a prototype is extern-only news: `emit_proto` also writes the forward
+    # declaration of every *Vela* function, and those keep `vela_str`
+    emit_params(nd, ty, mem, vm, path, f, False,
+                ft_get(mem, f, FT_BODY()) < 0)
     emit_str(");\n")
 }
 
@@ -2536,7 +2552,7 @@ def emit_packed_ctype(mem: Array[int, 3741696], vm: VM, path: str, line: int,
 
 def emit_params(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mem: Array[int, 3741696], vm: VM, path: str, f: int,
-                with_names: bool) -> None {
+                with_names: bool, ext: bool) -> None {
     mut p: int = ft_get(mem, f, FT_PARAM())
     mut n: int = 0
     while p > 0 {
@@ -2544,7 +2560,18 @@ def emit_params(nd: Array[int, 1310720], ty: Array[int, 262144],
             emit_str(", ")
         }
         pk: int = param_packed(nd, ty, mem, vm, p)
-        emit_binding_ctype(nd, ty, mem, vm, path, pk, nd_line(nd, p))
+        mut spelled: int = 0
+        if ext {
+            if unpack_kind(pk) == K_STR() {
+                # the C ABI's spelling: a NUL-terminated `char *`, the shape every
+                # Win32 entry point that takes text takes (`ck_is_extern_param`)
+                emit_str("const char *")
+                spelled = 1
+            }
+        }
+        if spelled == 0 {
+            emit_binding_ctype(nd, ty, mem, vm, path, pk, nd_line(nd, p))
+        }
         if with_names {
             emit_str(" ")
             emit_cname(nd[p * 10 + 1])
@@ -2565,7 +2592,7 @@ def emit_function(nd: Array[int, 1310720], ty: Array[int, 262144],
     emit_str(" ")
     emit_fn_name(nd, mem, f)
     emit_str("(")
-    emit_params(nd, ty, mem, vm, path, f, True)
+    emit_params(nd, ty, mem, vm, path, f, True, False)
     emit_str(") {\n")
     emit_body(nd, ty, flt, src, path, mem, vm, ft_get(mem, f, FT_BODY()), 1)
     emit_str("}\n\n")

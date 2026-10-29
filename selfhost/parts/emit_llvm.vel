@@ -205,6 +205,9 @@ struct LG {
     # runtime/vela_runtime.h, and IR cannot call a static).
     f_pow: int
     f_abs: int
+    # `vela_llvm_cstr(str) -> char *`: the NUL-terminated view of a `str`, which is
+    # what an `extern c` call's `str` argument has to be.
+    f_cstr: int
     # The host surface the compiler itself needs: `vela_llvm_emit_*`, `vela_llvm_warn_*`,
     # `vela_llvm_intern`, `vela_llvm_interned`, `vela_llvm_unescape`, `vela_llvm_env`,
     # `vela_llvm_now`, `vela_llvm_argc`, `vela_llvm_arg` and `vela_llvm_panic_str`.  All
@@ -241,7 +244,7 @@ struct LG {
 def ll_zero() -> LG {
     return LG(0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 }
 
 # The frame-slot table this back end can address.  A slot is the resolver's own
@@ -1130,6 +1133,10 @@ def ll_declare_rt(mut lg: LG, path: str) -> None {
     ps[2] = lg.t_i32
     lg.f_abs = ll_declare(lg, "vela_llvm_abs_int", lg.t_i64, ps, 3,
                           "declaring vela_llvm_abs_int")
+    # the NUL-terminated view of a `str` for an `extern c` argument
+    ps[0] = lg.t_ptr
+    lg.f_cstr = ll_declare(lg, "vela_llvm_cstr", lg.t_ptr, ps, 1,
+                           "declaring vela_llvm_cstr")
     # the C library's own `pow`/`floor`: no wrapper, the symbol is libm's
     ps[0] = lg.t_f64
     ps[1] = lg.t_f64
@@ -1404,10 +1411,11 @@ def ll_declare_fn(lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                 trap(path, nd_line(nd, p),
                      "an `extern c` function with a struct parameter is not compiled by the LLVM back end: this back end passes a struct by address, and the C ABI would pass this one in registers, so the call would be to a symbol with a different signature")
             }
-            if unpack_kind(pk) == K_STR() {
-                trap(path, nd_line(nd, p),
-                     "an `extern c` function with a `str` parameter is not compiled by the LLVM back end: this back end passes a `str` by address, and the symbol behind an `extern c` declaration has the C ABI's own shape")
-            }
+            # A `str` parameter is the one C ABI shape this back end can meet:
+            # C's `const char *` and this back end's `ptr` are the same register, and
+            # the *argument* is wrapped in `vela_llvm_cstr` at the call site, so what
+            # crosses is a NUL-terminated copy of the bytes rather than this back
+            # end's pointer to a `{data, len}` pair.
         }
         if vshim_sig_param(sig, ll_param_type(lg, nd, ty, mem, vm, path, p)) != 0 {
             ll_fail(lg, "a parameter type")
@@ -2756,7 +2764,15 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             # which is where `build-llvm selfhost/vm.vel` stopped next.  `ll_adapt` is
             # the same conversion the C back end gets from C itself, including the
             # narrowing an `int` into an `i32` parameter performs there.
-            ps[n] = ll_adapt(lg, unpack_kind(ppk), expr_kind(nd, ty, mem, vm, a), av)
+            mut arg: int = ll_adapt(lg, unpack_kind(ppk), expr_kind(nd, ty, mem, vm, a), av)
+            if ft_get(mem, f, FT_BODY()) < 0 {
+                if unpack_kind(ppk) == K_STR() {
+                    # an `extern c` `str` parameter is C's `const char *`, so what
+                    # crosses is a NUL-terminated copy of the bytes
+                    arg = ll_call1(lg, lg.f_cstr, arg)
+                }
+            }
+            ps[n] = arg
         }
         n += 1
         a = nd_nx(nd, a)

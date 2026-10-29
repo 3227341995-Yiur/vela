@@ -313,7 +313,13 @@ refuse member_non_struct_receiver            tests/build/check_cases/member_non_
 refuse member_write_missing_field            tests/build/check_cases/member_write_missing_field.vel
 refuse no_main                               tests/build/check_cases/no_main.vel
 refuse unterminated_string                   tests/build/lexer_error.vel
-refuse extern_str_parameter                  tests/build/extern/reject_str_parameter.vel
+# `str` used to be refused at the boundary.  It crosses as a NUL-terminated copy
+# (`vela_cstr`) now, which is what makes the operating system's own API reachable at
+# all -- every Win32 entry point that takes text takes a `char *`.  The old refusal
+# case is this case turned around rather than deleted: the file moved, the row moved,
+# and the claim moved with them.
+native extern_str_parameter                  tests/build/extern/str_parameter.vel
+native extern_win32_api                      tests/build/extern/win32_api.vel
 refuse extern_non_scalar_parameter           tests/build/extern/reject_non_scalar.vel
 refuse extern_conflicting_prototypes         tests/build/check_cases/extern_conflicting_prototypes.vel
 

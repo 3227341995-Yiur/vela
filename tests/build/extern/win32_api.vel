@@ -1,0 +1,34 @@
+﻿# The operating system's own API, from Vela.  `extern c` with a `str` argument is
+# what makes Win32 reachable at all, and this case proves it without opening a
+# window (a window in a test suite is a test that hangs on a machine with no
+# desktop):
+#
+#   * `GetModuleHandleA("kernel32.dll")` returns a handle only if the *text*
+#     crossed correctly;
+#   * a name that does not exist returns 0, which is the negative half;
+#   * `GetSystemMetrics` is user32's and `CreateCompatibleDC` is gdi32's, so the
+#     two import libraries the driver links are both exercised.
+extern c def GetModuleHandleA(name: str) -> int
+extern c def GetSystemMetrics(index: i32) -> i32
+extern c def CreateCompatibleDC(dc: int) -> int
+
+def main() -> None {
+    h: int = GetModuleHandleA("kernel32.dll")
+    if h == 0 {
+        print("the text did not reach GetModuleHandleA")
+        return
+    }
+    if GetModuleHandleA("no-such-module-xyz-vela.dll") != 0 {
+        print("a name that does not exist still found a module")
+        return
+    }
+    if GetSystemMetrics(0) <= 0 {
+        print("user32 did not answer")
+        return
+    }
+    if CreateCompatibleDC(0) == 0 {
+        print("gdi32 did not answer")
+        return
+    }
+    print("windows api ok")
+}
