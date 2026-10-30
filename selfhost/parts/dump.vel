@@ -117,6 +117,12 @@ def d_type(ty: Array[int, 262144], t: int) -> None {
     emit_str("]")
 }
 
+# A raw source span, printed as written: a module name (`vela.io`) and its alias are
+# identifiers and dots, so there is nothing to decode and nothing to escape.
+def d_raw(src: str, off: int, ln: int) -> None {
+    emit_str(substr(src, off, off + ln))
+}
+
 # A string literal is dumped as the bytes it denotes, escaped the way the
 # Python dumper escapes them: anything outside printable ASCII becomes \xNN, so
 # the comparison is byte exact and a diff never hides inside a literal.
@@ -341,13 +347,24 @@ def d_node(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if k == 40 {
-        # The one statement that is not part of the program: it says which file the
-        # loader has to read, and the loader takes it out of the chain again.  It is
-        # dumped like a string literal because that is exactly what it carries.
+        # The one statement that is not part of the program: it says which module the
+        # loader has to read, and the loader takes it out of the chain again.  Two
+        # spellings reach here and both are printed as the reader wrote them: a module
+        # name (`import vela.io`, dots included) and the older path string
+        # (`import "lib/a.vel"`).
         d_indent(depth)
-        emit_str("import \"")
-        d_str(src, nd[n * 10 + 1], nd[n * 10 + 2], nd[n * 10 + 6])
-        emit_str("\"")
+        emit_str("import ")
+        if nd[n * 10 + 8] == 1 {
+            emit_str("\"")
+            d_str(src, nd[n * 10 + 1], nd[n * 10 + 2], nd[n * 10 + 6])
+            emit_str("\"")
+        } else {
+            d_raw(src, nd[n * 10 + 1], nd[n * 10 + 2])
+            if nd[n * 10 + 4] > 0 {
+                emit_str(" as ")
+                d_raw(src, nd[n * 10 + 3], nd[n * 10 + 4])
+            }
+        }
         emit_nl()
         return
     }

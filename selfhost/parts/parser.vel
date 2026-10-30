@@ -544,13 +544,17 @@ def parse_import(src: str, tk: Array[int, 1572864], mut nd: Array[int, 1310720],
     }
     cx.ti += 1
     if at_import_end(tk, cx) {
-        perr(cx, "expected a module path after `import`: write `import <path>/file.vel`", line)
+        perr(cx, "expected a module name after `import`: write `import geometry` or `import vela.io`", line)
         return -1
     }
     if tk_kind(tk, cx.ti) == 4 {
         # The path as a span, not as a string: the loader decodes it with the same
         # `substr` + `unescape` pair a string literal gets, so an escape in a path
         # (`..\\lib\\a.vel` on Windows) means what it means everywhere else.
+        #
+        # `import "path.vel"` is the spelling before the name form existed.  It is kept
+        # because a path is the one thing a name cannot express (a file outside the
+        # library), and because the corpus's module rows were written in it.
         off: int = tk_off(tk, cx.ti)
         ln: int = tk_len(tk, cx.ti)
         flag: int = tk_flag(tk, cx.ti)
@@ -558,19 +562,56 @@ def parse_import(src: str, tk: Array[int, 1572864], mut nd: Array[int, 1310720],
         n: int = new_node(nd, cx, 40, line)
         nd[n * 10 + 1] = off
         nd[n * 10 + 2] = ln
+        nd[n * 10 + 3] = 0
+        nd[n * 10 + 4] = 0
         nd[n * 10 + 6] = flag
+        nd[n * 10 + 8] = 1
         return n
     }
-    if at_name(tk, cx) {
-        nm: str = tok_text(src, tk, cx)
-        mut msg2: str = concat("a module name is not this spelling yet (", nm)
-        msg2 = concat(msg2, "): a name and the rule that finds it are MODULES_PLAN.md step 6,")
-        msg2 = concat(msg2, " so the spelling today is a path string -- `import <path>/<name>.vel`")
-        perr_kind(cx, "syntax error", msg2, line)
+    if not at_name(tk, cx) {
+        perr(cx, "expected a module name after `import`: write `import geometry` or `import vela.io`", line)
         return -1
     }
-    perr(cx, "expected a module path after `import`: write `import <path>/file.vel`", line)
-    return -1
+    # A dotted name, the way Python spells a package path: `geometry`, `vela.io`,
+    # `vela.io.files`.  The span is the whole thing, dots included, so the dump prints
+    # what the reader wrote and the loader is the only place that knows a dot is also a
+    # directory separator.
+    off: int = tk_off(tk, cx.ti)
+    mut end: int = off + tk_len(tk, cx.ti)
+    cx.ti += 1
+    while at_op(tk, cx, 13) {
+        cx.ti += 1
+        if not at_name(tk, cx) {
+            perr(cx, "expected a module name after '.' in this `import`", line)
+            return -1
+        }
+        end = tk_off(tk, cx.ti) + tk_len(tk, cx.ti)
+        cx.ti += 1
+    }
+    # `as` is an identifier, not a keyword (SPEC.md 1.3 says so on purpose: it keeps the
+    # word usable as a name), so the alias is recognised by its text.
+    mut aoff: int = 0
+    mut alen: int = 0
+    if at_name(tk, cx) {
+        if tok_text(src, tk, cx) == "as" {
+            cx.ti += 1
+            if not at_name(tk, cx) {
+                perr(cx, "expected a name after `as`", line)
+                return -1
+            }
+            aoff = tk_off(tk, cx.ti)
+            alen = tk_len(tk, cx.ti)
+            cx.ti += 1
+        }
+    }
+    n: int = new_node(nd, cx, 40, line)
+    nd[n * 10 + 1] = off
+    nd[n * 10 + 2] = end - off
+    nd[n * 10 + 3] = aoff
+    nd[n * 10 + 4] = alen
+    nd[n * 10 + 6] = 0
+    nd[n * 10 + 8] = 0
+    return n
 }
 
 # ---------------------------------------------------------------------------

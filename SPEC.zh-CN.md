@@ -4,8 +4,8 @@
 
 <!--
 源文件 : SPEC.md
-源文件字节 : 43411
-源文件 SHA256 : e4cb476b91d5c165e22d705b75f7589905b27e12a39dcf8e7921ddf1753a2978
+源文件字节 : 44504
+源文件 SHA256 : 58fdfee32e66995512b9f87959337152d793948cd55e603601f479100a6c611f
 翻译日期 : 2026-10-30
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -68,17 +68,31 @@ is not a name here — rename this binding"——记录这项代价的用例
 `tests/accept/modules/module_import_reserved_name.vel`，在 `selfhost/MODULES_PLAN.md`
 §8 里从 ACCEPTED 变成了 REFUSED。
 
-它拼出的语法是顶层的 `import "path/file.vel"`，但还没有任何东西会真的加载文件：
-加载器是第 2 步，所以每个模式都会指名拒绝它，并把读者写的路径原样带上——
+它拼出的语法是顶层的**模块名**，也就是 Python 的写法：
 
-```
-vela: syntax error: `import "b.vel"`: Vela's syntax, and the loader that would
-read it is not written -- MODULES_PLAN.md step 2 adds it (SPEC.md 1.3)
+```vela
+import geometry             # 同目录下的 geometry.vel
+import vela.io              # 绑定 `vela`，于是 vela.io.read(...) 可用
+import vela.io as io        # 同一个文件，绑定成 `io`
 ```
 
-`from` 与 `as` **仍然**是普通标识符。`from mathlib import add` 只会被识别成那个
-"三词形状"并被拒绝为"a module name is not this spelling yet"，而 `from = 1` 依旧是
-合法赋值。裸模块名、那个名字需要的查找规则，以及 `from`/`as` 的拼写，都属于第 6 步。
+点号是包分隔符：`vela.io` 指的是与导入文件相邻的 `vela/io.vel`（或 `vela/io/mod.vel`），
+其次再找**根程序**旁边的 `lib/`——所以程序自己的邻居优先于库。`import` 绑定的名字，写了
+`as` 就用别名，否则用点号路径的**第一个**分量；而通过这个绑定写的引用会塌缩到它末尾的那个名字：
+`io.read(...)` 和 `vela.io.read(...)` 都是 `read(...)`。
+
+旧的 `import "path/file.vel"` 仍然有效，而且是模块查找规则之外唯一能给一个文件命名的写法
+（路径正是名字表达不了的那种东西）。无论哪种写法，加载器都会先读完全部 import 再读本文件自己的
+声明（MODULES_PLAN.md D4），环和缺失都具名拒绝，并把 import 语句从程序里摘掉——`vm.exe parse`
+打印的树是合并后的程序，不是文件清单。
+
+`from` 与 `as` **仍然**是普通标识符。`as` 在 `import` 内部按文本识别，而
+`from mathlib import add` 会被拒绝为"a module name is not this spelling yet"，`from = 1`
+依旧是合法赋值。
+
+有一个限制要写明而不是暗示：加载器把所有文件合并进同一个作用域，所以被导入模块里的名字不加前缀
+也能解析，两个模块导出同名仍然会冲突。按模块改名（mangling）是下一步；这一步给的是语法、绑定名
+和调用形状。
 
 ### 1.4 数字
 

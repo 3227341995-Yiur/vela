@@ -69,19 +69,37 @@ name here — rename this binding" — and the case that records the cost,
 `tests/accept/modules/module_import_reserved_name.vel`, moved from ACCEPTED to
 REFUSED in `selfhost/MODULES_PLAN.md` §8.
 
-The syntax it spells is `import "path/file.vel"` at the top level, and nothing
-loads the file yet: the loader is step 2, so every mode refuses it by name,
-quoting the path the reader wrote —
+The syntax it spells is a **module name** at the top level, the way Python spells an
+import:
 
-```
-vela: syntax error: `import "b.vel"`: Vela's syntax, and the loader that would
-read it is not written -- MODULES_PLAN.md step 2 adds it (SPEC.md 1.3)
+```vela
+import geometry             # geometry.vel beside this file
+import vela.io              # binds `vela`, so `vela.io.read(...)` works
+import vela.io as io        # the same file, bound to `io`
 ```
 
-`from` and `as` are **still** ordinary identifiers. `from mathlib import add` is
-recognised only as that three-token shape and refused as "a module name is not
-this spelling yet", while `from = 1` remains a legal assignment. The bare module
-name, the search rule that name needs, and the `from`/`as` spellings are step 6.
+A dot is the package separator: `vela.io` names `vela/io.vel` (or `vela/io/mod.vel`)
+beside the importing file, and `lib/` beside the *root* program is searched next, so a
+program's own neighbours win over the library. The name an import binds is the alias when
+one is written, otherwise the **first** component of the dotted path — and a reference
+through that binding collapses to the name it ends in: `io.read(...)` and
+`vela.io.read(...)` are both `read(...)`.
+
+The older spelling `import "path/file.vel"` still works, and is the only way to name a
+file outside the module search rules (a path is the one thing a name cannot express).
+Whatever the spelling, the loader reads every import before the importing file's own
+declarations (MODULES_PLAN.md D4), refuses a cycle and a missing module by name, and
+takes the import statement out of the program — the tree `vm.exe parse` prints is the
+merged program, not a file list.
+
+`from` and `as` are **still** ordinary identifiers. `as` is recognised inside an
+`import` by its text, and `from mathlib import add` is refused as "a module name is not
+this spelling yet", while `from = 1` remains a legal assignment.
+
+One limit, stated rather than implied: the loader merges every file into one scope, so an
+unqualified name from an imported module also resolves, and two modules exporting the
+same name still collide. Per-module mangling is the next step; the syntax, the binding
+name and the call shape are this one.
 
 ### 1.4 Numbers
 

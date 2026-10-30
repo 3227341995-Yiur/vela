@@ -1395,6 +1395,130 @@ def resolve_import(importer: str, lit: str) -> str {
     return join_with(d, lit)
 }
 
+# A module name and the file it names, the Python way: `geometry` is `geometry.vel`
+# beside the importing file, and `vela.io` is `vela/io.vel` (or `vela/io/mod.vel`,
+# which is the package form).  `lib/` beside the *root* program is searched second, so
+# a program's own neighbours win over the library and the library is shared.
+#
+# The file is found by `read_text`: an empty read means "no such module", which is the
+# same test a path import already uses.  An empty file is reported as missing, and that
+# is the one wrong answer this rule can give -- named here rather than found later.
+def module_in(dir: str, rel: str) -> str {
+    if len(dir) <= 0 {
+        return ""
+    }
+    cand: str = join_with(dir, concat(rel, ".vel"))
+    if len(read_text(cand)) > 0 {
+        return cand
+    }
+    cand2: str = join_with(dir, join_with(rel, "mod.vel"))
+    if len(read_text(cand2)) > 0 {
+        return cand2
+    }
+    return ""
+}
+
+def module_path(mem: Array[int, 3741696], importer: str, name: str) -> str {
+    # `vela.io` becomes `vela<sep>io`, with the importer's own separator (`\` on
+    # Windows, `/` elsewhere), so a name cannot produce a path the platform cannot open
+    mut rel: str = ""
+    mut comp: str = ""
+    mut i: int = 0
+    while i < len(name) {
+        c: str = substr(name, i, i + 1)
+        if c == "." {
+            rel = join_with(rel, comp)
+            comp = ""
+        } else {
+            comp = concat(comp, c)
+        }
+        i += 1
+    }
+    rel = join_with(rel, comp)
+    # the importer's own directory first: a program's sibling module wins
+    mut found: str = module_in(dir_of(importer), rel)
+    if len(found) > 0 {
+        return found
+    }
+    # then `lib/` beside the root program: the shape a standard library takes
+    if mem[MEM_SRCS()] > 0 {
+        root: str = src_path(mem, 0)
+        rd: str = dir_of(root)
+        found = module_in(join_with(rd, "lib"), rel)
+        if len(found) > 0 {
+            return found
+        }
+    }
+    return ""
+}
+
+# The name an `import` binds, Python's rule: the alias when one is written, else the
+# *first* component of the dotted path -- `import vela.io` binds `vela`, and
+# `vela.io.read(...)` walks from there.
+def alias_name(name: str, alias: str) -> str {
+    if len(alias) > 0 {
+        return alias
+    }
+    mut first: str = ""
+    mut i: int = 0
+    while i < len(name) {
+        c: str = substr(name, i, i + 1)
+        if c == "." {
+            return first
+        }
+        first = concat(first, c)
+        i += 1
+    }
+    return first
+}
+
+# `io.read(...)` is the imported `read`, and `vela.io.read(...)` is the same call one
+# level further out: a member *chain* whose deepest base is the alias collapses to its
+# last member's name.  One walk over this file's own nodes ([from, to) in the pool),
+# before anything downstream reads them.
+#
+# What this does *not* do is keep two modules' `read`s apart: the loader still merges
+# every file into one scope, so an unqualified `read(...)` also resolves, and two
+# modules exporting the same name still collide.  Real namespacing is mangling, and it
+# is the next step; the syntax and the call shape are this one's.
+def bind_alias(mut nd: Array[int, 1310720], alias: int,
+               from: int, to: int) -> None {
+    # Descending: the outermost member of `vela.io.read` is the node created last, and
+    # rewriting it first is what collapses the whole chain, leaving the inner nodes
+    # orphaned rather than half-rewritten into `attr(name=read, name=read)`.
+    mut n: int = to - 1
+    while n >= from {
+        if nd[n * 10] == 32 {
+            mut b: int = nd[n * 10 + 1]
+            mut guard: int = 0
+            mut root_ok: int = 0
+            while b >= 0 {
+                if nd[b * 10] == 25 {
+                    if nd[b * 10 + 1] == alias {
+                        root_ok = 1
+                    }
+                    b = -1
+                } else if nd[b * 10] == 32 {
+                    b = nd[b * 10 + 1]
+                } else {
+                    b = -1
+                }
+                guard += 1
+                if guard > 64 {
+                    b = -1
+                }
+            }
+            if root_ok == 1 {
+                nd[n * 10] = 25
+                nd[n * 10 + 1] = nd[n * 10 + 2]
+                nd[n * 10 + 2] = 0
+                nd[n * 10 + 3] = 0
+            }
+        }
+        n -= 1
+    }
+}
+
 # D8, until steps 3 and 4 teach the back ends to carry a path per node: a program
 # out of two files is refused *by name* rather than compiled as the one file the
 # back end was handed.  A loop that says it is parallel and runs serially is the
@@ -1502,12 +1626,40 @@ def load_file(path: str, src: str, base: int, depth: int, file: int,
     # D4 + D6: every import first, in the order it is written.  A path already on
     # the stack is a cycle; a path already loaded is the same file reached twice,
     # and reaching it twice is one load, not two.
+    mine_end: int = cx.ni
     s = nd[m * 10 + 1]
     while s >= 0 {
         if nd_kind(nd, s) == 40 {
-            lit: str = unescape(substr(src, nd[s * 10 + 1],
-                                       nd[s * 10 + 1] + nd[s * 10 + 2]))
-            target: str = resolve_import(path, lit)
+            mut lit: str = ""
+            mut alias: str = ""
+            if nd[s * 10 + 8] == 1 {
+                # the path spelling: `import "../lib/a.vel"`
+                lit = unescape(substr(src, nd[s * 10 + 1],
+                                      nd[s * 10 + 1] + nd[s * 10 + 2]))
+            } else {
+                # the name spelling: `import vela.io`, `import vela.io as io`
+                lit = substr(src, nd[s * 10 + 1],
+                             nd[s * 10 + 1] + nd[s * 10 + 2])
+                if nd[s * 10 + 4] > 0 {
+                    alias = substr(src, nd[s * 10 + 3],
+                                   nd[s * 10 + 3] + nd[s * 10 + 4])
+                }
+            }
+            mut target: str = ""
+            if nd[s * 10 + 8] == 1 {
+                target = resolve_import(path, lit)
+            } else {
+                target = module_path(mem, path, lit)
+                if len(target) == 0 {
+                    mut m2: str = concat("no module named '", lit)
+                    m2 = concat(m2, "': looked for '")
+                    m2 = concat(m2, concat(lit, ".vel"))
+                    m2 = concat(m2, "' beside '")
+                    m2 = concat(m2, path)
+                    m2 = concat(m2, "' and under 'lib/' beside the program")
+                    load_fail(path, nd_line(nd, s), m2)
+                }
+            }
             tname: int = intern(target)
             at: int = stack_at(mem, tname)
             if at >= 0 {
@@ -1525,6 +1677,13 @@ def load_file(path: str, src: str, base: int, depth: int, file: int,
                 load_file(target, text, ld.next, depth + 1, src_count(mem),
                           tk, tkf, nd, ty, flt, cx, mem, ld)
                 stack_pop(mem)
+            }
+            # `import vela.io as io` binds `io`, and `import vela.io` binds the last
+            # component (`io`), the way Python does.  A reference written `io.read(...)`
+            # is the imported `read`, so the member node becomes a plain name here --
+            # once, over this file's own nodes, before anything downstream sees them.
+            if nd[s * 10 + 8] != 1 {
+                bind_alias(nd, intern(alias_name(lit, alias)), ni0, mine_end)
             }
         }
         s = nd[s * 10 + 7]

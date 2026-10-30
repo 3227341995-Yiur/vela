@@ -1,0 +1,5 @@
+﻿import vela.greet
+
+def main() -> None {
+    print(vela.greet.greet("pkg"))
+}

@@ -1,0 +1,6 @@
+﻿import m_util
+
+def main() -> None {
+    print(m_util.add(2, 3))
+    print(m_util.triple(7))
+}

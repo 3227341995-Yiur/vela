@@ -1,0 +1,7 @@
+﻿def add(a: int, b: int) -> int {
+    return a + b
+}
+
+def triple(n: int) -> int {
+    return n * 3
+}

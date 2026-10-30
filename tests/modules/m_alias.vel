@@ -1,0 +1,5 @@
+﻿import m_util as u
+
+def main() -> None {
+    print(u.add(10, 20))
+}
