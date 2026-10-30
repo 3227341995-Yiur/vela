@@ -2252,11 +2252,38 @@ def exec_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     if k == 9 {
         v2: int = nd[s * 10 + 1]
-        if v2 < 0 {
-            set_none(mem, fmem, vm.dst)
+        cl: int = nd[s * 10 + 8]
+        if cl <= 0 {
+            if v2 < 0 {
+                set_none(mem, fmem, vm.dst)
+                return C_RET()
+            }
+            eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, v2)
             return C_RET()
         }
-        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, v2)
+        # The value is computed **first**, into a cell of its own: a `defer` block is
+        # ordinary code and may change what the returned expression read, and the
+        # rule is that the function returns what it computed before the cleanups ran.
+        # Then the cleanups, in the order the parser chained them (most recent
+        # first), each in a cell of its own so a cleanup cannot overwrite the answer.
+        markR: int = vm.sp
+        keepR: int = vm.dst
+        rc: int = cell_alloc(vm)
+        vm.dst = rc
+        if v2 < 0 {
+            set_none(mem, fmem, rc)
+        } else {
+            eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, v2)
+        }
+        mut c: int = cl
+        while c > 0 {
+            vm.dst = cell_alloc(vm)
+            exec_stmt(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, c)
+            c = nd_nx(nd, c)
+        }
+        vm.dst = keepR
+        copy_value(mem, fmem, path, vm, keepR, rc)
+        vm.sp = markR
         return C_RET()
     }
     if k == 10 {

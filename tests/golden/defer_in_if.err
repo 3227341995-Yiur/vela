@@ -1,0 +1,2 @@
+vela: syntax error: a `defer` must be written directly in the function body: a `defer` inside a conditional block runs even when the block did not -- move it up, and let it check what it needs
+  at line 3

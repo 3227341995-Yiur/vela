@@ -1,0 +1,7 @@
+defer {
+    print("a file's top level is not a function")
+}
+
+def main() -> None {
+    print("body")
+}

@@ -301,6 +301,21 @@ refuse return_own_array                      tests/build/check_cases/return_own_
 refuse array_struct_field                    tests/build/check_cases/array_struct_field.vel
 refuse slice_not_implemented                 tests/build/check_cases/slice_not_implemented.vel
 refuse nested_function                       tests/build/check_cases/nested_function.vel
+# `defer`: the block runs when the function is left, after the answer is computed, in
+# reverse registration order.  The row is `run`, so the interpreter and the LLVM back
+# end have to agree line for line; the C back end was checked by hand with `build-c`
+# (same output) and is not a separate row because the program is not one the LLVM
+# back end refuses.
+run defer_blocks                             tests/build/defer_blocks.vel
+# The three shapes `defer` refuses, plus the one keyword that is not implemented:
+# a `defer` in a loop (it registers once), a `return` inside the cleanup, a `defer`
+# at a file's top level, and `errdefer` (it needs the enum tag of the value being
+# returned, which a cleanup cannot read yet).
+refuse defer_in_loop                         tests/build/check_cases/defer_in_loop.vel
+refuse defer_in_if                           tests/build/check_cases/defer_in_if.vel
+refuse defer_with_return                     tests/build/check_cases/defer_with_return.vel
+refuse defer_at_top                          tests/build/check_cases/defer_at_top.vel
+refuse errdefer_not_implemented              tests/build/check_cases/errdefer_not_implemented.vel
 refuse tuple                                 tests/build/check_cases/tuple.vel
 refuse adjacent_string_literals              tests/build/check_cases/adjacent_string_literals.vel
 # Not like its neighbours above: this one is not about a feature the language does

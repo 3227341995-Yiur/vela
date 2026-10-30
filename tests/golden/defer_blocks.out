@@ -1,0 +1,17 @@
+returning early
+cleanup ran
+6
+falling through
+cleanup ran
+0
+body
+second registered, runs first
+first registered, runs last
+void body
+void cleanup
+body total=5
+cleanup sees total=105
+5
+returning early
+cleanup ran
+value is the one computed before the cleanup

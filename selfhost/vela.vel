@@ -43,6 +43,17 @@ struct Ctx {
     rslot: int
     err: int
     aux: int
+    # `defer` bookkeeping (parts/parser.vel): `dfirst` is the innermost function's
+    # defer records chained most-recent-first, `fndef` says whether a `defer` is
+    # legal where the parser stands, `indef` is 1 while a defer *block* is being
+    # parsed (where `return`/`break`/`continue` are refused -- a cleanup that jumps
+    # out of itself would run the cleanup of a function it is not in), and `bdepth`
+    # is how many blocks deep the parser is, because a `defer` is only legal at
+    # depth 1: in a conditional block it would run even when the block did not.
+    dfirst: int
+    fndef: int
+    indef: int
+    bdepth: int
 }
 
 # ---------------------------------------------------------------------------
@@ -268,6 +279,16 @@ def keyword_id(src: str, off: int, ln: int) -> int {
     # programs that were told they could use it.
     if name_eq(src, off, ln, "import") {
         return 26
+    }
+    # 27 and 28 are `defer` and `errdefer`.  `defer` is a keyword rather than an
+    # ordinary name because the statement form `defer { ... }` has no other reading:
+    # a call needs parentheses, so a name `defer` could only be followed by `=`, `(`
+    # or a newline, and reserving it costs no program a variable.
+    if name_eq(src, off, ln, "defer") {
+        return 27
+    }
+    if name_eq(src, off, ln, "errdefer") {
+        return 28
     }
     return 0
 }
@@ -901,7 +922,7 @@ def main() -> None {
     }
     mut tk: Array[int, 1572864]
     mut tkf: Array[float, 262144]
-    mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0)
+    mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0)
     lex(src, tk, tkf, cx)
     if cx.err == 1 {
         # the diagnostic has already been written to stderr; stop with a

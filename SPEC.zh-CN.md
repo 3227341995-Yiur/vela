@@ -4,8 +4,8 @@
 
 <!--
 源文件 : SPEC.md
-源文件字节 : 46648
-源文件 SHA256 : d5a275fa71edfbbca29eca3a6b0a789fbd1ca1b3d4c75df98b4b48cd92c6e4e6
+源文件字节 : 48861
+源文件 SHA256 : 949ffda3ced3830eff3cb60b9b2787611c1f3b9812db587dea7304b0fe0fec5e
 翻译日期 : 2026-10-31
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -289,6 +289,44 @@ mut buf: Array[float, 1024]    # zero-filled array; scalars need an initialiser
 | `for i in range(a, b)` / `range(a, b, step)` | 0.1 里唯一可迭代的形式 |
 | `parallel for i in range(...) { }` | 见 §7 |
 | `return e` / `break` / `continue` / `pass` | `break`/`continue` 只能在循环内 |
+| `defer { ... }` | 在离开函数时运行；见 §4.2 |
+
+### 4.2 `defer`
+
+`defer { ... }` 登记一个在**函数**离开时运行的块。它在每一条出路都会运行——函数体中间的
+`return`、`if`／`while`／`for`／`match` 分支里的 `return`、以及走到函数体末尾——而且它在
+返回值**计算完之后**才运行，所以清理可以读写 `return` 表达式用过的局部变量，却不改变答案：
+
+```vela
+def f(x: int) -> int {
+    defer { print("cleanup") }
+    if x > 0 { return x * 2 }      # 先跑清理，然后函数带着 x*2 离开
+    return 0
+}
+```
+
+同一个函数里的多个 `defer` 按**登记的相反顺序**运行（最后登记的先进），这正是资源清理
+必须的顺序。
+
+三种写法被点名拒绝，并给出行号：
+
+* `defer` 出现在**循环里**——块是静态登记一次的，所以它只会在一个跑了一千次的循环之后
+  运行一次；
+* `defer` 出现在**嵌套块**里（`if`、`while`、`for`、`match` 分支）——那样即使那个块从未
+  执行它也会运行；所以清理要**直接写在函数体里**，它依赖的条件在块内部判断。允许到处放的是
+  `return`：`if` 里的 `return` 仍然会跑完所有清理；
+* 块内部的 `return`、`break`、`continue`——一个从别的门离开函数的清理会跳过还在排队的
+  其他清理；
+
+而 `defer` 出现在任何不是函数体的位置都会被拒绝——文件顶层、struct 体、或另一个 `defer`
+里面。
+
+`errdefer`（错误路径上的清理）**尚未实现**：它必须追问函数正在返回的值是不是该函数的
+`Err` 变体，而清理目前还读不到枚举的 tag。今天错误是值（`lib/result.vel`），那个文件定义的
+`Err` 拼法就是 `errdefer` 将要读取的约定。
+
+`panic` **不会**运行 deferred 块：`panic` 就地停止程序，Vela 没有栈展开。这是刻意的限制而不是
+疏漏——panic 是 bug，一个要在自己的 bug 之后做清理的程序有比清理顺序更大的问题。
 
 ### 4.1 被拒绝的语句
 

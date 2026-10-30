@@ -2009,13 +2009,43 @@ def emit_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     if k == 9 {
         v2: int = nd[s * 10 + 1]
-        if v2 <= 0 {
-            emit_str("return;\n")
+        cl: int = nd[s * 10 + 8]
+        if cl <= 0 {
+            if v2 <= 0 {
+                emit_str("return;\n")
+                return
+            }
+            emit_str("return ")
+            emit_expr(nd, ty, flt, src, path, mem, vm, v2)
+            emit_str(";\n")
             return
         }
-        emit_str("return ")
-        emit_expr(nd, ty, flt, src, path, mem, vm, v2)
-        emit_str(";\n")
+        # The cleanup chain from `defer`.  The answer is computed into a temporary
+        # first -- a `defer` block is ordinary code and may change what the returned
+        # expression read -- then the cleanups run, then the function leaves with the
+        # value it had already computed.
+        emit_str("{\n")
+        emit_indent(indent + 1)
+        if v2 > 0 {
+            emit_packed_ctype(mem, vm, path, nd_line(nd, s),
+                              expr_packed(nd, ty, mem, vm, v2))
+            emit_str(" vela_ret_")
+            emit_int(s)
+            emit_str(" = ")
+            emit_expr(nd, ty, flt, src, path, mem, vm, v2)
+            emit_str(";\n")
+        }
+        emit_body(nd, ty, flt, src, path, mem, vm, cl, indent + 1)
+        emit_indent(indent + 1)
+        if v2 > 0 {
+            emit_str("return vela_ret_")
+            emit_int(s)
+            emit_str(";\n")
+        } else {
+            emit_str("return;\n")
+        }
+        emit_indent(indent)
+        emit_str("}\n")
         return
     }
     if k == 10 {

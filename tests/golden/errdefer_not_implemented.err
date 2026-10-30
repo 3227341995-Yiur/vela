@@ -1,0 +1,2 @@
+vela: syntax error: `errdefer` is not implemented in Vela 0.1: it has to ask whether the value a function is returning is that function's `Err` variant, and a cleanup cannot read an enum's tag yet. `defer` is available, and `lib/result.vel` is how an error becomes a value today
+  at line 3

@@ -1,0 +1,7 @@
+def main() -> None {
+    mut i: int = 0
+    while i < 3 {
+        defer { print("inside a loop") }
+        i += 1
+    }
+}

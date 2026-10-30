@@ -1,0 +1,2 @@
+vela: syntax error: a `defer` may not appear inside a loop: it registers once, so it would run once after a loop that ran many times -- move it out of the loop
+  at line 4

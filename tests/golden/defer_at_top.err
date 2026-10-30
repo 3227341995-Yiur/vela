@@ -1,0 +1,2 @@
+vela: syntax error: a `defer` belongs to a function body
+  at line 1

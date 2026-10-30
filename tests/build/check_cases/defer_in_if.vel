@@ -1,0 +1,10 @@
+def f(c: bool) -> None {
+    if c {
+        defer { print("cleanup") }
+    }
+    print("body")
+}
+
+def main() -> None {
+    f(False)
+}

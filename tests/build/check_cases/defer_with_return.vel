@@ -1,0 +1,7 @@
+def main() -> None {
+    defer {
+        print("no escape")
+        return
+    }
+    print("body")
+}

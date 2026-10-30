@@ -58,6 +58,13 @@
 # kind 38 arm         a=pattern name(-1 = else)  b=first binding  c=binding count
 #                     d=body first  e=body count   (bindings = kind 25)
 # kind 40 import      a=offset  b=length           flags: 1 = literal has escapes
+# kind 42 defer       a=block first  b=block count  c=0 defer, 1 errdefer
+#
+# kind 42 is a *record*, not a statement: the `defer` statement itself becomes a
+# `pass`, and the record is what `parse_funcdef` reads when the body is complete —
+# the block is appended to the end of the body and hung off every `return`'s slot 8.
+# Nothing else walks it, which is why it is the one kind with no arms in resolve,
+# check, dump or either back end.
 #
 # kind 40 is the one node the *driver* consumes rather than the resolver: it is
 # the only statement that is not part of the program, it is part of how the
@@ -428,6 +435,12 @@ def parse_body(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
     mut head: int = -1
     mut tail: int = -1
     mut count: int = 0
+    # How deep the blocks are: a `defer` is only legal at depth 1, i.e. written
+    # directly in a function body -- see `parse_defer`.  Counted here rather than in
+    # `parse_if`/`parse_while`/`parse_for`/`parse_match` because every block in this
+    # language goes through this one function, and one counter cannot drift from
+    # four call sites.
+    cx.bdepth += 1
     while cx.err == 0 and not at_close(tk, cx) {
         if at_nl(tk, cx) {
             cx.ti += 1
@@ -448,6 +461,7 @@ def parse_body(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
         }
         end_of_stmt(src, tk, cx)
     }
+    cx.bdepth -= 1
     if cx.err != 0 {
         return head
     }
@@ -609,6 +623,134 @@ def parse_import(src: str, tk: Array[int, 1572864], mut nd: Array[int, 1310720],
 # ---------------------------------------------------------------------------
 # statements
 
+# `defer { ... }` -- a block that runs when the function it is written in is left.
+#
+# The parser is where this lives because both ways out of a function are parser
+# facts: the block is **appended to the end of the function body** (so resolve,
+# check, both back ends and the interpreter's fall-through all see one ordinary
+# statement list, walked once and slot-assigned once), and the same statements are
+# **hung off every `return` node's slot 8** (so an early return runs them too, after
+# the value has been computed).  A body that ends in a `return` runs them through
+# slot 8 only; the appended copy is then unreachable, which is what a dead statement
+# is, and the LLVM back end opens its "dead" block for exactly that case.
+#
+# Three rules, each a refusal instead of a wrong answer:
+#   * a `defer` belongs to a function body -- not to a file's top level, not to a
+#     struct body, and not to another `defer`;
+#   * not inside a loop: the block is registered once, statically, so a `defer` in a
+#     loop would run once after a loop that ran a thousand times;
+#   * `return`, `break` and `continue` may not appear in the block itself: a cleanup
+#     that leaves the function through another door would skip every cleanup that is
+#     still pending.
+def parse_defer(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
+                mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
+                mut flt: Array[float, 262144], mut cx: Ctx, line: int,
+                iserr: int) -> int {
+    cx.ti += 1
+    if iserr == 1 {
+        perr_kind(cx, "syntax error",
+                  "`errdefer` is not implemented in Vela 0.1: it has to ask whether the value a function is returning is that function's `Err` variant, and a cleanup cannot read an enum's tag yet. `defer` is available, and `lib/result.vel` is how an error becomes a value today",
+                  line)
+        return -1
+    }
+    if cx.fndef == 0 {
+        perr(cx, "a `defer` belongs to a function body", line)
+        return -1
+    }
+    if cx.aux > 0 {
+        perr(cx, "a `defer` may not appear inside a loop: it registers once, so it would run once after a loop that ran many times -- move it out of the loop", line)
+        return -1
+    }
+    if cx.bdepth != 1 {
+        perr(cx, "a `defer` must be written directly in the function body: a `defer` inside a conditional block runs even when the block did not -- move it up, and let it check what it needs", line)
+        return -1
+    }
+    if not at_op(tk, cx, 33) {
+        perr(cx, "a `defer` needs a block: write `defer { ... }`", line)
+        return -1
+    }
+    mut saved: int = cx.indef
+    cx.indef = 1
+    first: int = parse_body(src, tk, tkf, nd, ty, flt, cx)
+    cnt: int = cx.rslot
+    cx.indef = saved
+    if cx.err != 0 {
+        return -1
+    }
+    rec: int = new_node(nd, cx, 42, line)
+    nd[rec * 10 + 1] = first
+    nd[rec * 10 + 2] = cnt
+    nd[rec * 10 + 3] = iserr
+    # most recent first: the chain is the order the cleanups have to run in
+    nd[rec * 10 + 7] = cx.dfirst
+    cx.dfirst = rec
+    return new_node(nd, cx, 15, line)
+}
+
+# The defer blocks as one statement list, most recent first.  Each block is an
+# independent chain, so this links the last statement of one to the first of the
+# next; done once, after the body is parsed, because the links are the same for
+# every exit.
+def defers_chain(mut nd: Array[int, 1310720], head: int) -> int {
+    mut first: int = -1
+    mut tail: int = -1
+    mut r: int = head
+    while r > 0 {
+        st: int = nd[r * 10 + 1]
+        if st > 0 {
+            if first < 0 {
+                first = st
+            } else {
+                nd[tail * 10 + 7] = st
+            }
+            mut t: int = st
+            while nd_nx(nd, t) > 0 {
+                t = nd_nx(nd, t)
+            }
+            tail = t
+        }
+        r = nd_nx(nd, r)
+    }
+    return first
+}
+
+def defers_count(nd: Array[int, 1310720], head: int) -> int {
+    mut n0: int = 0
+    mut r: int = head
+    while r > 0 {
+        n0 += nd[r * 10 + 2]
+        r = nd_nx(nd, r)
+    }
+    return n0
+}
+
+# Hang the cleanup list off every `return` in this body -- including the ones a
+# reader forgets, inside `if`, `while`, `for` and a `match` arm.  Slot 8 of a
+# `return` is read by all three paths and by nothing else.
+def defers_stamp(mut nd: Array[int, 1310720], first: int, chain: int) -> None {
+    mut s: int = first
+    while s > 0 {
+        k: int = nd_kind(nd, s)
+        if k == 9 {
+            nd[s * 10 + 8] = chain
+        } else if k == 10 {
+            defers_stamp(nd, nd[s * 10 + 2], chain)
+            defers_stamp(nd, nd[s * 10 + 4], chain)
+        } else if k == 11 {
+            defers_stamp(nd, nd[s * 10 + 2], chain)
+        } else if k == 12 {
+            defers_stamp(nd, nd[s * 10 + 5], chain)
+        } else if k == 37 {
+            mut a: int = nd[s * 10 + 2]
+            while a > 0 {
+                defers_stamp(nd, nd[a * 10 + 4], chain)
+                a = nd_nx(nd, a)
+            }
+        }
+        s = nd_nx(nd, s)
+    }
+}
+
 def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
                mut flt: Array[float, 262144], mut cx: Ctx, top: int) -> int {
@@ -710,7 +852,17 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
     if at_kw(tk, cx, 25) {
         return parse_match(src, tk, tkf, nd, ty, flt, cx)
     }
+    if at_kw(tk, cx, 27) {
+        return parse_defer(src, tk, tkf, nd, ty, flt, cx, line, 0)
+    }
+    if at_kw(tk, cx, 28) {
+        return parse_defer(src, tk, tkf, nd, ty, flt, cx, line, 1)
+    }
     if at_kw(tk, cx, 2) {
+        if cx.indef == 1 {
+            perr(cx, "a `defer` block may not `return`: the cleanups still pending would be skipped", line)
+            return -1
+        }
         cx.ti += 1
         n: int = new_node(nd, cx, 9, line)
         nd[n * 10 + 1] = -1
@@ -722,6 +874,10 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
         return n
     }
     if at_kw(tk, cx, 10) {
+        if cx.indef == 1 {
+            perr(cx, "a `defer` block may not `break`: it is not inside the loop it looks like it is in", line)
+            return -1
+        }
         if cx.aux == 0 {
             perr(cx, "'break' outside a loop", line)
             return -1
@@ -730,6 +886,10 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
         return new_node(nd, cx, 13, line)
     }
     if at_kw(tk, cx, 11) {
+        if cx.indef == 1 {
+            perr(cx, "a `defer` block may not `continue`: it is not inside the loop it looks like it is in", line)
+            return -1
+        }
         if cx.aux == 0 {
             perr(cx, "'continue' outside a loop", line)
             return -1
@@ -834,8 +994,32 @@ def parse_funcdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
     mut body: int = -1
     mut bcount: int = 0
     if (flag & 8) == 0 {
+        mut savedfn: int = cx.fndef
+        mut savedd: int = cx.dfirst
+        cx.fndef = 1
+        cx.dfirst = -1
         body = parse_body(src, tk, tkf, nd, ty, flt, cx)
         bcount = cx.rslot
+        cx.fndef = savedfn
+        # `defer`: the records were collected most-recent-first while the body was
+        # parsed.  One chain serves every exit, and the appended copy is what makes
+        # the block part of the body for everybody who *walks* it -- resolve assigns
+        # its slots, the checker checks it, and a body that falls off the end runs it.
+        if cx.dfirst > 0 {
+            chain: int = defers_chain(nd, cx.dfirst)
+            defers_stamp(nd, body, chain)
+            if body < 0 {
+                body = chain
+            } else {
+                mut t: int = body
+                while nd_nx(nd, t) > 0 {
+                    t = nd_nx(nd, t)
+                }
+                nd[t * 10 + 7] = chain
+            }
+            bcount += defers_count(nd, cx.dfirst)
+        }
+        cx.dfirst = savedd
     }
     n: int = new_node(nd, cx, 2, line)
     nd[n * 10 + 1] = nm

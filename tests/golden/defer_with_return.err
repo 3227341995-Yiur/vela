@@ -1,0 +1,2 @@
+vela: syntax error: a `defer` block may not `return`: the cleanups still pending would be skipped
+  at line 4

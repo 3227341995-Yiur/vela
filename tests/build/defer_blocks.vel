@@ -1,0 +1,47 @@
+# `defer`: the block runs when the function is left, on every way out, in reverse
+# registration order, and **after** the answer has been computed -- the last of those
+# is what lets a cleanup touch the locals the return value read (`localuse` prints 5
+# twice, and the cleanup sees 105).
+def early(x: int) -> int {
+    defer { print("cleanup ran") }
+    if x > 0 {
+        print("returning early")
+        return x * 2
+    }
+    print("falling through")
+    return 0
+}
+
+def order() -> int {
+    defer { print("first registered, runs last") }
+    defer { print("second registered, runs first") }
+    print("body")
+    return 1
+}
+
+def voidbody() -> None {
+    defer { print("void cleanup") }
+    print("void body")
+}
+
+def localuse() -> int {
+    mut total: int = 0
+    defer {
+        total = total + 100
+        print(concat("cleanup sees total=", to_str(total)))
+    }
+    total = 5
+    print(concat("body total=", to_str(total)))
+    return total
+}
+
+def main() -> None {
+    print(early(3))
+    print(early(0))
+    order()
+    voidbody()
+    print(localuse())
+    if early(2) == 4 {
+        print("value is the one computed before the cleanup")
+    }
+}

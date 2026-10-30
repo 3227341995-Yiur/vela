@@ -332,6 +332,50 @@ mut buf: Array[float, 1024]    # zero-filled array; scalars need an initialiser
 | `for i in range(a, b)` / `range(a, b, step)` | the only iterable form in 0.1 |
 | `parallel for i in range(...) { }` | see §7 |
 | `return e` / `break` / `continue` / `pass` | `break`/`continue` only inside a loop |
+| `defer { ... }` | runs when the function is left; see §4.2 |
+
+### 4.2 `defer`
+
+`defer { ... }` registers a block that runs when the enclosing **function** is left.
+It runs on every way out — a `return` in the middle of the body, a `return` inside an
+`if`, `while`, `for` or `match` arm, and falling off the end — and it runs **after**
+the returned value has been computed, so a cleanup may read and change the locals the
+`return` expression used without changing the answer:
+
+```vela
+def f(x: int) -> int {
+    defer { print("cleanup") }
+    if x > 0 { return x * 2 }      # the cleanup runs, then f is left with x*2
+    return 0
+}
+```
+
+Several `defer`s in one function run in **reverse registration order** (the last
+registered runs first), which is the order resource cleanups have to run in.
+
+Three shapes are refused, each by name and with a line number:
+
+* a `defer` **inside a loop** — the block is registered once, statically, so it would
+  run once after a loop that ran a thousand times;
+* a `defer` in a **nested block** (`if`, `while`, `for`, a `match` arm) — it would run
+  even when that block never did, so a cleanup is written **directly in the function
+  body** and the condition it depends on is checked inside it. It is the `return`s
+  that may sit anywhere: a `return` inside an `if` still runs every cleanup;
+* `return`, `break` or `continue` **inside the block** — a cleanup that left the
+  function through another door would skip the cleanups still pending;
+
+and `defer` is refused anywhere that is not a function body at all — a file's top
+level, a struct body, or another `defer`.
+
+`errdefer` (a cleanup for an error path) is **not implemented**: it has to ask whether
+the value a function is returning is that function's `Err` variant, and a cleanup
+cannot read an enum's tag yet. Errors are values today (`lib/result.vel`), and the
+`Err` spelling that file defines is the convention `errdefer` will read.
+
+A panic does **not** run deferred blocks: `panic` stops the program where it is, and
+Vela has no unwinding. That is a deliberate limit, not an omission — a panic is a bug,
+and a program that has to clean up after its bugs has a bigger problem than cleanup
+order.
 
 ### 4.1 Refused statements
 

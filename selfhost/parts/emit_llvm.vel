@@ -3329,6 +3329,22 @@ def ll_aug(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                               ll_fit(lg, k, K_INT(), r, path, line), h))
 }
 
+# The one way a `return` leaves: run the `defer` cleanups, then branch to the exit
+# block.  Every arm of `ll_return_stmt` ends here, which is why this is a function
+# and not four copies of five lines.  The value is already stored by the time this
+# runs -- into `rslot`, or through the hidden pointer for a `str`/struct result --
+# so a cleanup cannot change the answer, which is the rule `defer` promises.
+def ll_ret_branch(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
+                  flt: Array[float, 262144], src: str, path: str,
+                  mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+                  slotkind: Array[int, 4096], lit: Array[int, 132096],
+                  fns: Array[int, 8192], cl: int) -> None {
+    if cl > 0 {
+        ll_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns, cl)
+    }
+    ll_br(lg, lg.exitb)
+}
+
 def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                    flt: Array[float, 262144], src: str, path: str,
                    mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
@@ -3336,11 +3352,13 @@ def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                    fns: Array[int, 8192], s: int) -> None {
     v: int = nd[s * 10 + 1]
     rk: int = unpack_kind(lg.retk)
+    cl: int = nd[s * 10 + 8]
     if rk == K_NONE() {
         if v > 0 {
             trap(path, nd_line(nd, s), "this function returns nothing, so it cannot return a value")
         }
-        ll_br(lg, lg.exitb)
+        ll_ret_branch(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                      fns, cl)
         return
     }
     if v <= 0 {
@@ -3361,7 +3379,8 @@ def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                         vshim_build_load(lg.m, lg.t_str, srcv))
         ll_ckst(lg, "returning a str through the hidden pointer",
                 vshim_build_store(lg.m, sv, dst))
-        ll_br(lg, lg.exitb)
+        ll_ret_branch(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                      fns, cl)
         return
     }
     if rk == K_ST() {
@@ -3376,7 +3395,8 @@ def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                               nd_line(nd, s))
         ll_ckst(lg, "returning a struct through the hidden pointer",
                 vshim_build_store(lg.m, sv2, dst2))
-        ll_br(lg, lg.exitb)
+        ll_ret_branch(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                      fns, cl)
         return
     }
     val: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
@@ -3385,7 +3405,8 @@ def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             vshim_build_store(lg.m,
                               ll_adapt(lg, rk, expr_kind(nd, ty, mem, vm, v), val),
                               lg.rslot))
-    ll_br(lg, lg.exitb)
+    ll_ret_branch(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                  fns, cl)
 }
 
 def ll_if(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
