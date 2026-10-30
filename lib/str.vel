@@ -372,3 +372,61 @@ def line_at(s: str, i: int) -> str {
     }
     return ""
 }
+
+# Split `s` on `sep` into `out`, and answer how many pieces were written.  An array
+# cannot be *returned* in this language (a returned array would point into a released
+# frame), so the caller brings the storage and this fills it: `out` is a `mut` parameter
+# and the count is the return value.  `shots` smaller than the number of pieces are
+# dropped, which is why the return value matters rather than `len(out)`.
+def split(s: str, sep: str, mut out: Array[str, 64]) -> int {
+    if len(sep) == 0 {
+        if len(s) > 0 {
+            out[0] = s
+            return 1
+        }
+        return 0
+    }
+    mut n: int = 0
+    mut from: int = 0
+    while from <= len(s) - len(sep) {
+        rest: str = substr(s, from, len(s))
+        at: int = index_of(rest, sep)
+        if at < 0 {
+            break
+        }
+        if n < 64 {
+            out[n] = substr(s, from, from + at)
+        }
+        n += 1
+        from = from + at + len(sep)
+    }
+    if n < 64 {
+        out[n] = substr(s, from, len(s))
+    }
+    return n + 1
+}
+
+# Join the first `n` pieces of `parts` with `sep`.  The inverse of `split`, and the
+# reason both take a count: the storage may be longer than what is live.
+def join(parts: Array[str, 64], n: int, sep: str) -> str {
+    mut out: str = ""
+    mut i: int = 0
+    while i < n {
+        if i > 0 {
+            out = concat(out, sep)
+        }
+        out = concat(out, parts[i])
+        i += 1
+    }
+    return out
+}
+
+# The lines of a multi-line string, and back again.  A trailing newline does not
+# produce a final empty line, which is `line_at`'s convention in this same file.
+def lines(s: str, mut out: Array[str, 64]) -> int {
+    return split(s, "\n", out)
+}
+
+def join_lines(parts: Array[str, 64], n: int) -> str {
+    return join(parts, n, "\n")
+}

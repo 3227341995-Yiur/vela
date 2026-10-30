@@ -1,4 +1,4 @@
-# The run that proves `lib/str.vel`: one line per function, expected output beside it.
+﻿# The run that proves `lib/str.vel`: one line per function, expected output beside it.
 import str
 
 def main() -> None {
@@ -28,4 +28,19 @@ def main() -> None {
     print(str.hex_of(255))
     print(str.line_at(text3, 1))
     print(str.to_str(str.count_of("mississippi", "is")))
+
+    # split / join: the storage is the caller's, the count is the answer
+    mut parts: Array[str, 64]
+    n: int = str.split("a,b,,c", ",", parts)
+    print(str.to_str(n))
+    print(parts[0])
+    print(parts[1])
+    print(parts[2])
+    print(parts[3])
+    print(str.join(parts, n, "|"))
+    mut ls: Array[str, 64]
+    ln: int = str.lines(text3, ls)
+    print(str.to_str(ln))
+    print(str.join_lines(ls, ln))
+    print(str.to_str(str.split("", ",", parts)))
 }
