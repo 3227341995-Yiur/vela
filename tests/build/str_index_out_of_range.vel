@@ -1,0 +1,5 @@
+def main() -> None {
+    s: str = "abc"
+    mut i: int = 3
+    print(s[i])
+}

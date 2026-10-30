@@ -1,0 +1,11 @@
+# The bottom of the nested-literal case: a module imported by a module, whose
+# strings all carry an escape.  A loader that moves an imported file's literal
+# offsets onto the shared source buffer twice makes these read as "" -- the failure
+# this case exists for, measured on `lib/str.vel` through `lib/io.vel`.
+def two_lines() -> str {
+    return concat("alpha\nbeta\n", "gamma")
+}
+
+def tabbed_len() -> int {
+    return len("a\tb")
+}

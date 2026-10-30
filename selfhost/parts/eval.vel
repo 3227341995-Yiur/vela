@@ -1029,6 +1029,23 @@ def eval_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
         if mem[ic * 4 + 0] != K_INT() {
             trap(path, vm.line, "an index must be an int")
         }
+        if mem[ac * 4 + 0] == K_STR() {
+            # `s[i]` is a str, because Vela has no char type: one character is a
+            # one-byte str, exactly what substr hands back and what `char_at`
+            # returns.  Out of range is a panic and not "" -- an index that the
+            # program got wrong should stop the program, the same way `a[i]` does.
+            idx: int = mem[ic * 4 + 1]
+            s2: str = interned(mem[ac * 4 + 1])
+            if idx < 0 {
+                trap(path, vm.line, "index out of range for this string")
+            }
+            if idx >= len(s2) {
+                trap(path, vm.line, "index out of range for this string")
+            }
+            set_str(mem, fmem, keepA, intern(substr(s2, idx, idx + 1)))
+            vm.sp = markA
+            return
+        }
         elem_load(mem, fmem, ipool, fpool, bpool, path, vm, ac, mem[ic * 4 + 1],
                   keepA)
         vm.sp = markA
@@ -1051,7 +1068,47 @@ def eval_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
         selflimit("an array literal is only implemented as a declaration initialiser")
     }
     if k == 34 {
-        selflimit("slices do not exist in Vela 0.1")
+        # `s[a:b]`, a view into the same bytes: vela_substr clamps both ends, so a
+        # slice can never be out of range and a missing bound is not a special
+        # case at run time -- it is filled in here from the string itself.
+        markS: int = vm.sp
+        bc: int = cell_alloc(vm)
+        keepS: int = vm.dst
+        vm.dst = bc
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[e * 10 + 1])
+        vm.dst = keepS
+        if mem[bc * 4 + 0] != K_STR() {
+            trap(path, vm.line, "only a str can be sliced")
+        }
+        s2: str = interned(mem[bc * 4 + 1])
+        mut lo: int = 0
+        mut hi: int = len(s2)
+        if nd[e * 10 + 2] > 0 {
+            lc: int = cell_alloc(vm)
+            vm.dst = lc
+            eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                      nd[e * 10 + 2])
+            vm.dst = keepS
+            if mem[lc * 4 + 0] != K_INT() {
+                trap(path, vm.line, "a slice bound must be an int")
+            }
+            lo = mem[lc * 4 + 1]
+        }
+        if nd[e * 10 + 3] > 0 {
+            hc: int = cell_alloc(vm)
+            vm.dst = hc
+            eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                      nd[e * 10 + 3])
+            vm.dst = keepS
+            if mem[hc * 4 + 0] != K_INT() {
+                trap(path, vm.line, "a slice bound must be an int")
+            }
+            hi = mem[hc * 4 + 1]
+        }
+        set_str(mem, fmem, keepS, intern(substr(s2, lo, hi)))
+        vm.sp = markS
+        return
     }
     selflimit_kind("no case for expression kind", k)
 }

@@ -1605,6 +1605,34 @@ def load_file(path: str, src: str, base: int, depth: int, file: int,
         panic("the front end stopped after an error")
     }
 
+    # This file's own nodes are `ni0 .. cx.ni`, and the literals among them are moved
+    # onto the buffer **here**, before the import pass walks them -- while the range is
+    # still this file's alone.
+    #
+    # It used to be done at the *end* of this function over `ni0 .. cx.ni`, which is a
+    # range that no longer means "this file" once the import pass has run: loading a
+    # child appends the child's nodes to the same table, so the parent's shift landed on
+    # the child's literals a second time.  A direct import survived it (the root's own
+    # `at` is 0, so the root shifts nothing), but a module imported *by a module* had
+    # every literal moved twice: measured with `lib/io.vel` (which imports `lib/str.vel`)
+    # -- `"\n"` inside `str.split` became "" because the doubly-shifted offset ran past
+    # the end of the buffer and `substr` clamps, so `split` took its empty-separator
+    # path, `count_lines("alpha\nbeta\n")` answered 1, and `join_lines` glued two lines
+    # together with nothing between them.
+    mut ni1: int = cx.ni
+    if at > 0 {
+        mut n0: int = ni0
+        while n0 < ni1 {
+            k0: int = nd[n0 * 10]
+            if k0 == 22 {
+                nd[n0 * 10 + 1] = nd[n0 * 10 + 1] + at
+            } else if k0 == 21 {
+                nd[n0 * 10 + 2] = nd[n0 * 10 + 2] + at
+            }
+            n0 += 1
+        }
+    }
+
     # D5, before anything is appended: an imported file may not define `main`,
     # and the message names both ends of the disagreement
     mut s: int = nd[m * 10 + 1]
@@ -1676,18 +1704,13 @@ def load_file(path: str, src: str, base: int, depth: int, file: int,
     }
 
     # every literal in this file now addresses the buffer instead of this file's own
-    # text (the import pass above has already read the paths it needed from `src`,
-    # and the parser read names and literals before that -- which is why the shift is
-    # here and not before the parse)
+    # text -- done above, over `[ni0, ni1)`, which is this file's nodes and nothing
+    # else.  What is left is the `import` node's own name span, which the pass above
+    # read from this file's text and which has to move now that the pass is over.
     if at > 0 {
         mut n0: int = ni0
-        while n0 < cx.ni {
-            k0: int = nd[n0 * 10]
-            if k0 == 22 {
-                nd[n0 * 10 + 1] = nd[n0 * 10 + 1] + at
-            } else if k0 == 21 {
-                nd[n0 * 10 + 2] = nd[n0 * 10 + 2] + at
-            } else if k0 == 40 {
+        while n0 < ni1 {
+            if nd[n0 * 10] == 40 {
                 nd[n0 * 10 + 1] = nd[n0 * 10 + 1] + at
             }
             n0 += 1

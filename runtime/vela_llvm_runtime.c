@@ -292,6 +292,14 @@ int64_t vela_llvm_bytes_at(vela_str s, int64_t i, const char *file, int line)
     return vela_bytes_at(s, i, file, line);
 }
 
+/* `s[i]`: one byte of a string as a one-byte `str`.  The check, the message and
+ * the exit status are the header's, so the C back end and the IR back end cannot
+ * disagree about what an out-of-range character index means. */
+vela_str vela_llvm_str_at(vela_str s, int64_t i, const char *file, int line)
+{
+    return vela_str_at(s, i, file, line);
+}
+
 vela_str vela_llvm_arg(int64_t i, const char *file, int line)
 {
     return vela_arg(i, file, line);

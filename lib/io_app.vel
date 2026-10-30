@@ -1,0 +1,35 @@
+# The run that proves `lib/io.vel`, one line per function.  It is also the corpus's
+# only case that reaches `lib/` -- a module there is found from a program beside it
+# or from one at the repository root -- and the only case with two levels of import
+# (`io_app` -> `io` -> `str`), which is the shape a loader's literal offsets get
+# wrong.
+#
+# It writes a scratch file under `tests/build/`, which git ignores, so a run leaves
+# the tree clean.  `shell` runs `cmd`, like every other gate in this repository: the
+# toolchain is Windows-first by construction (`lld-link`, `cl`, `vcvars64`).
+import io
+
+def main() -> None {
+    path: str = "tests/build/io_scratch.txt"
+    print(io.write_file(path, "alpha\nbeta\n"))
+    print(io.is_present(path))
+    print(io.count_lines(path))
+    mut parts: Array[str, 64]
+    n: int = io.read_lines(path, parts)
+    print(n)
+    print(parts[0])
+    print(parts[1])
+    print(io.append_file(path, "gamma\n"))
+    print(io.count_lines(path))
+    print(len(io.read_file(path)))
+    print(io.write_lines(path, parts, 2))
+    print(len(io.read_file(path)))
+    print(io.is_present("tests/build/io_scratch_absent.txt"))
+    print(io.env_or("VELA_IO_DEMO_UNSET", "unset"))
+    print(io.shell("cmd /c exit 3"))
+    start: float = io.now_seconds()
+    end: float = io.now_seconds()
+    if end >= start {
+        print("clock moves forward")
+    }
+}

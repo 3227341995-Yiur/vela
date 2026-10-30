@@ -1,0 +1,10 @@
+# Three files, two levels of import, and a string literal with an escape at every
+# level.  `module_str` covers one level; this covers the level that was wrong: a
+# module's literals moved onto the shared source buffer by its *parent's* shift as
+# well as its own.
+import outer_lit
+
+def main() -> None {
+    print(outer_lit.joined())
+    print(outer_lit.inner_len())
+}

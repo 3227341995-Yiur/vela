@@ -1,0 +1,104 @@
+# lib/io.vel -- files, the environment, child processes, and the clock: the
+# standard library's answer to "how does a Vela program talk to the machine".
+#
+# Two rules of the language shape every signature in this file, and they are worth
+# stating once because a reader coming from another language will otherwise read
+# them as design mistakes:
+#
+#   * **An array cannot be returned.**  A returned `Array[str, 64]` would point
+#     into the frame of the function that made it, and that frame is gone by the
+#     time the caller looks.  So the functions that produce several lines take the
+#     storage from the caller and return *how many lines they wrote*.
+#   * **A `mut` scalar parameter does not write back.**  Measured, on this
+#     compiler: a `mut n: int` parameter is a copy, so a count has to be a return
+#     value.  (A `mut` *array* parameter is a reference, which is why the arrays
+#     above work.)
+#
+# And one rule of the runtime, said here rather than discovered:
+#
+#   * `read_text` reads a missing file as the empty string.  `read_file` returns
+#     that unchanged instead of inventing a "could not open" flag the runtime does
+#     not have; `is_present` is the honest spelling of the question, and it answers
+#     `False` for both a missing file and a file of zero bytes.
+import str
+
+# The whole file, byte for byte, with no translation of line endings.
+def read_file(path: str) -> str {
+    return read_text(path)
+}
+
+# Writes the whole file, replacing what was there.  `True` when the bytes reached
+# the file.  The runtime refuses a path of 4096 bytes or more, and so does this.
+def write_file(path: str, body: str) -> bool {
+    return write_text(path, body)
+}
+
+# Appends: read, concatenate, write.  A `str` in Vela is immutable, so this is the
+# only way to append with the primitives the runtime has -- and it is not atomic,
+# which matters if two programs write the same file.
+def append_file(path: str, body: str) -> bool {
+    return write_text(path, concat(read_text(path), body))
+}
+
+# A file that exists and holds at least one byte.  See the note at the top: an
+# empty file and a missing file are the same answer from this runtime.
+def is_present(path: str) -> bool {
+    return len(read_text(path)) > 0
+}
+
+# How many lines the file holds, counted the way `lines` counts them.
+def count_lines(path: str) -> int {
+    mut buf: Array[str, 64]
+    return str.lines(read_text(path), buf)
+}
+
+# Up to 64 lines into the caller's storage; the return value is how many are valid.
+def read_lines(path: str, mut out: Array[str, 64]) -> int {
+    return str.lines(read_text(path), out)
+}
+
+# Joins the first `n` entries with newlines and writes them as the whole file.
+def write_lines(path: str, parts: Array[str, 64], n: int) -> bool {
+    return write_text(path, str.join_lines(parts, n))
+}
+
+# An environment variable, or "" when it is not set -- the runtime's rule, kept.
+# It is called `get_env` and not `env` on purpose: a module's own function shadows
+# the builtin of the same name inside the module, so a `def env(...)` here would
+# call itself and recurse until the stack ran out.
+def get_env(name: str) -> str {
+    return env(name)
+}
+
+# The environment with a default, which is the form almost every caller wants.
+def env_or(name: str, fallback: str) -> str {
+    v: str = env(name)
+    if len(v) == 0 {
+        return fallback
+    }
+    return v
+}
+
+# Seconds since the epoch, UTC, as a float: the runtime's clock, unchanged.  Use
+# the difference of two readings for an interval, never the value itself.
+def now_seconds() -> float {
+    return now()
+}
+
+# The milliseconds between `start` and now, rounded down.
+def since(start: float) -> int {
+    return to_int((now() - start) * 1000.0)
+}
+
+# Runs a shell command and returns its exit status.  Nothing is captured: the
+# child writes to this program's own stdout and stderr.
+def shell(cmd: str) -> int {
+    return run_command(cmd)
+}
+
+# Stops the program with a message and a line number -- the same `panic` every
+# Vela program has, named here so a caller does not have to remember that the
+# standard library has no io of its own to fail with.
+def fail(msg: str) -> None {
+    panic(msg)
+}

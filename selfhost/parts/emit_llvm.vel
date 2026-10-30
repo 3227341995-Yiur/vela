@@ -239,12 +239,17 @@ struct LG {
     # to check -- and they live in the shim (`vshim_build_and/or/xor`).
     f_shl: int
     f_shr: int
+    # `s[i]`: `vela_llvm_str_at(s, i, file, line) -> str`, the header's
+    # `vela_str_at` under a name IR can call.  Appended here for the reason the
+    # comment above `f_fit_u8` gives: `ll_zero` builds this record positionally.
+    f_strat: int
 }
 
 def ll_zero() -> LG {
     return LG(0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0)
 }
 
 # The frame-slot table this back end can address.  A slot is the resolver's own
@@ -1113,6 +1118,19 @@ def ll_declare_rt(mut lg: LG, path: str) -> None {
     ps[3] = lg.t_i32
     lg.f_bytes = ll_declare(lg, "vela_llvm_bytes_at", lg.t_i64, ps, 4,
                             "declaring vela_llvm_bytes_at")
+    # `s[i]`: the same "returns a str through a hidden pointer" shape `substr` has,
+    # plus the source location `vela_bounds_check` already carries, because a
+    # character index out of range is a panic in both back ends and the message has
+    # to name the program's own line in both of them.
+    ps[0] = lg.t_ptr
+    ps[1] = lg.t_ptr
+    ps[2] = lg.t_i64
+    ps[3] = lg.t_ptr
+    ps[4] = lg.t_i32
+    lg.f_strat = ll_declare(lg, "vela_llvm_str_at", lg.t_void, ps, 5,
+                            "declaring vela_llvm_str_at")
+    ll_ckst(lg, "the sret on vela_llvm_str_at",
+            vshim_fn_sret_param(lg.f_strat, 0, lg.t_str))
     # the narrow-store check: i64(i64, ptr, i32), shared with the C back end
     ps[0] = lg.t_i64
     ps[1] = lg.t_ptr
@@ -1560,8 +1578,39 @@ def ll_reserve_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if k == 31 {
+        if expr_kind(nd, ty, mem, vm, nd[e * 10 + 1]) == K_STR() {
+            # `s[i]` is a str, so it comes back through a hidden pointer like any
+            # other string result and needs a slot of its own; the index is the only
+            # operand that can itself need one.
+            if lit[e] == 0 {
+                lit[e] = ll_ck(lg, "a slot for a character",
+                               vshim_build_alloca(lg.m, lg.t_str, 8))
+            }
+            # the base is walked too, and it is not an optimisation: `s[5:][0]` is an
+            # index over a slice, and the slice's own result slot is reserved only if
+            # the walk reaches it
+            ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                            nd[e * 10 + 1])
+            ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                            nd[e * 10 + 2])
+            return
+        }
         ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 1])
         ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 2])
+        return
+    }
+    if k == 34 {
+        # `s[a:b]` is a str too, and `vela_llvm_substr` writes it through the same
+        # hidden pointer; kind 34 appears nowhere else in this table
+        if lit[e] == 0 {
+            lit[e] = ll_ck(lg, "a slot for a slice",
+                           vshim_build_alloca(lg.m, lg.t_str, 8))
+        }
+        # the base first, and for the same reason as the index above: `s[5:][1:3]`
+        # is a slice over a slice, and each one needs its own slot
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 1])
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 2])
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit, nd[e * 10 + 3])
         return
     }
     if k == 32 {
@@ -2071,6 +2120,10 @@ def ll_binop(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 
 def const_i32(lg: LG, v: int) -> int {
     return ll_ck(lg, "an i32 constant", vshim_const_i32(lg.m, v))
+}
+
+def const_i64(lg: LG, v: int) -> int {
+    return ll_ck(lg, "an i64 constant", vshim_const_i64(lg.m, v))
 }
 
 def ll_call4(lg: LG, fn: int, x0: int, x1: int, x2: int, x3: int) -> int {
@@ -2849,6 +2902,27 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                       lit, fns, e)
     }
     if k == 31 {
+        if expr_kind(nd, ty, mem, vm, nd[e * 10 + 1]) == K_STR() {
+            # `s[i]`: the runtime's own check, blamed on this line, writing a
+            # one-byte str through the slot reserved in the entry block.  The
+            # address of that slot *is* the value, the way every str in this back
+            # end is a pointer to its 16 bytes.
+            dst: int = lit[e]
+            if dst == 0 {
+                trap(path, nd_line(nd, e),
+                     "this character's result was never given a slot in the entry block")
+            }
+            mut cargs: Array[int, 16]
+            cargs[0] = dst
+            cargs[1] = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                               lit, fns, nd[e * 10 + 1])
+            cargs[2] = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                               lit, fns, nd[e * 10 + 2])
+            cargs[3] = lg.pfile
+            cargs[4] = const_i32(lg, nd_line(nd, e))
+            ll_call_n(lg, lg.f_strat, cargs, 5)
+            return dst
+        }
         ep: int = ll_index_addr(lg, nd, ty, flt, src, path, mem, vm, slots,
                                 slotkind, lit, fns, e)
         bk: int = unpack_kind(expr_packed(nd, ty, mem, vm, nd[e * 10 + 1]))
@@ -2862,6 +2936,39 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         }
         et: int = ll_type_of(lg, ek)
         return ll_ck(lg, "loading an element", vshim_build_load(lg.m, et, ep))
+    }
+    if k == 34 {
+        # `s[a:b]` is `vela_llvm_substr`, the runtime's clamped view: the same
+        # function `substr(s, a, b)` calls, and the same hidden-pointer shape.  A
+        # missing bound becomes a constant the clamp resolves -- 0 in front, and
+        # `max_int()` behind, because writing the base's `.len` would evaluate the
+        # base a second time and a base can be a call.
+        dst: int = lit[e]
+        if dst == 0 {
+            trap(path, nd_line(nd, e),
+                 "this slice's result was never given a slot in the entry block")
+        }
+        mut sargs: Array[int, 16]
+        sargs[0] = dst
+        sargs[1] = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                           lit, fns, nd[e * 10 + 1])
+        if nd[e * 10 + 2] > 0 {
+            sargs[2] = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                               lit, fns, nd[e * 10 + 2])
+        } else {
+            sargs[2] = const_i64(lg, 0)
+        }
+        if nd[e * 10 + 3] > 0 {
+            sargs[3] = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                               lit, fns, nd[e * 10 + 3])
+        } else {
+            # `max_int()` would be the constant, but it is `max_int(a, b)` -- the
+            # *maximum of two ints* -- so the largest int is written out here.
+            # `vela_substr` clamps anything past the end, which is the whole point.
+            sargs[3] = const_i64(lg, 9223372036854775807)
+        }
+        ll_call_n(lg, lg.f_substr, sargs, 4)
+        return dst
     }
     if k == 32 {
         # `s.f`: the field's address (a two-index GEP on the struct's named type),

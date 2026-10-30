@@ -808,10 +808,12 @@ def walk_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if k == 34 {
-        # stage 0's own words for it (checker.py:1206), kept because a slice is
-        # a *language* feature that is missing, not a typo the reader made
-        fail_kind(path, nd_line(nd, e), "type error",
-                  "slices are not implemented in Vela 0.1")
+        # `s[a:b]`.  A missing bound is the -1 the parser wrote, and walk_expr
+        # returns early on anything <= 0, so the absent side is simply not
+        # walked -- there is no expression node to bind there.
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 1])
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 2])
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 3])
     }
     # 20 int, 21 float, 22 str, 23 bool, 24 none: nothing to bind
 }

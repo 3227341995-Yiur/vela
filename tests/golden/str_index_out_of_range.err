@@ -1,0 +1,2 @@
+vela: panic: index out of range for this string
+  at tests/build/str_index_out_of_range.vel:4

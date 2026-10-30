@@ -1,0 +1,30 @@
+# `s[i]` and `s[a:b]`: a character is a one-byte `str` (Vela has no `char` type),
+# and a slice is a view into the same bytes -- `substr` in a shorter spelling.
+def main() -> None {
+    s: str = "vela rocks"
+    print(s[0])
+    print(s[5])
+    print(s[len(s) - 1])
+    print(s[0:4])
+    print(s[5:])
+    print(s[:4])
+    print(s[:])
+    print(s[5:10])
+    # a reversed pair and an over-long end are clamped, not refused: a slice has
+    # the range semantics `substr` has always had
+    print(s[8:2])
+    print(s[0:100])
+    print(s[0 - 3:2])
+    # a slice of a slice, and a character out of a slice
+    print(s[5:][0])
+    print(concat(s[0:4], "!"))
+    # an index expression with a side effect is evaluated once
+    mut n: int = 2
+    print(concat("[", concat(s[n * 2], "]")))
+    # the base does not have to be a name
+    print(substr("abcdef", 1, 4)[1:3])
+    # a character compares as the one-byte string it is
+    if s[0] == "v" {
+        print("first byte is v")
+    }
+}

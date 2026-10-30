@@ -1,0 +1,12 @@
+# The middle module: it imports `inner_lit`, and it also has an escaped literal of
+# its own, so the case shows that the *parent's* shift and the child's do not
+# collide in either direction.
+import inner_lit
+
+def joined() -> str {
+    return concat(concat("outer\\", "inner:"), inner_lit.two_lines())
+}
+
+def inner_len() -> int {
+    return inner_lit.tabbed_len()
+}

@@ -1,2 +1,2 @@
-vela: type error: slices are not implemented in Vela 0.1
+vela: type error: a slice is only defined for a str: a view over an array would need a type Vela 0.1 does not have
   at tests/build/check_cases/slice_not_implemented.vel:3

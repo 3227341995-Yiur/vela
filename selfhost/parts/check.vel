@@ -730,10 +730,27 @@ def ck_etype(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
     }
     if k == 31 {
         base: int = ck_etype(nd, mem, vm, nd[e * 10 + 1])
+        if base == K_STR() {
+            # `s[i]` is one character.  Vela has no `char` type, so a character is
+            # a one-byte `str` -- the same value `substr(s, i, i + 1)` returns, and
+            # the same thing `char_at` has always returned.
+            return K_STR()
+        }
         if ck_is_array_ck(base) {
             return elem_kind_of(unpack_kind(base))
         }
+        return K_BAD()
     }
+    if k == 34 {
+        # a slice of a str is a str: vela_substr hands back a view into the same
+        # bytes, so nothing about the type has to change
+        if ck_etype(nd, mem, vm, nd[e * 10 + 1]) == K_STR() {
+            return K_STR()
+        }
+        return K_BAD()
+    }
+    # everything else -- a struct, an array, a call the parser wrote -- has no
+    # static type this function can name, and `K_BAD` is how it says "no opinion"
     return K_BAD()
 }
 
@@ -1481,6 +1498,44 @@ def ck_index(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
     }
 }
 
+# `s[a:b]` -- strings only.  An array slice would have to denote a *view*, and a
+# Vela array is a value with a compile-time length, so `a[1:3]` of an
+# `Array[int, 8]` has no type anybody could write down.  Refused by name instead
+# of quietly meaning something else.
+def ck_slice(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
+             path: str, vm: VM, e: int) -> None {
+    bt: int = ck_etype(nd, mem, vm, nd[e * 10 + 1])
+    if bt != K_STR() and bt != K_BAD() {
+        # The type is not *named* in this message, and that is deliberate: `ck_etype`
+        # answers with a bare kind (the length of an array lives in a packed word it
+        # has already thrown away), so a spelling built from it would print `?` --
+        # and a diagnostic that cannot name the type is worse than one that says what
+        # the rule is.
+        ck_type(path, nd_line(nd, e),
+                "a slice is only defined for a str: a view over an array would need a type Vela 0.1 does not have")
+        return
+    }
+    ck_slice_bound(nd, mem, path, vm, nd[e * 10 + 2])
+    ck_slice_bound(nd, mem, path, vm, nd[e * 10 + 3])
+}
+
+# A bound is a byte offset, so it is an int.  A missing bound is the -1 the parser
+# wrote and is not an expression at all -- walk_expr's `e <= 0` guard is the same
+# fact seen from resolve's side.
+def ck_slice_bound(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
+                   path: str, vm: VM, b: int) -> None {
+    if b <= 0 {
+        return
+    }
+    t: int = ck_etype(nd, mem, vm, b)
+    if t == K_BAD() {
+        return
+    }
+    if not ck_is_int_kind(t) {
+        ck_type(path, nd_line(nd, b), "a slice bound must be an int")
+    }
+}
+
 def ck_expr(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
             path: str, vm: VM, e: int) -> None {
     # The rules that need a static type of their own still come later; what this
@@ -1574,6 +1629,7 @@ def ck_expr(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         ck_expr(nd, mem, path, vm, nd[e * 10 + 1])
         ck_expr(nd, mem, path, vm, nd[e * 10 + 2])
         ck_expr(nd, mem, path, vm, nd[e * 10 + 3])
+        ck_slice(nd, mem, path, vm, e)
         return
     }
     # 20 int, 21 float, 22 str, 23 bool, 24 none are leaves, and so is a name --

@@ -128,8 +128,20 @@ name and the call shape are this one.
   whichever spelling is written — and `str + int` is still refused with
   `operator '+' mixes str and int` (§3.1): nothing in this language converts a
   number to text, and a `+` that started doing it would be a silent `toString`.
+* **`s[i]` is one character, and `s[a:b]` is a slice.** Vela has no `char` type:
+  a character *is* a one-byte `str`, so `s[i]` and `char_at(s, i)` are the same
+  value, and an index outside the string stops the program with
+  `index out of range for this string` on the line it was written on — the same
+  rule `a[i]` follows for an array. A slice is `substr(s, a, b)` in a shorter
+  spelling: a **view** into the same bytes, never a copy, and a missing bound means
+  the string's own end, so `s[2:]` and `s[:2]` are the two halves and `s[:]` is the
+  whole thing. A slice **clamps** rather than failing — `s[8:2]` is `""` and
+  `s[0:100]` is the whole string — because a range is not an index and a view past
+  the end is well defined (`substr` has always answered that way). Slicing an
+  **array** is refused by name: a Vela array is a *value* with a compile-time
+  length, so `a[1:3]` would have to denote a view type this language does not have.
 * There is **no mutable string**: `+=` on a `str` builds a new one, and nothing
-  appends into an existing one in place. There is no slicing either.
+  appends into an existing one in place.
 * Concatenation allocates, so it is refused inside a `parallel for` (§7) — the one
   operator that rule judges without a call in sight.
 

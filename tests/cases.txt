@@ -120,6 +120,13 @@ run string_escapes                           tests/build/string_escapes.vel
 run string_concat_basic                       tests/build/string_concat_basic.vel
 run string_concat_growth                      tests/build/string_concat_growth.vel
 run string_concat_append                      tests/build/string_concat_append.vel
+# `s[i]` and `s[a:b]`.  A character is a one-byte `str` -- Vela has no `char` type,
+# so no new value kind had to be invented -- and a slice is `vela_substr`, the very
+# runtime function `substr` already calls, so the two spellings cannot drift apart.
+# The `panic` row is the other half: an index the program got wrong has to stop it,
+# in the interpreter and in the compiled binary, with the same sentence in both.
+run str_index_slice                           tests/build/str_index_slice.vel
+panic str_index_out_of_range                  tests/build/str_index_out_of_range.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
 # and that is not what it is for here: what it pins is that `+`, `+=` and `concat`
@@ -508,9 +515,10 @@ refuse enum_self_payload                     tests/build/enum_self_payload.vel
 refuse enum_nested_pattern                   tests/build/enum_nested_pattern.vel
 
 # ------------------------------------------------------------ modules (step 2)
-# MODULES_PLAN.md step 2 is the loader: a program is a root file plus every
-# `import "path"` it reaches, the path is read relative to the file it is written
-# in, and imported declarations are spliced in front of the root's own (D4).
+# MODULES_PLAN.md step 2 is the loader: a program is a root file plus every module
+# name it reaches (`import geometry`, `import vela.io`), the name is resolved beside
+# the importing file and then under `lib/` beside the program, and imported
+# declarations are spliced in front of the root's own (D4).
 # `module_twin` is the same program in one file; the corpus comparing the two
 # answers is the acceptance sentence "a two-file program prints the same answer as
 # its one-file twin", kept alive instead of written down once.
@@ -519,6 +527,15 @@ refuse enum_nested_pattern                   tests/build/enum_nested_pattern.vel
 # that has to name the *imported* file rather than the root's path.
 interpret module_two_files                   tests/build/modules/two_files.vel
 interpret module_str                         tests/build/modules/str_module.vel
+# A module imported *by a module*, with an escaped literal at every level.  This is
+# the case the loader got wrong until the shift below `load_file` was narrowed to the
+# range the parse had just filled: the parent's shift moved the child's literals a
+# second time, so `"\n"` in `lib/str.vel` read as "" once `lib/io.vel` imported it.
+interpret nested_module_literals              tests/build/modules/nested_lit.vel
+# The standard library's first two modules, and the only case with two levels of
+# import below `lib/` (`io_app` -> `io` -> `str`).  `interpret`, not `run`: a
+# multi-file program is still refused by both back ends by name (MODULES_PLAN D8).
+interpret io_module                           lib/io_app.vel
 run       module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel

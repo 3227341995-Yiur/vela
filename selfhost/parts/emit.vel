@@ -2196,6 +2196,14 @@ def emit_index_decls_expr(nd: Array[int, 1310720], e: int, indent: int) -> None 
         emit_index_decls_expr(nd, nd[e * 10 + 2], indent)
         return
     }
+    if k == 34 {
+        # a slice needs no temporary of its own, but its three operands may each
+        # hold an index that does
+        emit_index_decls_expr(nd, nd[e * 10 + 1], indent)
+        emit_index_decls_expr(nd, nd[e * 10 + 2], indent)
+        emit_index_decls_expr(nd, nd[e * 10 + 3], indent)
+        return
+    }
     if k == 26 {
         # a call: the callee (a name, or a field node carrying a receiver) and the
         # argument list.  The node slots the emitter does *not* treat as
@@ -2319,6 +2327,22 @@ def emit_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
         return emit_cmp(nd, ty, flt, src, path, mem, vm, e)
     }
     if k == 31 {
+        if expr_kind(nd, ty, mem, vm, nd[e * 10 + 1]) == K_STR() {
+            # One byte, bounds-checked against the string's own length and blamed
+            # on the line the index was written on.  The temporary holds the index
+            # so that an index with a side effect -- `s[f()]` -- is computed once,
+            # the same guarantee the array path below makes.
+            emit_str("vela_str_at(")
+            emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 1])
+            emit_str(", (")
+            emit_index_temp(e)
+            emit_str(" = ")
+            emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+            emit_str("), ")
+            emit_location(path, nd_line(nd, e))
+            emit_str(")")
+            return K_STR()
+        }
         # `(check, element)`, with the index computed once: the temporary is both
         # the value the check tests and the subscript (see index temporaries)
         emit_str("(vela_bounds_check((")
@@ -2335,6 +2359,28 @@ def emit_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
         emit_str("])")
         return elem_kind_of(unpack_kind(expr_packed(nd, ty, mem, vm,
                                                     nd[e * 10 + 1])))
+    }
+    if k == 34 {
+        # `s[a:b]` is vela_substr, which clamps both ends and returns a view, so a
+        # slice can never be out of range.  A missing bound is filled in here: 0
+        # for the start, and for the end a value that clamps to the length, because
+        # writing the base's `.len` would evaluate the base a second time.
+        emit_str("vela_substr(")
+        emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 1])
+        emit_str(", ")
+        if nd[e * 10 + 2] > 0 {
+            emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+        } else {
+            emit_str("0")
+        }
+        emit_str(", ")
+        if nd[e * 10 + 3] > 0 {
+            emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 3])
+        } else {
+            emit_str("9223372036854775807LL")
+        }
+        emit_str(")")
+        return K_STR()
     }
     if k == 32 {
         return emit_field(nd, ty, flt, src, path, mem, vm, e)
@@ -2385,9 +2431,18 @@ def expr_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
         return K_NONE()
     }
     if k == 31 {
-        # an index expression is the element kind of whatever it indexes
-        return elem_kind_of(unpack_kind(expr_packed(nd, ty, mem, vm,
-                                                    nd[e * 10 + 1])))
+        # an index expression is the element kind of whatever it indexes -- and a
+        # str's element is a str, because Vela's character *is* a one-byte str
+        base: int = expr_packed(nd, ty, mem, vm, nd[e * 10 + 1])
+        if unpack_kind(base) == K_STR() {
+            return K_STR()
+        }
+        return elem_kind_of(unpack_kind(base))
+    }
+    if k == 34 {
+        # a slice of a str is a str: vela_substr hands back a view of the same
+        # bytes, so the C spelling and the type both stay exactly as they were
+        return K_STR()
     }
     if k == 32 {
         base: int = nd[e * 10 + 1]

@@ -606,6 +606,19 @@ static int64_t vela_bytes_at(vela_str s, int64_t i, const char *file, int line)
     return (int64_t)s.data[i];
 }
 
+/* One byte of a string, as a one-byte `str`.  Vela has no character type: a
+ * character has always been a one-byte string (that is what `char_at` returns and
+ * what `substr` produces), so `s[i]` produces exactly that and the two spellings
+ * of the same operation cannot drift apart.  Out of range is a panic, not an empty
+ * string: an index the program got wrong is a bug, and the array path next to it
+ * has always behaved this way. */
+static vela_str vela_str_at(vela_str s, int64_t i, const char *file, int line)
+{
+    if (i < 0 || i >= s.len)
+        vela_panic("index out of range for this string", file, line);
+    return vela_str_lit((const char *)s.data + i, 1);
+}
+
 /* A slice, not a copy: safe because every str lives in static or permanent
  * memory, so a slice can never outlive what it points at. */
 static vela_str vela_substr(vela_str s, int64_t a, int64_t b)

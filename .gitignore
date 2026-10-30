@@ -176,3 +176,8 @@ desktop.ini
 # and the very next build produced `vm.exe.held1` -- a second rename of a file that was still
 # there.  A rule written for exactly the names one has seen is a rule with a hole in it.
 /selfhost/build/*.held*
+
+# `lib/io_app.vel`'s scratch file.  The corpus runs that program (`interpret io_module`)
+# so it lands in `tests/build/` on every suite run, and it is program output rather than
+# a fixture: a clone that has one did not come from git.
+/tests/build/io_scratch.txt
