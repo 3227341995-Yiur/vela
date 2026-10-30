@@ -50,6 +50,32 @@ to `DefWindowProc`, where the destroy is already written.
 | resident memory | **26 MB** (1.9 MB / 0.5 MB private before the first frame) | sampled outside with `Get-Process WorkingSet64` |
 | a frame of the toolkit's drawing | **0.31 ms** | `.work/gui/bench.vel`: no window, no message loop, 60 frames of 30 fills + 8 rounded rects + 20 labels |
 
+## DPI
+
+The process is per-monitor aware V2 (`SetProcessDpiAwarenessContext(-4)`, before the
+first window — after one, Windows has already decided to bitmap-stretch it) and the
+toolkit scales itself: `sc = GetDpiForSystem() * 1000 / 96` in milli-units, applied
+inside the drawing primitives, so the layout keeps being written in logical units
+against a 1120x720 canvas while the window, the four fonts and every coordinate that
+reaches GDI are device pixels.
+
+A 100% display can only ever exercise `sc = 1000`, so the scale is settable as well:
+
+```bat
+set VELA_GUI_SCALE=1500 && gui\app.exe 200
+```
+
+Measured on this machine (100% display, `GetDpiForSystem()` = 96), 200 frames, three
+runs each:
+
+| forced scale | client area | fps (uncapped) | runs |
+|---|---|---|---|
+| 1000 (100%) | 1120 x 720 | 4255 | 3 clean / 0 crashed |
+| 1500 (150%) | 1680 x 1080 | 3125 | 3 clean / 0 crashed |
+
+The window size, the fonts and the hit-testing all follow the same number, which is why
+the client area is exactly 1.5x in both directions.
+
 If a number disagrees, check the two places it comes from: what `gui/app.exe 200`
 prints about itself, and `runtime/vela_runtime.h`'s two regions (`VELA_ARENA_MB`,
 `VELA_PERSIST_MB`), which since `87c3faf` are *reserved* rather than committed — that

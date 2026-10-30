@@ -4,8 +4,8 @@
 
 <!--
 源文件 : README.md
-源文件字节 : 4286
-源文件 SHA256 : 9ae332c9839ee0056d5cf297d4135db03588ff512ba202b590a20a3a2d28b49c
+源文件字节 : 5318
+源文件 SHA256 : c5c936f99cde0a3a6e57b36cc968c3dc8b2bcb582a086f458b5a777a8d30488b
 翻译日期 : 2026-10-30
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过时，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -54,6 +54,28 @@ gui\app.exe 200                              ::  画 200 帧就退出，并打�
 | fps | **8333–13333（不封顶）** | 同上，`frames * 1000 / spent` |
 | 常驻内存 | **26 MB**（首帧前 1.9 MB / 私有 0.5 MB） | 外部用 `Get-Process WorkingSet64` 采样 |
 | 工具包一帧的绘制成本 | **0.31 ms** | `.work/gui/bench.vel`：无窗口、无消息循环，60 帧 × 30 填充 + 8 圆角 + 20 文本 |
+
+## DPI
+
+进程是 per-monitor aware V2（`SetProcessDpiAwarenessContext(-4)`，必须在第一个窗口之前调用——
+之后 Windows 已经决定要位图拉伸这个进程了），工具包自己缩放：`sc = GetDpiForSystem() * 1000 / 96`
+按千分之一为单位，在绘制原语内部应用，所以布局仍然按 1120×720 的逻辑画布书写，而窗口、四个字体
+和每一个进 GDI 的坐标都是设备像素。
+
+100% 的显示器只能跑到 `sc = 1000`，所以缩放比例也是可设的：
+
+```bat
+set VELA_GUI_SCALE=1500 && gui\app.exe 200
+```
+
+在这台机器上实测（100% 显示器，`GetDpiForSystem()` = 96），200 帧，每种各三次：
+
+| 强制缩放 | 客户区 | fps（不封顶） | 运行 |
+|---|---|---|---|
+| 1000（100%） | 1120 x 720 | 4255 | 3 干净 / 0 崩 |
+| 1500（150%） | 1680 x 1080 | 3125 | 3 干净 / 0 崩 |
+
+窗口尺寸、字体和命中测试都用同一个数，所以客户区在两个方向上都正好是 1.5 倍。
 
 数字对不上时查这两处：`gui/app.exe 200` 自己打印的 `startup` / `frame time` / `fps`，以及
 `runtime/vela_runtime.h` 的两个区（`VELA_ARENA_MB`、`VELA_PERSIST_MB`）——`87c3faf` 之后它们是

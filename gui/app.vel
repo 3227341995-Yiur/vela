@@ -79,6 +79,9 @@ extern c def malloc(n: int) -> int
 extern c def free(p: int) -> int
 extern c def Sleep(ms: int) -> None
 extern c def GetTickCount64() -> int
+extern c def SetProcessDpiAwarenessContext(ctx: int) -> int
+extern c def GetDpiForSystem() -> int
+extern c def GetDpiForWindow(hwnd: int) -> int
 extern c def ValidateRect(hwnd: int, rect: int) -> int
 extern c def InvalidateRect(hwnd: int, rect: int, erase: int) -> int
 extern c def CreatePen(style: int, w: int, color: int) -> int
@@ -108,6 +111,12 @@ def text() -> int { return rgb(230, 232, 240) }
 def muted() -> int { return rgb(138, 144, 166) }
 def line() -> int { return rgb(44, 47, 60) }
 
+# Device pixels from logical ones, in milli-units: `sc` is 1000 at 96 dpi, 1250 at
+# 120, 1500 at 144.  Every primitive below applies it, so the app writes logical units.
+def d(v: int, sc: int) -> int {
+    return v * sc // 1000
+}
+
 def want_w() -> int { return 1120 }
 def want_h() -> int { return 720 }
 
@@ -117,42 +126,43 @@ def want_h() -> int { return 720 }
 # deliberate first cut, named here rather than discovered later: the next version
 # caches one brush per colour.
 
-def fill(dc: int, x: int, y: int, w: int, h: int, color: int) -> None {
+def fill(sc: int, dc: int, x: int, y: int, w: int, h: int, color: int) -> None {
     br: int = CreateSolidBrush(color)
     old: int = SelectObject(dc, br)
-    PatBlt(dc, x, y, w, h, 15728673)
+    PatBlt(dc, d(x, sc), d(y, sc), d(w, sc), d(h, sc), 15728673)
     SelectObject(dc, old)
     DeleteObject(br)
 }
 
-def round_fill(dc: int, x: int, y: int, w: int, h: int, r: int, color: int) -> None {
+def round_fill(sc: int, dc: int, x: int, y: int, w: int, h: int, r: int,
+               color: int) -> None {
     br: int = CreateSolidBrush(color)
     old: int = SelectObject(dc, br)
-    RoundRect(dc, x, y, x + w, y + h, r, r)
+    RoundRect(dc, d(x, sc), d(y, sc), d(x + w, sc), d(y + h, sc), d(r, sc), d(r, sc))
     SelectObject(dc, old)
     DeleteObject(br)
 }
 
-def label(dc: int, font: int, x: int, y: int, s: str, color: int) -> None {
+def label(sc: int, dc: int, font: int, x: int, y: int, s: str, color: int) -> None {
     SelectObject(dc, font)
     SetTextColor(dc, color)
     SetBkMode(dc, 1)
-    TextOutA(dc, x, y, s, len(s))
+    TextOutA(dc, d(x, sc), d(y, sc), s, len(s))
 }
 
 # ---------------------------------------------------------------- widgets
 # Immediate mode: a widget is a function that draws and answers a question.  The
 # caller owns the state, which is why a click is `down and not prev_down and inside`.
 
-def inside(mx: int, my: int, x: int, y: int, w: int, h: int) -> bool {
-    if mx < x { return False }
-    if my < y { return False }
-    if mx >= x + w { return False }
-    if my >= y + h { return False }
+def inside(sc: int, mx: int, my: int, x: int, y: int, w: int, h: int) -> bool {
+    if mx < d(x, sc) { return False }
+    if my < d(y, sc) { return False }
+    if mx >= d(x + w, sc) { return False }
+    if my >= d(y + h, sc) { return False }
     return True
 }
 
-def button(dc: int, font: int, x: int, y: int, w: int, h: int, s: str,
+def button(sc: int, dc: int, font: int, x: int, y: int, w: int, h: int, s: str,
            hot: bool, down: bool) -> None {
     mut c: int = panel_hi()
     if hot {
@@ -161,26 +171,26 @@ def button(dc: int, font: int, x: int, y: int, w: int, h: int, s: str,
             c = accent_dn()
         }
     }
-    round_fill(dc, x, y, w, h, 14, c)
+    round_fill(sc, dc, x, y, w, h, 14, c)
     mut tc: int = text()
     if hot {
         tc = rgb(12, 14, 20)
     }
-    label(dc, font, x + 20, y + (h - 16) // 2, s, tc)
+    label(sc, dc, font, x + 20, y + (h - 16) // 2, s, tc)
 }
 
-def card(dc: int, x: int, y: int, w: int, h: int) -> None {
-    round_fill(dc, x, y, w, h, 18, panel())
+def card(sc: int, dc: int, x: int, y: int, w: int, h: int) -> None {
+    round_fill(sc, dc, x, y, w, h, 18, panel())
 }
 
 # A 0..100 bar in a rounded trough.
-def meter(dc: int, x: int, y: int, w: int, h: int, pct: int) -> None {
-    round_fill(dc, x, y, w, h, h // 2, panel_hi())
+def meter(sc: int, dc: int, x: int, y: int, w: int, h: int, pct: int) -> None {
+    round_fill(sc, dc, x, y, w, h, h // 2, panel_hi())
     mut fw: int = w * pct // 100
     if fw < h {
         fw = h
     }
-    round_fill(dc, x, y, fw, h, h // 2, accent())
+    round_fill(sc, dc, x, y, fw, h, h // 2, accent())
 }
 
 # ---------------------------------------------------------------- numbers to text
@@ -263,12 +273,27 @@ def parse_int(s: str) -> int {
 # ---------------------------------------------------------------- the program
 
 def main() -> None {
-    w: int = want_w()
-    h: int = want_h()
+    # Per-monitor aware V2, before the first window: without it Windows bitmap-stretches
+    # this process and every glyph is a resampled bitmap instead of a glyph.
+    SetProcessDpiAwarenessContext(0 - 4)
+    dpi: int = GetDpiForSystem()
+    mut sc: int = dpi * 1000 // 96
+    # A 100% display can only ever exercise sc = 1000, so the scale is also settable
+    # from the environment: `VELA_GUI_SCALE=1500 gui\app.exe 200` draws the whole
+    # window at 150% on a 100% screen, which is how the scaling path gets tested at all
+    # on the machine this was written on (measured: GetDpiForSystem() = 96 there).
+    override: str = env("VELA_GUI_SCALE")
+    if len(override) > 0 {
+        sc = parse_int(override)
+    }
+    w: int = d(want_w(), sc)
+    h: int = d(want_h(), sc)
+    # frame metrics come back in *device* pixels already, so they are not scaled; the
+    # logical client height is what the layout below is written against
     cap: int = GetSystemMetrics(4)
     fx: int = GetSystemMetrics(7)
     fy: int = GetSystemMetrics(8)
-    ch: int = h - cap - 2 * fy
+    ch: int = want_h() - (cap + 2 * fy) * 1000 // sc
     win_x: int = 120
     win_y: int = 80
 
@@ -304,10 +329,14 @@ def main() -> None {
 
     # Segoe UI at four sizes.  Charset 1 (DEFAULT_CHARSET) and quality 5 (CLEARTYPE)
     # so Latin and Chinese both render, antialiased.
-    f_title: int = CreateFontA(34, 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
-    f_body: int = CreateFontA(20, 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
-    f_small: int = CreateFontA(16, 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
-    f_num: int = CreateFontA(64, 0, 0, 0, 700, 0, 0, 0, 1, 0, 0, 5, 0, "Segoe UI")
+    f_title: int = CreateFontA(d(34, sc), 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 5, 0,
+                               "Segoe UI")
+    f_body: int = CreateFontA(d(20, sc), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0,
+                              "Segoe UI")
+    f_small: int = CreateFontA(d(16, sc), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0,
+                               "Segoe UI")
+    f_num: int = CreateFontA(d(64, sc), 0, 0, 0, 700, 0, 0, 0, 1, 0, 0, 5, 0,
+                             "Segoe UI")
 
     msg: int = malloc(64)
 
@@ -361,8 +390,8 @@ def main() -> None {
         mx: int = (pos % 65536) - win_x - fx
         my: int = (pos // 65536) - win_y - cap - fy
         down: bool = low16(GetAsyncKeyState(1)) >= 32768
-        hot_x: bool = inside(mx, my, 44, 596, 180, 52)
-        hot_reset: bool = inside(mx, my, 240, 596, 180, 52)
+        hot_x: bool = inside(sc, mx, my, 44, 596, 180, 52)
+        hot_reset: bool = inside(sc, mx, my, 240, 596, 180, 52)
         if down {
             if not prev_down {
                 if hot_x {
@@ -377,57 +406,57 @@ def main() -> None {
         prev_down = down
 
         # ---- the frame
-        fill(mem, 0, 0, w, h, bg())
+        fill(sc, mem, 0, 0, w, h, bg())
 
         # sidebar
-        fill(mem, 0, 0, 300, ch, panel())
-        label(mem, f_title, 36, 40, "Vela", text())
-        label(mem, f_small, 36, 86, "native desktop toolkit", muted())
-        fill(mem, 36, 130, 228, 1, line())
-        label(mem, f_body, 36, 156, "overview", accent())
-        label(mem, f_body, 36, 196, "widgets", muted())
-        label(mem, f_body, 36, 236, "layout", muted())
-        label(mem, f_body, 36, 276, "theme", muted())
-        label(mem, f_small, 36, ch - 96, "one file, no C", muted())
-        label(mem, f_small, 36, ch - 72, "user32 + gdi32", muted())
+        fill(sc, mem, 0, 0, 300, ch, panel())
+        label(sc, mem, f_title, 36, 40, "Vela", text())
+        label(sc, mem, f_small, 36, 86, "native desktop toolkit", muted())
+        fill(sc, mem, 36, 130, 228, 1, line())
+        label(sc, mem, f_body, 36, 156, "overview", accent())
+        label(sc, mem, f_body, 36, 196, "widgets", muted())
+        label(sc, mem, f_body, 36, 236, "layout", muted())
+        label(sc, mem, f_body, 36, 276, "theme", muted())
+        label(sc, mem, f_small, 36, ch - 96, "one file, no C", muted())
+        label(sc, mem, f_small, 36, ch - 72, "user32 + gdi32", muted())
 
         # header
-        label(mem, f_small, 340, 44, "THIS WINDOW IS A VELA PROGRAM", muted())
-        label(mem, f_title, 340, 70, "Immediate-mode, no callbacks", text())
-        fill(mem, 340, 130, 744, 1, line())
+        label(sc, mem, f_small, 340, 44, "THIS WINDOW IS A VELA PROGRAM", muted())
+        label(sc, mem, f_title, 340, 70, "Immediate-mode, no callbacks", text())
+        fill(sc, mem, 340, 130, 744, 1, line())
 
         # the counter card
-        card(mem, 340, 160, 340, 200)
-        label(mem, f_small, 364, 184, "clicks", muted())
-        label(mem, f_num, 364, 208, digits(clicks), text())
+        card(sc, mem, 340, 160, 340, 200)
+        label(sc, mem, f_small, 364, 184, "clicks", muted())
+        label(sc, mem, f_num, 364, 208, digits(clicks), text())
         mut since: str = "never"
         if clicks > 0 {
             since = concat(digits(GetTickCount64() - last_click_at), " ms ago")
         }
-        label(mem, f_small, 364, 312, concat("last: ", since), muted())
+        label(sc, mem, f_small, 364, 312, concat("last: ", since), muted())
 
         # the meter card
-        card(mem, 704, 160, 380, 200)
-        label(mem, f_small, 728, 184, "frame budget used", muted())
+        card(sc, mem, 704, 160, 380, 200)
+        label(sc, mem, f_small, 728, 184, "frame budget used", muted())
         mut pct: int = 6
         if frames > 0 {
             pct = 6 + (frames - (frames // 60) * 60)
         }
-        meter(mem, 728, 216, 332, 22, pct)
-        label(mem, f_body, 728, 258, concat(digits(spent), " ms total"), text())
-        label(mem, f_small, 728, 300, "measured by the program itself", muted())
+        meter(sc, mem, 728, 216, 332, 22, pct)
+        label(sc, mem, f_body, 728, 258, concat(digits(spent), " ms total"), text())
+        label(sc, mem, f_small, 728, 300, "measured by the program itself", muted())
 
         # the widgets card
-        card(mem, 340, 384, 744, 180)
-        label(mem, f_small, 364, 408, "widgets", muted())
-        label(mem, f_body, 364, 436, "hover and press are polled, not delivered", text())
-        meter(mem, 364, 480, 332, 18, 62)
-        label(mem, f_small, 364, 512, concat(digits(frames), " frames drawn"), muted())
-        label(mem, f_small, 720, 512, "Esc, or the close button, ends the demo", muted())
+        card(sc, mem, 340, 384, 744, 180)
+        label(sc, mem, f_small, 364, 408, "widgets", muted())
+        label(sc, mem, f_body, 364, 436, "hover and press are polled, not delivered", text())
+        meter(sc, mem, 364, 480, 332, 18, 62)
+        label(sc, mem, f_small, 364, 512, concat(digits(frames), " frames drawn"), muted())
+        label(sc, mem, f_small, 720, 512, "Esc, or the close button, ends the demo", muted())
 
         # buttons
-        button(mem, f_body, 44, 596, 180, 52, "click me", hot_x, down)
-        button(mem, f_body, 240, 596, 180, 52, "reset", hot_reset, down)
+        button(sc, mem, f_body, 44, 596, 180, 52, "click me", hot_x, down)
+        button(sc, mem, f_body, 240, 596, 180, 52, "reset", hot_reset, down)
 
         BitBlt(win, 0, 0, w, h, mem, 0, 0, 13369376)
         if frames == 0 {
@@ -461,4 +490,7 @@ def main() -> None {
         }
     }
     print(concat("clicks     : ", digits(clicks)))
+    print(concat("dpi        : ", digits(GetDpiForWindow(hwnd))))
+    print(concat("scale      : ", concat(digits(sc), "/1000")))
+    print(concat("client     : ", concat(digits(w), concat("x", digits(h)))))
 }

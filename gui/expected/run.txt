@@ -1,4 +1,4 @@
-# A real run of gui/app.exe 200, captured on 2026-10-30.
+# A real run of gui/app.exe 200, captured on 2026-10-30 (scale 1000, 96 dpi).
 
 # The numbers vary run to run (they are measurements, not constants); the SHAPE is
 
@@ -16,9 +16,17 @@
 
 #   clicks     :  0              -- nothing can click a headless window
 
+#   dpi        :  <integer>      -- GetDpiForWindow, 96 here
 
-startup    : 16 ms
+#   scale      :  <n>/1000       -- the toolkit's own scale factor
+
+#   client     :  <w>x<h>        -- device pixels, 1120x720 at 100%, 1680x1080 at 150%
+
+startup    : 15 ms
 frames     : 200
 frame time : 0 ms
-fps        : 12500
+fps        : 13333
 clicks     : 0
+dpi        : 96
+scale      : 1000/1000
+client     : 1120x720
