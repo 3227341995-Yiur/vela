@@ -55,15 +55,23 @@ prints about itself, and `runtime/vela_runtime.h`'s two regions (`VELA_ARENA_MB`
 `VELA_PERSIST_MB`), which since `87c3faf` are *reserved* rather than committed — that
 is why the resident number is 26 MB and not 793 MB.
 
-## One defect that is still open
+## The crash this environment has, not the toolkit
 
-`gui/app.exe` sometimes exits with `0xC0000005`: with the window **shown** roughly one
-run in two, usually the one that has been up for five seconds; with `ShowWindow`
-removed, the same program ran 400 frames twice and was clean.  Five seconds is
-Windows' "not responding" clock.  Ruled out so far: `DispatchMessageA` (long gone),
-`DeleteObject`/brush churn, the drawing itself (a variant that draws nothing still
-faulted), pacing `Sleep`, `ValidateRect`, `ReleaseDC`; `BeginPaint`/`EndPaint` and
-`UpdateWindow` each reduced the rate without removing it.
+`gui/app.exe` sometimes exits with `0xC0000005` after a few seconds.  The controls that
+settled what it is:
+
+| control | result |
+|---|---|
+| the demo with `ShowWindow` removed, 3000 frames | clean, twice |
+| a window shown, pumped and slept over for ~10 s, **never drawing** | crashed, twice |
+| `notepad.exe` started with `start /min notepad.exe` | alive after 1 s, **gone after 9 s** |
+
+So it is not the drawing, the pacing, the DC lifetime or dispatching — an ordinary
+Windows program with an ordinary visible window does not survive here either, and every
+crashing run's `stderr` carries the injected overlay's own failures
+(`..._CC_CONN__GAMEPP-IPC-OVERLAY`, `[cc_acc] acquire failed`).  The numbers above come
+from the runs that survived, and the hidden-window control is what separates "the
+toolkit is wrong" from "a process with a window is not allowed to live here".
 
 ## What it is not
 

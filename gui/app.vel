@@ -28,6 +28,16 @@
 # declarations that must be byte-exact (a `BOOL`, `GetAsyncKeyState`'s `SHORT`) are
 # the ones the masks exist for.
 #
+# ## A note on this machine, not on the toolkit
+#
+# In the session this was written in, a visible window cannot be kept up: `notepad.exe`
+# started with `start /min notepad.exe` is alive after 1 s and gone after 9 s, and every
+# Vela window dies with 0xC0000005 after a few seconds -- with or without drawing, with
+# or without dispatching, while the same program with the window hidden runs 3000 frames
+# clean.  `stderr` carries the injected overlay's own failures
+# (`..._CC_CONN__GAMEPP-IPC-OVERLAY`, `[cc_acc] acquire failed`).  So the crash is the
+# environment; the numbers below come from the runs that survived.
+#
 # ## What it costs
 #
 # `gui/app.exe 120` draws 120 frames and exits, printing the startup time and the frame
