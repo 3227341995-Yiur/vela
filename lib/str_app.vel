@@ -1,0 +1,31 @@
+# The run that proves `lib/str.vel`: one line per function, expected output beside it.
+import str
+
+def main() -> None {
+    text3: str = concat("one\n", concat("two\n", "three"))
+    print(str.to_str(0))
+    print(str.to_str(42))
+    print(str.to_str(0 - 7))
+    print(str.to_str_f(3.25, 2))
+    print(str.to_str_f(0.5, 3))
+    print(str.to_str_f(0.0 - 1.5, 1))
+    print(str.index_of("hello world", "world"))
+    print(str.index_of("hello", "zzz"))
+    print(str.count_of("banana", "an"))
+    print(str.replace("a-b-c", "-", "+"))
+    print(str.trim("  padded\t\n"))
+    print(str.starts_with("vela.io", "vela"))
+    print(str.ends_with("vela.io", ".io"))
+    print(str.upper("Vela 0.1"))
+    print(str.lower("Vela 0.1"))
+    print(str.char_at("abc", 1))
+    print(str.char_at("abc", 9))
+    print(str.byte_of(65))
+    print(str.parse_int("-1234"))
+    print(str.parse_int("1 234"))
+    print(str.repeat("ab", 3))
+    print(str.pad_left("7", 3, "0"))
+    print(str.hex_of(255))
+    print(str.line_at(text3, 1))
+    print(str.to_str(str.count_of("mississippi", "is")))
+}

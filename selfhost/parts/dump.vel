@@ -348,22 +348,15 @@ def d_node(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     if k == 40 {
         # The one statement that is not part of the program: it says which module the
-        # loader has to read, and the loader takes it out of the chain again.  Two
-        # spellings reach here and both are printed as the reader wrote them: a module
-        # name (`import vela.io`, dots included) and the older path string
-        # (`import "lib/a.vel"`).
+        # loader has to read, and the loader takes it out of the chain again.  It is
+        # printed as the reader wrote it -- a module name, dots included, and the alias
+        # when there is one.
         d_indent(depth)
         emit_str("import ")
-        if nd[n * 10 + 8] == 1 {
-            emit_str("\"")
-            d_str(src, nd[n * 10 + 1], nd[n * 10 + 2], nd[n * 10 + 6])
-            emit_str("\"")
-        } else {
-            d_raw(src, nd[n * 10 + 1], nd[n * 10 + 2])
-            if nd[n * 10 + 4] > 0 {
-                emit_str(" as ")
-                d_raw(src, nd[n * 10 + 3], nd[n * 10 + 4])
-            }
+        d_raw(src, nd[n * 10 + 1], nd[n * 10 + 2])
+        if nd[n * 10 + 4] > 0 {
+            emit_str(" as ")
+            d_raw(src, nd[n * 10 + 3], nd[n * 10 + 4])
         }
         emit_nl()
         return

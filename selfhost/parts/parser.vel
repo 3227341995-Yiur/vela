@@ -548,25 +548,17 @@ def parse_import(src: str, tk: Array[int, 1572864], mut nd: Array[int, 1310720],
         return -1
     }
     if tk_kind(tk, cx.ti) == 4 {
-        # The path as a span, not as a string: the loader decodes it with the same
-        # `substr` + `unescape` pair a string literal gets, so an escape in a path
-        # (`..\\lib\\a.vel` on Windows) means what it means everywhere else.
-        #
-        # `import "path.vel"` is the spelling before the name form existed.  It is kept
-        # because a path is the one thing a name cannot express (a file outside the
-        # library), and because the corpus's module rows were written in it.
-        off: int = tk_off(tk, cx.ti)
-        ln: int = tk_len(tk, cx.ti)
-        flag: int = tk_flag(tk, cx.ti)
-        cx.ti += 1
-        n: int = new_node(nd, cx, 40, line)
-        nd[n * 10 + 1] = off
-        nd[n * 10 + 2] = ln
-        nd[n * 10 + 3] = 0
-        nd[n * 10 + 4] = 0
-        nd[n * 10 + 6] = flag
-        nd[n * 10 + 8] = 1
-        return n
+        # `import "path.vel"` was the first spelling (MODULES_PLAN.md D1) and is gone:
+        # a module is named by a name, and the search rule that name implies is the
+        # whole point of having modules.  The refusal quotes the path so a reader
+        # migrating an old file sees exactly which token to replace.
+        perr_kind(cx, "syntax error",
+                  concat(concat("`import \"",
+                                substr(src, tk_off(tk, cx.ti),
+                                       tk_off(tk, cx.ti) + tk_len(tk, cx.ti))),
+                         "\"`: a path is not a module name -- write `import geometry` (and `import vela.io` for a package)"),
+                  line)
+        return -1
     }
     if not at_name(tk, cx) {
         perr(cx, "expected a module name after `import`: write `import geometry` or `import vela.io`", line)

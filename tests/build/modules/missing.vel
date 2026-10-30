@@ -1,6 +1,6 @@
-﻿# Refuse-case: the module named here does not exist.  The diagnostic names the
+# Refuse-case: the module named here does not exist.  The diagnostic names the
 # resolved path and the line the import is written on.
-import "nosuch.vel"
+import nosuch
 
 def main() -> None {
     print(1)

@@ -1630,35 +1630,23 @@ def load_file(path: str, src: str, base: int, depth: int, file: int,
     s = nd[m * 10 + 1]
     while s >= 0 {
         if nd_kind(nd, s) == 40 {
-            mut lit: str = ""
+            # `import vela.io`, `import vela.io as io`: the only spelling there is
+            lit: str = substr(src, nd[s * 10 + 1],
+                              nd[s * 10 + 1] + nd[s * 10 + 2])
             mut alias: str = ""
-            if nd[s * 10 + 8] == 1 {
-                # the path spelling: `import "../lib/a.vel"`
-                lit = unescape(substr(src, nd[s * 10 + 1],
-                                      nd[s * 10 + 1] + nd[s * 10 + 2]))
-            } else {
-                # the name spelling: `import vela.io`, `import vela.io as io`
-                lit = substr(src, nd[s * 10 + 1],
-                             nd[s * 10 + 1] + nd[s * 10 + 2])
-                if nd[s * 10 + 4] > 0 {
-                    alias = substr(src, nd[s * 10 + 3],
-                                   nd[s * 10 + 3] + nd[s * 10 + 4])
-                }
+            if nd[s * 10 + 4] > 0 {
+                alias = substr(src, nd[s * 10 + 3],
+                               nd[s * 10 + 3] + nd[s * 10 + 4])
             }
-            mut target: str = ""
-            if nd[s * 10 + 8] == 1 {
-                target = resolve_import(path, lit)
-            } else {
-                target = module_path(mem, path, lit)
-                if len(target) == 0 {
-                    mut m2: str = concat("no module named '", lit)
-                    m2 = concat(m2, "': looked for '")
-                    m2 = concat(m2, concat(lit, ".vel"))
-                    m2 = concat(m2, "' beside '")
-                    m2 = concat(m2, path)
-                    m2 = concat(m2, "' and under 'lib/' beside the program")
-                    load_fail(path, nd_line(nd, s), m2)
-                }
+            target: str = module_path(mem, path, lit)
+            if len(target) == 0 {
+                mut m2: str = concat("no module named '", lit)
+                m2 = concat(m2, "': looked for '")
+                m2 = concat(m2, concat(lit, ".vel"))
+                m2 = concat(m2, "' beside '")
+                m2 = concat(m2, path)
+                m2 = concat(m2, "' and under 'lib/' beside the program")
+                load_fail(path, nd_line(nd, s), m2)
             }
             tname: int = intern(target)
             at: int = stack_at(mem, tname)
@@ -1682,9 +1670,7 @@ def load_file(path: str, src: str, base: int, depth: int, file: int,
             # component (`io`), the way Python does.  A reference written `io.read(...)`
             # is the imported `read`, so the member node becomes a plain name here --
             # once, over this file's own nodes, before anything downstream sees them.
-            if nd[s * 10 + 8] != 1 {
-                bind_alias(nd, intern(alias_name(lit, alias)), ni0, mine_end)
-            }
+            bind_alias(nd, intern(alias_name(lit, alias)), ni0, mine_end)
         }
         s = nd[s * 10 + 7]
     }

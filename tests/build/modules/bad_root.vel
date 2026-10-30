@@ -1,5 +1,5 @@
-﻿# Refuse-case: the error is in bad_helper.vel, line 4; the message must say so.
-import "bad_helper.vel"
+# Refuse-case: the error is in bad_helper.vel, line 4; the message must say so.
+import bad_helper
 
 def main() -> None {
     print(broken(1))
