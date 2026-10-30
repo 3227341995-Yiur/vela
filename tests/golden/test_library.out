@@ -1,0 +1,4 @@
+FAIL deliberate failure: got 3, want 4
+FAIL one is less than two (negated): expected false
+5 passed, 2 failed
+2

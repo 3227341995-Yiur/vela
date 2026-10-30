@@ -1,0 +1,62 @@
+# lib/test.vel -- assertions and a tally, so a Vela program can test itself.
+#
+# Vela has no globals and no module-level mutable state, so the tally is a value the
+# caller owns and hands in: `mut t: Tally` is a pointer, so the checks can count into
+# it, and `report` gives the caller the number of failures to do with as it likes
+# (print it, or refuse to continue).
+#
+# Why this and not a framework: a test in this language is a program with a main, and
+# what it needs is the three things that make a failure readable -- what was expected,
+# what happened, and which check it was.  Anything more would be a runner, and a runner
+# is a tool, which `tools/` already is.
+struct Tally {
+    passed: int
+    failed: int
+}
+
+def tally() -> Tally {
+    return Tally(0, 0)
+}
+
+def check_int(mut t: Tally, name: str, got: int, want: int) -> None {
+    if got == want {
+        t.passed += 1
+        return
+    }
+    t.failed += 1
+    print(f"FAIL {name}: got {got}, want {want}")
+}
+
+def check_str(mut t: Tally, name: str, got: str, want: str) -> None {
+    if got == want {
+        t.passed += 1
+        return
+    }
+    t.failed += 1
+    print(f"FAIL {name}: got [{got}], want [{want}]")
+}
+
+def check_true(mut t: Tally, name: str, got: bool) -> None {
+    if got {
+        t.passed += 1
+        return
+    }
+    t.failed += 1
+    print(f"FAIL {name}: expected true")
+}
+
+def check_false(mut t: Tally, name: str, got: bool) -> None {
+    if got {
+        t.failed += 1
+        print(f"FAIL {name}: expected false")
+        return
+    }
+    t.passed += 1
+}
+
+# The one line a run ends with, and the exit status the caller would hand to the OS:
+# the number of failures, zero when everything held.
+def report(t: Tally) -> int {
+    print(f"{t.passed} passed, {t.failed} failed")
+    return t.failed
+}

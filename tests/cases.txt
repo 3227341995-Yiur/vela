@@ -580,6 +580,7 @@ run       io_module                           lib/io_app.vel
 # measured: `vela: panic: boom  at lib/result.vel:76`).
 interpret result_library                      lib/result_app.vel
 run       time_library                        lib/time_app.vel
+run       test_library                        lib/test_app.vel
 run       module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel

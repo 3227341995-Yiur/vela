@@ -1,0 +1,16 @@
+# The run that proves lib/test.vel: four checks that hold, one that does not, and the
+# tally that says so.
+import test
+
+def main() -> None {
+    mut t: Tally = test.tally()
+    test.check_int(t, "one plus one", 1 + 1, 2)
+    test.check_int(t, "subtraction", 5 - 8, 0 - 3)
+    test.check_int(t, "deliberate failure", 3, 4)
+    test.check_str(t, "concat", concat("ve", "la"), "vela")
+    test.check_str(t, "interpolation", f"{1 + 1}", "2")
+    test.check_true(t, "one is less than two", 1 < 2)
+    test.check_false(t, "one is less than two (negated)", 1 < 2)
+    failures: int = test.report(t)
+    print(failures)
+}
