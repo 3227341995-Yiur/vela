@@ -1260,6 +1260,21 @@ def ll_path_global(mut lg: LG, path: str) -> int {
                  vshim_string_global_buf(lg.m, 0))
 }
 
+# The source path for one call site.  `lg.pfile` is one global per compilation unit,
+# which is right for a program of one file and a lie for a program of several: the
+# `path` handed to the stages is then a *table* (one `first line TAB path` row per
+# file), and every runtime call that can panic has to name the file its line came
+# from.  A one-file program takes the `return lg.pfile` branch, so the IR of the
+# compiler's own build does not move -- the same "the old call, not an equivalent
+# one" trick the C back end's `emit_location` uses, and for the same reason: a
+# change to an emitter has to be provable, not plausible.
+def ll_pfile(mut lg: LG, path: str, line: int) -> int {
+    if has_newline(path) {
+        return ll_path_global(lg, path_for_line(path, line))
+    }
+    return lg.pfile
+}
+
 # ----------------------------------------------------- the program's functions
 
 # `vl_` keeps a program's names out of the runtime's way, exactly as the C back
