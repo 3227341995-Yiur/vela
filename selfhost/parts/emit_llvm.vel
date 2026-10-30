@@ -2644,7 +2644,7 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                              lit, fns, a1)
             i: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
                              lit, fns, nd_nx(nd, a1))
-            return ll_call4(lg, lg.f_bytes, s, i, lg.pfile, const_i32(lg, nd_line(nd, e)))
+            return ll_call4(lg, lg.f_bytes, s, i, ll_pfile(lg, path, nd_line(nd, e)), const_i32(lg, nd_line(nd, e)))
         }
         if b == B_WRITE_TEXT() {
             a1: int = nd[e * 10 + 2]
