@@ -1,0 +1,125 @@
+# lib/result.vel -- errors as values.
+#
+# Vela has no exceptions and no unwinding: a `panic` stops the program and prints a
+# line, and that is the right answer for a bug.  It is the wrong answer for a
+# failure the caller can *do something about* -- a file that is not there, a parse
+# that fails, a request that times out -- so those come back as a value, and this
+# module is that value.
+#
+# The type is an enum with payloads, which the language already had: `Ok(int)`
+# carries the answer, `Err(str)` carries why not.  Nothing here is special-cased by
+# the compiler; a program that returns `Result` is an ordinary Vela program, and
+# `match` on it is checked for completeness like every other enum.
+#
+# The convention `errdefer` will read (goal item 3, next): a function whose result
+# type is an enum with a variant named `Err` is one that can fail, and the `Err`
+# variant is the failure.  This module is where that spelling lives so that nothing
+# else has to invent it.
+enum Result {
+    Ok(value: int)
+    Err(reason: str)
+}
+
+# The two constructors.  Named lowercase because they read as verbs at the call
+# site (`return err("no such file")`), and because `Ok`/`Err` themselves are the
+# variants, which a `match` pattern needs to spell exactly.
+def ok(value: int) -> Result {
+    return Ok(value)
+}
+
+def err(reason: str) -> Result {
+    return Err(reason)
+}
+
+# Did it work?  Written as a `match` rather than a comparison because that is the
+# only way to ask, and because the match is what the checker proves complete.
+def is_ok(r: Result) -> bool {
+    mut answer: bool = False
+    match r {
+        Ok(v) { answer = True }
+        Err(e) { answer = False }
+    }
+    return answer
+}
+
+def is_err(r: Result) -> bool {
+    mut answer: bool = False
+    match r {
+        Ok(v) { answer = False }
+        Err(e) { answer = True }
+    }
+    return answer
+}
+
+# The value, or a panic that carries the reason text.  This is the one place the
+# two worlds meet: a caller that has decided an error cannot happen says so by
+# calling this, and the program stops with the message the failing function wrote.
+def unwrap(r: Result) -> int {
+    mut answer: int = 0
+    mut why: str = ""
+    mut bad: bool = False
+    match r {
+        Ok(v) {
+            answer = v
+        }
+        Err(e) {
+            bad = True
+            why = e
+        }
+    }
+    if bad {
+        panic(why)
+    }
+    return answer
+}
+
+# The value, or the caller's fallback.  No panic anywhere: this is the shape most
+# callers want, and it is why `Result` is worth having.
+def or_else(r: Result, fallback: int) -> int {
+    mut answer: int = fallback
+    match r {
+        Ok(v) {
+            answer = v
+        }
+        Err(e) {
+            answer = fallback
+        }
+    }
+    return answer
+}
+
+# Why it failed, or "" when it did not.  An empty reason cannot be confused with a
+# failure, because a failure always has one: `err("")` is refused by convention in
+# the doc comment and produced by nothing in this module.
+def error_of(r: Result) -> str {
+    mut why: str = ""
+    match r {
+        Ok(v) {
+            why = ""
+        }
+        Err(e) {
+            why = e
+        }
+    }
+    return why
+}
+
+# `divide(a, b)` -- the smallest function that can fail on purpose, and the one a
+# reader will reach for first.  Division by zero is a *panic* in the operator
+# (`a // 0` stops the program), which is right for a program bug; this is the
+# checked form for input that came from outside.
+def divide(a: int, b: int) -> Result {
+    if b == 0 {
+        return err("division by zero")
+    }
+    return ok(a // b)
+}
+
+# Two failures in a row: the first one wins and the second value is not computed.
+def divide_chain(a: int, b: int, c: int) -> Result {
+    first: Result = divide(a, b)
+    if is_err(first) {
+        return first
+    }
+    return divide(unwrap(first), c)
+}

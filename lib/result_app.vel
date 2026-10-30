@@ -1,0 +1,25 @@
+# The run that proves `lib/result.vel`: errors as values, in the order a caller
+# meets them.
+#
+# Every value here is passed straight from one call into the next, with no local
+# annotation: Vela has no dotted *type* names yet (`result.Result` is a name the
+# parser does not read as a type), so the shape that works -- and the one the
+# `unwrap`/`or_else`/`error_of` API was designed for -- is the chain.
+import result
+
+def main() -> None {
+    print(result.is_ok(result.ok(42)))
+    print(result.is_err(result.ok(42)))
+    print(result.is_ok(result.err("no such file")))
+    print(result.is_err(result.err("no such file")))
+    print(result.unwrap(result.ok(42)))
+    print(result.or_else(result.ok(42), 0))
+    print(result.or_else(result.err("no such file"), 0 - 1))
+    print(result.error_of(result.ok(42)))
+    print(result.error_of(result.err("no such file")))
+    print(result.unwrap(result.divide(9, 3)))
+    print(result.or_else(result.divide(9, 0), 0 - 1))
+    print(result.error_of(result.divide(9, 0)))
+    print(result.unwrap(result.divide_chain(100, 5, 2)))
+    print(result.error_of(result.divide_chain(100, 0, 2)))
+}
