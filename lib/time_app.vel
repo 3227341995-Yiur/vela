@@ -1,0 +1,28 @@
+import time
+
+def main() -> None {
+    print(time.two_digits(0))
+    print(time.two_digits(7))
+    print(time.two_digits(42))
+    print(time.hms(0))
+    print(time.hms(59))
+    print(time.hms(3599))
+    print(time.hms(3600))
+    print(time.hms(3661))
+    print(time.hms(360000))
+    print(time.mss(0))
+    print(time.mss(61))
+    print(time.whole_seconds(0.0 - 3.0))
+    print(time.whole_seconds(2.9))
+    start: float = time.now_seconds()
+    later: float = time.now_seconds()
+    if later >= start {
+        print("the clock does not go backwards")
+    }
+    if time.elapsed(start) >= 0.0 {
+        print("an interval is not negative")
+    }
+    if time.since_ms(start) >= 0 {
+        print("elapsed milliseconds is not negative")
+    }
+}

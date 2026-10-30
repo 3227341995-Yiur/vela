@@ -1,0 +1,52 @@
+# lib/time.vel -- the clock, and the arithmetic a program needs around it.
+# The runtime gives exactly one primitive: now(), UTC seconds as a float.
+def now_seconds() -> float {
+    return now()
+}
+
+def elapsed(start: float) -> float {
+    return now() - start
+}
+
+def since_ms(start: float) -> int {
+    return to_int((now() - start) * 1000.0)
+}
+
+def whole_seconds(d: float) -> int {
+    if d <= 0.0 {
+        return 0
+    }
+    return to_int(d)
+}
+
+def two_digits(v: int) -> str {
+    if v < 0 {
+        return "00"
+    }
+    if v < 10 {
+        return concat("0", to_str(v))
+    }
+    return to_str(v)
+}
+
+def hms(total_seconds: int) -> str {
+    mut s: int = total_seconds
+    if s < 0 {
+        s = 0
+    }
+    h: int = s // 3600
+    m: int = (s - h * 3600) // 60
+    sec: int = s - h * 3600 - m * 60
+    mut out: str = concat(to_str(h), concat(":", two_digits(m)))
+    return concat(out, concat(":", two_digits(sec)))
+}
+
+def mss(seconds_value: int) -> str {
+    mut s: int = seconds_value
+    if s < 0 {
+        s = 0
+    }
+    m: int = s // 60
+    sec: int = s - m * 60
+    return concat(concat(to_str(m), ":"), two_digits(sec))
+}
