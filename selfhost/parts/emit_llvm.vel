@@ -2558,7 +2558,8 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             ak: int = expr_kind(nd, ty, mem, vm, nd[e * 10 + 2])
             av: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
                               lit, fns, nd[e * 10 + 2])
-            return ll_call3(lg, lg.f_abs, ll_wide(lg, ak, av), lg.pfile,
+            return ll_call3(lg, lg.f_abs, ll_wide(lg, ak, av),
+                                ll_pfile(lg, path, nd_line(nd, e)),
                             const_i32(lg, nd_line(nd, e)))
         }
         if b == B_MIN_INT() or b == B_MAX_INT() or b == B_MIN_FLT() or b == B_MAX_FLT() {
@@ -3580,7 +3581,8 @@ def ll_for(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                       vshim_build_load(lg.m, lg.t_i64, hs))
     lo: int = ll_ck(lg, "the lower bound", vshim_const_i64(lg.m, 0 - 9223372036854775807 - 1))
     hi: int = ll_ck(lg, "the upper bound", vshim_const_i64(lg.m, 9223372036854775807))
-    nv: int = ll_call6(lg, lg.f_add, cur3, a[2], lo, hi, lg.pfile,
+    nv: int = ll_call6(lg, lg.f_add, cur3, a[2], lo, hi,
+                           ll_pfile(lg, path, line),
                        const_i32(lg, line))
     ll_ckst(lg, "storing the induction variable",
             vshim_build_store(lg.m, nv, hs))
