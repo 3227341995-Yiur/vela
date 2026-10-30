@@ -82,7 +82,12 @@ def emit_fn_ret_ctype(nd: Array[int, 1310720], ty: Array[int, 262144],
                       f: int) -> None {
     t: int = ft_get(mem, f, FT_RETTY())
     packed: int = type_packed(ty, t, mem, vm)
-    if unpack_kind(packed) == K_ST() {
+    if unpack_kind(packed) == K_ST() or unpack_kind(packed) == K_ENUM() {
+        # an enum value is a struct in C too (`emit_enum_defs` writes the tagged
+        # definition), so the *binding* spelling is the right one for both: the plain
+        # `emit_ctype` below only knows the scalar kinds, and it used to answer "this
+        # type has no C spelling" for a function that returns an enum -- measured on
+        # the first program that did, `tests/build/errdefer_groups.vel`
         emit_binding_ctype(nd, ty, mem, vm, path, packed,
                            nd_line(nd, ft_get(mem, f, FT_DEF())))
         return
@@ -2007,10 +2012,18 @@ def emit_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
         emit_str(");\n")
         return
     }
+    if k == 43 {
+        # The `errdefer` marker.  The group is run from the `return` that carries it,
+        # and the marker itself sits after the body's last `return`, so what reaches
+        # here is dead code: the block must still be *checked* (which it was, in the
+        # body), but emitting it again would run the cleanups twice.
+        return
+    }
     if k == 9 {
         v2: int = nd[s * 10 + 1]
         cl: int = nd[s * 10 + 8]
-        if cl <= 0 {
+        ec: int = nd[s * 10 + 9]
+        if cl <= 0 and ec <= 0 {
             if v2 <= 0 {
                 emit_str("return;\n")
                 return
@@ -2020,10 +2033,11 @@ def emit_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
             emit_str(";\n")
             return
         }
-        # The cleanup chain from `defer`.  The answer is computed into a temporary
-        # first -- a `defer` block is ordinary code and may change what the returned
-        # expression read -- then the cleanups run, then the function leaves with the
-        # value it had already computed.
+        # The cleanup chains from `defer` and `errdefer`.  The answer is computed into
+        # a temporary first -- a cleanup is ordinary code and may change what the
+        # returned expression read -- then the `errdefer` group runs if the answer is
+        # the `Err` variant, then the plain cleanups, then the function leaves with
+        # the value it had already computed.
         emit_str("{\n")
         emit_indent(indent + 1)
         if v2 > 0 {
@@ -2034,6 +2048,26 @@ def emit_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
             emit_str(" = ")
             emit_expr(nd, ty, flt, src, path, mem, vm, v2)
             emit_str(";\n")
+        }
+        if ec > 0 {
+            # An enum value in C is `struct vl_E { int64_t vl_tag; ... }`, and the tag
+            # is the variant's record index + 1 (`emit_match` switches on the same
+            # number).  The `Err` variant is looked up by name, which is the
+            # convention `lib/result.vel` declares and the checker already required.
+            evi43: int = find_variant(mem, vm, intern("Err"))
+            if evi43 < 0 {
+                trap(path, nd_line(nd, s),
+                     "`errdefer` is here but this program has no variant named `Err`")
+            }
+            emit_indent(indent + 1)
+            emit_str("if (vela_ret_")
+            emit_int(s)
+            emit_str(".vl_tag == ")
+            emit_int(evi43 + 1)
+            emit_str(") {\n")
+            emit_body(nd, ty, flt, src, path, mem, vm, ec, indent + 2)
+            emit_indent(indent + 1)
+            emit_str("}\n")
         }
         emit_body(nd, ty, flt, src, path, mem, vm, cl, indent + 1)
         emit_indent(indent + 1)

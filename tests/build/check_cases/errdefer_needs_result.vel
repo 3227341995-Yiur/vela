@@ -1,0 +1,8 @@
+def plain(x: int) -> int {
+    errdefer { print("no error path here") }
+    return x
+}
+
+def main() -> None {
+    print(plain(1))
+}

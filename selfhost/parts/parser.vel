@@ -647,12 +647,6 @@ def parse_defer(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                 mut flt: Array[float, 262144], mut cx: Ctx, line: int,
                 iserr: int) -> int {
     cx.ti += 1
-    if iserr == 1 {
-        perr_kind(cx, "syntax error",
-                  "`errdefer` is not implemented in Vela 0.1: it has to ask whether the value a function is returning is that function's `Err` variant, and a cleanup cannot read an enum's tag yet. `defer` is available, and `lib/result.vel` is how an error becomes a value today",
-                  line)
-        return -1
-    }
     if cx.fndef == 0 {
         perr(cx, "a `defer` belongs to a function body", line)
         return -1
@@ -681,9 +675,15 @@ def parse_defer(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
     nd[rec * 10 + 1] = first
     nd[rec * 10 + 2] = cnt
     nd[rec * 10 + 3] = iserr
-    # most recent first: the chain is the order the cleanups have to run in
-    nd[rec * 10 + 7] = cx.dfirst
-    cx.dfirst = rec
+    # most recent first: the chain is the order the cleanups have to run in.  The
+    # two kinds are two chains, because one of them runs only on the error path.
+    if iserr == 1 {
+        nd[rec * 10 + 7] = cx.efirst
+        cx.efirst = rec
+    } else {
+        nd[rec * 10 + 7] = cx.dfirst
+        cx.dfirst = rec
+    }
     return new_node(nd, cx, 15, line)
 }
 
@@ -727,23 +727,25 @@ def defers_count(nd: Array[int, 1310720], head: int) -> int {
 # Hang the cleanup list off every `return` in this body -- including the ones a
 # reader forgets, inside `if`, `while`, `for` and a `match` arm.  Slot 8 of a
 # `return` is read by all three paths and by nothing else.
-def defers_stamp(mut nd: Array[int, 1310720], first: int, chain: int) -> None {
+def defers_stamp(mut nd: Array[int, 1310720], first: int, dchain: int,
+                 echain: int) -> None {
     mut s: int = first
     while s > 0 {
         k: int = nd_kind(nd, s)
         if k == 9 {
-            nd[s * 10 + 8] = chain
+            nd[s * 10 + 8] = dchain
+            nd[s * 10 + 9] = echain
         } else if k == 10 {
-            defers_stamp(nd, nd[s * 10 + 2], chain)
-            defers_stamp(nd, nd[s * 10 + 4], chain)
+            defers_stamp(nd, nd[s * 10 + 2], dchain, echain)
+            defers_stamp(nd, nd[s * 10 + 4], dchain, echain)
         } else if k == 11 {
-            defers_stamp(nd, nd[s * 10 + 2], chain)
+            defers_stamp(nd, nd[s * 10 + 2], dchain, echain)
         } else if k == 12 {
-            defers_stamp(nd, nd[s * 10 + 5], chain)
+            defers_stamp(nd, nd[s * 10 + 5], dchain, echain)
         } else if k == 37 {
             mut a: int = nd[s * 10 + 2]
             while a > 0 {
-                defers_stamp(nd, nd[a * 10 + 4], chain)
+                defers_stamp(nd, nd[a * 10 + 4], dchain, echain)
                 a = nd_nx(nd, a)
             }
         }
@@ -996,30 +998,68 @@ def parse_funcdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
     if (flag & 8) == 0 {
         mut savedfn: int = cx.fndef
         mut savedd: int = cx.dfirst
+        mut savede: int = cx.efirst
         cx.fndef = 1
         cx.dfirst = -1
+        cx.efirst = -1
         body = parse_body(src, tk, tkf, nd, ty, flt, cx)
         bcount = cx.rslot
         cx.fndef = savedfn
         # `defer`: the records were collected most-recent-first while the body was
-        # parsed.  One chain serves every exit, and the appended copy is what makes
-        # the block part of the body for everybody who *walks* it -- resolve assigns
-        # its slots, the checker checks it, and a body that falls off the end runs it.
-        if cx.dfirst > 0 {
-            chain: int = defers_chain(nd, cx.dfirst)
-            defers_stamp(nd, body, chain)
+        # parsed.  One chain per kind serves every exit, and the appended copy is what
+        # makes the block part of the body for everybody who *walks* it -- resolve
+        # assigns its slots, the checker checks it, and a body that falls off the end
+        # runs it.
+        #
+        # The `errdefer` group goes in as ONE marker statement (kind 43) rather than as
+        # bare statements: the marker is what the checker reads to refuse `errdefer` in
+        # a function whose result is not an enum with an `Err` variant, and the block
+        # itself is run by the back ends through `ret + 9`.  The marker sits after the
+        # body's last `return`, which is dead code -- and `errdefer` in a function that
+        # can fall off the end is refused by the checker, so there is no live path that
+        # would reach it.
+        if cx.dfirst > 0 or cx.efirst > 0 {
+            mut dchain: int = -1
+            mut echain: int = -1
+            mut mcount: int = 0
+            if cx.dfirst > 0 {
+                dchain = defers_chain(nd, cx.dfirst)
+                mcount += defers_count(nd, cx.dfirst)
+            }
+            mut marker: int = -1
+            if cx.efirst > 0 {
+                echain = defers_chain(nd, cx.efirst)
+                # the marker carries the *errdefer's* line, not the `def`'s: it is the
+                # node the checker refuses, so `at file:N` names the line a reader fixes
+                marker = new_node(nd, cx, 43, nd[cx.efirst * 10 + 5])
+                nd[marker * 10 + 1] = echain
+                nd[marker * 10 + 2] = defers_count(nd, cx.efirst)
+                mcount += 1
+            }
+            defers_stamp(nd, body, dchain, echain)
             if body < 0 {
-                body = chain
+                body = dchain
             } else {
                 mut t: int = body
                 while nd_nx(nd, t) > 0 {
                     t = nd_nx(nd, t)
                 }
-                nd[t * 10 + 7] = chain
+                if dchain > 0 {
+                    nd[t * 10 + 7] = dchain
+                    mut t2: int = dchain
+                    while nd_nx(nd, t2) > 0 {
+                        t2 = nd_nx(nd, t2)
+                    }
+                    t = t2
+                }
+                if marker > 0 {
+                    nd[t * 10 + 7] = marker
+                }
             }
-            bcount += defers_count(nd, cx.dfirst)
+            bcount += mcount
         }
         cx.dfirst = savedd
+        cx.efirst = savede
     }
     n: int = new_node(nd, cx, 2, line)
     nd[n * 10 + 1] = nm

@@ -1,5 +1,0 @@
-def main() -> None {
-    defer { print("never") }
-    errdefer { print("on the error path") }
-    print("body")
-}

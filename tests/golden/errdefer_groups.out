@@ -1,0 +1,8 @@
+returning the answer
+plain cleanup
+5
+----
+returning the failure: division by zero
+error path cleanup
+plain cleanup
+division by zero

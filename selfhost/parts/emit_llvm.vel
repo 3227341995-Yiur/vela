@@ -3353,6 +3353,14 @@ def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     v: int = nd[s * 10 + 1]
     rk: int = unpack_kind(lg.retk)
     cl: int = nd[s * 10 + 8]
+    if nd[s * 10 + 9] > 0 {
+        # `errdefer` needs the enum tag of the value being returned, and this back end
+        # has no enum lowering at all (a tagged union), so it is refused here by name
+        # rather than silently running the cleanup on every path -- which is exactly
+        # the difference between `defer` and `errdefer`.
+        trap(path, nd_line(nd, s),
+             "`errdefer` is not compiled by the LLVM back end: it needs the enum tag of the value being returned, and this back end has no enum lowering yet (the C back end and the interpreter both implement it)")
+    }
     if rk == K_NONE() {
         if v > 0 {
             trap(path, nd_line(nd, s), "this function returns nothing, so it cannot return a value")
@@ -3633,6 +3641,12 @@ def ll_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if k == 15 {
+        return
+    }
+    if k == 43 {
+        # The `errdefer` marker: dead code in the body, and refused at the `return`
+        # that would run it (`ll_return_stmt`).  Emitting nothing here keeps the body
+        # walk able to pass through it.
         return
     }
     if k == 37 {

@@ -50,7 +50,10 @@ struct Ctx {
     # out of itself would run the cleanup of a function it is not in), and `bdepth`
     # is how many blocks deep the parser is, because a `defer` is only legal at
     # depth 1: in a conditional block it would run even when the block did not.
+    # `efirst` is the same list for `errdefer`, kept apart because it runs only when
+    # the value being returned is the function's `Err` variant.
     dfirst: int
+    efirst: int
     fndef: int
     indef: int
     bdepth: int
@@ -922,7 +925,7 @@ def main() -> None {
     }
     mut tk: Array[int, 1572864]
     mut tkf: Array[float, 262144]
-    mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0)
+    mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0)
     lex(src, tk, tkf, cx)
     if cx.err == 1 {
         # the diagnostic has already been written to stderr; stop with a

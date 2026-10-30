@@ -307,15 +307,20 @@ refuse nested_function                       tests/build/check_cases/nested_func
 # (same output) and is not a separate row because the program is not one the LLVM
 # back end refuses.
 run defer_blocks                             tests/build/defer_blocks.vel
-# The three shapes `defer` refuses, plus the one keyword that is not implemented:
-# a `defer` in a loop (it registers once), a `return` inside the cleanup, a `defer`
-# at a file's top level, and `errdefer` (it needs the enum tag of the value being
-# returned, which a cleanup cannot read yet).
+# The four shapes the language refuses around a cleanup: a `defer` in a loop (it
+# registers once), a `defer` in a conditional block (it would run even when the block
+# did not), a `return` inside a cleanup, and a `defer` at a file's top level.
 refuse defer_in_loop                         tests/build/check_cases/defer_in_loop.vel
 refuse defer_in_if                           tests/build/check_cases/defer_in_if.vel
 refuse defer_with_return                     tests/build/check_cases/defer_with_return.vel
 refuse defer_at_top                          tests/build/check_cases/defer_at_top.vel
-refuse errdefer_not_implemented              tests/build/check_cases/errdefer_not_implemented.vel
+# `errdefer`: runs only when the value being returned is the function's `Err` variant,
+# which means the function has to be able to fail at all.  `run-c`, not `run`: the LLVM
+# back end has no enum lowering, so `tests/llvm-refusals.txt` carries the line that says
+# so, and the C back end and the interpreter have to agree on the answer (they were made
+# to: the two groups run error-first, then plain).
+run-c errdefer_groups                        tests/build/errdefer_groups.vel
+refuse errdefer_needs_result                 tests/build/check_cases/errdefer_needs_result.vel
 refuse tuple                                 tests/build/check_cases/tuple.vel
 refuse adjacent_string_literals              tests/build/check_cases/adjacent_string_literals.vel
 # Not like its neighbours above: this one is not about a feature the language does

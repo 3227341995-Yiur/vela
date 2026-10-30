@@ -2250,10 +2250,17 @@ def exec_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
         vm.dst = keep3
         return C_NEXT()
     }
+    if k == 43 {
+        # The `errdefer` group's marker.  It is dead code in the body -- the group is
+        # run from the `return` that carries it -- so executing it is a no-op, and
+        # the marker exists only so that resolve and the checker walk the block once.
+        return C_NEXT()
+    }
     if k == 9 {
         v2: int = nd[s * 10 + 1]
         cl: int = nd[s * 10 + 8]
-        if cl <= 0 {
+        ec: int = nd[s * 10 + 9]
+        if cl <= 0 and ec <= 0 {
             if v2 < 0 {
                 set_none(mem, fmem, vm.dst)
                 return C_RET()
@@ -2274,6 +2281,30 @@ def exec_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
             set_none(mem, fmem, rc)
         } else {
             eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, v2)
+        }
+        # The `errdefer` group runs when the value on its way out is the `Err` variant
+        # of the function's result enum, and it runs **before** the plain cleanups --
+        # the specific cleanup first, the general one last.  An enum value here is a
+        # `K_ST` cell whose base cell holds the tag (`set_variant` wrote the variant's
+        # index + 1), so the test is one cell read.
+        if ec > 0 {
+            if mem[rc * 4 + 0] == K_ST() {
+                base43: int = mem[rc * 4 + 1]
+                if mem[base43 * 4 + 0] == K_INT() {
+                    evi: int = find_variant(mem, vm, intern("Err"))
+                    if evi >= 0 {
+                        if mem[base43 * 4 + 1] == evi + 1 {
+                            mut c2: int = ec
+                            while c2 > 0 {
+                                vm.dst = cell_alloc(vm)
+                                exec_stmt(nd, ty, mem, fmem, flt, ipool, fpool,
+                                          bpool, src, path, vm, c2)
+                                c2 = nd_nx(nd, c2)
+                            }
+                        }
+                    }
+                }
+            }
         }
         mut c: int = cl
         while c > 0 {

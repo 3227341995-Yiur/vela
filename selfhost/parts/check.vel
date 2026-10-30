@@ -3386,6 +3386,35 @@ def ck_stmt(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         ck_block(nd, mem, path, vm, nd[s * 10 + 2])
         return
     }
+    if k == 43 {
+        # The `errdefer` marker.  A cleanup that runs "on the error path" needs the
+        # function to *have* one: the result must be an enum with a variant named
+        # `Err`, because that is the only thing a `return` can carry that says
+        # "this failed".  `vm.cret` is the packed return type of the function the
+        # checker is inside, so the question is asked where the answer is.
+        msg43: str = "`errdefer` needs a function that can fail: its result type must be an enum with a variant named `Err` (see `lib/result.vel`), and this function's result is not one"
+        rk43: int = unpack_kind(vm.cret)
+        if rk43 != K_ENUM() {
+            ck_type(path, nd_line(nd, s), msg43)
+            return
+        }
+        eid43: int = enum_of_row(mem, vm, unpack_len(vm.cret))
+        if eid43 < 0 {
+            ck_type(path, nd_line(nd, s), msg43)
+            return
+        }
+        vi43: int = find_variant(mem, vm, intern("Err"))
+        if vi43 < 0 {
+            ck_type(path, nd_line(nd, s), msg43)
+            return
+        }
+        if vrb_get(mem, vi43, VRB_ENUM()) != eid43 {
+            ck_type(path, nd_line(nd, s), msg43)
+            return
+        }
+        ck_block(nd, mem, path, vm, nd[s * 10 + 1])
+        return
+    }
     if k == 12 {
         ck_expr(nd, mem, path, vm, nd[s * 10 + 2])
         ck_expr(nd, mem, path, vm, nd[s * 10 + 3])

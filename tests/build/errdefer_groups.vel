@@ -1,0 +1,61 @@
+enum Outcome {
+    Ok(value: int)
+    Err(reason: str)
+}
+
+def divide(a: int, b: int) -> Outcome {
+    if b == 0 {
+        return Err("division by zero")
+    }
+    return Ok(a // b)
+}
+
+def try_it(x: int) -> Outcome {
+    errdefer { print("error path cleanup") }
+    defer { print("plain cleanup") }
+    r: Outcome = divide(10, x)
+    mut bad: bool = False
+    mut v: int = 0
+    mut why: str = ""
+    match r {
+        Ok(p) {
+            v = p
+        }
+        Err(e) {
+            bad = True
+            why = e
+        }
+    }
+    if bad {
+        print(concat("returning the failure: ", why))
+        return r
+    }
+    print("returning the answer")
+    return r
+}
+
+def main() -> None {
+    a: Outcome = try_it(2)
+    mut av: int = 0
+    match a {
+        Ok(p) {
+            av = p
+        }
+        Err(e) {
+            av = 0 - 1
+        }
+    }
+    print(av)
+    print("----")
+    b: Outcome = try_it(0)
+    mut bwhy: str = ""
+    match b {
+        Ok(p) {
+            bwhy = "no error"
+        }
+        Err(e) {
+            bwhy = e
+        }
+    }
+    print(bwhy)
+}

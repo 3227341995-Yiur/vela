@@ -1019,6 +1019,16 @@ def walk_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
         vm.scn = mark
         return
     }
+    if k == 43 {
+        # The `errdefer` group's marker: a block that the back ends run from the
+        # `return` node, appended here so that its names are bound exactly once.  It
+        # is walked like a block -- its own scope, its slots -- and never executed
+        # from this position (the marker sits after the body's last `return`).
+        markE: int = vm.scn
+        walk_body(nd, ty, mem, path, vm, nd[s * 10 + 1])
+        vm.scn = markE
+        return
+    }
     if k == 12 {
         walk_expr(nd, ty, mem, path, vm, nd[s * 10 + 2])
         walk_expr(nd, ty, mem, path, vm, nd[s * 10 + 3])

@@ -1,0 +1,2 @@
+vela: type error: `errdefer` needs a function that can fail: its result type must be an enum with a variant named `Err` (see `lib/result.vel`), and this function's result is not one
+  at tests/build/check_cases/errdefer_needs_result.vel:2

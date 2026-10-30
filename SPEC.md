@@ -367,15 +367,27 @@ Three shapes are refused, each by name and with a line number:
 and `defer` is refused anywhere that is not a function body at all — a file's top
 level, a struct body, or another `defer`.
 
-`errdefer` (a cleanup for an error path) is **not implemented**: it has to ask whether
-the value a function is returning is that function's `Err` variant, and a cleanup
-cannot read an enum's tag yet. Errors are values today (`lib/result.vel`), and the
-`Err` spelling that file defines is the convention `errdefer` will read.
+`errdefer { ... }` is the cleanup for the **error path**. It runs only when the value
+the function is returning is the `Err` variant of that function's own result enum, so
+the function must be able to fail at all: its result type has to be an enum with a
+variant named `Err` — the convention `lib/result.vel` declares — and `errdefer` in any
+other function is a type error with a line number, not a cleanup that quietly never
+runs:
 
-A panic does **not** run deferred blocks: `panic` stops the program where it is, and
-Vela has no unwinding. That is a deliberate limit, not an omission — a panic is a bug,
-and a program that has to clean up after its bugs has a bigger problem than cleanup
-order.
+```vela
+def try_it(x: int) -> Result {
+    errdefer { print("error path") }
+    defer { print("always") }
+    return divide(10, x)          # `Err` here: "error path" then "always"
+}                                 # `Ok` here:  "always" only
+```
+
+When both groups are present the **`errdefer` blocks run first**, then the plain ones,
+each group in reverse registration order: the specific cleanup before the general one.
+
+A `panic` runs **no** cleanup at all. The limit is deliberate and not an omission —
+`panic` stops the program where it is and Vela has no unwinding; a program that has to
+clean up after its own bugs has a larger problem than cleanup order.
 
 ### 4.1 Refused statements
 

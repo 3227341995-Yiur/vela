@@ -44,3 +44,7 @@ enum_match_no_else               | is not compiled by the LLVM back end yet: an 
 enum_else_arm                    | is not compiled by the LLVM back end yet: an enum value is a tagged union
 enum_two_enums                   | is not compiled by the LLVM back end yet: an enum value is a tagged union
 enum_exhaustive_switch           | is not compiled by the LLVM back end yet: an enum value is a tagged union
+enum_exhaustive_switch           | is not compiled by the LLVM back end yet: an enum value is a tagged union
+# errdefer needs the same tag: the cleanup runs only when the value being returned is
+# the function's Err variant, and with no enum lowering there is no tag to read.
+errdefer_groups                  | is not compiled by the LLVM back end yet: an enum value is a tagged union
