@@ -559,7 +559,7 @@ def elem_store(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
 # `Array[float, 4] = [0.0]` literal is zero-padded by the compiler.
 def fill_literal(nd: Array[int, 1310720], ty: Array[int, 262144],
                  mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-                 flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                 flt: Array[float, 262144], mut ipool: Array[int, 2097152],
                  mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
                  src: str, path: str, mut vm: VM, lit: int, ac: int) -> None {
     if nd_kind(nd, lit) != 33 {
@@ -583,7 +583,7 @@ def fill_literal(nd: Array[int, 1310720], ty: Array[int, 262144],
 
 def exec_array_decl(nd: Array[int, 1310720], ty: Array[int, 262144],
                     mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-                    flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                    flt: Array[float, 262144], mut ipool: Array[int, 2097152],
                     mut fpool: Array[float, 1048576],
                     mut bpool: Array[u8, 33554432], src: str, path: str,
                     mut vm: VM, s: int, dstc: int, kind: int) -> None {
@@ -856,7 +856,7 @@ def check_kinds(path: str, mut vm: VM, mut mem: Array[int, 3741696], c: int,
 
 def eval_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+              flt: Array[float, 262144], mut ipool: Array[int, 2097152],
               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
               src: str, path: str, mut vm: VM, e: int) -> None {
     vm.line = nd[e * 10 + 5]
@@ -1122,6 +1122,43 @@ def arg_cell(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
     }
 }
 
+# The text of an int, the way `vela_int_text` writes it: a minus sign when the
+# value is negative, then the digits, with no padding and no separator.  The
+# interpreter has to build this in Vela because the runtime's version writes into
+# C memory -- and they have to agree *exactly*, which is the whole point of
+# `to_str` being one operation with one answer in all three paths.
+def ev_int_text(n: int) -> str {
+    if n == 0 {
+        return "0"
+    }
+    mut v: int = n
+    mut neg: bool = False
+    if v < 0 {
+        neg = True
+        v = 0 - v
+    }
+    mut out: str = ""
+    while v > 0 {
+        d: int = v - (v // 10) * 10
+        mut ch: str = "0"
+        if d == 1 { ch = "1" }
+        if d == 2 { ch = "2" }
+        if d == 3 { ch = "3" }
+        if d == 4 { ch = "4" }
+        if d == 5 { ch = "5" }
+        if d == 6 { ch = "6" }
+        if d == 7 { ch = "7" }
+        if d == 8 { ch = "8" }
+        if d == 9 { ch = "9" }
+        out = concat(ch, out)
+        v = v // 10
+    }
+    if neg {
+        return concat("-", out)
+    }
+    return out
+}
+
 def do_len(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
            mut ipool: Array[int, 2097152], mut fpool: Array[float, 1048576],
            mut bpool: Array[u8, 33554432], path: str, mut vm: VM, c: int,
@@ -1156,6 +1193,32 @@ def do_builtin(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         arg_cell(mem, fmem, path, vm, argbase, K_FLT())
         set_int(mem, fmem, dst, to_int(fmem[argbase]))
         return
+    }
+    if b == B_TO_STR() {
+        # int, bool and str; a float is refused by name, because Vela's one float
+        # formatting rule is `to_str_f(x, decimals)` and a second rule here would
+        # have to reproduce printf's rounding in Vela to stay equal to it.
+        t: int = mem[argbase * 4 + 0]
+        if t == K_STR() {
+            set_str(mem, fmem, dst, mem[argbase * 4 + 1])
+            return
+        }
+        if t == K_INT() {
+            set_str(mem, fmem, dst, intern(ev_int_text(mem[argbase * 4 + 1])))
+            return
+        }
+        if t == K_BOOL() {
+            if mem[argbase * 4 + 1] != 0 {
+                set_str(mem, fmem, dst, intern("True"))
+            } else {
+                set_str(mem, fmem, dst, intern("False"))
+            }
+            return
+        }
+        if t == K_FLT() {
+            trap(path, vm.line, "`to_str` of a float has no spelling: write `to_str_f(x, 2)` (or whichever number of decimals this value needs)")
+        }
+        trap(path, vm.line, "`to_str` is defined for int, bool and str (and a float through `to_str_f`)")
     }
     if b == B_SQRT() {
         arg_cell(mem, fmem, path, vm, argbase, K_FLT())
@@ -1440,7 +1503,7 @@ def field_cell(mem: Array[int, 3741696], path: str, mut vm: VM, recv: int,
 
 def exec_construct(nd: Array[int, 1310720], ty: Array[int, 262144],
                    mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-                   flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                   flt: Array[float, 262144], mut ipool: Array[int, 2097152],
                    mut fpool: Array[float, 1048576],
                    mut bpool: Array[u8, 33554432], src: str, path: str,
                    mut vm: VM, sid: int, args: int, dst: int) -> None {
@@ -1520,7 +1583,7 @@ def set_variant(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
 
 def exec_make_variant(nd: Array[int, 1310720], ty: Array[int, 262144],
                       mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-                      flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                      flt: Array[float, 262144], mut ipool: Array[int, 2097152],
                       mut fpool: Array[float, 1048576],
                       mut bpool: Array[u8, 33554432], src: str, path: str,
                       mut vm: VM, vi: int, args: int, dst: int) -> None {
@@ -1577,7 +1640,7 @@ def bind_arm(nd: Array[int, 1310720], mem: Array[int, 3741696],
 # returns from the function, exactly as it would from anywhere else in the block).
 def exec_match(nd: Array[int, 1310720], ty: Array[int, 262144],
                mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-               flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+               flt: Array[float, 262144], mut ipool: Array[int, 2097152],
                mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
                src: str, path: str, mut vm: VM, s: int) -> int {
     mark: int = vm.sp
@@ -1627,7 +1690,7 @@ def exec_match(nd: Array[int, 1310720], ty: Array[int, 262144],
 
 def call_method(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-                flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                flt: Array[float, 262144], mut ipool: Array[int, 2097152],
                 mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
                 src: str, path: str, mut vm: VM, e: int) -> None {
     callee: int = nd[e * 10 + 1]
@@ -1682,7 +1745,7 @@ def call_method(nd: Array[int, 1310720], ty: Array[int, 262144],
 
 def call_builtin(nd: Array[int, 1310720], ty: Array[int, 262144],
                  mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-                 flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                 flt: Array[float, 262144], mut ipool: Array[int, 2097152],
                  mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
                  src: str, path: str, mut vm: VM, b: int, args: int,
                  dst: int) -> None {
@@ -1707,7 +1770,7 @@ def call_builtin(nd: Array[int, 1310720], ty: Array[int, 262144],
 
 def eval_call(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+              flt: Array[float, 262144], mut ipool: Array[int, 2097152],
               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
               src: str, path: str, mut vm: VM, e: int) -> None {
     callee: int = nd[e * 10 + 1]
@@ -1746,7 +1809,7 @@ def eval_call(nd: Array[int, 1310720], ty: Array[int, 262144],
 
 def call_user(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+              flt: Array[float, 262144], mut ipool: Array[int, 2097152],
               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
               src: str, path: str, mut vm: VM, fn: int, args: int,
               dst: int) -> None {
@@ -1782,7 +1845,7 @@ def call_user(nd: Array[int, 1310720], ty: Array[int, 262144],
 # special.
 def enter_call(nd: Array[int, 1310720], ty: Array[int, 262144],
                mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-               flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+               flt: Array[float, 262144], mut ipool: Array[int, 2097152],
                mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
                src: str, path: str, mut vm: VM, fn: int, argbase: int,
                dst: int) -> None {
@@ -1936,7 +1999,7 @@ def dst_packed_of(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
 
 def store_place(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-                flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                flt: Array[float, 262144], mut ipool: Array[int, 2097152],
                 mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
                 src: str, path: str, mut vm: VM, tgt: int, value: int) -> None {
     if nd_kind(nd, tgt) == 25 {
@@ -1988,7 +2051,7 @@ def store_place(nd: Array[int, 1310720], ty: Array[int, 262144],
 
 def run_body(nd: Array[int, 1310720], ty: Array[int, 262144],
              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-             flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+             flt: Array[float, 262144], mut ipool: Array[int, 2097152],
              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
              src: str, path: str, mut vm: VM, head: int) -> int {
     # vm.dst is the destination of a `return` in this frame, so a statement is
@@ -2011,7 +2074,7 @@ def run_body(nd: Array[int, 1310720], ty: Array[int, 262144],
 
 def exec_for(nd: Array[int, 1310720], ty: Array[int, 262144],
              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-             flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+             flt: Array[float, 262144], mut ipool: Array[int, 2097152],
              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
              src: str, path: str, mut vm: VM, s: int) -> int {
     mark: int = vm.sp
@@ -2085,7 +2148,7 @@ def exec_for(nd: Array[int, 1310720], ty: Array[int, 262144],
 
 def exec_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-              flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+              flt: Array[float, 262144], mut ipool: Array[int, 2097152],
               mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
               src: str, path: str, mut vm: VM, s: int) -> int {
     vm.line = nd[s * 10 + 5]
@@ -3121,7 +3184,7 @@ def dbg_start(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
 # is a constant, and the run's own exit status is the process's, not this line's.
 def dbg_exit(nd: Array[int, 1310720], ty: Array[int, 262144],
              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-             flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+             flt: Array[float, 262144], mut ipool: Array[int, 2097152],
              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
              src: str, path: str, mut vm: VM) -> None {
     dbg_say("exited 0")
@@ -3147,7 +3210,7 @@ def find_main(mut mem: Array[int, 3741696], mut vm: VM,
 
 def run_main(nd: Array[int, 1310720], ty: Array[int, 262144],
              mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-             flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+             flt: Array[float, 262144], mut ipool: Array[int, 2097152],
              mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
              src: str, path: str, dir: str, mut vm: VM) -> None {
     fn: int = find_main(mem, vm, nd)
@@ -3190,7 +3253,7 @@ def run_main(nd: Array[int, 1310720], ty: Array[int, 262144],
 # way to reach one — this is what `vm.after_main` buys.
 def dbg_call_name(nd: Array[int, 1310720], ty: Array[int, 262144],
                   mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-                  flt: Array[float, 65536], mut ipool: Array[int, 2097152],
+                  flt: Array[float, 262144], mut ipool: Array[int, 2097152],
                   mut fpool: Array[float, 1048576], mut bpool: Array[u8, 33554432],
                   src: str, path: str, mut vm: VM, fn: int) -> None {
     dst: int = cell_alloc(vm)

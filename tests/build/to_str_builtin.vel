@@ -1,0 +1,20 @@
+# `to_str`: the text of an int, of a bool, or a str unchanged.  A float is refused
+# by name (see `check_cases/to_str_float.vel`), because Vela's one float formatting
+# rule names the precision and `str.to_str_f(x, d)` is that rule.
+def main() -> None {
+    print(to_str(0))
+    print(to_str(42))
+    print(to_str(0 - 7))
+    print(to_str(True))
+    print(to_str(False))
+    print(to_str("already text"))
+    print(concat("n=", to_str(9)))
+    print(len(to_str(1234)))
+    print(to_str(len("abcd")))
+    if to_str(1) == "1" {
+        print("the text of 1 is 1")
+    }
+    if to_str(True) == "True" {
+        print("and the text of true agrees with print")
+    }
+}

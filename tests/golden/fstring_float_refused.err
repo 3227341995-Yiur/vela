@@ -1,0 +1,2 @@
+vela: type error: `to_str` of a float has no spelling: Vela's one float formatting rule names the precision, so write `to_str_f(x, 2)` (or whichever number of decimals this value needs)
+  at tests/build/check_cases/fstring_float_refused.vel:3

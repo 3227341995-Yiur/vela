@@ -428,6 +428,12 @@ def B_NOW() -> int       { return 31 }
 def B_CONCAT() -> int    { return 32 }
 def B_RUN_CMD() -> int   { return 33 }
 def B_ENV() -> int       { return 34 }
+# `to_str(v)`: the text of an int, of a bool, or a str unchanged.  A *float* is
+# refused by name in every path, because Vela has exactly one float formatting rule
+# and it is "the caller names the precision" (`str.to_str_f(x, d)`).  A second,
+# implicit rule would be a rounding difference between the interpreter and the two
+# compiled back ends waiting to be found by whoever's program printed 0.1 + 0.2.
+def B_TO_STR() -> int    { return 35 }
 
 # The element kind of an Array record decides which pool holds its elements.
 # Nested arrays are refused rather than silently mis-stored: Vela 0.1 has no

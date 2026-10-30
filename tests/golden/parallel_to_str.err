@@ -1,0 +1,2 @@
+vela: safety error: 'parallel for' may not build strings: `to_str` allocates out of the same string region, and `f"..."` lowers to it
+  at tests/build/check_cases/parallel_to_str.vel:4

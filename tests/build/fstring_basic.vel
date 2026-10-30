@@ -1,0 +1,22 @@
+# `f"..."`: `concat` and `to_str` written short.  Every shape the lexer and the
+# parser have to agree about is here -- text before, between and after holes, two
+# holes touching, no holes at all, no text at all, and a hole holding something
+# that is itself an expression (a call, an index, a slice).
+def main() -> None {
+    n: int = 42
+    name: str = "vela"
+    flag: bool = True
+    print(f"n={n}")
+    print(f"hello {name}")
+    print(f"n is {n}, name is {name}, ok={flag}")
+    print(f"{n}{n}")
+    print(f"no holes")
+    print(f"")
+    print(f"len={len(name)}")
+    print(f"first={name[0]} slice={name[1:3]}")
+    print(f"{to_str(n + 1)}")
+    print(concat(f"<{n}>", "!"))
+    if f"{n}" == to_str(n) {
+        print("interpolation is to_str")
+    }
+}

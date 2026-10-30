@@ -1536,6 +1536,35 @@ def ck_slice_bound(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
     }
 }
 
+# `to_str(1.5)` has no spelling, and the refusal belongs here rather than in the
+# three back ends: it is a fact about the *program*, and a program the checker
+# accepts is a program every path has to be able to compile.  A float's only text
+# form names its precision (`str.to_str_f(x, d)`); `to_str` would have to invent
+# one, and the interpreter would then have to reproduce printf's rounding in Vela
+# to agree with the two compiled paths about every value it printed.
+def ck_to_str(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
+              path: str, vm: VM, e: int) -> None {
+    callee: int = nd[e * 10 + 1]
+    if nd_kind(nd, callee) != 25 {
+        return
+    }
+    if nt_get(mem, callee, NT_SYM()) != SYM_BUILTIN() {
+        return
+    }
+    if nt_get(mem, callee, NT_VAL()) != B_TO_STR() {
+        return
+    }
+    a: int = nd[e * 10 + 2]
+    if a <= 0 {
+        return
+    }
+    if ck_etype(nd, mem, vm, a) != K_FLT() {
+        return
+    }
+    ck_type(path, nd_line(nd, e),
+            "`to_str` of a float has no spelling: Vela's one float formatting rule names the precision, so write `to_str_f(x, 2)` (or whichever number of decimals this value needs)")
+}
+
 def ck_expr(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
             path: str, vm: VM, e: int) -> None {
     # The rules that need a static type of their own still come later; what this
@@ -1577,6 +1606,7 @@ def ck_expr(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         # last, so that a verdict about the arguments themselves keeps the
         # precedence it has always had
         ck_extern_call(nd, mem, path, vm, e)
+        ck_to_str(nd, mem, path, vm, e)
         return
     }
     if k == 33 {
@@ -2861,6 +2891,16 @@ def ck_pure(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
                 if nt_get(mem, callee, NT_VAL()) == B_CONCAT() {
                     # the other spelling of `+` on two strings; see `ck_concat_msg`
                     ck_safety(path, nd_line(nd, e), ck_concat_msg())
+                    return
+                }
+                if nt_get(mem, callee, NT_VAL()) == B_TO_STR() {
+                    # `to_str` allocates too -- an int's text is a new string in the
+                    # same region -- and it is what `f"{x}"` lowers to, so refusing it
+                    # here is what keeps interpolation out of a parallel body as well.
+                    # Measured before this line: `out[i] = f"v{i}"` was *accepted* and
+                    # every iteration's `concat` allocated out of one shared region.
+                    ck_safety(path, nd_line(nd, e),
+                              "'parallel for' may not build strings: `to_str` allocates out of the same string region, and `f\"...\"` lowers to it")
                     return
                 }
             }

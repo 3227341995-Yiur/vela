@@ -316,7 +316,7 @@ def is_cmp_op(tk: Array[int, 1572864], cx: Ctx) -> bool {
 # ---------------------------------------------------------------------------
 # pools
 
-def flt_add(mut flt: Array[float, 65536], mut cx: Ctx, v: float, line: int) -> int {
+def flt_add(mut flt: Array[float, 262144], mut cx: Ctx, v: float, line: int) -> int {
     i: int = cx.fp
     if i >= 65536 {
         perr(cx, "this file has too many float literals", line)
@@ -412,9 +412,9 @@ def end_of_stmt(src: str, tk: Array[int, 1572864], mut cx: Ctx) -> None {
 # The number of statements is left in cx.rslot, because a Vela function has
 # exactly one return value and threading a second one through a pool would be
 # worse than one documented out-parameter.
-def parse_body(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_body(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-               mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+               mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     cx.rslot = 0
     if cx.err != 0 {
         return -1
@@ -609,9 +609,9 @@ def parse_import(src: str, tk: Array[int, 1572864], mut nd: Array[int, 1310720],
 # ---------------------------------------------------------------------------
 # statements
 
-def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-               mut flt: Array[float, 65536], mut cx: Ctx, top: int) -> int {
+               mut flt: Array[float, 262144], mut cx: Ctx, top: int) -> int {
     if cx.err != 0 {
         return -1
     }
@@ -745,9 +745,9 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
 }
 
 # `flag` is what goes into the node's flag word: 4 for `pure def`, 0 otherwise
-def parse_funcdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_funcdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                   mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                  mut flt: Array[float, 65536], mut cx: Ctx, flag: int) -> int {
+                  mut flt: Array[float, 262144], mut cx: Ctx, flag: int) -> int {
     line: int = ti_line(tk, cx)
     cx.ti += 1
     if not at_name(tk, cx) {
@@ -852,9 +852,9 @@ def parse_funcdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
 # declarations (`name: T`) or `def`s.  Telling them apart is the *dumper's* and
 # the interpreter's job, so the parser stores the block as it stands and one
 # shape of body covers both.
-def parse_structdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_structdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                     mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                    mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                    mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     line: int = ti_line(tk, cx)
     cx.ti += 1
     if not at_name(tk, cx) {
@@ -882,9 +882,9 @@ def parse_structdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
 #
 # A payload field reuses the parameter node (kind 3: name and type), so the two
 # places a "name: type" pair is parsed stay the same shape.
-def parse_enumdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_enumdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                   mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                  mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                  mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     line: int = ti_line(tk, cx)
     cx.ti += 1
     if not at_name(tk, cx) {
@@ -941,9 +941,9 @@ def parse_enumdef(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return n
 }
 
-def parse_variant(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_variant(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                   mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                  mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                  mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     line: int = ti_line(tk, cx)
     if not at_name(tk, cx) {
         if kw_as_name(tk, cx, line) {
@@ -1010,9 +1010,9 @@ def parse_variant(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return n
 }
 
-def parse_if(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_if(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
              mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-             mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+             mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     line: int = ti_line(tk, cx)
     cx.ti += 1
     cond: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
@@ -1043,9 +1043,9 @@ def parse_if(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return n
 }
 
-def parse_while(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_while(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                 mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     line: int = ti_line(tk, cx)
     cx.ti += 1
     cond: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
@@ -1060,9 +1060,9 @@ def parse_while(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return n
 }
 
-def parse_for(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_for(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
               mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-              mut flt: Array[float, 65536], mut cx: Ctx, par: int) -> int {
+              mut flt: Array[float, 262144], mut cx: Ctx, par: int) -> int {
     line: int = ti_line(tk, cx)
     cx.ti += 1
     if not at_name(tk, cx) {
@@ -1147,9 +1147,9 @@ def parse_for(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
 # exhaustiveness escape hatch and takes no binding; which arm is legal where -- a
 # duplicate arm, an arm after `else`, a missing variant -- is the checker's
 # question, not the parser's, because the answer needs the enum's variant list.
-def parse_match(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_match(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                 mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     line: int = ti_line(tk, cx)
     cx.ti += 1
     subj: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
@@ -1212,9 +1212,9 @@ def parse_match(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
 # has a call where a binding belongs, and the closing-token check below refuses it
 # with a message that names what it saw.  The binding's *arity* is deliberately
 # not judged here — that needs the variant's field count, which is the checker's.
-def parse_arm(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_arm(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
               mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-              mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+              mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     line: int = ti_line(tk, cx)
     mut pat: int = -1
     mut bhead: int = -1
@@ -1278,9 +1278,9 @@ def parse_arm(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
 }
 
 # `mut x: int = 0`, `x: int = 0`, `x = e`, `x += e`, `f(x)`
-def parse_simple(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_simple(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                  mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                 mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                 mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     line: int = ti_line(tk, cx)
     if at_kw(tk, cx, 19) {
         cx.ti += 1
@@ -1377,15 +1377,15 @@ def parse_simple(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
 # Every level is its own function so that the precedence is the call graph: to
 # read the grammar you read these signatures in order.
 
-def parse_expr(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_expr(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-               mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+               mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     return parse_or(src, tk, tkf, nd, ty, flt, cx)
 }
 
-def parse_or(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_or(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
              mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-             mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+             mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     mut node: int = parse_and(src, tk, tkf, nd, ty, flt, cx)
     while cx.err == 0 and at_kw(tk, cx, 14) {
         line: int = ti_line(tk, cx)
@@ -1400,9 +1400,9 @@ def parse_or(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return node
 }
 
-def parse_and(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_and(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
               mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-              mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+              mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     mut node: int = parse_not(src, tk, tkf, nd, ty, flt, cx)
     while cx.err == 0 and at_kw(tk, cx, 13) {
         line: int = ti_line(tk, cx)
@@ -1417,9 +1417,9 @@ def parse_and(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return node
 }
 
-def parse_not(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_not(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
               mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-              mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+              mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     if cx.err != 0 {
         return -1
     }
@@ -1436,9 +1436,9 @@ def parse_not(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
 }
 
 # one comparison, never a chain: `a < b < c` is refused where it is written
-def parse_cmp(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_cmp(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
               mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-              mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+              mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     left: int = parse_bitor(src, tk, tkf, nd, ty, flt, cx)
     if cx.err != 0 {
         return -1
@@ -1461,9 +1461,9 @@ def parse_cmp(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return left
 }
 
-def parse_bitor(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_bitor(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                 mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     mut node: int = parse_bitxor(src, tk, tkf, nd, ty, flt, cx)
     while cx.err == 0 and at_op(tk, cx, 18) {
         line: int = ti_line(tk, cx)
@@ -1478,9 +1478,9 @@ def parse_bitor(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return node
 }
 
-def parse_bitxor(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_bitxor(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                  mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                 mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                 mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     mut node: int = parse_bitand(src, tk, tkf, nd, ty, flt, cx)
     while cx.err == 0 and at_op(tk, cx, 19) {
         line: int = ti_line(tk, cx)
@@ -1495,9 +1495,9 @@ def parse_bitxor(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return node
 }
 
-def parse_bitand(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_bitand(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                  mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                 mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                 mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     mut node: int = parse_shift(src, tk, tkf, nd, ty, flt, cx)
     while cx.err == 0 and at_op(tk, cx, 17) {
         line: int = ti_line(tk, cx)
@@ -1512,9 +1512,9 @@ def parse_bitand(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return node
 }
 
-def parse_shift(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_shift(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                 mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     mut node: int = parse_additive(src, tk, tkf, nd, ty, flt, cx)
     while cx.err == 0 and (at_op(tk, cx, 35) or at_op(tk, cx, 36)) {
         op: int = ti_val(tk, cx)
@@ -1530,9 +1530,9 @@ def parse_shift(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return node
 }
 
-def parse_additive(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_additive(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                    mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                   mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                   mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     mut node: int = parse_multiplicative(src, tk, tkf, nd, ty, flt, cx)
     while cx.err == 0 and (at_op(tk, cx, 1) or at_op(tk, cx, 2)) {
         op: int = ti_val(tk, cx)
@@ -1548,9 +1548,9 @@ def parse_additive(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return node
 }
 
-def parse_multiplicative(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_multiplicative(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                          mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                         mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                         mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     mut node: int = parse_unary(src, tk, tkf, nd, ty, flt, cx)
     while cx.err == 0 and (at_op(tk, cx, 3) or at_op(tk, cx, 4) or at_op(tk, cx, 5) or at_op(tk, cx, 20)) {
         op: int = ti_val(tk, cx)
@@ -1566,9 +1566,9 @@ def parse_multiplicative(src: str, tk: Array[int, 1572864], tkf: Array[float, 65
     return node
 }
 
-def parse_unary(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_unary(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                 mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     if cx.err != 0 {
         return -1
     }
@@ -1585,9 +1585,9 @@ def parse_unary(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return parse_power(src, tk, tkf, nd, ty, flt, cx)
 }
 
-def parse_power(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_power(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                 mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     node: int = parse_postfix(src, tk, tkf, nd, ty, flt, cx)
     if cx.err != 0 {
         return -1
@@ -1605,9 +1605,9 @@ def parse_power(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return node
 }
 
-def parse_postfix(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_postfix(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                   mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                  mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                  mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     mut node: int = parse_atom(src, tk, tkf, nd, ty, flt, cx)
     while cx.err == 0 {
         if at_op(tk, cx, 9) {
@@ -1703,14 +1703,116 @@ def parse_postfix(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
     return node
 }
 
-def parse_atom(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+# `f"a{x}b"`: the token sequence the lexer left (44 begin, then 4 literal chunks and
+# 45 <expr> 46, then 47) becomes the tree a reader would have written by hand --
+#
+#     concat(concat(lit("a"), to_str(x)), lit("b"))
+#
+# with an empty chunk skipped and the whole thing reduced to a single literal when
+# there is no `{...}` at all.  `+` on two `str`s is the same runtime call as
+# `concat` (SPEC 1.5), so either spelling would have done; `concat` is written out
+# because it is the one that says what it means, and because the checker already
+# treats it as the one operation.
+#
+# The conversion is a *call to the `to_str` builtin*, so no new node kind, no new
+# checker rule and no new back-end case exist for interpolation: the lowering is
+# exactly what a user could have typed.
+def fstr_join(mut nd: Array[int, 1310720], mut cx: Ctx, left: int, right: int,
+              line: int) -> int {
+    if left < 0 {
+        return right
+    }
+    callee: int = new_node(nd, cx, 25, line)
+    nd[callee * 10 + 1] = intern("concat")
+    n: int = new_node(nd, cx, 26, line)
+    nd[n * 10 + 1] = callee
+    nd[n * 10 + 2] = left
+    nd[n * 10 + 3] = 2
+    # the argument chain of *this* call: `left` is its first argument, so `right`
+    # hangs off `left`'s sibling slot.  That slot is free -- a call keeps its own
+    # arguments in +2..+7 of the *first* argument, never in its own +7 -- which is
+    # what makes a left-nested chain legal.
+    nd[left * 10 + 7] = right
+    return n
+}
+
+def fstr_to_str(mut nd: Array[int, 1310720], mut cx: Ctx, e: int,
+                line: int) -> int {
+    callee: int = new_node(nd, cx, 25, line)
+    nd[callee * 10 + 1] = intern("to_str")
+    n: int = new_node(nd, cx, 26, line)
+    nd[n * 10 + 1] = callee
+    nd[n * 10 + 2] = e
+    nd[n * 10 + 3] = 1
+    return n
+}
+
+def parse_fstring(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
+                  mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
+                  mut flt: Array[float, 262144], mut cx: Ctx) -> int {
+    line: int = ti_line(tk, cx)
+    mut node: int = -1
+    cx.ti += 1
+    while cx.err == 0 {
+        kk: int = ti_kind(tk, cx)
+        if kk == 47 {
+            cx.ti += 1
+            break
+        }
+        if kk == 4 {
+            off: int = tk_off(tk, cx.ti)
+            ln: int = tk_len(tk, cx.ti)
+            fl: int = tk_flag(tk, cx.ti)
+            l2: int = ti_line(tk, cx)
+            cx.ti += 1
+            lit_n: int = new_node(nd, cx, 22, l2)
+            nd[lit_n * 10 + 1] = off
+            nd[lit_n * 10 + 2] = ln
+            nd[lit_n * 10 + 6] = fl
+            node = fstr_join(nd, cx, node, lit_n, l2)
+            continue
+        }
+        if kk == 45 {
+            ex_line: int = ti_line(tk, cx)
+            cx.ti += 1
+            e: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+            if cx.err != 0 {
+                return -1
+            }
+            if ti_kind(tk, cx) != 46 {
+                perr(cx, "expected '}' to close the interpolated expression",
+                     ti_line(tk, cx))
+                return -1
+            }
+            cx.ti += 1
+            node = fstr_join(nd, cx, node, fstr_to_str(nd, cx, e, ex_line), ex_line)
+            continue
+        }
+        perr(cx, "this is not part of an interpolated string", ti_line(tk, cx))
+        return -1
+    }
+    if node < 0 {
+        # `f""`: an empty literal, not the absence of a value.  Offset 0 with
+        # length 0 is the empty string in every reader of kind 22.
+        node = new_node(nd, cx, 22, line)
+        nd[node * 10 + 1] = 0
+        nd[node * 10 + 2] = 0
+        nd[node * 10 + 6] = 0
+    }
+    return node
+}
+
+def parse_atom(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-               mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+               mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     if cx.err != 0 {
         return -1
     }
     line: int = ti_line(tk, cx)
     k: int = ti_kind(tk, cx)
+    if k == 44 {
+        return parse_fstring(src, tk, tkf, nd, ty, flt, cx)
+    }
     if k == 2 {
         v: int = ti_val(tk, cx)
         cx.ti += 1
@@ -1834,9 +1936,9 @@ def parse_atom(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
 # ---------------------------------------------------------------------------
 # the whole file
 
-def parse_module(src: str, tk: Array[int, 1572864], tkf: Array[float, 65536],
+def parse_module(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                  mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-                 mut flt: Array[float, 65536], mut cx: Ctx) -> int {
+                 mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     m: int = new_node(nd, cx, 1, 1)
     mut head: int = -1
     mut tail: int = -1

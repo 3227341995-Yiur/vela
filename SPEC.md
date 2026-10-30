@@ -142,8 +142,24 @@ name and the call shape are this one.
   length, so `a[1:3]` would have to denote a view type this language does not have.
 * There is **no mutable string**: `+=` on a `str` builds a new one, and nothing
   appends into an existing one in place.
+* **`to_str(v)` is the text of an `int`, a `bool` or a `str`** — and a `bool`
+  spells itself `True`/`False`, exactly as `print` writes it, because one value
+  with two spellings is a bug waiting to be compared. A `str` is returned
+  unchanged. `to_str` of a **`float` is refused**, with a line number: Vela's one
+  float formatting rule names the precision (`str.to_str_f(x, decimals)`, §8), and a
+  second implicit rule would make the interpreter and the two compiled paths
+  disagree about the last digit of somebody's output.
+* **`f"..."` is interpolation**: inside it, `{expr}` is replaced by `to_str(expr)`
+  and the pieces are joined with `concat`, which is exactly the tree
+  `concat("a", to_str(x))` denotes. So interpolation adds no value semantics of its
+  own, `f"{1.5}"` is refused for the same reason `to_str(1.5)` is, and any
+  expression may stand between the braces — a call, an index, a slice, another
+  f-string. A literal `{` inside an f-string has no spelling (`{{` would have to
+  mean `{`, and the runtime's `unescape` knows nothing about doubling); write
+  `concat("{", ...)`.
 * Concatenation allocates, so it is refused inside a `parallel for` (§7) — the one
-  operator that rule judges without a call in sight.
+  operator that rule judges without a call in sight. Interpolation allocates too,
+  and is refused there for the same reason: it *is* concatenation once lowered.
 
 ### 1.6 Operators
 

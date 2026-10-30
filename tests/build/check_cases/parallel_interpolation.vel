@@ -1,0 +1,7 @@
+def main() -> None {
+    mut out: Array[str, 4] = ["", "", "", ""]
+    parallel for i in range(4) {
+        out[i] = f"v{i}"
+    }
+    print(out[0])
+}

@@ -99,6 +99,24 @@ run while_with_narrowing                     tests/build/while_with_narrowing.ve
 run int_width_literals                       tests/build/int_width_literals.vel
 run strings                                  tests/build/strings.vel
 run string_escapes                           tests/build/string_escapes.vel
+# `to_str` and `f"..."`.  The two rows are one feature seen from both ends:
+# interpolation lowers to `concat` plus a call to the `to_str` *builtin*, so the
+# token sequence the lexer builds and the tree the parser builds are the only new
+# machinery, and the checker, both back ends and the interpreter see ordinary
+# calls they already handled.  The two `refuse` rows are the other half: a float
+# has one text form and it names its precision, so `to_str(1.5)` -- and therefore
+# `f"{1.5}"` -- is a refusal with a line, not a rounding difference between the
+# interpreter and the compiled binary.
+run to_str_builtin                           tests/build/to_str_builtin.vel
+run fstring_basic                            tests/build/fstring_basic.vel
+refuse to_str_float                          tests/build/check_cases/to_str_float.vel
+refuse fstring_float_refused                 tests/build/check_cases/fstring_float_refused.vel
+# Both spellings of "build a string" are refused inside a `parallel for`, and the
+# second row is the one that was *missing* until this pass: `f"{i}"` lowers to a bare
+# `to_str(i)` with no `concat` around it, so the rule that knew `concat` by name let
+# it through and every iteration allocated out of one shared region.
+refuse parallel_interpolation                tests/build/check_cases/parallel_interpolation.vel
+refuse parallel_to_str                       tests/build/check_cases/parallel_to_str.vel
 
 # ------------------------------------------------------- string concatenation
 #

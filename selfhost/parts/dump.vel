@@ -166,7 +166,7 @@ def d_name(nd: Array[int, 1310720], n: int) -> None {
 # A statement list is a linked chain, so walking one is a loop and never an
 # index computation.
 def d_body(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
-           flt: Array[float, 65536], first: int, depth: int) -> None {
+           flt: Array[float, 262144], first: int, depth: int) -> None {
     d_indent(depth)
     emit_str("block")
     emit_nl()
@@ -178,7 +178,7 @@ def d_body(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
 }
 
 def d_chain(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
-            flt: Array[float, 65536], first: int, depth: int) -> None {
+            flt: Array[float, 262144], first: int, depth: int) -> None {
     mut c: int = first
     while c >= 0 {
         d_node(src, nd, ty, flt, c, depth)
@@ -202,7 +202,7 @@ def d_field(nd: Array[int, 1310720], ty: Array[int, 262144], n: int,
 # nodes
 
 def d_node(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
-           flt: Array[float, 65536], n: int, depth: int) -> None {
+           flt: Array[float, 262144], n: int, depth: int) -> None {
     k: int = nd[n * 10]
     if k == 1 {
         d_indent(depth)
@@ -638,6 +638,6 @@ def d_node(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
 }
 
 def dump_module(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
-                flt: Array[float, 65536]) -> None {
+                flt: Array[float, 262144]) -> None {
     d_node(src, nd, ty, flt, 0, 0)
 }

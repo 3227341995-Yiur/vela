@@ -149,6 +149,7 @@ def builtin_id(h: int) -> int {
     if s == "panic" { return B_PANIC() }
     if s == "now" { return B_NOW() }
     if s == "concat" { return B_CONCAT() }
+    if s == "to_str" { return B_TO_STR() }
     if s == "run_command" { return B_RUN_CMD() }
     if s == "env" { return B_ENV() }
     return 0

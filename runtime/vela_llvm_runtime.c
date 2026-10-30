@@ -300,6 +300,17 @@ vela_str vela_llvm_str_at(vela_str s, int64_t i, const char *file, int line)
     return vela_str_at(s, i, file, line);
 }
 
+/* `to_str`: the header's int and bool spellings, under names IR can call. */
+vela_str vela_llvm_int_text(int64_t v)
+{
+    return vela_int_text(v);
+}
+
+vela_str vela_llvm_bool_text(int64_t b)
+{
+    return vela_bool_text(b);
+}
+
 vela_str vela_llvm_arg(int64_t i, const char *file, int line)
 {
     return vela_arg(i, file, line);

@@ -619,6 +619,35 @@ static vela_str vela_str_at(vela_str s, int64_t i, const char *file, int line)
     return vela_str_lit((const char *)s.data + i, 1);
 }
 
+/* `to_str(v)` for an int and for a bool.  A `str` needs no conversion, so the
+ * emitters pass one straight through and these two are the whole of the builtin.
+ * The text lands in the permanent region like every other str, so it can be
+ * concatenated, compared and returned; `vela_print_i64` writes to stdout instead,
+ * which is why this cannot be the same function.
+ *
+ * A *float* is deliberately absent: Vela's one float formatting rule is
+ * `str.to_str_f(x, decimals)`, where the caller names the precision.  `%f` here
+ * would be a second rule, and the interpreter would have to reproduce that
+ * rounding in Vela to stay equal to it -- a difference waiting to be found. */
+static vela_str vela_int_text(int64_t v)
+{
+    char buf[32];
+    int n = snprintf(buf, sizeof buf, "%lld", (long long)v);
+    uint8_t *mem;
+    if (n <= 0) return vela_str_empty();
+    mem = (uint8_t *)vela_persist_alloc((size_t)n + 1);
+    memcpy(mem, buf, (size_t)n);
+    return vela_str_lit((const char *)mem, (int64_t)n);
+}
+
+/* "True"/"False" and not "true"/"false": `print` spells a bool that way
+ * (`vela_print_bool`), and `to_str` has to agree with `print` about every value it
+ * can be given or the language has two spellings of one value. */
+static vela_str vela_bool_text(int64_t b)
+{
+    return b ? vela_str_lit("True", 4) : vela_str_lit("False", 5);
+}
+
 /* A slice, not a copy: safe because every str lives in static or permanent
  * memory, so a slice can never outlive what it points at. */
 static vela_str vela_substr(vela_str s, int64_t a, int64_t b)

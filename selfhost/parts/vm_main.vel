@@ -1118,7 +1118,7 @@ def link_llvm(vcv: str, lld: str, obj: str, rtobj: str, exe: str,
 }
 
 def do_build_llvm(self: str, path: str, rt: str, nd: Array[int, 1310720],
-                  ty: Array[int, 262144], flt: Array[float, 65536], src: str,
+                  ty: Array[int, 262144], flt: Array[float, 262144], src: str,
                   mut mem: Array[int, 3741696], mut vm: VM) -> None {
     exe: str = concat(strip_vel(path), ".exe")
     # both intermediates go to the scratch directory, and their names carry the
@@ -1559,9 +1559,9 @@ def encode_sources(mem: Array[int, 3741696]) -> str {
 }
 
 def load_file(path: str, src: str, base: int, depth: int, file: int,
-              mut tk: Array[int, 1572864], mut tkf: Array[float, 65536],
+              mut tk: Array[int, 1572864], mut tkf: Array[float, 262144],
               mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
-              mut flt: Array[float, 65536], mut cx: Ctx,
+              mut flt: Array[float, 262144], mut cx: Ctx,
               mut mem: Array[int, 3741696], mut ld: Load) -> None {
     # D7: this file's first line number, and the path every diagnostic about it
     # will print.  The root's base is 1, so a one-file program's table has one
@@ -1760,10 +1760,10 @@ def main() -> None {
     }
 
     mut tk: Array[int, 1572864]
-    mut tkf: Array[float, 65536]
+    mut tkf: Array[float, 262144]
     mut nd: Array[int, 1310720]
     mut ty: Array[int, 262144]
-    mut flt: Array[float, 65536]
+    mut flt: Array[float, 262144]
     mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0)
     # the arena is allocated here rather than inside each mode, because the
     # loader's tables live in it (vm_state.vel MEM_SRCS/MEM_LDECL/MEM_LSTK) and
