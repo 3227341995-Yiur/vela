@@ -1875,7 +1875,7 @@ def ll_bounds(mut lg: LG, index: int, len: int, path: str, line: int) -> None {
     mut a: Array[int, 16]
     a[0] = index
     a[1] = ll_ck(lg, "an array's length", vshim_const_i64(lg.m, len))
-    a[2] = lg.pfile
+    a[2] = ll_pfile(lg, path, line)
     a[3] = const_i32(lg, line)
     ll_call_n(lg, lg.f_bounds, a, 4)
 }
@@ -2806,12 +2806,12 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                 # other checked call
                 bs[1] = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots,
                                 slotkind, lit, fns, nd[e * 10 + 2])
-                bs[2] = lg.pfile
+                bs[2] = ll_pfile(lg, path, nd_line(nd, e))
                 bs[3] = const_i32(lg, nd_line(nd, e))
                 bn = 4
             }
             if b == B_INTERNED() {
-                bs[2] = lg.pfile
+                bs[2] = ll_pfile(lg, path, nd_line(nd, e))
                 bs[3] = const_i32(lg, nd_line(nd, e))
                 bn = 4
             }
@@ -2992,7 +2992,7 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                                lit, fns, nd[e * 10 + 1])
             cargs[2] = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
                                lit, fns, nd[e * 10 + 2])
-            cargs[3] = lg.pfile
+            cargs[3] = ll_pfile(lg, path, nd_line(nd, e))
             cargs[4] = const_i32(lg, nd_line(nd, e))
             ll_call_n(lg, lg.f_strat, cargs, 5)
             return dst
