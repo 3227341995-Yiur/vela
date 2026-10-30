@@ -1821,7 +1821,7 @@ def main() -> None {
         return
     }
     if mode == "emit-c" {
-        refuse_multifile(mem, path, "emit-c")
+        pass
         mut vm2: VM = vm_new()
         resolve_module(nd, ty, mem, diag, vm2)
         # the verdicts before the code: `check` is not a separate service the
@@ -1894,7 +1894,7 @@ def main() -> None {
         # the second back end: the same parse, resolve and check as `emit-c`,
         # and then the module is built inside this process instead of being
         # printed as C
-        refuse_multifile(mem, path, "emit-llvm")
+        pass
         mut vmL: VM = vm_new()
         resolve_module(nd, ty, mem, diag, vmL)
         ck_module(nd, ty, mem, diag, vmL)
@@ -1931,7 +1931,7 @@ def main() -> None {
             warn_str("` (use `build-c` if that is the path you meant)")
             warn_nl()
         }
-        refuse_multifile(mem, path, "build")
+        pass
         mut vmD: VM = vm_new()
         resolve_module(nd, ty, mem, diag, vmD)
         ck_module(nd, ty, mem, diag, vmD)
@@ -1949,7 +1949,7 @@ def main() -> None {
         if argc() >= 4 {
             rtL2 = arg(3)
         }
-        refuse_multifile(mem, path, "build-llvm")
+        pass
         mut vmB: VM = vm_new()
         resolve_module(nd, ty, mem, diag, vmB)
         ck_module(nd, ty, mem, diag, vmB)
@@ -1980,7 +1980,7 @@ def main() -> None {
         if argc() >= 5 {
             extra = arg(4)
         }
-        refuse_multifile(mem, path, "build-c")
+        pass
         do_build(arg(0), path, rt, extra)
         return
     }

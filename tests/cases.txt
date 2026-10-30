@@ -573,7 +573,7 @@ interpret nested_module_literals              tests/build/modules/nested_lit.vel
 # The standard library's first two modules, and the only case with two levels of
 # import below `lib/` (`io_app` -> `io` -> `str`).  `interpret`, not `run`: a
 # multi-file program is still refused by both back ends by name (MODULES_PLAN D8).
-interpret io_module                           lib/io_app.vel
+run       io_module                           lib/io_app.vel
 # Errors as values: `lib/result.vel`'s `Result` is an enum with payloads, so this row
 # exercises `match` completeness, payload binding, and the one place a value error
 # meets a panic (`unwrap` of an `Err` prints the reason and stops the program --
