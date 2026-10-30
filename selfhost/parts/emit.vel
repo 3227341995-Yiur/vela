@@ -348,7 +348,19 @@ def emit_path_lit(path: str) -> None {
 
 def emit_location(path: str, line: int) -> None {
     emit_str(", ")
-    emit_path_lit(path)
+    # A multi-file program's `path` is a table -- one `first line TAB path` row per
+    # file -- and a panic in a compiled program has to name the file a reader can
+    # open, so the table is resolved here, at emit time, where the line is a
+    # constant.  A one-file program keeps the *old* call, not a resolved one: that
+    # is what makes this change provably emission-neutral for the compiler's own
+    # build, and `emit-c selfhost/vm.vel == selfhost/build/vm.c` is the judge
+    # (measured: an unconditional `path_for_line` there moved the emission, so the
+    # branch is not tidiness).
+    if has_newline(path) {
+        emit_path_lit(path_for_line(path, line))
+    } else {
+        emit_path_lit(path)
+    }
     emit_str(", ")
     emit_int(line)
 }
