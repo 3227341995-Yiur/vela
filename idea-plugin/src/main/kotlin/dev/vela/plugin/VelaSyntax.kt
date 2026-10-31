@@ -2373,13 +2373,19 @@ class VelaSyntaxParser private constructor(
                 val at = pos
                 advance()
                 if (atOp(VelaOps.COLON)) {
-                    // no lower bound: `a[:2]`
+                    // no lower bound: `a[:2]`.  The node SAYS which bound it has,
+                    // because the child count cannot: `a[:2]` and `a[3:]` both hold a
+                    // base and one bound, and the dump used to guess from that count
+                    // (measured: `has_lower=1 has_upper=0` for `a[:2]`, backwards).
                     advance()
                     val n = VelaSyntaxNode(VelaNodeKind.SLICE, at, at)
                     n.add(node)
                     if (!atOp(VelaOps.RBRACKET)) {
                         val upper = parseExpr()
-                        if (upper != null) n.add(upper)
+                        if (upper != null) {
+                            n.add(upper)
+                            n.name = "upper"
+                        }
                     }
                     if (!atOp(VelaOps.RBRACKET)) {
                         recover("expected ']' to close the slice")
@@ -2394,9 +2400,11 @@ class VelaSyntaxParser private constructor(
                 if (atOp(VelaOps.COLON)) {
                     advance()
                     val n = VelaSyntaxNode(VelaNodeKind.SLICE, at, at)
+                    n.name = "lower"
                     n.add(node)
                     if (lower != null) n.add(lower)
                     if (!atOp(VelaOps.RBRACKET)) {
+                        n.name = "both"
                         val upper = parseExpr()
                         if (upper != null) n.add(upper)
                     }

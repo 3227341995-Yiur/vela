@@ -454,9 +454,9 @@ object VelaSyntaxDump {
             VelaNodeKind.SLICE -> {
                 indent(sb, depth)
                 sb.append("slice has_lower=")
-                sb.append(if (n.children.size > 1) "1" else "0")
+                sb.append(if (n.name == "lower" || n.name == "both") "1" else "0")
                 sb.append(" has_upper=")
-                sb.append(if (n.children.size > 2) "1" else "0")
+                sb.append(if (n.name == "upper" || n.name == "both") "1" else "0")
                 sb.append('\n')
                 for (c in n.children) dumpNode(sb, tree, c, depth + 1)
             }
