@@ -1,0 +1,29 @@
+# The run that proves lib/math.vel.
+import math
+
+def main() -> None {
+    print(math.abs(0 - 7))
+    print(math.abs(7))
+    print(math.min(3, 9))
+    print(math.max(3, 9))
+    print(math.clamp(5, 1, 4))
+    print(math.clamp(0, 1, 4))
+    print(math.clamp(2, 1, 4))
+    print(math.is_even(4))
+    print(math.is_even(5))
+    print(math.is_odd(5))
+    print(math.sign(0 - 3))
+    print(math.sign(0))
+    print(math.sign(4))
+    print(math.gcd(12, 18))
+    print(math.gcd(0 - 6, 4))
+    print(math.gcd(7, 0))
+    print(math.lcm(4, 6))
+    print(math.lcm(0, 5))
+    print(math.pow_int(2, 10))
+    print(math.pow_int(3, 0))
+    print(math.pow_int(5, 0 - 1))
+    print(math.percent(1, 4))
+    print(math.percent(1, 0))
+    print(math.percent(7, 8))
+}

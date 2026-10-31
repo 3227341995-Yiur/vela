@@ -1,0 +1,114 @@
+# lib/math.vel -- the integer arithmetic a program reaches for, named once.
+#
+# The language has operators and nothing else: no `abs`, no `min`, no `clamp`, and `/`
+# between two ints is a *float* division while `//` is the integer one (so `7 / 2` is 3.5
+# and `7 // 2` is 3).  Every one of these is a place where a program would otherwise write
+# the same three lines again -- and `clamp` in particular is the shape that gets written
+# wrong when it is written by hand.
+#
+# Integers only, deliberately: a float version of `min` would have to answer what happens
+# with NaN, and that answer belongs in a program that knows its data, not in a library.
+def abs(n: int) -> int {
+    if n < 0 {
+        return 0 - n
+    }
+    return n
+}
+
+def min(a: int, b: int) -> int {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+def max(a: int, b: int) -> int {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+# `clamp(v, lo, hi)`: v, or the nearer bound.  Written with two comparisons and no swap,
+# because the caller passing lo > hi is a bug worth seeing rather than silently fixing.
+def clamp(v: int, lo: int, hi: int) -> int {
+    if v < lo {
+        return lo
+    }
+    if v > hi {
+        return hi
+    }
+    return v
+}
+
+def is_even(n: int) -> bool {
+    return n // 2 * 2 == n
+}
+
+def is_odd(n: int) -> bool {
+    return n // 2 * 2 != n
+}
+
+# -1, 0 or 1: the shape a sort comparator wants, and the reason it is not a bool.
+def sign(n: int) -> int {
+    if n < 0 {
+        return 0 - 1
+    }
+    if n > 0 {
+        return 1
+    }
+    return 0
+}
+
+# Euclid.  Negative inputs are normalised first, so gcd(-6, 4) is 2 and not -2.
+def gcd(a: int, b: int) -> int {
+    mut x: int = abs(a)
+    mut y: int = abs(b)
+    while y != 0 {
+        t: int = y
+        y = x - x // y * y
+        x = t
+    }
+    return x
+}
+
+# 0 when either side is 0: the lcm of 0 and anything is 0, and a division by zero here
+# would be a crash where the answer is known.
+def lcm(a: int, b: int) -> int {
+    if a == 0 {
+        return 0
+    }
+    if b == 0 {
+        return 0
+    }
+    g: int = gcd(a, b)
+    return abs(a // g * b)
+}
+
+# `n` to the power `e` by squaring.  e < 0 is 0: an integer power with a negative exponent
+# is a fraction, and this library does not return one.
+def pow_int(n: int, e: int) -> int {
+    if e < 0 {
+        return 0
+    }
+    mut base: int = n
+    mut exp: int = e
+    mut out: int = 1
+    while exp > 0 {
+        if is_odd(exp) {
+            out = out * base
+        }
+        base = base * base
+        exp = exp // 2
+    }
+    return out
+}
+
+# `part` as a percentage of `whole`, rounded down.  `whole` of 0 is 0 rather than a crash,
+# and the comment says so because the alternative reading (an error) is also defensible.
+def percent(part: int, whole: int) -> int {
+    if whole == 0 {
+        return 0
+    }
+    return part * 100 // whole
+}
