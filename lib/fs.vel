@@ -1,0 +1,91 @@
+# lib/fs.vel -- what a program needs to know about the filesystem beyond reading and
+# writing one file: what is in a directory, and how to take a name away or change it.
+#
+# **`remove` and `rename` are native**: two `extern c` calls answered by
+# `runtime/vela_runtime.h` (and by `vela_llvm_runtime.obj` for a program built through
+# LLVM), one spelling and two link routes.
+#
+# **`names_of` is not, and this is the honest part of the module.**  The runtime has no
+# directory primitive and an `extern c` function may not return a `str` (a `str` result
+# needs the hidden pointer the compiler only generates for Vela functions), so a listing
+# goes through the host shell: `cmd /c dir /b` with its output redirected to a scratch
+# file, which is then read with `read_text`.  That is a real directory listing on this
+# host, and it costs what it costs: one child process and one temporary file per call.
+# The day the runtime grows a listing primitive this one function changes and nothing
+# else does -- the shape of the API was chosen for that.
+#
+# The policy the module does NOT take: it does not walk into subdirectories, it does not
+# follow links, and `remove` will not delete a directory that has anything in it.  A
+# recursive delete is a decision with consequences and belongs to the program that wants
+# it, written out, not to a one-word call in a library.
+import io
+import str
+
+extern c def vela_llvm_file_remove(path: str) -> int
+extern c def vela_llvm_file_rename(from: str, to: str) -> int
+
+# The whole listing as text, one name per line, `.` and `..` left out.
+def listing(path: str) -> str {
+    scratch: str = "tests/build/.vela_listing.txt"
+    quoted: str = concat(concat("\"", path), "\"")
+    cmd: str = concat(concat("cmd /c dir /b /a ", quoted), concat(" > ", scratch))
+    code: int = io.shell(cmd)
+    if code != 0 {
+        return ""
+    }
+    text: str = str.replace(io.read_file(scratch), "\r", "")
+    remove(scratch)
+    return text
+}
+
+# Up to 64 names into the caller's array; the return value is how many are valid.
+# A directory that does not open answers 0, which is also what an empty one answers --
+# `read_file`'s rule for one file, kept for one directory: the runtime cannot tell
+# "missing" from "empty", so this module does not pretend it can.
+def names_of(path: str, mut out: Array[str, 64]) -> int {
+    text: str = listing(path)
+    if len(text) == 0 {
+        return 0
+    }
+    n: int = str.lines(text, out)
+    # the listing ends with a newline, so `lines` hands back one empty segment for it:
+    # a trailing newline is how every line ends, not an extra entry
+    if n > 0 {
+        if len(out[n - 1]) == 0 {
+            return n - 1
+        }
+    }
+    return n
+}
+
+# How many entries the directory holds.
+def count(path: str) -> int {
+    mut buf: Array[str, 64]
+    return names_of(path, buf)
+}
+
+# Is the name in the directory?  Asked of the listing text, not of the array: the
+# listing is a set of lines and a substring search wrapped in newlines is exactly that
+# question, while reading an element of the caller's array here would mean trusting a
+# slot nobody promised to fill.
+def contains(dir: str, name: str) -> bool {
+    text: str = listing(dir)
+    if len(text) == 0 {
+        return False
+    }
+    hay: str = concat(concat("\n", text), "\n")
+    needle: str = concat(concat("\n", name), "\n")
+    return str.index_of(hay, needle) >= 0
+}
+
+# Removes a file, or an empty directory.  False when the name is not there or the
+# directory is not empty -- never a silent success.
+def remove(path: str) -> bool {
+    return vela_llvm_file_remove(path) != 0
+}
+
+# Renames or moves a name inside one filesystem.  False when the destination exists: a
+# rename that silently replaced a file would be data loss with a friendly return value.
+def rename(from: str, to: str) -> bool {
+    return vela_llvm_file_rename(from, to) != 0
+}

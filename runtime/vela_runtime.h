@@ -733,6 +733,113 @@ static int vela_write_text(vela_str path, vela_str body)
     return fclose(f) == 0;
 }
 
+/* ---------------------------------------------------------------- the filesystem
+ *
+ * Three questions the standard library asks the host, each one a name in and a
+ * listing or a status out, so that `lib/fs.vel` can be ordinary Vela on top of them.
+ *
+ * **`const char *` and not `vela_str`**, and that is the whole of why the first
+ * version of this block silently answered 0: an `extern c` declaration in Vela writes
+ * a `str` parameter as `const char *` and wraps every argument in `vela_cstr`, so a
+ * header function taking `vela_str` is called with eight bytes where it reads sixteen
+ * -- the length field is somebody else's stack, the length guard fails, and the
+ * function answers 0 without ever asking the host.  These take the C string the
+ * caller actually passes.
+ */
+#if defined(_WIN32)
+#include <windows.h>
+
+/* The entries of `dir`, one per line, `.` and `..` left out, each line ending with a
+ * newline so that `lines` reads it with no special case for the last entry.  A
+ * directory that does not open answers "" -- the same shape `read_text` uses for a
+ * missing file, so `lib/fs.vel` says "either it is empty or it is not there" in one
+ * place instead of pretending the runtime distinguishes them. */
+static vela_str vela_list_dir(const char *dir)
+{
+    char pattern[4096];
+    WIN32_FIND_DATAA fd;
+    HANDLE h;
+    size_t used = 0;
+    size_t n;
+    int64_t total = 0;
+    char *big;
+    if (dir == NULL || *dir == '\0') return vela_str_empty();
+    n = strlen(dir);
+    if (n + 3 >= sizeof pattern) return vela_str_empty();
+    memcpy(pattern, dir, n);
+    pattern[n] = '\\';
+    pattern[n + 1] = '*';
+    pattern[n + 2] = '\0';
+    h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) return vela_str_empty();
+    do {
+        size_t nl = strlen(fd.cFileName);
+        if (nl == 1 && fd.cFileName[0] == '.') continue;
+        if (nl == 2 && fd.cFileName[0] == '.' && fd.cFileName[1] == '.') continue;
+        total += (int64_t)nl + 1;
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+    if (total <= 0) return vela_str_empty();
+    big = (char *)vela_persist_alloc((size_t)total + 1);
+    h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) return vela_str_empty();
+    do {
+        size_t nl = strlen(fd.cFileName);
+        if (nl == 1 && fd.cFileName[0] == '.') continue;
+        if (nl == 2 && fd.cFileName[0] == '.' && fd.cFileName[1] == '.') continue;
+        memcpy(big + used, fd.cFileName, nl);
+        used += nl;
+        big[used] = '\n';
+        used += 1;
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+    big[used] = '\0';
+    return vela_str_lit((const char *)big, (int64_t)used);
+}
+
+/* 1 when the entry is gone.  A directory is removed only when it is empty: a
+ * recursive delete is a policy with consequences, and it belongs to the program that
+ * wants it. */
+static int64_t vela_file_remove(const char *path)
+{
+    if (path == NULL || *path == '\0') return 0;
+    if (RemoveDirectoryA(path)) return 1;
+    return DeleteFileA(path) ? 1 : 0;
+}
+
+/* 1 when the rename happened.  `MoveFileExA` with no flags refuses to overwrite, which
+ * is the behaviour a Vela program wants by default: a rename that silently replaced a
+ * file would be data loss with a friendly return value. */
+static int64_t vela_file_rename(const char *from, const char *to)
+{
+    if (from == NULL || to == NULL) return 0;
+    if (*from == '\0' || *to == '\0') return 0;
+    return MoveFileExA(from, to, 0) != 0 ? 1 : 0;
+}
+
+#else
+
+/* The same three answers on a host without the Win32 find API.  They answer "nothing"
+ * and "no", and `lib/fs.vel` documents that a listing is a host question: a stub that
+ * pretended to succeed would be the silent failure this project keeps refusing. */
+static vela_str vela_list_dir(const char *dir) { (void)dir; return vela_str_empty(); }
+static int64_t vela_file_remove(const char *path) { (void)path; return 0; }
+static int64_t vela_file_rename(const char *from, const char *to)
+{ (void)from; (void)to; return 0; }
+
+#endif
+
+/* The same three under the names the emitted IR calls.  A program built by the C back
+ * end includes this header, so these `static` ones are its definitions; a program built
+ * through LLVM links `vela_llvm_runtime.obj`, which exports the same names.  One
+ * spelling, two link routes -- the rule the compiler's own shim follows. */
+#ifndef VELA_NO_LLVM_WRAPPERS
+static vela_str vela_llvm_list_dir(const char *dir) { return vela_list_dir(dir); }
+static int64_t vela_llvm_file_remove(const char *path) { return vela_file_remove(path); }
+static int64_t vela_llvm_file_rename(const char *from, const char *to)
+{ return vela_file_rename(from, to); }
+#endif
+
 /* One host question: what is this named environment variable set to, if
  * anything?  A build driver has to know which host it is on and which C
  * compiler the user wants, and the answer to both is in the environment.

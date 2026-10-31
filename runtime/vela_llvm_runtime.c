@@ -45,6 +45,7 @@
  *      it is compiled as C exactly like the header is.
  */
 
+#define VELA_NO_LLVM_WRAPPERS
 #include "vela_runtime.h"
 
 /* `bool` is used below (`vela_llvm_print_bool`, `vela_llvm_str_eq`) and in C it is
@@ -385,6 +386,24 @@ vela_str vela_llvm_read_text(vela_str path)
 bool vela_llvm_write_text(vela_str path, vela_str body)
 {
     return (bool)vela_write_text(path, body);
+}
+
+/* The three filesystem answers `lib/fs.vel` declares `extern c`, under the names the
+ * emitted IR calls.  Each is the header's own function, so the C back end and the IR
+ * back end cannot disagree about what a listing or a rename means. */
+vela_str vela_llvm_list_dir(const char *dir)
+{
+    return vela_list_dir(dir);
+}
+
+int64_t vela_llvm_file_remove(const char *path)
+{
+    return vela_file_remove(path);
+}
+
+int64_t vela_llvm_file_rename(const char *from, const char *to)
+{
+    return vela_file_rename(from, to);
 }
 
 int64_t vela_llvm_run_command(vela_str cmd)

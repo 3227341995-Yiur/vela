@@ -1,0 +1,30 @@
+# The run that proves lib/fs.vel: a scratch directory the program makes itself with
+# io's write_file, then the three questions the module answers about it.
+import fs
+import io
+import str
+
+def main() -> None {
+    dir: str = "tests/build/fs_scratch"
+    a: str = concat(dir, "/a.txt")
+    b: str = concat(dir, "/b.txt")
+    c: str = concat(dir, "/c.txt")
+    print(io.write_file(a, "one"))
+    print(io.write_file(b, "two"))
+    print(fs.count(dir))
+    mut names: Array[str, 64]
+    n: int = fs.names_of(dir, names)
+    print(n)
+    print(names[0])
+    print(names[1])
+    print(fs.contains(dir, "a.txt"))
+    print(fs.contains(dir, "zzz.txt"))
+    print(fs.rename(a, c))
+    print(fs.contains(dir, "c.txt"))
+    print(fs.contains(dir, "a.txt"))
+    print(fs.remove(b))
+    print(fs.count(dir))
+    print(fs.remove(c))
+    print(fs.count(dir))
+    print(fs.remove(dir))
+}
