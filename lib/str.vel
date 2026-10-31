@@ -430,3 +430,58 @@ def lines(s: str, mut out: Array[str, 64]) -> int {
 def join_lines(parts: Array[str, 64], n: int) -> str {
     return join(parts, n, "\n")
 }
+
+# Lexicographic order -- the one comparison a str cannot do with an operator.  < and
+# >= are refused for strings (measured: "operator '<' cannot be applied to str and str"),
+# so a program that sorts names, keeps a map ordered, or checks that a key falls in a range
+# has to ask for it.  The answer is the sign of the first differing byte, and the shorter
+# string first when one is a prefix of the other -- strcmp's rule, returned as an int
+# rather than as three boolean functions, because a caller sorting with it wants the int.
+def compare(a: str, b: str) -> int {
+    mut n: int = len(a)
+    if len(b) < n {
+        n = len(b)
+    }
+    mut i: int = 0
+    while i < n {
+        ca: int = bytes_at(a, i)
+        cb: int = bytes_at(b, i)
+        if ca < cb {
+            return 0 - 1
+        }
+        if ca > cb {
+            return 1
+        }
+        i += 1
+    }
+    if len(a) < len(b) {
+        return 0 - 1
+    }
+    if len(a) > len(b) {
+        return 1
+    }
+    return 0
+}
+
+def lt(a: str, b: str) -> bool {
+    return compare(a, b) < 0
+}
+
+def gt(a: str, b: str) -> bool {
+    return compare(a, b) > 0
+}
+
+# The smaller of two strings, for the callers that want a value and not a sign.
+def min_str(a: str, b: str) -> str {
+    if compare(a, b) <= 0 {
+        return a
+    }
+    return b
+}
+
+def max_str(a: str, b: str) -> str {
+    if compare(a, b) >= 0 {
+        return a
+    }
+    return b
+}

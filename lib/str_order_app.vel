@@ -1,0 +1,40 @@
+# Ordering for strings: `compare` / `lt` / `gt` / `min_str` / `max_str`.
+#
+# The language refuses `<` and `>=` on two strings ("operator '<' cannot be applied to str
+# and str"), so ordering is a library question, and this is the library's answer.
+import str
+
+def main() -> None {
+    print(str.compare("abc", "abd"))
+    print(str.compare("abd", "abc"))
+    print(str.compare("abc", "abc"))
+    print(str.compare("abc", "abcd"))
+    print(str.compare("abcd", "abc"))
+    print(str.lt("Apple", "apple"))
+    print(str.gt("Apple", "apple"))
+    print(str.lt("abc", "abcd"))
+    print(str.min_str("pear", "peach"))
+    print(str.max_str("pear", "peach"))
+    print(str.compare("", "a"))
+    print(str.compare("", ""))
+    mut names: Array[str, 64]
+    names[0] = "cherry"
+    names[1] = "apple"
+    names[2] = "banana"
+    mut i: int = 0
+    while i < 3 {
+        mut j: int = 0
+        while j < 2 {
+            if str.gt(names[j], names[j + 1]) {
+                keep: str = names[j]
+                names[j] = names[j + 1]
+                names[j + 1] = keep
+            }
+            j += 1
+        }
+        i += 1
+    }
+    print(names[0])
+    print(names[1])
+    print(names[2])
+}
