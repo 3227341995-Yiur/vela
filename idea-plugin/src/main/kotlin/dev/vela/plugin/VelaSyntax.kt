@@ -2131,6 +2131,10 @@ class VelaSyntaxParser private constructor(
     }
 
     private fun parseReturn(at: Int): VelaSyntaxNode {
+        if (inDefer) {
+            advance()
+            recover("a defer block cannot return")
+        }
         advance()
         val n = newNode(VelaNodeKind.RETURN, at)
         n.op = 0
