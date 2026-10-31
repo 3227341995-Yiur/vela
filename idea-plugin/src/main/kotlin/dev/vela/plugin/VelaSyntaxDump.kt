@@ -32,8 +32,31 @@ package dev.vela.plugin
 object VelaSyntaxDump {
 
     /** The whole tree, in the compiler's format, one node per line. */
+    /**
+     * The module aliases this tree imports: the dump folds `math.abs` into `abs` for
+     * them, because the compiler does the same before anything dumps a program
+     * (bind_alias: after the merge there is one namespace, so the qualifier is
+     * decoration).  The TREE keeps the `attr` node -- the editor resolves and
+     * highlights the qualifier -- so the fold lives in the text, which is what keeps
+     * the two gates apart: psi-tree-diff reads the tree, ast-diff reads this.
+     */
+    private val moduleAliases = LinkedHashSet<String>()
+
     fun dump(tree: VelaSyntaxTree): String {
         val sb = StringBuilder(4096)
+        moduleAliases.clear()
+        if (!tree.root.children.isEmpty()) {
+            for (s in tree.root.children.get(0).children) {
+                if (s.kind != VelaNodeKind.IMPORT) continue
+                val name = escapedLiteral(s)
+                val asAt = name.indexOf(" as ")
+                if (asAt >= 0) {
+                    moduleAliases.add(name.substring(asAt + 4).trim())
+                } else {
+                    moduleAliases.add(name.trim())
+                }
+            }
+        }
         dumpNode(sb, tree, tree.root, 0)
         // Every node already ended its own line, so there is nothing to add: the
         // compiler's printer does the same and its output ends with exactly one
@@ -440,9 +463,17 @@ object VelaSyntaxDump {
             }
 
             VelaNodeKind.ATTR -> {
-                indent(sb, depth)
-                sb.append("attr name=").append(n.name).append('\n')
-                for (c in n.children) dumpNode(sb, tree, c, depth + 1)
+                val base = if (n.children.isEmpty()) null else n.children.get(0)
+                if (base != null && base.kind == VelaNodeKind.NAME &&
+                    moduleAliases.contains(escapedLiteral(base))
+                ) {
+                    indent(sb, depth)
+                    sb.append("name ").append(n.name).append('\n')
+                } else {
+                    indent(sb, depth)
+                    sb.append("attr name=").append(n.name).append('\n')
+                    for (c in n.children) dumpNode(sb, tree, c, depth + 1)
+                }
             }
 
             VelaNodeKind.LIST -> {
