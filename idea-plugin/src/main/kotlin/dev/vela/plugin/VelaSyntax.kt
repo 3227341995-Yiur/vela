@@ -2015,8 +2015,20 @@ class VelaSyntaxParser private constructor(
             recover("expected a type name")
             return null
         }
-        val base = text(pos)
+        var base = text(pos)
         advance()
+        // `result.Result` -- a module-qualified TYPE name.  The compiler keeps only the
+        // last component (after the merge a program has one type namespace, so the
+        // qualifier is decoration), and the dump has to agree with it.
+        while (atOp(VelaOps.DOT)) {
+            advance()
+            if (!atName()) {
+                recover("expected a type name after a dot")
+                return null
+            }
+            base = text(pos)
+            advance()
+        }
         if (!atOp(VelaOps.LBRACKET)) return base
         advance()
         val elem = parseType() ?: return null
