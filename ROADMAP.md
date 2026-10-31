@@ -88,8 +88,10 @@ The order is chosen so each feature makes the *next* one cheaper for a compiler
 written in Vela.
 
 1. **Enums with payloads + `match`.** *Landed 2026-09-24*: the interpreter, the checker
-   and the C back end have it, the LLVM back end refuses it by name (five rows of
-   `tests\llvm-refusals.txt`), and `enum`/`match` are reserved words (`SPEC.md` 1.3).
+   and the C back end have it, and so does the LLVM back end since 2026-10-31 (a block of
+   `i64` cells: the tag in cell 0, one cell per payload field and two for a `str`), which
+   moved the corpus's six enum rows to `run` and deleted their lines from
+   `tests\llvm-refusals.txt`.  `enum`/`match` are reserved words (`SPEC.md` 1.3).
    **The acceptance criterion this item set for itself is not met**: the AST node-kind
    dispatch in `parts/*.vel` was *not* rewritten as enums, so the compiler still dispatches
    on integers (`k == 31` appears throughout `check.vel`).  The feature exists and the

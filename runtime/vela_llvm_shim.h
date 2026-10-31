@@ -431,6 +431,24 @@ int64_t vshim_build_sext(int64_t module, int64_t dest_type, int64_t value);
  * 100LL` does with the same program. */
 int64_t vshim_build_trunc(int64_t module, int64_t dest_type, int64_t value);
 
+/* The three conversions an enum's payload cells need, and nothing else in this
+ * back end does.
+ *
+ * A payload cell is one `i64` whatever it holds -- that is what lets one union
+ * layout serve every variant of an enum -- so a `str` payload's two halves (a
+ * pointer and a length) and a `float` payload's bits have to change type on the
+ * way in and again on the way out:
+ *
+ *     str -> cell:    ptrtoint(ptr, i64)      cell -> str:    inttoptr(i64, ptr)
+ *     float -> cell:  bitcast(f64, i64)       cell -> float:  bitcast(i64, f64)
+ *
+ * Each checks the direction it is used for, for the reason the casts above do:
+ * a `ptrtoint` whose destination is a float is an LLVM assertion, and an
+ * assertion is not a diagnosis. */
+int64_t vshim_build_ptrtoint(int64_t module, int64_t dest_type, int64_t value);
+int64_t vshim_build_inttoptr(int64_t module, int64_t dest_type, int64_t value);
+int64_t vshim_build_bitcast(int64_t module, int64_t dest_type, int64_t value);
+
 /* `predicate` is one of the `VSHIM_CMP_*` values; the result is `i1`, which is what
  * `vshim_build_cond_br` requires. */
 int64_t vshim_build_icmp(int64_t module, int32_t predicate, int64_t left, int64_t right);

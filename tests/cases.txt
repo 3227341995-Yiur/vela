@@ -319,7 +319,7 @@ refuse defer_at_top                          tests/build/check_cases/defer_at_to
 # back end has no enum lowering, so `tests/llvm-refusals.txt` carries the line that says
 # so, and the C back end and the interpreter have to agree on the answer (they were made
 # to: the two groups run error-first, then plain).
-run-c errdefer_groups                        tests/build/errdefer_groups.vel
+run   errdefer_groups                        tests/build/errdefer_groups.vel
 refuse errdefer_needs_result                 tests/build/check_cases/errdefer_needs_result.vel
 refuse tuple                                 tests/build/check_cases/tuple.vel
 refuse adjacent_string_literals              tests/build/check_cases/adjacent_string_literals.vel
@@ -517,21 +517,26 @@ fixpoint selfhost_fixpoint                   selfhost/vm.vel
 # second one against the first one's variants.  The second is the `else` arm that
 # runs -- the table only ever had the refusal for an `else` in the wrong place.
 
-# These five are `run-c`, and that is the merge of two facts rather than a preference.
-# `build` is the LLVM path now (see the mode table at the top of this file) and the LLVM
-# back end refuses an enum value **by name** -- "an enum value is a tagged union, and this
-# back end has no lowering for one" -- with the five enum rows of `tests\llvm-refusals.txt`
-# as the other side of that ledger.  The C back end lowers them (a tagged union, a
-# designated-initialiser constructor, a `switch` with no `default`), so the compiled answer
-# these rows compare against the interpreter's comes from `build-c`.  Written as `run` they
-# were recorded on the enum branch, where `build` was still the C path; the merge is what
-# made them fail, and nothing in git could see it because both sides had edited this file.
-run-c  enum_payload_bind                     tests/build/enum_payload_bind.vel
-run-c  enum_match_no_else                    tests/build/enum_match_no_else.vel
-run-c  enum_else_arm                         tests/build/enum_else_arm.vel
+# These five are `run`, and that is the change the LLVM back end's enum lowering
+# made: `build` is the LLVM path, and the back end now compiles a tagged union the way
+# it compiles a struct -- the tag in cell 0 of a block of `i64` cells and one payload
+# cell per field (two for a `str`, whose value is a pointer and a length).  Before
+# that they were `run-c`, because the LLVM back end refused an enum value by name and
+# the C back end's tagged union was the only compiled answer available;
+# `tests\llvm-refusals.txt` held the other side of that ledger, and its enum lines are
+# deleted now -- an entry that is never pruned stops describing the back end.
+#
+# `enum_two_enums` is the one exception and stays `run-c`: `Outer`'s `Wrap` payload is
+# itself an enum, and an aggregate payload has no cell width in the LLVM back end (a
+# payload cell is one `i64`, or the two halves of a `str`).  That is a named refusal
+# with a line of its own in the ledger, and the C back end -- whose payload is a real
+# union member of the nested struct's type -- compiles it.
+run    enum_payload_bind                     tests/build/enum_payload_bind.vel
+run    enum_match_no_else                    tests/build/enum_match_no_else.vel
+run    enum_else_arm                         tests/build/enum_else_arm.vel
 run-c  enum_two_enums                        tests/build/enum_two_enums.vel
 ok     enum_in_array                         tests/build/enum_in_array.vel
-run-c  enum_exhaustive_switch                tests/build/enum_exhaustive_switch.vel
+run    enum_exhaustive_switch                tests/build/enum_exhaustive_switch.vel
 # The emitted C itself, for the one property of it that a program's output cannot
 # show: an exhaustive match becomes a `switch` with no `default`, so a variant
 # added to the enum without its arm is caught by the checker and by anyone reading
@@ -578,7 +583,7 @@ run       io_module                           lib/io_app.vel
 # exercises `match` completeness, payload binding, and the one place a value error
 # meets a panic (`unwrap` of an `Err` prints the reason and stops the program --
 # measured: `vela: panic: boom  at lib/result.vel:76`).
-interpret result_library                      lib/result_app.vel
+run       result_library                      lib/result_app.vel
 run       time_library                        lib/time_app.vel
 run       test_library                        lib/test_app.vel
 run       fstring_call_args                   lib/fstring_app.vel

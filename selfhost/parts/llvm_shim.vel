@@ -14,7 +14,7 @@
 # int64_t -> int, int32_t -> i32, uint8_t -> u8, double -> float,
 # bool -> bool, vela_str -> str, void -> None.
 #
-# 78 declarations, in the header's order.
+# 81 declarations, in the header's order.
 # ============================================================================
 
 # Handles (modules, types, functions, blocks, values) are `int` here because
@@ -73,6 +73,9 @@ extern c def vshim_build_fptosi(module: int, dest_type: int, value: int) -> int
 extern c def vshim_build_zext(module: int, dest_type: int, value: int) -> int
 extern c def vshim_build_sext(module: int, dest_type: int, value: int) -> int
 extern c def vshim_build_trunc(module: int, dest_type: int, value: int) -> int
+extern c def vshim_build_ptrtoint(module: int, dest_type: int, value: int) -> int
+extern c def vshim_build_inttoptr(module: int, dest_type: int, value: int) -> int
+extern c def vshim_build_bitcast(module: int, dest_type: int, value: int) -> int
 extern c def vshim_build_icmp(module: int, predicate: i32, left: int, right: int) -> int
 extern c def vshim_build_fcmp(module: int, predicate: i32, left: int, right: int) -> int
 extern c def vshim_build_select(module: int, condition: int, if_true: int, if_false: int) -> int

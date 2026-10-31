@@ -412,7 +412,7 @@ def ll_sty_slot(sid: int) -> int {
 }
 
 # The IR type of one struct, built on the first mention of it.
-def ll_sty_of(mut lg: LG, mem: Array[int, 3741696],
+def ll_sty_of(mut lg: LG, mem: Array[int, 3741696], vm: VM,
               mut sty: Array[int, 132096], sid: int, path: str, line: int) -> int {
     if sid < 0 or sid >= LL_STY_MAX() {
         trap(path, line,
@@ -432,7 +432,7 @@ def ll_sty_of(mut lg: LG, mem: Array[int, 3741696],
     mut i: int = 0
     while i < n {
         fk: int = sfl_get(mem, off + i * 2 + 1)
-        ft: int = ll_type_of_st(lg, mem, sty, path, line, fk, unpack_len(fk))
+        ft: int = ll_type_of_st(lg, mem, vm, sty, path, line, fk, unpack_len(fk))
         if ft == 0 {
             trap(path, line,
                  "a struct field's type has no IR spelling, so this struct has no IR layout")
@@ -482,7 +482,7 @@ def ll_addr(mut lg: LG, slots: Array[int, 4096], slotkind: Array[int, 4096],
 # and every caller refuses rather than building something.  A struct is the one
 # kind whose spelling needs the struct table, which is why `ll_type_of_st` exists
 # and this is the no-struct-table form of it.
-def ll_type_of_st(mut lg: LG, mem: Array[int, 3741696],
+def ll_type_of_st(mut lg: LG, mem: Array[int, 3741696], vm: VM,
                   mut sty: Array[int, 132096], path: str, line: int,
                   k: int, sid: int) -> int {
     if k == K_INT() { return lg.t_i64 }
@@ -495,7 +495,7 @@ def ll_type_of_st(mut lg: LG, mem: Array[int, 3741696],
         if sid < 0 or sid >= lg.nstruct {
             return 0
         }
-        return ll_sty_of(lg, mem, sty, sid, path, line)
+        return ll_sty_of(lg, mem, vm, sty, sid, path, line)
     }
     if k == K_ENUM() {
         # An enum owns a row of the same struct table (the resolver registers one for
@@ -504,37 +504,130 @@ def ll_type_of_st(mut lg: LG, mem: Array[int, 3741696],
         if sid < 0 or sid >= LL_STY_MAX() {
             return 0
         }
-        return ll_enum_ty(lg, mem, sty, sid, path, line)
+        return ll_enum_ty(lg, mem, vm, sty, sid, path, line)
     }
     return 0
 }
 
-# The IR type of an enum: `{ i64, i64, ... }` with `STB_SIZE()` fields -- the tag in
-# field 0 and one field per payload cell after it, which is the interpreter's own
-# layout (`stride` cells, cell 0 the tag) and the C back end's (`int64_t vl_tag`
-# followed by the union).  Three back ends, one shape, and each says so in its own
-# file.
+# --------------------------------------------------------------- enum layout
 #
-# A `str` payload is two cells and an `int` payload is one, because `ENB_STRIDE` counts
-# cells and a cell is eight bytes -- so a payload field's *index inside the struct* is
-# not its index inside the variant, and the two are translated where the payload is
-# read (`ll_enum_field_cell`) rather than being assumed equal.
-def ll_enum_ty(mut lg: LG, mem: Array[int, 3741696],
+# The IR type of an enum is `{ i64, i64, ... }`: the tag in field 0 and one `i64`
+# per payload **cell** after it, where a cell is what one payload field takes --
+# one for `int`, `float`, `i32`, `u8` and `bool`, and two for `str`, whose value is
+# a pointer and a length.  The field count is the widest variant's, so every
+# variant fits in the same block and the tag decides which one is live.
+#
+# That is this back end's own layout and deliberately not the other two's: the
+# interpreter keeps `stride` *cells* of its own (each a `K_ST`-tagged record) and
+# the C back end writes a real tagged union.  What the three have to agree on is
+# what a program prints, not what its bytes look like.  What they *do* share is
+# the tag's value: the variant's record index **+ 1**, so 0 means "no variant was
+# ever written here" in all three, which is what `errdefer` (`vl_tag == Err`) and
+# a zero-filled array element depend on.
+#
+# A payload field that is itself a struct or an enum is refused by name, and the
+# reason is not laziness: an aggregate has no cell width here -- a struct value in
+# this back end *is* the address of the storage that holds it -- so a cell could
+# only hold that address, and an address into a frame that has since returned is a
+# value that would print a wrong answer instead of stopping the program.
+def ll_field_cells(k: int) -> int {
+    if k == K_STR() { return 2 }
+    if k == K_ST() { return -1 }
+    if k == K_ENUM() { return -1 }
+    if k == K_INT() { return 1 }
+    if k == K_FLT() { return 1 }
+    if k == K_I32() { return 1 }
+    if k == K_U8() { return 1 }
+    if k == K_BOOL() { return 1 }
+    return -1
+}
+
+def ll_payload_cells(k: int, path: str, line: int) -> int {
+    w: int = ll_field_cells(k)
+    if w < 0 {
+        trap(path, line,
+             "an enum payload that is itself a struct or an enum is not compiled by the LLVM back end yet: a payload cell is one i64 (or the two halves of a str), and an aggregate has no cell width in this back end")
+    }
+    return w
+}
+
+def ll_variant_cells(mem: Array[int, 3741696], vi: int, path: str,
+                     line: int) -> int {
+    nf: int = vrb_get(mem, vi, VRB_NFIELD())
+    off: int = vrb_get(mem, vi, VRB_FOFF())
+    mut n: int = 0
+    mut f: int = 0
+    while f < nf {
+        n += ll_payload_cells(unpack_kind(vfl_get(mem, off + f * 2 + 1)), path,
+                              line)
+        f += 1
+    }
+    return n
+}
+
+# How many cells the payload fields *before* field `j` take, which is the cell
+# offset of field `j` inside the block (field 0 is the tag, so the first payload
+# cell is 1).
+def ll_payload_cell_of(mem: Array[int, 3741696], vi: int, j: int, path: str,
+                       line: int) -> int {
+    off: int = vrb_get(mem, vi, VRB_FOFF())
+    mut n: int = 0
+    mut f: int = 0
+    while f < j {
+        n += ll_payload_cells(unpack_kind(vfl_get(mem, off + f * 2 + 1)), path,
+                              line)
+        f += 1
+    }
+    return n
+}
+
+def ll_enum_cells(mem: Array[int, 3741696], eid: int, path: str,
+                  line: int) -> int {
+    nv: int = enb_get(mem, eid, ENB_NVAR())
+    voff: int = enb_get(mem, eid, ENB_VOFF())
+    if voff < 0 {
+        trap(path, line, "this enum has no variant list")
+    }
+    mut widest: int = 0
+    mut i: int = 0
+    while i < nv {
+        n: int = ll_variant_cells(mem, voff + i, path, line)
+        if n > widest {
+            widest = n
+        }
+        i += 1
+    }
+    return widest
+}
+
+# The enum's layout row, out of the enum's own record: the row `shape_of_type`
+# gives an enum-typed binding, and the sid `K_ENUM` carries.
+def ll_enum_sid(mem: Array[int, 3741696], eid: int) -> int {
+    return enb_get(mem, eid, ENB_SID())
+}
+
+# The enum a variant record belongs to.
+def ll_enum_of_var(mem: Array[int, 3741696], vi: int) -> int {
+    return vrb_get(mem, vi, VRB_ENUM())
+}
+
+def ll_enum_ty(mut lg: LG, mem: Array[int, 3741696], vm: VM,
                mut sty: Array[int, 132096], sid: int, path: str,
                line: int) -> int {
     s: int = ll_sty_slot(sid)
     if sty[s] != 0 {
         return sty[s]
     }
+    eid: int = enum_of_row(mem, vm, sid)
+    if eid < 0 {
+        trap(path, line, "this enum has no layout row")
+    }
     if not ll_buf(concat("vl_", interned(stb_get(mem, sid, STB_NAME())))) {
         ll_fail(lg, "naming an enum type")
     }
     t: int = ll_ck(lg, "an opaque enum type", vshim_struct_type_opaque_buf(lg.m))
     sty[s] = t
-    cells: int = stb_get(mem, sid, STB_SIZE())
-    if cells <= 0 {
-        trap(path, line, "this enum has no layout row")
-    }
+    cells: int = 1 + ll_enum_cells(mem, eid, path, line)
     mut i: int = 0
     while i < cells {
         ll_ckst(lg, "setting an enum field type",
@@ -581,7 +674,7 @@ def ll_field_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     if idx < 0 {
         trap(path, nd_line(nd, e), "this struct has no field of that name")
     }
-    st: int = ll_sty_of(lg, mem, lit, sid, path, nd_line(nd, e))
+    st: int = ll_sty_of(lg, mem, vm, lit, sid, path, nd_line(nd, e))
     # `NT_VAL` and not `NT_SLOT`: the base here is a *reference* to a binding, and
     # a reference carries its frame slot in `NT_VAL` -- `NT_SLOT` is the
     # *declaration*'s own slot, filled in only for a declaration or a `for`
@@ -630,7 +723,7 @@ def ll_store_into(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if k == K_ST() {
-        sv2: int = ll_load_st(lg, mem, lit, unpack_len(fk), val, path,
+        sv2: int = ll_load_st(lg, mem, vm, lit, unpack_len(fk), val, path,
                               nd_line(nd, v))
         ll_ckst(lg, "copying a struct into a field",
                 vshim_build_store(lg.m, sv2, fa))
@@ -665,7 +758,7 @@ def ll_construct(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         trap(path, line,
              "this constructor was never given a slot in the entry block")
     }
-    st: int = ll_sty_of(lg, mem, lit, sid, path, line)
+    st: int = ll_sty_of(lg, mem, vm, lit, sid, path, line)
     n: int = stb_get(mem, sid, STB_NFIELD())
     mut i: int = 0
     mut a: int = nd[e * 10 + 2]
@@ -691,11 +784,259 @@ def ll_construct(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 # One `load` of a struct, spelled as a helper because both the field reader and
 # the assignment path want it and a struct load has to name the same type in both
 # places or LLVM refuses the module.
-def ll_load_st(mut lg: LG, mem: Array[int, 3741696], mut sty: Array[int, 132096],
+def ll_load_st(mut lg: LG, mem: Array[int, 3741696], vm: VM,
+               mut sty: Array[int, 132096],
                sid: int, addr: int, path: str, line: int) -> int {
     return ll_ck(lg, "loading a struct",
-                 vshim_build_load(lg.m, ll_sty_of(lg, mem, sty, sid, path, line),
+                 vshim_build_load(lg.m,
+                                  ll_sty_of(lg, mem, vm, sty, sid, path, line),
                                   addr))
+}
+
+# One `load` of an *enum* value, which is a block of `i64` cells: the same rule as
+# `ll_load_st` -- the type has to be named in one place or LLVM refuses the module
+# -- with the enum's own builder behind it.
+def ll_load_enum(mut lg: LG, mem: Array[int, 3741696], vm: VM,
+                 mut sty: Array[int, 132096], sid: int, addr: int, path: str,
+                 line: int) -> int {
+    return ll_ck(lg, "loading an enum",
+                 vshim_build_load(lg.m,
+                                  ll_enum_ty(lg, mem, vm, sty, sid, path, line),
+                                  addr))
+}
+
+# ------------------------------------------------------- building an enum value
+#
+# An enum value in this back end is the same kind of thing a struct value is: the
+# *address* of a block the reservation pass reserved in the entry block.  So
+# `Circle(2.0)`, `Empty` and `r` all answer with an address of the enum's own IR
+# type, and every consumer -- a copy, a parameter, a `return`, a `match` subject --
+# reads cells through it.
+#
+# The block is `[tag, payload cells...]`, and the payload cells of the variant that
+# is *not* live are zeroed rather than left undefined: a program cannot read them
+# (`match` decides by the tag), but a re-used slot would otherwise carry the
+# previous iteration's bytes into an optimisation-visible place, and the corpus
+# compares printed output, not intent.
+def ll_cell_addr(mut lg: LG, et: int, base: int, off: int, path: str,
+                 line: int) -> int {
+    if off < 0 {
+        trap(path, line, "this payload cell is before the block")
+    }
+    return ll_ck(lg, "an enum cell's address",
+                 vshim_build_gep_field(lg.m, et, base, off))
+}
+
+def ll_cell_store(mut lg: LG, et: int, base: int, off: int, v: int, what: str,
+                  path: str, line: int) -> None {
+    ll_ckst(lg, what,
+            vshim_build_store(lg.m, v, ll_cell_addr(lg, et, base, off, path, line)))
+}
+
+# The slot this node was given, cleared and tagged with `vi + 1`.
+def ll_variant_slot(mut lg: LG, nd: Array[int, 1310720], path: str,
+                    mem: Array[int, 3741696], vm: VM, mut lit: Array[int, 132096],
+                    e: int, vi: int) -> int {
+    line: int = nd_line(nd, e)
+    eid: int = ll_enum_of_var(mem, vi)
+    sid: int = ll_enum_sid(mem, eid)
+    et: int = ll_enum_ty(lg, mem, vm, lit, sid, path, line)
+    dst: int = lit[e]
+    if dst == 0 {
+        trap(path, line,
+             "this variant value was never given a slot in the entry block")
+    }
+    cells: int = 1 + ll_enum_cells(mem, eid, path, line)
+    mut i: int = 0
+    while i < cells {
+        ll_cell_store(lg, et, dst, i, const_i64(lg, 0),
+                      "clearing an enum payload cell", path, line)
+        i += 1
+    }
+    ll_cell_store(lg, et, dst, 0, const_i64(lg, vi + 1), "tagging a variant",
+                  path, line)
+    return dst
+}
+
+# `Empty`: the tag and nothing else.
+def ll_variant_lit(mut lg: LG, nd: Array[int, 1310720], path: str,
+                   mem: Array[int, 3741696], vm: VM, mut lit: Array[int, 132096],
+                   e: int) -> int {
+    return ll_variant_slot(lg, nd, path, mem, vm, lit, e,
+                           nt_get(mem, e, NT_VAL()))
+}
+
+# One argument into its payload cells.  `fk` is the *field's* kind, which is what
+# decides the cell's shape, and `ak` is the value's: the two differ only where C
+# converts implicitly (`Full(to_float(n))` and its like), and those conversions are
+# spelled out here because LLVM has none.
+#
+# `av`/`ak` are already evaluated -- the caller reads the argument so that the
+# arguments stay in source order, and this function takes the value because a Vela
+# function may carry sixteen parameters and the reader of a *payload* would have
+# needed eighteen (`nd`, `ty`, `flt`, `src`, `slots`, `slotkind`, `lit` and `fns` are
+# all only there to call `ll_expr`).
+def ll_enum_put(mut lg: LG, path: str, et: int, base: int, off: int, fk: int,
+                av: int, ak: int, line: int) -> None {
+    if fk == K_STR() {
+        # `av` is the address of the 16 bytes, so the cell pair is its data pointer
+        # and its length -- not the address of the pair, which would dangle the
+        # moment the frame that holds the pair returns.
+        if ak != K_STR() {
+            trap(path, line,
+                 "a str payload needs a str value, and this one is a different kind")
+        }
+        dp: int = ll_ck(lg, "reading a str payload's pointer",
+                        vshim_build_load(lg.m, lg.t_ptr,
+                                         ll_ck(lg, "the data field of a str",
+                                               vshim_build_gep_field(lg.m, lg.t_str, av, 0))))
+        ln: int = ll_ck(lg, "reading a str payload's length",
+                        vshim_build_load(lg.m, lg.t_i64,
+                                         ll_ck(lg, "the length field of a str",
+                                               vshim_build_gep_field(lg.m, lg.t_str, av, 1))))
+        pv: int = ll_ck(lg, "boxing a str payload's pointer",
+                        vshim_build_ptrtoint(lg.m, lg.t_i64, dp))
+        ll_cell_store(lg, et, base, off, pv, "storing a str payload's pointer",
+                      path, line)
+        ll_cell_store(lg, et, base, off + 1, ln,
+                      "storing a str payload's length", path, line)
+        return
+    }
+    if fk == K_FLT() {
+        mut fv: int = av
+        if ak == K_INT() {
+            fv = ll_ck(lg, "converting an int payload to float",
+                       vshim_build_sitofp(lg.m, lg.t_f64, av))
+        } else if ak == K_I32() {
+            w: int = ll_wide(lg, ak, av)
+            fv = ll_ck(lg, "converting an i32 payload to float",
+                       vshim_build_sitofp(lg.m, lg.t_f64, w))
+        } else if ak != K_FLT() {
+            trap(path, line,
+                 "a float payload needs a number, and this value is another kind")
+        }
+        bits: int = ll_ck(lg, "the bits of a float payload",
+                          vshim_build_bitcast(lg.m, lg.t_i64, fv))
+        ll_cell_store(lg, et, base, off, bits, "storing a float payload", path,
+                      line)
+        return
+    }
+    if fk == K_STR() or fk == K_ST() or fk == K_ENUM() {
+        trap(path, line, "this payload field has no cell in the LLVM back end")
+    }
+    mut wv: int = av
+    if ak == K_FLT() {
+        wv = ll_ck(lg, "converting a float payload to int",
+                   vshim_build_fptosi(lg.m, lg.t_i64, av))
+    } else if ak == K_BOOL() {
+        wv = ll_ck(lg, "widening a bool payload",
+                   vshim_build_zext(lg.m, lg.t_i64, av))
+    } else if ak == K_INT() or ak == K_I32() or ak == K_U8() {
+        wv = ll_wide(lg, ak, av)
+    } else {
+        trap(path, line,
+             "an integer payload needs a number, and this value is another kind")
+    }
+    ll_cell_store(lg, et, base, off, wv, "storing an int payload", path, line)
+}
+
+# `Circle(2.0)`: the tag, then every argument into the cells of the variant's own
+# field list -- in order, so a payload field's *index inside the variant* becomes a
+# cell offset through the field widths (`str` is two cells) rather than being
+# assumed equal to it.
+def ll_variant_make(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
+                    flt: Array[float, 262144], src: str, path: str,
+                    mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+                    slotkind: Array[int, 4096], lit: Array[int, 132096],
+                    fns: Array[int, 8192], e: int) -> int {
+    line: int = nd_line(nd, e)
+    callee: int = nd[e * 10 + 1]
+    vi: int = nt_get(mem, callee, NT_VAL())
+    eid: int = ll_enum_of_var(mem, vi)
+    sid: int = ll_enum_sid(mem, eid)
+    et: int = ll_enum_ty(lg, mem, vm, lit, sid, path, line)
+    dst: int = ll_variant_slot(lg, nd, path, mem, vm, lit, e, vi)
+    nf: int = vrb_get(mem, vi, VRB_NFIELD())
+    foff: int = vrb_get(mem, vi, VRB_FOFF())
+    mut j: int = 0
+    mut a: int = nd[e * 10 + 2]
+    while a > 0 {
+        if j >= nf {
+            trap(path, line,
+                 "this variant takes fewer values than this construction has")
+        }
+        fk: int = unpack_kind(vfl_get(mem, foff + j * 2 + 1))
+        off: int = 1 + ll_payload_cell_of(mem, vi, j, path, line)
+        # the argument is read *here*, in source order, and its value is what the
+        # cell writer gets -- see `ll_enum_put` for why the writer does not read it
+        av: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                          lit, fns, a)
+        ak: int = expr_kind(nd, ty, mem, vm, a)
+        ll_enum_put(lg, path, et, dst, off, fk, av, ak, nd_line(nd, a))
+        j += 1
+        a = nd_nx(nd, a)
+    }
+    if j != nf {
+        trap(path, line,
+             "this variant takes more values than this construction has")
+    }
+    return dst
+}
+
+# One arm binding: the payload cell (or pair) into the local the resolver gave the
+# binding's name.  A `str` payload is *copied* -- its two cells into the local's own
+# `%vela_str` slot -- so mutating what the arm's name refers to cannot reach back
+# into the enum value, which is the value semantics `copy_value` gives the
+# interpreter and a by-value union member gives the C back end.
+def ll_enum_bind(mut lg: LG, path: str, mem: Array[int, 3741696], slots: Array[int, 4096],
+                 slotkind: Array[int, 4096], et: int, base: int, vi: int, j: int,
+                 b: int, nd: Array[int, 1310720]) -> None {
+    line: int = nd_line(nd, b)
+    k: int = unpack_kind(nt_get(mem, b, NT_LIT()))
+    slot: int = nt_get(mem, b, NT_SLOT())
+    h: int = ll_slot_for(lg, slots, slotkind, slot, k, path, line)
+    off: int = 1 + ll_payload_cell_of(mem, vi, j, path, line)
+    cp: int = ll_cell_addr(lg, et, base, off, path, line)
+    cv: int = ll_ck(lg, "loading an enum payload cell",
+                    vshim_build_load(lg.m, lg.t_i64, cp))
+    if k == K_STR() {
+        dpv: int = ll_ck(lg, "the pointer of a str payload",
+                         vshim_build_inttoptr(lg.m, lg.t_ptr, cv))
+        cp2: int = ll_cell_addr(lg, et, base, off + 1, path, line)
+        ln: int = ll_ck(lg, "the length of a str payload",
+                        vshim_build_load(lg.m, lg.t_i64, cp2))
+        h0: int = ll_ck(lg, "the data field of a str",
+                        vshim_build_gep_field(lg.m, lg.t_str, h, 0))
+        ll_ckst(lg, "binding a str payload's pointer",
+                vshim_build_store(lg.m, dpv, h0))
+        h1: int = ll_ck(lg, "the length field of a str",
+                        vshim_build_gep_field(lg.m, lg.t_str, h, 1))
+        ll_ckst(lg, "binding a str payload's length",
+                vshim_build_store(lg.m, ln, h1))
+        return
+    }
+    if k == K_FLT() {
+        fv: int = ll_ck(lg, "reading a float payload",
+                        vshim_build_bitcast(lg.m, lg.t_f64, cv))
+        ll_ckst(lg, "binding a float payload", vshim_build_store(lg.m, fv, h))
+        return
+    }
+    if k == K_BOOL() {
+        bv: int = ll_ck(lg, "narrowing a bool payload",
+                        vshim_build_trunc(lg.m, lg.t_i1, cv))
+        ll_ckst(lg, "binding a bool payload", vshim_build_store(lg.m, bv, h))
+        return
+    }
+    if k == K_I32() or k == K_U8() {
+        nv: int = ll_narrow(lg, k, cv)
+        ll_ckst(lg, "binding a narrow payload", vshim_build_store(lg.m, nv, h))
+        return
+    }
+    if k == K_INT() {
+        ll_ckst(lg, "binding an int payload", vshim_build_store(lg.m, cv, h))
+        return
+    }
+    trap(path, line, "an arm binding of this kind has no cell in this back end")
 }
 
 # One alloca, in the entry block, of a kind's type.
@@ -1377,8 +1718,16 @@ def ll_sret_of(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         return lg.t_str
     }
     if unpack_kind(kp) == K_ST() {
-        return ll_sty_of(lg, mem, lit, unpack_len(kp), path,
+        return ll_sty_of(lg, mem, vm, lit, unpack_len(kp), path,
                          nd_line(nd, ft_get(mem, f, FT_DEF())))
+    }
+    if unpack_kind(kp) == K_ENUM() {
+        # An enum result is a block of cells, and a block is bigger than a register:
+        # it comes back through the same hidden pointer a struct does, which is why
+        # `ll_fn_ret_type` answers `void` for it and every `return` copies into the
+        # caller's storage.
+        return ll_enum_ty(lg, mem, vm, lit, unpack_len(kp), path,
+                          nd_line(nd, ft_get(mem, f, FT_DEF())))
     }
     return 0
 }
@@ -1418,8 +1767,15 @@ def ll_fn_ret_type(lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         trap(path, nd_line(nd, d), "a function that returns an array is not compiled by the LLVM back end yet")
     }
     if k == K_ENUM() {
-        trap(path, nd_line(nd, d),
-             "a function that returns an enum is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+        if sret == 0 {
+            # an `extern c` symbol returning an enum: the same refusal as `str` and
+            # a struct above, for the same reason
+            trap(path, nd_line(nd, d),
+                 "a function that returns an enum is not compiled by the LLVM back end: `extern c` declares somebody else's ABI")
+        }
+        # the caller's storage, through the hidden pointer -- `ll_return_stmt` copies
+        # the block into it and `ll_function` returns nothing in a register
+        return lg.t_void
     }
     t: int = ll_type_of(lg, k)
     if t == 0 {
@@ -1468,8 +1824,12 @@ def ll_param_type(lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         return lg.t_ptr
     }
     if k == K_ENUM() {
-        trap(path, nd_line(nd, p),
-             "an enum-valued parameter is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+        # An enum parameter crosses as its *address*, exactly as a struct parameter
+        # does and for the same reason: both the caller and the callee of a Vela
+        # function are emitted by this back end, so an address plus a copy in the
+        # callee's prologue says what a by-value parameter means with nothing to
+        # get wrong.  `extern c`'s enums are refused in `ll_declare_fn`.
+        return lg.t_ptr
     }
     t: int = ll_type_of(lg, k)
     if t == 0 {
@@ -1590,10 +1950,22 @@ def ll_reserve_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             # The `lit` entry for this node is therefore the constructor's own
             # storage, and that is how `ll_call_expr` finds it again.
             bp: int = expr_packed(nd, ty, mem, vm, e)
-            st: int = ll_sty_of(lg, mem, lit, unpack_len(bp), path, nd_line(nd, e))
+            st: int = ll_sty_of(lg, mem, vm, lit, unpack_len(bp), path, nd_line(nd, e))
             if lit[e] == 0 {
                 lit[e] = ll_ck(lg, "a slot for a struct result",
                                vshim_build_alloca(lg.m, st, 8))
+            }
+        }
+        if expr_kind(nd, ty, mem, vm, e) == K_ENUM() {
+            # `Circle(1.0)`, and an enum-returning call: both are a block of the
+            # enum's own type, and the block is reserved here for the same reason
+            # the struct one is -- a construction inside a loop reuses one slot.
+            ep: int = expr_packed(nd, ty, mem, vm, e)
+            et: int = ll_enum_ty(lg, mem, vm, lit, unpack_len(ep), path,
+                                 nd_line(nd, e))
+            if lit[e] == 0 {
+                lit[e] = ll_ck(lg, "a slot for an enum result",
+                               vshim_build_alloca(lg.m, et, 8))
             }
         }
         ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
@@ -1704,16 +2076,17 @@ def ll_reserve_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     if k == 25 {
         if nt_get(mem, e, NT_SYM()) == SYM_VARIANT() {
-            trap(path, nd_line(nd, e),
-                 "an enum value is not compiled by the LLVM back end yet: it is a tagged union, and this back end has no lowering for one")
-        }
-    }
-    if k == 26 {
-        callee: int = nd[e * 10 + 1]
-        if nd_kind(nd, callee) == 25 {
-            if nt_get(mem, callee, NT_SYM()) == SYM_VARIANT() {
-                trap(path, nd_line(nd, e),
-                     "constructing a variant is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+            # a bare variant name is a value (`Empty`, `Red`) and its value is the
+            # address of a tagged block -- so it needs a slot of its own, reserved
+            # here with the literals and the short circuits for the header's rule:
+            # one slot per node, reused by every iteration of an enclosing loop
+            vi: int = nt_get(mem, e, NT_VAL())
+            eid: int = ll_enum_of_var(mem, vi)
+            sid: int = ll_enum_sid(mem, eid)
+            et: int = ll_enum_ty(lg, mem, vm, lit, sid, path, nd_line(nd, e))
+            if lit[e] == 0 {
+                lit[e] = ll_ck(lg, "a slot for a variant value",
+                               vshim_build_alloca(lg.m, et, 8))
             }
         }
     }
@@ -1721,16 +2094,12 @@ def ll_reserve_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 }
 
 def ll_reserve_decl(mut lg: LG, nd: Array[int, 1310720],
-                    mut mem: Array[int, 3741696],
+                    mut mem: Array[int, 3741696], vm: VM,
                     mut slots: Array[int, 4096], mut slotkind: Array[int, 4096],
                     mut lit: Array[int, 132096], path: str, s: int) -> None {
     k: int = unpack_kind(nt_get(mem, s, NT_LIT()))
     line: int = nd_line(nd, s)
     slot: int = nt_get(mem, s, NT_SLOT())
-    if k == K_ENUM() {
-        trap(path, line,
-             "an enum binding is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
-    }
     if is_array(k) {
         # an array *binding* is an address (the C back end emits `int64_t*`), so
         # its slot holds a pointer and the arena owns the elements.  The kind
@@ -1749,10 +2118,23 @@ def ll_reserve_decl(mut lg: LG, nd: Array[int, 1310720],
         # only, so a local is never one and always gets a slot of its own.
         # `lit` is the struct-type cache; see `ll_sty_of`.
         sid: int = unpack_len(nt_get(mem, s, NT_LIT()))
-        st: int = ll_sty_of(lg, mem, lit, sid, path, line)
+        st: int = ll_sty_of(lg, mem, vm, lit, sid, path, line)
         ll_note(lg, slots, slotkind, slot, k,
                 ll_ck(lg, "a struct binding's slot",
                       vshim_build_alloca(lg.m, st, 8)), path, line)
+        return
+    }
+    if k == K_ENUM() {
+        # An enum binding is storage of the enum's own block type, and -- like a
+        # struct -- the *expression* for it is that storage's address.  It is also
+        # what a `match` arm's bindings get: the resolver hands a binding the same
+        # `NT_LIT`/`NT_SLOT` pair a declaration carries, so this one branch
+        # reserves both.
+        sid2: int = unpack_len(nt_get(mem, s, NT_LIT()))
+        et: int = ll_enum_ty(lg, mem, vm, lit, sid2, path, line)
+        ll_note(lg, slots, slotkind, slot, k,
+                ll_ck(lg, "an enum binding's slot",
+                      vshim_build_alloca(lg.m, et, 8)), path, line)
         return
     }
     ll_note(lg, slots, slotkind, slot, k, ll_alloca(lg, k, path, line), path, line)
@@ -1779,7 +2161,7 @@ def ll_reserve_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     k: int = nd_kind(nd, s)
     if k == 6 {
         if (nd[s * 10 + 6] & 2) == 2 {
-            ll_reserve_decl(lg, nd, mem, slots, slotkind, lit, path, s)
+            ll_reserve_decl(lg, nd, mem, vm, slots, slotkind, lit, path, s)
         }
         ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
                         nd[s * 10 + 2])
@@ -1848,13 +2230,39 @@ def ll_reserve_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if k == 37 {
-        # The refusal lives in this pass as well as in `ll_stmt`, and it is the same
-        # sentence: a reserve pass that fell through a `match` silently would leave
-        # its arm bodies' locals and literals unreserved, and the failure a reader
-        # would then see is "this local was never reserved a slot in the entry
-        # block" -- a confusing trap for a decision this compiler made on purpose.
-        trap(path, nd_line(nd, s),
-             "`match` is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+        # A `match` reserves, in this order, the subject's own slots and then -- for
+        # every arm -- the arm's binding slots and everything its body needs.  A
+        # reserve pass that fell through a `match` silently would leave those
+        # unreserved, and the failure a reader would then see is "this local was
+        # never reserved a slot in the entry block": a confusing trap for a
+        # decision this compiler made on purpose.
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                        nd[s * 10 + 1])
+        mut a37: int = nd[s * 10 + 2]
+        while a37 > 0 {
+            mut b37: int = nd[a37 * 10 + 2]
+            while b37 > 0 {
+                # a binding node carries the same `NT_LIT`/`NT_SLOT` pair a
+                # declaration does, so the declaration path reserves it
+                ll_reserve_decl(lg, nd, mem, vm, slots, slotkind, lit, path, b37)
+                b37 = nd_nx(nd, b37)
+            }
+            ll_reserve_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                            lit, nd[a37 * 10 + 4])
+            a37 = nd_nx(nd, a37)
+        }
+        return
+    }
+    if k == 43 {
+        # The `errdefer` group's marker.  Its block is *not* part of the body chain
+        # (unlike a `defer`'s, which the parser appends), so this pass is the only
+        # one that can give its literals and locals entry-block slots -- and it must,
+        # or the first `print("...")` in an `errdefer` panics with "this string
+        # literal was never given a slot in the entry block".  Emitting anything here
+        # is not the job: the block runs from the `return` that carries it (`ret + 9`).
+        ll_reserve_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                        nd[s * 10 + 1])
+        return
     }
     # break, continue and pass hold no expressions and no storage
 }
@@ -2043,6 +2451,12 @@ def ll_name(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     if k == K_ST() {
         return ll_addr(lg, slots, slotkind, nt_get(mem, e, NT_VAL()), K_ST(),
+                       local_kind(mem, e), path, nd_line(nd, e))
+    }
+    if k == K_ENUM() {
+        # an enum name is an address for the same reason a struct name is: the
+        # slot *is* where the block lives, and every consumer reads cells through it
+        return ll_addr(lg, slots, slotkind, nt_get(mem, e, NT_VAL()), K_ENUM(),
                        local_kind(mem, e), path, nd_line(nd, e))
     }
     return ll_ck(lg, "loading a local",
@@ -2985,11 +3399,9 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     if k == 25 {
         if nt_get(mem, e, NT_SYM()) == SYM_VARIANT() {
-            # a bare variant name is a value (`Red`, `Empty`), and an enum value is
-            # a tagged union: refused by name rather than lowered into something
-            # that is not one
-            trap(path, nd_line(nd, e),
-                 "an enum value is not compiled by the LLVM back end yet: it is a tagged union, and this back end has no lowering for one")
+            # a bare variant name is a value: `Empty`, `Red`.  Its value is the
+            # address of the tagged block the reservation pass gave this node.
+            return ll_variant_lit(lg, nd, path, mem, vm, lit, e)
         }
         return ll_name(lg, nd, ty, mem, vm, slots, slotkind, path, e)
     }
@@ -2997,8 +3409,8 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         callee: int = nd[e * 10 + 1]
         if nd_kind(nd, callee) == 25 {
             if nt_get(mem, callee, NT_SYM()) == SYM_VARIANT() {
-                trap(path, nd_line(nd, e),
-                     "constructing a variant is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+                return ll_variant_make(lg, nd, ty, flt, src, path, mem, vm,
+                                       slots, slotkind, lit, fns, e)
             }
         }
         return ll_call_expr(lg, nd, ty, flt, src, path, mem, vm, slots,
@@ -3107,7 +3519,7 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         if fkind == K_ST() or fkind == K_STR() {
             return fa
         }
-        ft: int = ll_type_of_st(lg, mem, lit, path, nd_line(nd, e), fkind,
+        ft: int = ll_type_of_st(lg, mem, vm, lit, path, nd_line(nd, e), fkind,
                                 unpack_len(fk))
         if ft == 0 {
             trap(path, nd_line(nd, e),
@@ -3139,6 +3551,13 @@ def ll_print(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             ll_call0(lg, lg.f_sep)
         }
         k: int = expr_kind(nd, ty, mem, vm, a)
+        if k == K_ENUM() {
+            # The C back end refuses this in its checker ("an enum or struct value
+            # cannot be printed in Vela 0.1"), and the value here is an *address*,
+            # so falling through would print a heap offset and call it the enum.
+            trap(path, nd_line(nd, a),
+                 "an enum or struct value cannot be printed in Vela 0.1")
+        }
         if k == K_ST() {
             # A struct has no `print` lowering in either back end (the C back end
             # would write `vela_print_i64(vl_p)` and the C compiler would refuse
@@ -3240,11 +3659,25 @@ def ll_assign(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         # `vl_b = vl_a`.  The source is evaluated the way every struct expression
         # in this back end is, as the address of the storage that holds it, and
         # the slot the declaration pass reserved *is* the destination storage.
-        sv: int = ll_load_st(lg, mem, lit, unpack_len(packed),
+        sv: int = ll_load_st(lg, mem, vm, lit, unpack_len(packed),
                              ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots,
                                      slotkind, lit, fns, v),
                              path, line)
         ll_ckst(lg, "copying a struct into a local",
+                vshim_build_store(lg.m, sv, h))
+        return
+    }
+    if k == K_ENUM() {
+        # `r: Outcome = divide(10, x)` and `b = a`: a whole-block copy, one load and
+        # one store of the enum's own named type.  The source is the *address* of
+        # the block (a construction's slot, a call's result slot, another local's
+        # slot), and what makes the copy a value copy is that the cells are copied
+        # rather than the address.
+        ev: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                          lit, fns, v)
+        sv: int = ll_load_enum(lg, mem, vm, lit, unpack_len(packed), ev, path,
+                               line)
+        ll_ckst(lg, "copying an enum into a local",
                 vshim_build_store(lg.m, sv, h))
         return
     }
@@ -3413,13 +3846,18 @@ def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     v: int = nd[s * 10 + 1]
     rk: int = unpack_kind(lg.retk)
     cl: int = nd[s * 10 + 8]
-    if nd[s * 10 + 9] > 0 {
-        # `errdefer` needs the enum tag of the value being returned, and this back end
-        # has no enum lowering at all (a tagged union), so it is refused here by name
-        # rather than silently running the cleanup on every path -- which is exactly
-        # the difference between `defer` and `errdefer`.
-        trap(path, nd_line(nd, s),
-             "`errdefer` is not compiled by the LLVM back end: it needs the enum tag of the value being returned, and this back end has no enum lowering yet (the C back end and the interpreter both implement it)")
+    ec: int = nd[s * 10 + 9]
+    if ec > 0 {
+        # `errdefer` runs only when the value being returned is the function's
+        # `Err` variant, so it needs the enum tag of that value.  The checker has
+        # already required the function to return an enum with an `Err` variant
+        # (`errdefer_needs_result`), and this is the back end saying so too rather
+        # than silently running the group on every path -- which is exactly the
+        # difference between `defer` and `errdefer`.
+        if rk != K_ENUM() {
+            trap(path, nd_line(nd, s),
+                 "`errdefer` is here but this function does not return an enum, so there is no tag to read")
+        }
     }
     if rk == K_NONE() {
         if v > 0 {
@@ -3438,7 +3876,9 @@ def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         # call's own hidden-pointer storage), and the result is those 16 bytes
         # written *through* the hidden pointer the caller supplied.  The slot
         # `rslot` holds that pointer; it was filled in the entry block, so a
-        # `return` in any block can read it.
+        # `return` in any block can read it.  Writing it before the cleanups is
+        # safe and is what the C back end does with its temporary: the destination
+        # is the *caller's* storage, so a cleanup that writes a local cannot reach it.
         dst: int = ll_ck(lg, "the hidden return pointer",
                          vshim_build_load(lg.m, lg.t_ptr, lg.rslot))
         srcv: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
@@ -3459,10 +3899,59 @@ def ll_return_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                           vshim_build_load(lg.m, lg.t_ptr, lg.rslot))
         srcv2: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
                              lit, fns, v)
-        sv2: int = ll_load_st(lg, mem, lit, unpack_len(lg.retk), srcv2, path,
+        sv2: int = ll_load_st(lg, mem, vm, lit, unpack_len(lg.retk), srcv2, path,
                               nd_line(nd, s))
         ll_ckst(lg, "returning a struct through the hidden pointer",
                 vshim_build_store(lg.m, sv2, dst2))
+        ll_ret_branch(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                      fns, cl)
+        return
+    }
+    if rk == K_ENUM() {
+        # An enum result is a block of cells written through the same hidden pointer,
+        # and the copy happens *before* the cleanups so that
+        #   * the tag `errdefer` tests is the one the caller will receive, and
+        #   * a cleanup that overwrites the variable the `return` read cannot change
+        #     the answer -- which is the property `defer_blocks`' `localuse` pins.
+        line: int = nd_line(nd, s)
+        et: int = ll_enum_ty(lg, mem, vm, lit, unpack_len(lg.retk), path, line)
+        dst3: int = ll_ck(lg, "the hidden return pointer",
+                          vshim_build_load(lg.m, lg.t_ptr, lg.rslot))
+        srcv3: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                             lit, fns, v)
+        sv3: int = ll_load_enum(lg, mem, vm, lit, unpack_len(lg.retk), srcv3,
+                                path, line)
+        ll_ckst(lg, "returning an enum through the hidden pointer",
+                vshim_build_store(lg.m, sv3, dst3))
+        if ec > 0 {
+            # The `errdefer` group, guarded by the tag that was just written.  The
+            # tag is the variant's record index + 1, the same number `match` tests
+            # and the same one the interpreter and the C back end write.
+            evi: int = find_variant(mem, vm, intern("Err"))
+            if evi < 0 {
+                trap(path, line,
+                     "`errdefer` is here but this program has no variant named `Err`")
+            }
+            here2: int = lg.cur
+            errb: int = ll_new(lg, "errdefer")
+            after: int = ll_new(lg, "after-errdefer")
+            ll_at(lg, here2, "positioning the builder at the errdefer test")
+            tg: int = ll_ck(lg, "loading the returned tag",
+                            vshim_build_load(lg.m, lg.t_i64,
+                                             ll_cell_addr(lg, et, dst3, 0, path,
+                                                          line)))
+            cond2: int = ll_ck(lg, "comparing the returned tag with Err",
+                               vshim_build_icmp(lg.m, 0, tg,
+                                                const_i64(lg, evi + 1)))
+            ll_cbr(lg, cond2, errb, after)
+            ll_at(lg, errb, "positioning the builder in the errdefer group")
+            ll_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                    fns, ec)
+            if lg.term == 0 {
+                ll_br(lg, after)
+            }
+            ll_at(lg, after, "positioning the builder after the errdefer group")
+        }
         ll_ret_branch(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
                       fns, cl)
         return
@@ -3636,6 +4125,120 @@ def ll_for(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     ll_at(lg, exitb, "positioning the builder after the loop")
 }
 
+# ---------------------------------------------------------------- `match`
+#
+# A `match` is one tag load and a chain of tests: the subject is evaluated **once**
+# into an address, cell 0 of that block is loaded once, and every pattern compares
+# that tag with the variant's own tag+1.  The shim exposes no `switch`, and it does
+# not need one -- a chain of `icmp`/`br` is what a C `switch` over a handful of
+# cases compiles to anyway -- so nothing about the language waits on it.
+#
+# Each arm's body runs in its own block and every arm branches to one join block, so
+# the statement after the `match` is reached by exactly one path.  `else` is the
+# checker's exhaustiveness escape hatch and the parser requires it last, so it
+# becomes the fall-through: the block the last test would have jumped to is then
+# dead, which is why the loop tracks whether an `else` arm closed the chain.
+#
+# A tag of 0 -- an array element nobody wrote, a zero-filled field -- matches no
+# pattern and falls through to the join.  The interpreter traps there and the C
+# back end's `switch` falls through; this back end takes the C back end's side
+# rather than inventing a third answer, and both of the corpus programs that hold
+# enum values (`enum_in_array`, `errdefer_groups`) write every value they read.
+def ll_match(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
+             flt: Array[float, 262144], src: str, path: str,
+             mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+             slotkind: Array[int, 4096], lit: Array[int, 132096],
+             fns: Array[int, 8192], s: int) -> None {
+    line: int = nd_line(nd, s)
+    subj: int = nd[s * 10 + 1]
+    sp: int = expr_packed(nd, ty, mem, vm, subj)
+    if unpack_kind(sp) != K_ENUM() {
+        trap(path, line,
+             "the subject of a match must be an enum value, and this back end cannot name its type")
+    }
+    et: int = ll_enum_ty(lg, mem, vm, lit, unpack_len(sp), path, line)
+    here: int = lg.cur
+    addr: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                        fns, subj)
+    tag: int = ll_ck(lg, "loading an enum's tag",
+                     vshim_build_load(lg.m, lg.t_i64,
+                                      ll_cell_addr(lg, et, addr, 0, path, line)))
+    # One block per arm, then the join.  Creating a block moves the builder, so the
+    # block the dispatch belongs to is remembered and returned to before every test.
+    mut n: int = 0
+    mut a: int = nd[s * 10 + 2]
+    while a > 0 {
+        if n >= 64 {
+            trap(path, line, "the LLVM back end's match holds sixty-four arms")
+        }
+        n += 1
+        a = nd_nx(nd, a)
+    }
+    mut ab: Array[int, 64]
+    mut i: int = 0
+    while i < n {
+        ab[i] = ll_new(lg, "arm")
+        i += 1
+    }
+    join: int = ll_new(lg, "match")
+    mut dispatch: int = here
+    mut closed: int = 0
+    mut a2: int = nd[s * 10 + 2]
+    mut i2: int = 0
+    while i2 < n {
+        pat: int = nd[a2 * 10 + 1]
+        ll_at(lg, dispatch, "positioning the builder at a match test")
+        if pat < 0 {
+            ll_br(lg, ab[i2])
+            closed = 1
+        } else {
+            vi: int = find_variant(mem, vm, pat)
+            if vi < 0 {
+                trap(path, nd_line(nd, a2),
+                     "this match names a variant that does not exist")
+            }
+            nxt: int = ll_new(lg, "next")
+            ll_at(lg, dispatch, "positioning the builder at a match test")
+            cond: int = ll_ck(lg, "a tag comparison",
+                              vshim_build_icmp(lg.m, 0, tag,
+                                               const_i64(lg, vi + 1)))
+            ll_cbr(lg, cond, ab[i2], nxt)
+            dispatch = nxt
+        }
+        i2 += 1
+        a2 = nd_nx(nd, a2)
+    }
+    if closed == 0 {
+        ll_at(lg, dispatch, "positioning the builder after the last match test")
+        ll_br(lg, join)
+    }
+    mut i3: int = 0
+    mut a3: int = nd[s * 10 + 2]
+    while i3 < n {
+        pat3: int = nd[a3 * 10 + 1]
+        ll_at(lg, ab[i3], "positioning the builder in a match arm")
+        if pat3 >= 0 {
+            vi3: int = find_variant(mem, vm, pat3)
+            mut b: int = nd[a3 * 10 + 2]
+            mut j: int = 0
+            while b > 0 {
+                ll_enum_bind(lg, path, mem, slots, slotkind, et, addr, vi3, j, b,
+                             nd)
+                j += 1
+                b = nd_nx(nd, b)
+            }
+        }
+        ll_body(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns,
+                nd[a3 * 10 + 4])
+        if lg.term == 0 {
+            ll_br(lg, join)
+        }
+        i3 += 1
+        a3 = nd_nx(nd, a3)
+    }
+    ll_at(lg, join, "positioning the builder after the match")
+}
+
 def ll_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             flt: Array[float, 262144], src: str, path: str,
             mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
@@ -3711,13 +4314,8 @@ def ll_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if k == 37 {
-        # Refused by name, deliberately, in this back end's own voice: an enum value
-        # is a tagged union, which is a shape this file has no lowering for (it
-        # lowers a struct by splatting its fields, and a tag plus a union is not
-        # that).  The ledger records it: tests/llvm-refusals.txt, one line per
-        # corpus program this refuses.
-        trap(path, nd_line(nd, s),
-             "`match` is not compiled by the LLVM back end yet: an enum value is a tagged union, and this back end has no lowering for one")
+        ll_match(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns, s)
+        return
     }
     trap(path, nd_line(nd, s), "the LLVM back end has no lowering for this statement yet")
 }
@@ -3811,7 +4409,7 @@ def ll_function(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         # `ll_addr` and `ll_name` read the pointer bit against.
         mut stp: int = 0
         if kk == K_ST() {
-            stp = ll_sty_of(lg, mem, lit, unpack_len(pk), path, nd_line(nd, p))
+            stp = ll_sty_of(lg, mem, vm, lit, unpack_len(pk), path, nd_line(nd, p))
             if is_ptr_binding(pk) {
                 h = ll_alloca_ptr(lg, "a struct parameter slot")
             } else {
@@ -3822,6 +4420,12 @@ def ll_function(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             stp = lg.t_str
             h = ll_ck(lg, "a `str` parameter slot",
                       vshim_build_alloca(lg.m, lg.t_str, 8))
+        } else if kk == K_ENUM() {
+            # an enum parameter arrives as an address too, and the callee's slot is
+            # a block of its own: that copy is what makes `s: Shape` by value
+            stp = ll_enum_ty(lg, mem, vm, lit, unpack_len(pk), path, nd_line(nd, p))
+            h = ll_ck(lg, "an enum parameter slot",
+                      vshim_build_alloca(lg.m, stp, 8))
         } else if is_array(kk) {
             # an array parameter arrives as a pointer and is stored in a pointer
             # slot, so the body's `a[i]` reads the address out of it
@@ -3838,6 +4442,11 @@ def ll_function(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                              vshim_build_load(lg.m, stp, pv))
             ll_ckst(lg, "copying a struct parameter",
                     vshim_build_store(lg.m, svp, h))
+        } else if kk == K_ENUM() {
+            svpe: int = ll_ck(lg, "reading an enum parameter to copy it",
+                              vshim_build_load(lg.m, stp, pv))
+            ll_ckst(lg, "copying an enum parameter",
+                    vshim_build_store(lg.m, svpe, h))
         } else if kk == K_STR() {
             svq: int = ll_ck(lg, "reading a `str` parameter to copy it",
                              vshim_build_load(lg.m, lg.t_str, pv))

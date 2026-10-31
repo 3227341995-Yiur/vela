@@ -42,8 +42,12 @@ payloads and `match` is no longer on that list** (landed 2026-09-24): the interp
 builds a variant and runs an arm, the C back end lowers a value to a tagged union and an
 exhaustive `match` to a `switch` with no `default`, the checker judges exhaustiveness
 (naming the variant that is missing), a duplicate arm, an `else` that is not last and a
-subject that is not an enum, and the LLVM back end refuses the whole construct **by name**
-— five rows of `tests\llvm-refusals.txt`, which is the two-sided ledger.  `enum` and
+subject that is not an enum, and the LLVM back end lowers the same value to a block of
+`i64` cells — the tag in cell 0, one cell per payload field and two for a `str` — which is
+what moved the corpus's six enum rows from `run-c` to `run` and deleted their lines from
+`tests\llvm-refusals.txt` (landed 2026-10-31).  The one enum shape that ledger still
+refuses is a payload that is itself an aggregate: an aggregate has no cell width there.
+`enum` and
 `match` are reserved words now (`SPEC.md` 1.3), and that is a language decision rather than
 a lexer detail, because `match = 1` and `match(x)` are both legal programs and there is no
 way to guess between them.  The compiler could not parse a source that uses them until its

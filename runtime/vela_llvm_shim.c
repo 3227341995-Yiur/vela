@@ -1847,6 +1847,91 @@ int64_t vshim_build_trunc(int64_t module, int64_t dest_type, int64_t value)
     return build_int_cast(module, dest_type, value, LLVMBuildTrunc, "a truncation", 0);
 }
 
+/* The three payload-cell conversions (the header says why an enum's cells are all
+ * `i64`).  `dir` is 0 for `ptrtoint`, 1 for `inttoptr` and 2 for the `f64 <-> i64`
+ * bitcast; every one of them checks the shape it is used for before it calls
+ * LLVM, because the C API's answer to a wrong direction is an assertion. */
+static int64_t build_value_cast(int64_t module, int64_t dest_type, int64_t value,
+                                LLVMValueRef (*op)(LLVMBuilderRef, LLVMValueRef, LLVMTypeRef, const char *),
+                                const char *what, int dir)
+{
+    shim_module *m, *owner = NULL;
+    LLVMTypeRef dt, vt;
+    LLVMValueRef v, r;
+    LLVMTypeKind vk, dk;
+    int64_t h;
+
+    m = module_of(module);
+    if (!m) return 0;
+    dt = (LLVMTypeRef)lookup(dest_type, SHIM_KIND_TYPE, &owner);
+    if (!dt) return 0;
+    if (owner != m) {
+        fail("the destination type belongs to another module");
+        return 0;
+    }
+    v = (LLVMValueRef)lookup(value, SHIM_KIND_VALUE, &owner);
+    if (!v) return 0;
+    if (owner != m) {
+        fail("the value belongs to another module");
+        return 0;
+    }
+    vt = LLVMTypeOf(v);
+    vk = LLVMGetTypeKind(vt);
+    dk = LLVMGetTypeKind(dt);
+    if (dir == 0) {
+        if (vk != LLVMPointerTypeKind || !type_is_integer(dt)) {
+            fail("%s needs a pointer source and an integer destination", what);
+            return 0;
+        }
+    } else if (dir == 1) {
+        if (!type_is_integer(vt) || dk != LLVMPointerTypeKind) {
+            fail("%s needs an integer source and a pointer destination", what);
+            return 0;
+        }
+    } else {
+        int vf = type_is_float(vt), df = type_is_float(dt);
+        int vi = type_is_integer(vt), di = type_is_integer(dt);
+        if (vf && di && LLVMGetIntTypeWidth(dt) == 64) {
+            /* f64 -> i64: the direction a `float` payload is *stored* in */
+        } else if (vi && df && LLVMGetIntTypeWidth(vt) == 64) {
+            /* i64 -> f64: the direction it is *read* back in */
+        } else {
+            fail("%s is f64 <-> i64 here, and this one is not", what);
+            return 0;
+        }
+    }
+    if (check_builder(m) != VSHIM_OK) return 0;
+    r = op(m->builder, v, dt, "");
+    if (!r) {
+        fail("%s returned NULL", what);
+        return 0;
+    }
+    h = slot_add(m, r, SHIM_KIND_VALUE);
+    if (!h) return 0;
+    return h;
+}
+
+int64_t vshim_build_ptrtoint(int64_t module, int64_t dest_type, int64_t value)
+{
+    clear_error();
+    return build_value_cast(module, dest_type, value, LLVMBuildPtrToInt,
+                            "a pointer-to-integer conversion", 0);
+}
+
+int64_t vshim_build_inttoptr(int64_t module, int64_t dest_type, int64_t value)
+{
+    clear_error();
+    return build_value_cast(module, dest_type, value, LLVMBuildIntToPtr,
+                            "an integer-to-pointer conversion", 1);
+}
+
+int64_t vshim_build_bitcast(int64_t module, int64_t dest_type, int64_t value)
+{
+    clear_error();
+    return build_value_cast(module, dest_type, value, LLVMBuildBitCast,
+                            "a bitcast", 2);
+}
+
 int64_t vshim_build_icmp(int64_t module, int32_t predicate, int64_t left, int64_t right)
 {
     shim_module *m, *owner = NULL;

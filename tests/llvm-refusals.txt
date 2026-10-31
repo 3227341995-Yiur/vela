@@ -27,24 +27,19 @@ parallel_alias_read_any_index    | is refused by the LLVM back end, deliberately
 parallel_alias_same_index        | is refused by the LLVM back end, deliberately
 parallel_alias_nested_rowmajor   | is refused by the LLVM back end, deliberately
 
-# Enums with payloads and `match`.  This is a *gap* and not a design decision --
-# the C back end compiles every one of these -- but it cannot be recorded in
-# `llvm-gaps.txt`, which is judged over `tests/llvm-shapes/` and never consulted
-# for a corpus row.  An enum value is a tagged union; the LLVM back end lowers a
-# struct by splatting its fields into registers, and a tag plus a union is not
-# that shape.  The day it learns one, each of these lines goes red (NO-LONGER-
-# REFUSED) and gets deleted, which is exactly the two-sided rule this file's
-# header describes.
+# Enums were the second gap and they are closed now: `match`, a bare variant, a
+# construction, an enum-returning function, an enum parameter, an enum binding and
+# `errdefer`'s tag are all lowered (a payload cell is one `i64` for `int`, `float`,
+# `i32`, `u8` and `bool`, and two for `str`).  The six lines that used to stand here
+# went red as NO-LONGER-REFUSED one at a time, which is what the two-sided rule is
+# for.
 #
-# The substring is the sentence every one of those refusals carries, in
-# `emit_llvm.vel`: an enum-valued parameter, return type and binding refuse in
-# their own words, and `match`, a bare variant and a construction each add theirs.
-enum_payload_bind                | is not compiled by the LLVM back end yet: an enum value is a tagged union
-enum_match_no_else               | is not compiled by the LLVM back end yet: an enum value is a tagged union
-enum_else_arm                    | is not compiled by the LLVM back end yet: an enum value is a tagged union
-enum_two_enums                   | is not compiled by the LLVM back end yet: an enum value is a tagged union
-enum_exhaustive_switch           | is not compiled by the LLVM back end yet: an enum value is a tagged union
-enum_exhaustive_switch           | is not compiled by the LLVM back end yet: an enum value is a tagged union
-# errdefer needs the same tag: the cleanup runs only when the value being returned is
-# the function's Err variant, and with no enum lowering there is no tag to read.
-errdefer_groups                  | is not compiled by the LLVM back end yet: an enum value is a tagged union
+# One shape of enum is still refused, and it is a *limit of the cell layout* rather
+# than a gap being worked on: an enum whose payload is itself an aggregate.  A
+# payload cell is one `i64` (or the two halves of a `str`), so there is nowhere to
+# put a struct or a nested enum by value -- a cell could only hold the address of
+# one, and an address into a frame that has returned is a wrong answer rather than a
+# refusal.  The C back end compiles it (its payload is a real union member of the
+# nested type), so `enum_two_enums` stays a `run-c` row with this line as its other
+# side.
+enum_two_enums                   | an enum payload that is itself a struct or an enum is not compiled by the LLVM back end yet
