@@ -8,6 +8,10 @@
 #     and every reference in *this* file is renamed with it -- so `main` below calls
 #     this file's `twice` and prints 6, not the helper's 7.
 #
+# The plugin's ast-diff cannot compare this file: the compiler's dump carries the
+# loader's rename (twice$0) and a one-file parse cannot know the file index.  Same gap
+# as same_name.vel, reported rather than hidden.
+#
 # That is the property worth testing: not that both exist, but that neither file is
 # silently answering with the other's function.  Expected stdout, byte for byte:
 #     6

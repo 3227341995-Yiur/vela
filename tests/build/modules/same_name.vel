@@ -8,6 +8,13 @@
 #   from_b(1) -> b.vel's same -> 1 * 10 = 10
 #   same(5)   -> this file's same -> 5 - 1 = 4
 #
+# The plugin's `ast-diff` cannot compare this file, and that is a limit of the
+# comparison rather than of the parser: it compares ONE file against the compiler's
+# merged dump, and the compiler's dump carries the loader's rename (`same`), whose
+# suffix is the loader's file index -- a number a one-file parse cannot know.  `psi-
+# tree-diff` still covers the PSI side of this file.  Two files are in that gap
+# (this one and `dup_name.vel`), and it is reported instead of hidden.
+#
 # NOT supported, and not tested here: calling a *colliding* name through a module
 # alias, as in `same_a.same(1)`.  The alias pass turns `alias.member` into a plain
 # name before the loader knows what is ambiguous, so that spelling would resolve to
