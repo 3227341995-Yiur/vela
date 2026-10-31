@@ -181,3 +181,8 @@ desktop.ini
 # so it lands in `tests/build/` on every suite run, and it is program output rather than
 # a fixture: a clone that has one did not come from git.
 /tests/build/io_scratch.txt
+
+# lib/fs.vel's scratch: the listing writes one and deletes it, and a run that dies
+# between those two moments leaves it behind.  _* covers the probe files too.
+/tests/build/.vela_listing.txt
+/tests/build/_*
