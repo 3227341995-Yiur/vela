@@ -1344,6 +1344,12 @@ class VelaSyntaxParser private constructor(
     /** Statements that belong immediately after the one the parser returned. */
     private val pending = ArrayList<VelaSyntaxNode>()
 
+    /** How deep the body being parsed is nested: `defer` splices only into the outermost. */
+    private var bodyDepth = 0
+
+    /** True while a `defer` block is being parsed: a `return` in one is refused. */
+    private var inDefer = false
+
     private val deferred = ArrayList<VelaSyntaxNode>()
 
     private fun parseStatement(): VelaSyntaxNode? {
@@ -1402,11 +1408,25 @@ class VelaSyntaxParser private constructor(
                 }
                 VelaKw.DEFER, VelaKw.ERRDEFER -> {
                     val isErr = (t.code == VelaKw.ERRDEFER)
+                    if (topLevel) {
+                        advance()
+                        return recover("defer is only allowed inside a function body")
+                    }
+                    if (loopDepth > 0) {
+                        advance()
+                        return recover("defer is not allowed inside a loop")
+                    }
+                    if (bodyDepth > 1) {
+                        advance()
+                        return recover("defer is not allowed inside a nested block")
+                    }
                     advance()
                     val n = newNode(VelaNodeKind.PASS, at)
                     n.endTok = pos - 1
                     if (atOp(VelaOps.LBRACE)) {
+                        inDefer = true
                         val body = parseBody()
+                        inDefer = false
                         if (isErr) {
                             pending.add(newNode(VelaNodeKind.PASS, at))
                         } else {
@@ -1857,6 +1877,7 @@ class VelaSyntaxParser private constructor(
      * statements that follow and the tree does not lose them.
      */
     private fun parseBody(struct: Boolean = false): VelaSyntaxNode {
+        bodyDepth += 1
         if (recovering) {
             val dead = VelaSyntaxNode(VelaNodeKind.UNDECLARED_BLOCK, -1, -1)
             dead.printSelf = false
@@ -1916,10 +1937,19 @@ class VelaSyntaxParser private constructor(
             // file keeps its shape.
             problem("missing '}': a block is never closed")
             block.endTok = pos - 1
+            bodyDepth -= 1
+            if (bodyDepth == 0) {
+                while (deferred.isNotEmpty()) {
+                    block.add(deferred.removeAt(0))
+                }
+            }
             return block
         }
-        while (deferred.isNotEmpty()) {
-            block.add(deferred.removeAt(0))
+        bodyDepth -= 1
+        if (bodyDepth == 0) {
+            while (deferred.isNotEmpty()) {
+                block.add(deferred.removeAt(0))
+            }
         }
         block.endTok = pos
         advance()
