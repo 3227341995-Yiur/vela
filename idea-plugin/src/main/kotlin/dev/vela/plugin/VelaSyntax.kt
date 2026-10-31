@@ -1325,10 +1325,6 @@ class VelaSyntaxParser private constructor(
             block.add(recover("expected a newline between statements, found '" + tokText() + "'"))
             if (atNl()) advance()
         }
-        while (deferred.isNotEmpty()) {
-            block.add(deferred.removeAt(0))
-            count++
-        }
         root.startTok = block.startTok
         root.endTok = block.endTok
         val tree = VelaSyntaxTree(root, toks, src, problems)
@@ -1345,6 +1341,9 @@ class VelaSyntaxParser private constructor(
      * the node pool keeps them as a kind-42 chain.  They are spliced in LIFO order, because
      * the last `defer` runs first, so this list is filled front-to-back and drained in order.
      */
+    /** Statements that belong immediately after the one the parser returned. */
+    private val pending = ArrayList<VelaSyntaxNode>()
+
     private val deferred = ArrayList<VelaSyntaxNode>()
 
     private fun parseStatement(): VelaSyntaxNode? {
@@ -1408,7 +1407,9 @@ class VelaSyntaxParser private constructor(
                     n.endTok = pos - 1
                     if (atOp(VelaOps.LBRACE)) {
                         val body = parseBody()
-                        if (!isErr) {
+                        if (isErr) {
+                            pending.add(newNode(VelaNodeKind.PASS, at))
+                        } else {
                             val kids = body.children
                             var k = kids.size - 1
                             while (k >= 0) {
@@ -1416,10 +1417,13 @@ class VelaSyntaxParser private constructor(
                                 k -= 1
                             }
                         }
+                    } else if (isErr) {
+                        pending.add(newNode(VelaNodeKind.PASS, at))
                     }
                     return n
                 }
-                VelaKw.PASS -> {                    advance()
+                VelaKw.PASS -> {
+                    advance()
                     val n = newNode(VelaNodeKind.PASS, at)
                     n.endTok = pos - 1
                     return n
@@ -1890,7 +1894,12 @@ class VelaSyntaxParser private constructor(
             }
             val before = pos
             val s = if (struct) parseStructMember() else parseStatement()
-            if (s != null) block.add(s)
+            if (s != null) {
+                block.add(s)
+            }
+            while (pending.isNotEmpty()) {
+                block.add(pending.removeAt(0))
+            }
             if (pos == before) advance()
             recovering = false
             if (atNl()) {
@@ -1908,6 +1917,9 @@ class VelaSyntaxParser private constructor(
             problem("missing '}': a block is never closed")
             block.endTok = pos - 1
             return block
+        }
+        while (deferred.isNotEmpty()) {
+            block.add(deferred.removeAt(0))
         }
         block.endTok = pos
         advance()
