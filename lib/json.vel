@@ -1,0 +1,146 @@
+# lib/json.vel -- reading values out of a JSON object, by key.
+#
+# This is a reader for ONE flat object, not a general JSON parser, and the difference
+# matters: a general parser builds a tree, and a tree needs a union type -- which this
+# language expresses with enums, and the LLVM back end cannot compile enums yet.  What
+# is here is what a program that talks to a service needs on day one ("what is the value
+# of this key"), and it does not pretend to more:
+#
+#   * one object at the top level: no arrays as values, no objects as values;
+#   * a key is matched as a quoted string, so "id" does not match "uid";
+#   * values it can read: a quoted string (with \n \t \" \\ decoded), an integer, a
+#     float, true, false and null (as the empty string).
+#
+# Anything else answers "" (or 0 / False for the typed readers), and `has_key` is how a
+# caller tells "absent" from "empty" -- that is the one place a silent empty answer
+# would be a lie.
+import str
+
+# The raw text of a value, or "" when the key is not in the object.
+def raw_value(text: str, key: str) -> str {
+    quoted: str = concat(concat("\"", key), "\"")
+    at: int = str.index_of(text, quoted)
+    if at < 0 {
+        return ""
+    }
+    mut i: int = at + len(quoted)
+    n: int = len(text)
+    mut found: bool = False
+    while i < n {
+        ch: str = substr(text, i, i + 1)
+        if ch == ":" {
+            i += 1
+            found = True
+            break
+        }
+        if ch == "," or ch == "}" {
+            break
+        }
+        i += 1
+    }
+    if not found {
+        return ""
+    }
+    while i < n {
+        if substr(text, i, i + 1) == " " {
+            i += 1
+        } else {
+            break
+        }
+    }
+    if i >= n {
+        return ""
+    }
+    if substr(text, i, i + 1) == "\"" {
+        return quoted_at(text, i)
+    }
+    return bare_at(text, i)
+}
+
+# The string inside the quotes that start at `i`, with the two escapes this reader
+# understands decoded.  A backslash before anything else passes that character
+# through, which is what a JSON reader may do for the escapes it does not interpret.
+def quoted_at(text: str, i: int) -> str {
+    n: int = len(text)
+    mut j: int = i + 1
+    mut out: str = ""
+    while j < n {
+        ch: str = substr(text, j, j + 1)
+        if ch == "\"" {
+            return out
+        }
+        if ch == "\\" {
+            if j + 1 < n {
+                e: str = substr(text, j + 1, j + 2)
+                if e == "n" {
+                    out = concat(out, "\n")
+                } else if e == "t" {
+                    out = concat(out, "\t")
+                } else if e == "r" {
+                    out = concat(out, "\r")
+                } else {
+                    out = concat(out, e)
+                }
+                j += 2
+                continue
+            }
+            return out
+        }
+        out = concat(out, ch)
+        j += 1
+    }
+    return out
+}
+
+# An unquoted value -- a number, true, false, null -- up to the next separator.
+def bare_at(text: str, i: int) -> str {
+    n: int = len(text)
+    mut j: int = i
+    while j < n {
+        ch: str = substr(text, j, j + 1)
+        if ch == "," or ch == "}" or ch == " " {
+            break
+        }
+        j += 1
+    }
+    return substr(text, i, j)
+}
+
+def has_key(text: str, key: str) -> bool {
+    quoted: str = concat(concat("\"", key), "\"")
+    return str.index_of(text, quoted) >= 0
+}
+
+def get_str(text: str, key: str) -> str {
+    return raw_value(text, key)
+}
+
+def get_int(text: str, key: str) -> int {
+    return str.parse_int(raw_value(text, key))
+}
+
+def get_bool(text: str, key: str) -> bool {
+    if raw_value(text, key) == "true" {
+        return True
+    }
+    return False
+}
+
+# A float value.  `to_float` needs a number, and `parse_int` refuses a fraction, so the
+# digits either side of the point are read here and put back together.
+def get_float(text: str, key: str) -> float {
+    v: str = raw_value(text, key)
+    dot: int = str.index_of(v, ".")
+    if dot < 0 {
+        return to_float(str.parse_int(v))
+    }
+    whole: int = str.parse_int(substr(v, 0, dot))
+    frac: str = substr(v, dot + 1, len(v))
+    mut scale: int = 1
+    mut k: int = 0
+    while k < len(frac) {
+        scale = scale * 10
+        k += 1
+    }
+    return to_float(whole) + to_float(str.parse_int(frac)) / to_float(scale)
+}

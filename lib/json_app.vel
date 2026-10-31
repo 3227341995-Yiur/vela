@@ -1,0 +1,26 @@
+# The run that proves lib/json.vel: one flat object, read by key.
+import json
+import str
+
+def main() -> None {
+    body: str = "{\"id\": 42, \"name\": \"vela\", \"ok\": true, \"no\": false, \"ratio\": 1.25, \"note\": \"a\\tb\"}"
+    k_id: str = "id"
+    k_name: str = "name"
+    k_ok: str = "ok"
+    k_no: str = "no"
+    k_ratio: str = "ratio"
+    k_note: str = "note"
+    k_missing: str = "nope"
+    print(f"name=[{json.get_str(body, k_name)}]")
+    print(f"id={json.get_int(body, k_id)}")
+    print(f"ok={json.get_bool(body, k_ok)}")
+    print(f"no={json.get_bool(body, k_no)}")
+    print(concat("ratio=", str.to_str_f(json.get_float(body, k_ratio), 2)))
+    print(f"has id={json.has_key(body, k_id)}")
+    print(f"has missing={json.has_key(body, k_missing)}")
+    print(f"missing=[{json.get_str(body, k_missing)}]")
+    print(f"int of missing={json.get_int(body, k_missing)}")
+    print(f"note len={len(json.get_str(body, k_note))}")
+    k_uid: str = "uid"
+    print(f"uid is not id={json.has_key(body, k_uid)}")
+}

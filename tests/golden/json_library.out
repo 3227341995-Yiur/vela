@@ -1,0 +1,11 @@
+name=[vela]
+id=42
+ok=True
+no=False
+ratio=1.25
+has id=True
+has missing=False
+missing=[]
+int of missing=0
+note len=3
+uid is not id=False
