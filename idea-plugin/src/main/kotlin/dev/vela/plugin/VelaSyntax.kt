@@ -1447,7 +1447,7 @@ class VelaSyntaxParser private constructor(
                         val body = parseBody()
                         inDefer = false
                         if (isErr) {
-                            pending.add(newNode(VelaNodeKind.PASS, at))
+                            deferred.add(newNode(VelaNodeKind.PASS, at))
                         } else {
                             val kids = body.children
                             var k = kids.size - 1
@@ -1457,7 +1457,7 @@ class VelaSyntaxParser private constructor(
                             }
                         }
                     } else if (isErr) {
-                        pending.add(newNode(VelaNodeKind.PASS, at))
+                        deferred.add(newNode(VelaNodeKind.PASS, at))
                     }
                     return n
                 }
