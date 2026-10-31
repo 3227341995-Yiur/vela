@@ -558,8 +558,17 @@ public final class AstDiff {
                 continue;
             }
             String lit = s.strEscapes ? decodePath(s.text) : s.text;
+            // The import names a MODULE now, not a path: resolve it the way the loader does
+            // (beside the program, then under lib/), or the splice finds nothing and every
+            // multi-file program compares its root file alone.
+            int asAt = lit.indexOf(" as ");
+            if (asAt >= 0) lit = lit.substring(0, asAt);
+            lit = lit.trim();
             Path parent = file.toAbsolutePath().getParent();
-            Path target = parent.resolve(lit).normalize();
+            Path target = parent.resolve(lit + ".vel").normalize();
+            if (!Files.isRegularFile(target)) {
+                target = parent.resolve("lib").resolve(lit + ".vel").normalize();
+            }
             if (!Files.isRegularFile(target)) {
                 stack.remove(key);
                 return false;

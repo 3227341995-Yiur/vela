@@ -1252,11 +1252,30 @@ class VelaSyntaxParser private constructor(
             return n
         }
         if (t.kind == VelaTokKind.NAME) {
-            val nm = tokText()
-            return recover(
-                "a module name is not this spelling yet (" + nm +
-                    "): a name and the rule that finds it are MODULES_PLAN.md step 6, so the spelling today is a path string -- `import <path>/<name>.vel`",
-            )
+            // `import io`, `import vela.io`, `import io as i`: the compiler's own spelling
+            // since modules landed (MODULES_PLAN step 6, and the string path form was
+            // removed with it).  This branch used to REFUSE a name by design -- so every
+            // multi-file program in the corpus held an ERROR node where its import stood,
+            // the comparison found no IMPORT node to splice, and nineteen files came up
+            // short by the size of the file they import.
+            val sb = StringBuilder()
+            sb.append(tokText())
+            advance()
+            while (atOp(VelaOps.DOT)) {
+                advance()
+                if (tok().kind != VelaTokKind.NAME) {
+                    return recover("expected a module name after '.'")
+                }
+                sb.append('.').append(tokText())
+                advance()
+            }
+            if (atName() && tokText() == "as") {
+                advance()
+                if (atName()) advance()
+            }
+            val n = VelaSyntaxNode(VelaNodeKind.IMPORT, at, pos - 1)
+            n.text = sb.toString()
+            return n
         }
         return recover("expected a module path after `import`: write `import <path>/file.vel`")
     }
