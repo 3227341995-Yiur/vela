@@ -1,0 +1,29 @@
+# `range(from, to, step)` -- the three-argument form, which nothing in the corpus used.
+#
+# `parse_for` accepts one, two or three bounds (`nargs < 1 or nargs > 3` is the refusal),
+# so the third form is meant to work: a positive step counts up in that stride, and a
+# negative one counts down.  This file pins both, because the one-argument form was
+# accepted by `check` and crashed every consumer (see range_single_arg.vel) -- an arity
+# nothing exercised is an arity nothing protects.
+def main() -> None {
+    mut sum: int = 0
+    for i in range(0, 10, 2) {
+        sum += i
+    }
+    print(sum)
+    mut ticks: int = 0
+    for i in range(1, 10, 3) {
+        ticks += 1
+    }
+    print(ticks)
+    mut down: int = 0
+    for i in range(5, 0, 0 - 1) {
+        down += 1
+    }
+    print(down)
+    mut last: int = 0
+    for i in range(0, 9, 4) {
+        last = i
+    }
+    print(last)
+}
