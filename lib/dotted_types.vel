@@ -1,0 +1,16 @@
+# A module-qualified *type* name.  After the modules are merged a program has one type
+# namespace, so `result.Result` means the same type as `Result` -- the qualifier is
+# decoration, and the last component is the name.  That is the rule `import vela.io`
+# already follows when it binds `io`, and it is why this file can be read on its own.
+import result
+
+def check(r: result.Result) -> bool {
+    return result.is_ok(r)
+}
+
+def main() -> None {
+    v: result.Result = result.ok(7)
+    print(check(v))
+    print(result.unwrap(v))
+    print(check(result.err("no")))
+}

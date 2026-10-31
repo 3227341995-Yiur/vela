@@ -368,6 +368,21 @@ def parse_type(src: str, tk: Array[int, 1572864], mut ty: Array[int, 262144],
     }
     base: int = name_id(src, tk, cx)
     cx.ti += 1
+    # `result.Result` -- a module-qualified *type* name.  After the modules are merged a
+    # program has one type namespace, so the qualifier is decoration and the last
+    # component is the name: the same rule `import vela.io` follows when it binds `io`.
+    # Per-module type namespaces would be a bigger feature than this spelling, and are
+    # not claimed here.
+    mut last: int = base
+    while at_op(tk, cx, 13) {
+        cx.ti += 1
+        if not at_name(tk, cx) {
+            perr(cx, "expected a type name after '.'", ti_line(tk, cx))
+            return -1
+        }
+        last = name_id(src, tk, cx)
+        cx.ti += 1
+    }
     mut elem: int = -1
     mut size: int = -1
     if at_op(tk, cx, 14) {
@@ -391,7 +406,7 @@ def parse_type(src: str, tk: Array[int, 1572864], mut ty: Array[int, 262144],
         }
         cx.ti += 1
     }
-    return ty_add(ty, cx, base, elem, size, line)
+    return ty_add(ty, cx, last, elem, size, line)
 }
 
 # ---------------------------------------------------------------------------

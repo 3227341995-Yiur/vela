@@ -586,6 +586,7 @@ run       json_library                        lib/json_app.vel
 native    fs_library                          lib/fs_app.vel
 run       list_library                        lib/list_app.vel
 run       map_library                         lib/map_app.vel
+interpret dotted_types                        lib/dotted_types.vel
 run       module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel
