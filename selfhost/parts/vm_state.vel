@@ -491,6 +491,24 @@ def B_ENV() -> int       { return 34 }
 # implicit rule would be a rounding difference between the interpreter and the two
 # compiled back ends waiting to be found by whoever's program printed 0.1 + 0.2.
 def B_TO_STR() -> int    { return 35 }
+# `addr(a, i)`: the *address* of an array element, as an `int` -- the one primitive
+# `lib/mem.vel` was missing.  A Vela array is a pointer, but the language has never had
+# a way to say "that pointer, plus this index, as a number", so a program could read
+# and write words at addresses it had made itself (`mem.block`) and not at the
+# addresses of its own elements.  That is exactly what a socket buffer, a file read and
+# a C API's out-parameter all want, so `lib/net.vel` needs it before it can exist.
+#
+# It is a *compiled-only* primitive: the interpreter's arrays live in pools of its own
+# and an address inside them means nothing outside it, so `eval` refuses it by name and
+# the corpus cases are `native` (compiled and run, with no interpreted twin).
+#
+# The address is a byte address: `addr(a, i)` is where element `i` starts, so
+# `mem.load_i64(addr(a, i), 0)` reads an `Array[int, N]` element and
+# `mem.load_byte(addr(b, i), 0)` reads an `Array[u8, N]` one.  No bounds check happens
+# here -- `a[i]` has one, and `addr` is the spelling for the address you take when the
+# index is one the runtime's own checks already passed.
+def B_ADDR() -> int     { return 36 }
+
 
 # The element kind of an Array record decides which pool holds its elements.
 # Nested arrays are refused rather than silently mis-stored: Vela 0.1 has no

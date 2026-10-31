@@ -620,6 +620,16 @@ native    mem_library                        lib/mem_app.vel
 # if all eight threads ran and were joined.  Both back ends print it (the `native-c`
 # row below is the C one).
 native    thread_library                      lib/thread_app.vel
+# `addr(a, i)`: the address of an array element as an `int` -- the primitive
+# `lib/mem.vel` was missing, and what a socket buffer is made of.  `native` because the
+# interpreter has no addresses: its arrays live in pools of its own, and `eval` refuses
+# `addr` by name (measured: "`addr` has no meaning in the interpreter").
+native    addr_of_element                    tests/build/addr_of_element.vel
+native-c  addr_of_element                    tests/build/addr_of_element.vel
+# Futures and a pool: four futures whose answers are read in the order they were
+# started, and 16 tasks on 4 threads whose per-index slots make the result order
+# independent of which worker ran what.  `native` for the same reason the thread rows
+# are: no interpreted twin can exist for an OS thread.
 native-c  thread_library                      lib/thread_app.vel
 run       module_twin                        tests/build/modules/twin.vel
 

@@ -1056,6 +1056,7 @@ def builtin_kind(b: int) -> int {
     if b == B_MIN_FLT() { return K_FLT() }
     if b == B_MAX_FLT() { return K_FLT() }
     if b == B_BYTES_AT() { return K_INT() }
+    if b == B_ADDR() { return K_INT() }
     if b == B_SUBSTR() { return K_STR() }
     if b == B_UNESCAPE() { return K_STR() }
     if b == B_INTERN() { return K_INT() }
@@ -1285,6 +1286,19 @@ def emit_builtin(nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     if b == B_MAX_FLT() {
         emit_choice(nd, ty, flt, src, path, mem, vm, e, ">")
+        return
+    }
+    if b == B_ADDR() {
+        # `addr(a, i)` in C is the address of the element, cast to a number:
+        # `(int64_t)(uintptr_t)&(vl_a[i])`.  The array name is emitted the way every
+        # array expression is here (a pointer), so C's `[]` does the arithmetic and the
+        # cast is what turns the address into the `int` a Vela program can carry.
+        a1: int = nd[e * 10 + 2]
+        emit_str("(int64_t)(uintptr_t)&(")
+        emit_expr(nd, ty, flt, src, path, mem, vm, a1)
+        emit_str("[")
+        emit_expr(nd, ty, flt, src, path, mem, vm, nd_nx(nd, a1))
+        emit_str("])")
         return
     }
     if b == B_BYTES_AT() {

@@ -1291,6 +1291,14 @@ def do_builtin(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         set_flt(mem, fmem, dst, max_float(fmem[argbase], fmem[argbase + 1]))
         return
     }
+    if b == B_ADDR() {
+        # The interpreter's arrays live in pools of its own, so an address inside one
+        # names nothing outside it -- a number a compiled program could not use and this
+        # one could not hand to anything.  A named refusal is the honest answer, and the
+        # corpus cases for `addr` are `native` for exactly this reason.
+        trap(path, vm.line,
+             "`addr` has no meaning in the interpreter: an address inside the interpreter's own array pools names nothing outside it, so a program that needs one is compiled (the corpus mode is `native`)")
+    }
     if b == B_BYTES_AT() {
         arg_cell(mem, fmem, path, vm, argbase, K_STR())
         arg_cell(mem, fmem, path, vm, argbase + 1, K_INT())

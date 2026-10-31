@@ -1,0 +1,47 @@
+# `addr(a, i)` -- the address of an array element, as an `int`.
+#
+# This is the primitive `lib/mem.vel` was missing: `mem.block` gives a program an
+# address it owns, and until now that was the only memory it could read or write.  With
+# `addr` a program can hand the address of one of its own elements to a C API, to a
+# `mem.load_i64`, or to another thread -- which is what a socket buffer is.
+#
+# Three claims are checked here:
+#
+#   1. `addr(xs, i)` is where `xs[i]` lives: writing through it with `mem.store_i64`
+#      changes what `xs[i]` reads, so the two spellings name one place;
+#   2. the *byte* addresses of adjacent elements differ by the element size -- 8 for
+#      `Array[int, 4]`, 1 for `Array[u8, 16]` -- measured rather than assumed;
+#   3. the address is an `int`: it can be stored, compared and passed on like any other
+#      value, which is what an FFI call needs.
+#
+# The interpreter has no addresses and refuses `addr` by name, so this case is `native`
+# (compiled and run, with no interpreted twin).
+#
+# Expected stdout, byte for byte:
+#     step 8
+#     byte step 1
+#     after the write 7 42 9 0
+extern c def vela_store_i64(p: int, v: int) -> int
+
+def main() -> None {
+    mut xs: Array[int, 4]
+    xs[0] = 7
+    xs[1] = 8
+    xs[2] = 9
+    xs[3] = 0
+    a0: int = addr(xs, 0)
+    a1: int = addr(xs, 1)
+    print(concat("step ", to_str(a1 - a0)))
+
+    mut bs: Array[u8, 16]
+    bs[0] = 1
+    bs[1] = 2
+    b0: int = addr(bs, 0)
+    b1: int = addr(bs, 1)
+    print(concat("byte step ", to_str(b1 - b0)))
+
+    # write 42 through element 1's address, then read the four elements with the
+    # language's own `[]`: one place, two spellings
+    vela_store_i64(a1, 42)
+    print("after the write", xs[0], xs[1], xs[2], xs[3])
+}

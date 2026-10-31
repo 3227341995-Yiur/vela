@@ -152,6 +152,7 @@ def builtin_id(h: int) -> int {
     if s == "to_str" { return B_TO_STR() }
     if s == "run_command" { return B_RUN_CMD() }
     if s == "env" { return B_ENV() }
+    if s == "addr" { return B_ADDR() }
     return 0
 }
 
@@ -169,6 +170,7 @@ def builtin_arity(b: int) -> int {
     if b == B_MIN_FLT() { return 2 }
     if b == B_MAX_FLT() { return 2 }
     if b == B_BYTES_AT() { return 2 }
+    if b == B_ADDR() { return 2 }
     if b == B_SUBSTR() { return 3 }
     if b == B_WRITE_TEXT() { return 2 }
     if b == B_CONCAT() { return 2 }
