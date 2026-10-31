@@ -1357,7 +1357,14 @@ def parse_for(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
         return -1
     }
     if nargs == 1 {
-        kept: int = stop
+        # `range(n)` is sugar for `range(0, n)`, and the single argument landed in
+        # `start` (the first one parsed), NOT in `stop`.  This line read `stop` until
+        # it was measured: with one argument `stop` was still -1, so the loop node
+        # carried `stop = -1` and every walker that followed it -- the dumper, the C
+        # back end, the LLVM back end and the interpreter -- dereferenced node -1 and
+        # died with 0xC000000D.  `check` accepted the program, so nothing caught it,
+        # and no corpus file used a one-argument `range`, which is why it survived.
+        kept: int = start
         zero: int = new_node(nd, cx, 20, line)
         nd[zero * 10 + 1] = 0
         start = zero

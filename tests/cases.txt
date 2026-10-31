@@ -587,6 +587,7 @@ native    fs_library                          lib/fs_app.vel
 run       list_library                        lib/list_app.vel
 run       map_library                         lib/map_app.vel
 interpret dotted_types                        lib/dotted_types.vel
+run       range_single_arg                   tests/build/range_single_arg.vel
 run       module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel
