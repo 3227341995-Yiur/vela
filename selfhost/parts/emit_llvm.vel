@@ -497,7 +497,51 @@ def ll_type_of_st(mut lg: LG, mem: Array[int, 3741696],
         }
         return ll_sty_of(lg, mem, sty, sid, path, line)
     }
+    if k == K_ENUM() {
+        # An enum owns a row of the same struct table (the resolver registers one for
+        # its widest payload), so the type cache is shared: a row is either a struct or
+        # an enum, never both, and the two builders cannot collide.
+        if sid < 0 or sid >= LL_STY_MAX() {
+            return 0
+        }
+        return ll_enum_ty(lg, mem, sty, sid, path, line)
+    }
     return 0
+}
+
+# The IR type of an enum: `{ i64, i64, ... }` with `STB_SIZE()` fields -- the tag in
+# field 0 and one field per payload cell after it, which is the interpreter's own
+# layout (`stride` cells, cell 0 the tag) and the C back end's (`int64_t vl_tag`
+# followed by the union).  Three back ends, one shape, and each says so in its own
+# file.
+#
+# A `str` payload is two cells and an `int` payload is one, because `ENB_STRIDE` counts
+# cells and a cell is eight bytes -- so a payload field's *index inside the struct* is
+# not its index inside the variant, and the two are translated where the payload is
+# read (`ll_enum_field_cell`) rather than being assumed equal.
+def ll_enum_ty(mut lg: LG, mem: Array[int, 3741696],
+               mut sty: Array[int, 132096], sid: int, path: str,
+               line: int) -> int {
+    s: int = ll_sty_slot(sid)
+    if sty[s] != 0 {
+        return sty[s]
+    }
+    if not ll_buf(concat("vl_", interned(stb_get(mem, sid, STB_NAME())))) {
+        ll_fail(lg, "naming an enum type")
+    }
+    t: int = ll_ck(lg, "an opaque enum type", vshim_struct_type_opaque_buf(lg.m))
+    sty[s] = t
+    cells: int = stb_get(mem, sid, STB_SIZE())
+    if cells <= 0 {
+        trap(path, line, "this enum has no layout row")
+    }
+    mut i: int = 0
+    while i < cells {
+        ll_ckst(lg, "setting an enum field type",
+                vshim_struct_set_body(lg.m, t, lg.t_i64))
+        i += 1
+    }
+    return t
 }
 
 def ll_type_of(lg: LG, k: int) -> int {
