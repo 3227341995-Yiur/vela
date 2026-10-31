@@ -438,6 +438,66 @@ fun velaUnaryOpName(op: Int): String = if (op == VelaKw.NOT) "not" else velaOpNa
  */
 object VelaSyntaxScanner {
 
+    /**
+     * The body of an f-string, from the opening quote to its true closing one.
+     *
+     * `scanString` cannot do this: it stops at the first unescaped `"`, and inside a
+     * hole a string literal is ordinary code.  So the scan tracks hole nesting and, in
+     * a hole, whether it is inside a string of its own -- which is the same rule the
+     * parser's split uses on the same text.
+     *
+     * The token's `stringFlag` is 1 when the whole literal contains a backslash, which
+     * is what the no-holes case needs (`parseAtom` hands that token straight through as
+     * a `str`); the chunks of a hole-bearing f-string carry their own flags.
+     */
+    private fun scanFStringBody(src: String, quoteAt: Int): VelaTok? {
+        val n = src.length
+        var i = quoteAt + 1
+        var esc = 0
+        while (i < n) {
+            val c = src[i]
+            if (c == '\\') {
+                esc = 1
+                i += 2
+                continue
+            }
+            if (c == '"') {
+                return VelaTok(VelaTokKind.STRING, quoteAt + 1, i, 0, 0L, 0.0, true,
+                    esc, null)
+            }
+            if (c == '\n') {
+                return null
+            }
+            if (c == '{') {
+                var j = i + 1
+                var depth = 1
+                var inStr = false
+                while (j < n && depth > 0) {
+                    val d = src[j]
+                    if (inStr) {
+                        if (d == '\\') {
+                            j += 2
+                            continue
+                        }
+                        if (d == '"') inStr = false
+                    } else if (d == '"') {
+                        inStr = true
+                    } else if (d == '{') {
+                        depth++
+                    } else if (d == '}') {
+                        depth--
+                    }
+                    j++
+                }
+                if (depth > 0) return null
+                i = j
+                continue
+            }
+            i++
+        }
+        return null
+    }
+
     fun scan(src: String): VelaScanResult {
         val toks = ArrayList<VelaTok>(src.length / 4 + 16)
         val n = src.length
@@ -517,6 +577,29 @@ object VelaSyntaxScanner {
                 val start = pos
                 while (pos < n && isNamePart(src[pos])) pos++
                 val text = src.substring(start, pos)
+                // `f"..."`: the `f` is a name to every other rule, and the literal
+                // after it needs a scan of its own -- an ordinary `scanString` stops
+                // at the first quote, and inside a hole a quote is legal code
+                // (`f"a{str.trim("  ab  ")}b"`, which is `lib/fstring_app.vel`).
+                // The body is emitted as ONE string token and the parser splits it
+                // (parseAtom's f-string arm), so the two pass over the same text and
+                // agree about where the holes are.
+                if (text == "f" && pos < n && src[pos] == '"') {
+                    toks.add(
+                        VelaTok(
+                            VelaTokKind.NAME, start, pos, 0,
+                            0L, 0.0, true, 0, null,
+                        )
+                    )
+                    val fstr = scanFStringBody(src, pos)
+                    if (fstr == null) {
+                        fail(VelaScanErrorKind.UNTERMINATED_STRING, pos, pos + 1)
+                        continue
+                    }
+                    toks.add(fstr)
+                    pos = fstr.end + 1
+                    continue
+                }
                 val kw = VELA_KEYWORDS[text]
                 toks.add(
                     VelaTok(
@@ -2601,10 +2684,156 @@ class VelaSyntaxParser private constructor(
      * is a `for` header, and anywhere else the compiler says "unexpected token
      * in expression".
      */
+    /**
+     * An f-string: `f"n={n}"`, which the compiler's *parser* lowers to a chain of
+     * `concat` and `to_str` calls, so that is the tree this builds.  The shape was
+     * read out of `vm.exe parse`, not guessed:
+     *
+     *     f"n={n}"                     concat(str "n=", to_str(n))
+     *     f"no holes"                  str "no holes"          (no call at all)
+     *     f"{n}{n}"                    concat(to_str(n), to_str(n))
+     *     f"a{x} b{y}"                 concat(concat(concat(str "a", to_str(x)), str " b"), to_str(y))
+     *     f"{to_str(n + 1)}"           to_str(to_str(n + 1))   (a hole is always wrapped)
+     *
+     * The scanner hands `f` and the literal over as two ordinary tokens, which is the
+     * whole reason this is a parser rule rather than a lexer one: the hole is source
+     * text, and re-scanning it here and parsing it with the same parser is the only
+     * way to get an `index`, a `slice` or a nested call inside a hole right.
+     */
+    private class FSeg(val hole: Boolean, val start: Int, val end: Int)
+
+    private fun splitFString(body: String, base: Int): List<FSeg> {
+        val out = ArrayList<FSeg>(4)
+        val n = body.length
+        var i = 0
+        var chunk = 0
+        while (i < n) {
+            val c = body[i]
+            if (c == '\\') {
+                i += 2
+                continue
+            }
+            if (c == '{') {
+                out.add(FSeg(false, base + chunk, base + i))
+                var j = i + 1
+                var depth = 1
+                var inStr = false
+                while (j < n && depth > 0) {
+                    val d = body[j]
+                    if (inStr) {
+                        if (d == '\\') {
+                            j += 2
+                            continue
+                        }
+                        if (d == '"') inStr = false
+                    } else if (d == '"') {
+                        inStr = true
+                    } else if (d == '{') {
+                        depth++
+                    } else if (d == '}') {
+                        depth--
+                    }
+                    j++
+                }
+                out.add(FSeg(true, base + i + 1, base + j - 1))
+                i = j
+                chunk = j
+                continue
+            }
+            i++
+        }
+        out.add(FSeg(false, base + chunk, base + n))
+        return out
+    }
+
+    /** The hole's expression, scanned and parsed as a program of its own then shifted
+     * back into this file's offsets, so every text a node carries is the real text. */
+    private fun fHoleNode(from: Int, to: Int): VelaSyntaxNode? {
+        if (to <= from) return null
+        val sc = VelaSyntaxScanner.scan(src.substring(from, to))
+        val shifted = ArrayList<VelaTok>(sc.toks.size)
+        for (tk in sc.toks) {
+            shifted.add(
+                VelaTok(
+                    tk.kind, tk.start + from, tk.end + from, tk.code, tk.intValue,
+                    tk.floatValue, tk.isInt, tk.stringFlag, tk.badText,
+                )
+            )
+        }
+        if (shifted.isEmpty()) return null
+        val p = VelaSyntaxParser(src, shifted)
+        return p.parseExpr()
+    }
+
+    private fun fName(word: String, at: Int, endTok: Int): VelaSyntaxNode {
+        val n = VelaSyntaxNode(VelaNodeKind.NAME, at, endTok)
+        n.name = word
+        return n
+    }
+
+    private fun fStr(from: Int, to: Int, at: Int, endTok: Int): VelaSyntaxNode {
+        val n = VelaSyntaxNode(VelaNodeKind.STR, at, endTok)
+        val body = if (to > from) src.substring(from, to) else ""
+        n.text = body
+        n.strEscapes = body.indexOf('\\') >= 0
+        n.bytes = VelaStrings.literalBytes(n.text, n.strEscapes)
+        return n
+    }
+
+    private fun fCall(fn: String, a: VelaSyntaxNode, b: VelaSyntaxNode, at: Int,
+                      endTok: Int): VelaSyntaxNode {
+        val n = VelaSyntaxNode(VelaNodeKind.CALL, at, endTok)
+        n.add(fName(fn, at, endTok))
+        n.add(a)
+        n.add(b)
+        return n
+    }
+
+    private fun parseFString(): VelaSyntaxNode? {
+        val at = pos
+        advance()
+        val strTok = tok()
+        advance()
+        val endTok = at + 1
+        val segs = splitFString(src.substring(strTok.start, strTok.end), strTok.start)
+        var sawHole = false
+        for (s in segs) {
+            if (s.hole) sawHole = true
+        }
+        if (!sawHole) {
+            return fStr(strTok.start, strTok.end, at, endTok)
+        }
+        var acc: VelaSyntaxNode? = null
+        for (s in segs) {
+            if (s.hole) {
+                val inner = fHoleNode(s.start, s.end)
+                    ?: return recover("this f-string hole is not an expression")
+                val w = fCall("to_str", inner, fStr(0, 0, at, endTok), at, endTok)
+                // `to_str` takes one argument: the placeholder child is dropped
+                w.children.removeAt(w.children.size - 1)
+                acc = if (acc == null) w else fCall("concat", acc, w, at, endTok)
+            } else if (s.end > s.start) {
+                val chunk = fStr(s.start, s.end, at, endTok)
+                acc = if (acc == null) chunk
+                else fCall("concat", acc, chunk, at, endTok)
+            }
+        }
+        return acc ?: fStr(strTok.start, strTok.end, at, endTok)
+    }
+
     private fun parseAtom(): VelaSyntaxNode? {
         if (recovering) return null
         val at = pos
         val t = tok()
+        // `f"..."`: the scanner gives `f` and the literal as two tokens, and the
+        // adjacency is what tells them apart from a name `f` followed by a string,
+        // which is a legal program (`f "text"` is not a call, and this rule must not
+        // turn it into one).
+        if (t.kind == VelaTokKind.NAME && t.code == 0 && at + 1 < toks.size &&
+            toks[at + 1].kind == VelaTokKind.STRING && toks[at + 1].start == t.start + 2
+        ) {
+            return parseFString()
+        }
         if (t.kind == VelaTokKind.NUMBER) {
             advance()
             if (t.isInt) {

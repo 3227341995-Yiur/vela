@@ -188,11 +188,44 @@ class VelaLexer : LexerBase() {
     }
 
     /** A string is one token even unterminated: the compiler reports that. */
-    private fun scanString(quote: Char): IElementType {        pos++
+    private fun scanString(quote: Char): IElementType {        // `f"..."` is an f-string: the quote directly follows a name that is exactly `f`.
+        // Inside a hole a `"` starts a string of its own (`f"a{str.trim(" x ")}b"`),
+        // so the literal's end is the first quote at hole depth zero -- which is the
+        // rule the syntax scanner (`scanFStringBody`) and the parser's split use on
+        // the same text, and the reason all three have to agree: the PSI's leaves are
+        // these tokens, and a tree built over a different split shows every hole as an
+        // unclaimed token (measured before this was here: `lib/fstring_app.vel`, leaves
+        // VELA_STRING `"a{str.trim("` and VELA_IDENT `ab`).
+        val fstring = quote == '"' && pos > 0 && buffer[pos - 1] == 'f' &&
+            (pos < 2 || !isNamePart(buffer[pos - 2]))
+        pos++
         while (pos < endOffset) {
             val c = buffer[pos]
             if (c == '\\' && pos + 1 < endOffset) {
                 pos += 2
+                continue
+            }
+            if (fstring && c == '{') {
+                var depth = 1
+                var inStr = false
+                pos++
+                while (pos < endOffset && depth > 0) {
+                    val d = buffer[pos]
+                    if (inStr) {
+                        if (d == '\\' && pos + 1 < endOffset) {
+                            pos += 2
+                            continue
+                        }
+                        if (d == '"') inStr = false
+                    } else if (d == '"') {
+                        inStr = true
+                    } else if (d == '{') {
+                        depth++
+                    } else if (d == '}') {
+                        depth--
+                    }
+                    pos++
+                }
                 continue
             }
             if (c == quote) {
