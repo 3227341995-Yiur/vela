@@ -626,6 +626,13 @@ native    thread_library                      lib/thread_app.vel
 # `addr` by name (measured: "`addr` has no meaning in the interpreter").
 native    addr_of_element                    tests/build/addr_of_element.vel
 native-c  addr_of_element                    tests/build/addr_of_element.vel
+# `Array[f32, 4]`: 32-bit elements.  `stride 4` is the storage claim (a `float` array
+# is 8), `sum 2.250000` is the read widened to `float` with no cast in the program, and
+# `narrowed 1` is the write narrowed: 0.1 stored into an f32 element and read back is
+# not the f64 0.1.  `native` because the interpreter has no 32-bit float pool and
+# refuses the type by name (measured).
+native    f32_vector                          tests/build/f32_vector.vel
+native-c  f32_vector                          tests/build/f32_vector.vel
 # Futures and a pool: four futures whose answers are read in the order they were
 # started, and 16 tasks on 4 threads whose per-index slots make the result order
 # independent of which worker ran what.  `native` for the same reason the thread rows

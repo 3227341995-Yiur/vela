@@ -79,6 +79,19 @@ def K_ENUM() -> int { return 16 }
 # parameter types and the result type are all one lookup away (`ty_farity`,
 # `ty_fparam`, `ty_fret`).
 def K_FN() -> int { return 17 }
+# `f32` is 18 and it is a *storage* kind: it exists so that `Array[f32, N]` is a real
+# type -- 32-bit elements, which is what a vertex, a sample or a pixel is -- and it is
+# deliberately not a value kind.  Reading `v[i]` widens the element to `float` (f64)
+# and writing one narrows; both conversions are explicit in each back end, and the
+# interpreter refuses the array by name because its pools hold f64 and it has no way to
+# round to 32 bits.
+#
+# A *scalar* `f32` binding is refused by name for the same reason: what this slice
+# promises is the vector type, not a second float.
+def K_F32() -> int { return 18 }
+# `Array[f32, N]`: elements are 4 bytes, so it is its own array kind rather than a
+# second name for `K_AF` (whose elements are 8).
+def K_AF32() -> int { return 19 }
 
 # ------------------------------------------------------------- mem cell words
 
@@ -334,6 +347,7 @@ def elem_kind_of(ak: int) -> int {
     if ak == K_AA() { return K_BOOL() }
     if ak == K_AS() { return K_STR() }
     if ak == K_AX() { return K_ST() }
+    if ak == K_AF32() { return K_F32() }
     return K_BAD()
 }
 
@@ -514,6 +528,16 @@ def B_ADDR() -> int     { return 36 }
 # Nested arrays are refused rather than silently mis-stored: Vela 0.1 has no
 # shape to express them and the evaluator would have to invent one.
 
+
+# The kind a *value* read out of an element has, as opposed to the element's storage
+# kind: an `Array[f32, N]` element is stored as 32 bits and is worth a `float` when
+# it is read, so every consumer of the expression (print, arithmetic, a conversion)
+# asks this and not `elem_kind_of`.  One mapping, one place, because two would drift.
+def elem_value_kind(ek: int) -> int {
+    if ek == K_F32() { return K_FLT() }
+    return ek
+}
+
 def arr_kind_of(ek: int) -> int {
     if ek == K_I32() { return K_A32() }
     if ek == K_INT() { return K_AI() }
@@ -529,6 +553,7 @@ def arr_kind_of(ek: int) -> int {
     # what an enum is -- `alloc_array`, `elem_load` and `elem_store` copy `stride`
     # cells per element and the tag travels inside the first one.
     if ek == K_ENUM() { return K_AX() }
+    if ek == K_F32() { return K_AF32() }
     return K_BAD()
 }
 

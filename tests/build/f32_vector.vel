@@ -1,0 +1,48 @@
+# `Array[f32, 4]` -- 32-bit elements, which is what a vertex, a sample or a pixel is.
+#
+# Three claims, all measured here rather than described:
+#
+#   1. the *storage* is 32 bits: `addr(v, 1) - addr(v, 0)` is 4, not 8.  That is the
+#      whole point of the type -- a `float` array would be 8 there;
+#   2. a read is worth a `float`: `v[i]` takes part in `float` arithmetic with no cast
+#      written by the program, because the element is widened on the way out (C's
+#      implicit conversion, and IR's explicit `fpext`);
+#   3. a write narrows: storing 0.1 into an element and reading it back prints what a
+#      32-bit float holds, not what a 64-bit one does.  0.1 is the value that shows the
+#      difference -- `print` of the element prints 0.100000 either way, so the test
+#      compares against `0.1` as a float instead and prints the *comparison*:
+#      storing into f32 and reading back gives a value that is NOT the f64 0.1.
+#
+# The interpreter has no 32-bit float pool and refuses the type by name, so this case
+# is `native` (`native-c` for the C back end), the same deal `addr` makes.
+#
+# Expected stdout, byte for byte:
+#     stride 4
+#     1.500000 0.250000 3.000000 -2.500000
+#     sum 2.250000
+#     narrowed 1
+def main() -> None {
+    mut v: Array[f32, 4]
+    v[0] = 1.5
+    v[1] = 0.25
+    v[2] = 3.0
+    v[3] = 0.0 - 2.5
+    print("stride", addr(v, 1) - addr(v, 0))
+    print(v[0], v[1], v[2], v[3])
+    mut s: float = 0.0
+    mut i: int = 0
+    while i < len(v) {
+        s += v[i]
+        i += 1
+    }
+    print("sum", s)
+    # the value a 32-bit float keeps of 0.1 is not the value a 64-bit one keeps
+    mut w: Array[f32, 1]
+    w[0] = 0.1
+    k: float = w[0]
+    if k == 0.1 {
+        print("narrowed 0")
+    } else {
+        print("narrowed 1")
+    }
+}

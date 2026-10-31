@@ -168,7 +168,7 @@ typedef struct shim_module {
     size_t         cap;
     /* The primitives are created once per module and their handles are cached;
      * an emitter calling vshim_type_i64() in a loop must not grow the table. */
-    int64_t h_void, h_i1, h_i8, h_i32, h_i64, h_f64, h_ptr, h_str;
+    int64_t h_void, h_i1, h_i8, h_i32, h_i64, h_f32, h_f64, h_ptr, h_str;
     /* Named struct types and the fields they have been given so far.  A body may
      * be set once and only once, and `LLVMStructSetBody` takes the *whole* field
      * list -- so the list is kept here and re-set on every field, which is what
@@ -772,6 +772,17 @@ int64_t vshim_type_i64(int64_t module)
     if (!m) return 0;
     if (m->h_i64) return m->h_i64;
     return cache_type(m, LLVMInt64TypeInContext(m->ctx), "i64", &m->h_i64);
+}
+
+int64_t vshim_type_f32(int64_t module)
+{
+    shim_module *m;
+    clear_error();
+    m = module_of(module);
+    if (!m) return 0;
+    /* `f32` has its own cache slot, so two `Array[f32, N]` element types are one
+     * LLVM type -- the same rule every other cached type follows. */
+    return cache_type(m, LLVMFloatTypeInContext(m->ctx), "f32", &m->h_f32);
 }
 
 int64_t vshim_type_f64(int64_t module)
@@ -1911,6 +1922,58 @@ static int64_t build_value_cast(int64_t module, int64_t dest_type, int64_t value
     return h;
 }
 
+/* A float-width cast: `fptrunc` (f64 -> f32) and `fpext` (f32 -> f64).  `build_fp_cast`
+ * above cannot do it -- it checks the *integer* direction, which is what `fptosi` and
+ * `sitofp` need -- so the width relation is checked here instead. */
+static int64_t build_float_cast(int64_t module, int64_t dest_type, int64_t value,
+                               LLVMValueRef (*op)(LLVMBuilderRef, LLVMValueRef, LLVMTypeRef, const char *),
+                               const char *what, int wider)
+{
+    shim_module *m, *owner = NULL;
+    LLVMTypeRef dt, vt;
+    LLVMValueRef v, r;
+    unsigned vw, dw;
+    int64_t h;
+
+    m = module_of(module);
+    if (!m) return 0;
+    dt = (LLVMTypeRef)lookup(dest_type, SHIM_KIND_TYPE, &owner);
+    if (!dt) return 0;
+    if (owner != m) { fail("the destination type belongs to another module"); return 0; }
+    v = (LLVMValueRef)lookup(value, SHIM_KIND_VALUE, &owner);
+    if (!v) return 0;
+    if (owner != m) { fail("the value belongs to another module"); return 0; }
+    vt = LLVMTypeOf(v);
+    if (!type_is_float(vt) || !type_is_float(dt)) {
+        fail("%s needs two floating-point types", what);
+        return 0;
+    }
+    vw = (LLVMGetTypeKind(vt) == LLVMDoubleTypeKind) ? 64 : 32;
+    dw = (LLVMGetTypeKind(dt) == LLVMDoubleTypeKind) ? 64 : 32;
+    if (wider ? (dw <= vw) : (dw >= vw)) {
+        fail("%s needs a destination %s than its source, and this one is f%u -> f%u",
+             what, wider ? "wider" : "narrower", vw, dw);
+        return 0;
+    }
+    if (check_builder(m) != VSHIM_OK) return 0;
+    r = op(m->builder, v, dt, "");
+    if (!r) { fail("%s returned NULL", what); return 0; }
+    h = slot_add(m, r, SHIM_KIND_VALUE);
+    if (!h) return 0;
+    return h;
+}
+
+int64_t vshim_build_fptrunc(int64_t module, int64_t dest_type, int64_t value)
+{
+    clear_error();
+    return build_float_cast(module, dest_type, value, LLVMBuildFPTrunc, "an f64 -> f32 truncation", 0);
+}
+
+int64_t vshim_build_fpext(int64_t module, int64_t dest_type, int64_t value)
+{
+    clear_error();
+    return build_float_cast(module, dest_type, value, LLVMBuildFPExt, "an f32 -> f64 extension", 1);
+}
 int64_t vshim_build_ptrtoint(int64_t module, int64_t dest_type, int64_t value)
 {
     clear_error();

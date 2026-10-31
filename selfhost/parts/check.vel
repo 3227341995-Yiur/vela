@@ -141,6 +141,7 @@ def ck_is_array_ck(ck: int) -> bool {
     if k == K_AA() { return True }
     if k == K_AX() { return True }
     if k == K_A32() { return True }
+    if k == K_AF32() { return True }
     return False
 }
 

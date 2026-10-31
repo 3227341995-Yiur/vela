@@ -404,6 +404,14 @@ def emit_ctype(kind: int, path: str, line: int) -> None {
         emit_str("uint8_t")
         return
     }
+    if kind == K_F32() {
+        # the *element* type of `Array[f32, N]`: a 32-bit float, which is what a
+        # vertex or a sample is.  No scalar f32 binding reaches this spelling --
+        # `declare_local` refuses one by name -- so this exists for the array
+        # element and for the C float conversions around it.
+        emit_str("float")
+        return
+    }
     if kind == K_NONE() {
         emit_str("void")
         return
@@ -441,6 +449,10 @@ def emit_array_ctype(kind: int, path: str, line: int) -> None {
     }
     if kind == K_A32() {
         emit_str("int32_t*")
+        return
+    }
+    if kind == K_AF32() {
+        emit_str("float*")
         return
     }
     if kind == K_AF() {
@@ -2614,7 +2626,7 @@ def expr_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
         if unpack_kind(base) == K_STR() {
             return K_STR()
         }
-        return elem_kind_of(unpack_kind(base))
+        return elem_value_kind(elem_kind_of(unpack_kind(base)))
     }
     if k == 34 {
         # a slice of a str is a str: vela_substr hands back a view of the same

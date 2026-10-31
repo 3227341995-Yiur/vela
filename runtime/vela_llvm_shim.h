@@ -281,6 +281,7 @@ int64_t vshim_type_i8(int64_t module);
 int64_t vshim_type_i32(int64_t module);   /* `i32`, e.g. argc and `main`'s return */
 int64_t vshim_type_i64(int64_t module);   /* `int` */
 int64_t vshim_type_f64(int64_t module);   /* `float` */
+int64_t vshim_type_f32(int64_t module);   /* `f32`, the element of `Array[f32, N]` */
 int64_t vshim_type_ptr(int64_t module);   /* an opaque pointer, address space 0 */
 int64_t vshim_type_str(int64_t module);   /* `{ ptr, i64 }` -- the ABI type of `str` */
 
@@ -418,6 +419,12 @@ int64_t vshim_build_sitofp(int64_t module, int64_t dest_type, int64_t value);
 
 /* Floating point -> integer, truncating toward zero, as C's cast does. */
 int64_t vshim_build_fptosi(int64_t module, int64_t dest_type, int64_t value);
+
+/* `fpext` and `fptrunc`: the two conversions `Array[f32, N]` needs on every element --
+ * a read widens f32 to the language's `float` and a write narrows it back.  Both check
+ * their direction for the reason the integer casts do. */
+int64_t vshim_build_fpext(int64_t module, int64_t dest_type, int64_t value);
+int64_t vshim_build_fptrunc(int64_t module, int64_t dest_type, int64_t value);
 
 /* Zero- and sign-extension: the destination must be *wider* than the value's own
  * type.  `zext` is what a `u8` read as a value is (200 stays 200, not -56);

@@ -148,6 +148,7 @@ struct LG {
     t_f64: int
     t_ptr: int
     t_str: int
+    t_f32: int       # the element type of `Array[f32, N]`
     f_setargs: int    # void(i32, ptr)
     f_init: int       # void()
     f_pstr: int       # void(ptr)
@@ -253,7 +254,7 @@ def ll_zero() -> LG {
     return LG(0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              0, 0, 0)
+              0, 0, 0, 0)
 }
 
 # The frame-slot table this back end can address.  A slot is the resolver's own
@@ -644,6 +645,11 @@ def ll_type_of(lg: LG, k: int) -> int {
     if k == K_STR() { return lg.t_str }
     if k == K_I32() { return lg.t_i32 }
     if k == K_U8() { return lg.t_i8 }
+    if k == K_F32() {
+        # the *element* type: 32 bits in memory, widened to `float` where a value is
+        # read (`ll_expr`'s index arm) and narrowed where one is stored (`ll_fit`)
+        return lg.t_f32
+    }
     if k == K_FN() {
         # A function value is a real function pointer in IR, which is what makes
         # passing one a plain `ptr` argument and calling one an indirect call; the
@@ -1068,6 +1074,7 @@ def ll_alloca_ptr(mut lg: LG, what: str) -> int {
 # between them.  `0` means "no spelling yet" and refuses.
 def ll_esize(k: int) -> int {
     if k == K_INT() { return 8 }
+    if k == K_F32() { return 4 }
     if k == K_FLT() { return 8 }
     if k == K_I32() { return 4 }
     if k == K_U8() { return 1 }
@@ -1166,6 +1173,17 @@ def ll_adapt(lg: LG, dstk: int, srck: int, v: int) -> int {
     if ll_iso_wide(dstk) and srck == K_INT() {
         return ll_narrow(lg, dstk, v)
     }
+    if dstk == K_F32() and srck == K_FLT() {
+        # storing into an `Array[f32, N]` element: the language's `float` is 64 bits
+        # and the element is 32, so the store narrows explicitly -- C's implicit
+        # conversion is what the C back end gets and this is the same conversion.
+        return ll_ck(lg, "narrowing a float into an f32 element",
+                     vshim_build_fptrunc(lg.m, lg.t_f32, v))
+    }
+    if dstk == K_FLT() and srck == K_F32() {
+        return ll_ck(lg, "widening an f32 element to a float",
+                     vshim_build_fpext(lg.m, lg.t_f64, v))
+    }
     return v
 }
 
@@ -1177,6 +1195,12 @@ def ll_adaptable(dstk: int, srck: int) -> bool {
         return True
     }
     if dstk == K_FN() and srck == K_INT() {
+        return True
+    }
+    if dstk == K_F32() and srck == K_FLT() {
+        return True
+    }
+    if dstk == K_FLT() and srck == K_F32() {
         return True
     }
     if dstk == K_INT() and ll_iso_wide(srck) {
@@ -1399,6 +1423,7 @@ def ll_open_module(mut lg: LG) -> None {
     lg.t_f64 = ll_ck(lg, "vshim_type_f64", vshim_type_f64(lg.m))
     lg.t_ptr = ll_ck(lg, "vshim_type_ptr", vshim_type_ptr(lg.m))
     lg.t_str = ll_ck(lg, "vshim_type_str", vshim_type_str(lg.m))
+    lg.t_f32 = ll_ck(lg, "vshim_type_f32", vshim_type_f32(lg.m))
 }
 
 # The runtime the *emitted program* links against: the names, the argument
@@ -3651,7 +3676,15 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             return ep
         }
         et: int = ll_type_of(lg, ek)
-        return ll_ck(lg, "loading an element", vshim_build_load(lg.m, et, ep))
+        mut lv: int = ll_ck(lg, "loading an element", vshim_build_load(lg.m, et, ep))
+        if ek == K_F32() {
+            # an `Array[f32, N]` element is 32 bits in memory and worth a `float`
+            # where it is read: one explicit widening, so no consumer downstream has
+            # to know the element was narrower than the value.
+            lv = ll_ck(lg, "widening an f32 element",
+                        vshim_build_fpext(lg.m, lg.t_f64, lv))
+        }
+        return lv
     }
     if k == 34 {
         # `s[a:b]` is `vela_llvm_substr`, the runtime's clamped view: the same

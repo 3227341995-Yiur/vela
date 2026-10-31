@@ -322,6 +322,7 @@ def type_kind(ty: Array[int, 262144], t: int, mem: Array[int, 3741696],
     if s == "bool" { return K_BOOL() }
     if s == "str" { return K_STR() }
     if s == "u8" { return K_U8() }
+    if s == "f32" { return K_F32() }
     if s == "i32" { return K_I32() }
     if s == "None" { return K_NONE() }
     # the enum lookup is a separate table from the struct one and is asked
@@ -894,6 +895,14 @@ def declare_local(nd: Array[int, 1310720], ty: Array[int, 262144],
                        "' has no type annotation: write the type after the name, as in `mut a: int = 1`"))
     }
     kind: int = type_kind(ty, t, mem, vm)
+    if kind == K_F32() {
+        # A scalar `f32` binding.  The *vector* type is what this slice promises
+        # (`Array[f32, N]`), and a second float kind with its own rounding rule is a
+        # language decision rather than a side effect of adding one.  Refused by name
+        # here, so every mode agrees, instead of half-working in two back ends.
+        fail(path, nd_line(nd, decl),
+             "f32 is the element type of Array[f32, N]; a scalar f32 binding is not implemented")
+    }
     mut ck: int = pack_kind(kind, ty_len(ty, t))
     mut sid: int = -1
     if kind == K_ST() {

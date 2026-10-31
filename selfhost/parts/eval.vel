@@ -392,6 +392,7 @@ def is_array(tag: int) -> bool {
     if tag == K_AS() { return True }
     if tag == K_AX() { return True }
     if tag == K_A32() { return True }
+    if tag == K_AF32() { return True }
     return False
 }
 
@@ -409,6 +410,14 @@ def alloc_array(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                 n: int, sid: int, dst: int) -> None {
     if n < 0 {
         trap(path, vm.line, "an array length cannot be negative")
+    }
+    if tag == K_AF32() {
+        # `Array[f32, N]`: 32-bit elements, and this interpreter's float pools hold
+        # 64-bit values with no way to round to 32 -- so it refuses by name rather than
+        # storing a number the two back ends would print differently.  The corpus mode
+        # for this type is `native`, the same deal `addr` makes.
+        trap(path, vm.line,
+             "the interpreter cannot store Array[f32, N]: its float pools are 64-bit and it has no 32-bit rounding, so a program that needs f32 elements is compiled (the corpus mode is `native`)")
     }
     mut base: int = 0
     if tag == K_AB() {
