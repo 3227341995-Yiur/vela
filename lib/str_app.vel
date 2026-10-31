@@ -1,11 +1,11 @@
-﻿# The run that proves `lib/str.vel`: one line per function, expected output beside it.
+# The run that proves `lib/str.vel`: one line per function, expected output beside it.
 import str
 
 def main() -> None {
     text3: str = concat("one\n", concat("two\n", "three"))
-    print(str.to_str(0))
-    print(str.to_str(42))
-    print(str.to_str(0 - 7))
+    print(str.int_text(0))
+    print(str.int_text(42))
+    print(str.int_text(0 - 7))
     print(str.to_str_f(3.25, 2))
     print(str.to_str_f(0.5, 3))
     print(str.to_str_f(0.0 - 1.5, 1))
@@ -27,12 +27,12 @@ def main() -> None {
     print(str.pad_left("7", 3, "0"))
     print(str.hex_of(255))
     print(str.line_at(text3, 1))
-    print(str.to_str(str.count_of("mississippi", "is")))
+    print(str.int_text(str.count_of("mississippi", "is")))
 
     # split / join: the storage is the caller's, the count is the answer
     mut parts: Array[str, 64]
     n: int = str.split("a,b,,c", ",", parts)
-    print(str.to_str(n))
+    print(str.int_text(n))
     print(parts[0])
     print(parts[1])
     print(parts[2])
@@ -40,7 +40,7 @@ def main() -> None {
     print(str.join(parts, n, "|"))
     mut ls: Array[str, 64]
     ln: int = str.lines(text3, ls)
-    print(str.to_str(ln))
+    print(str.int_text(ln))
     print(str.join_lines(ls, ln))
-    print(str.to_str(str.split("", ",", parts)))
+    print(str.int_text(str.split("", ",", parts)))
 }

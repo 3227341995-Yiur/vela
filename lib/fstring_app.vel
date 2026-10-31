@@ -1,0 +1,14 @@
+# The hole that was missing: an interpolation whose value is a call taking a string
+# literal.  `lib/str.vel` used to declare `def to_str(n: int)`, which shadowed the
+# BUILTIN of the same name for every program that imported it -- so `f"{...}"` lowered
+# to the module's int formatter and passed it a `str`.  The LLVM back end said it
+# plainly ("the callee takes i64 but the list has ptr"), the interpreter panicked on a
+# comparison of two kinds.  The module's function is `int_text` now.
+import str
+
+def main() -> None {
+    print(f"a{str.trim("  ab  ")}b")
+    print(f"{str.upper("x")}-{len(str.trim("  y  "))}")
+    print(f"{str.int_text(42)}/{str.replace("a-b", "-", "+")}")
+    print(str.int_text(7))
+}

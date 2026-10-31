@@ -581,6 +581,7 @@ run       io_module                           lib/io_app.vel
 interpret result_library                      lib/result_app.vel
 run       time_library                        lib/time_app.vel
 run       test_library                        lib/test_app.vel
+run       fstring_call_args                   lib/fstring_app.vel
 run       module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel

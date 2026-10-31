@@ -6,7 +6,7 @@
 # where it would have been.  Every function is exercised by `lib/str_app.vel`, which is
 # the run that proves this file.
 
-def to_str(n: int) -> str {
+def int_text(n: int) -> str {
     if n == 0 {
         return "0"
     }
@@ -70,12 +70,12 @@ def to_str_f(x: float, decimals: int) -> str {
             fracf = 0.0
         }
     }
-    mut fs: str = to_str(frac)
+    mut fs: str = int_text(frac)
     # left-pad to `decimals` with zeros: 0.05 must not print as 0.5
     while len(fs) < decimals {
         fs = concat("0", fs)
     }
-    mut s: str = concat(to_str(whole), ".")
+    mut s: str = concat(int_text(whole), ".")
     s = concat(s, fs)
     if neg {
         return concat("-", s)
