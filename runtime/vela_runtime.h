@@ -747,7 +747,30 @@ static int vela_write_text(vela_str path, vela_str body)
  * caller actually passes.
  */
 #if defined(_WIN32)
-#include <windows.h>
+/* The six Win32 calls this file needs, declared here rather than by including
+ * <windows.h> -- and that is not tidiness.  This header is textually included in EVERY
+ * program the C back end builds, and windows.h brings its own prototypes for the very
+ * functions a Vela program may declare `extern c`: measured, after this file started
+ * including it, `gui/app.vel` lost its `build-c` with "redefinition; different basic
+ * type" on GetSystemMetrics, CreateWindowExA, ShowWindow and IsWindow.  The top of this
+ * file keeps its own include -- the arena needs MEM_COMMIT -- so the point here is the
+ * one thing that matters: a Vela program's own declarations must not collide with a
+ * header it did not ask for.  Hence local prototypes, and no windows.h in this block. */
+typedef struct vela_find_data {
+    uint32_t attributes;
+    uint32_t ft_lo1, ft_hi1, ft_lo2, ft_hi2, ft_lo3, ft_hi3;
+    uint32_t size_hi, size_lo;
+    uint32_t reserved0, reserved1;
+    char name[260];
+    char alt_name[14];
+} vela_find_data;
+
+__declspec(dllimport) void *FindFirstFileA(const char *pattern, vela_find_data *data);
+__declspec(dllimport) int FindNextFileA(void *h, vela_find_data *data);
+__declspec(dllimport) int FindClose(void *h);
+__declspec(dllimport) int RemoveDirectoryA(const char *path);
+__declspec(dllimport) int DeleteFileA(const char *path);
+__declspec(dllimport) int MoveFileExA(const char *from, const char *to, uint32_t flags);
 
 /* The entries of `dir`, one per line, `.` and `..` left out, each line ending with a
  * newline so that `lines` reads it with no special case for the last entry.  A
@@ -757,7 +780,7 @@ static int vela_write_text(vela_str path, vela_str body)
 static vela_str vela_list_dir(const char *dir)
 {
     char pattern[4096];
-    WIN32_FIND_DATAA fd;
+    vela_find_data fd;
     HANDLE h;
     size_t used = 0;
     size_t n;
@@ -773,9 +796,9 @@ static vela_str vela_list_dir(const char *dir)
     h = FindFirstFileA(pattern, &fd);
     if (h == INVALID_HANDLE_VALUE) return vela_str_empty();
     do {
-        size_t nl = strlen(fd.cFileName);
-        if (nl == 1 && fd.cFileName[0] == '.') continue;
-        if (nl == 2 && fd.cFileName[0] == '.' && fd.cFileName[1] == '.') continue;
+        size_t nl = strlen(fd.name);
+        if (nl == 1 && fd.name[0] == '.') continue;
+        if (nl == 2 && fd.name[0] == '.' && fd.name[1] == '.') continue;
         total += (int64_t)nl + 1;
     } while (FindNextFileA(h, &fd));
     FindClose(h);
@@ -784,10 +807,10 @@ static vela_str vela_list_dir(const char *dir)
     h = FindFirstFileA(pattern, &fd);
     if (h == INVALID_HANDLE_VALUE) return vela_str_empty();
     do {
-        size_t nl = strlen(fd.cFileName);
-        if (nl == 1 && fd.cFileName[0] == '.') continue;
-        if (nl == 2 && fd.cFileName[0] == '.' && fd.cFileName[1] == '.') continue;
-        memcpy(big + used, fd.cFileName, nl);
+        size_t nl = strlen(fd.name);
+        if (nl == 1 && fd.name[0] == '.') continue;
+        if (nl == 2 && fd.name[0] == '.' && fd.name[1] == '.') continue;
+        memcpy(big + used, fd.name, nl);
         used += nl;
         big[used] = '\n';
         used += 1;
