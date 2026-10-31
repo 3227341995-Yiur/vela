@@ -630,6 +630,12 @@ native-c  addr_of_element                    tests/build/addr_of_element.vel
 # started, and 16 tasks on 4 threads whose per-index slots make the result order
 # independent of which worker ran what.  `native` for the same reason the thread rows
 # are: no interpreted twin can exist for an OS thread.
+native    async_library                      lib/async_app.vel
+native-c  async_library                      lib/async_app.vel
+# Futures and a pool: four futures whose answers are read in the order they were
+# started, and 16 tasks on 4 threads whose per-index slots make the result order
+# independent of which worker ran what.  `native` for the same reason the thread rows
+# are: no interpreted twin can exist for an OS thread.
 native-c  thread_library                      lib/thread_app.vel
 run       module_twin                        tests/build/modules/twin.vel
 

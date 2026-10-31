@@ -1,0 +1,75 @@
+# lib/async_app.vel -- futures and a pool, and the numbers that prove both.
+#
+# Part one is four futures: each is `square(i)` on its own thread, and the answers are
+# collected in the order the futures were started -- `wait` is what imposes that order,
+# which is the whole difference between a future and a race.
+#
+# Part two is one pool: 16 tasks on 4 threads, so the pool really does have fewer
+# threads than there is work.  Each task writes its own result slot, so the printed
+# list is the tasks in *index* order no matter which worker ran which -- and the sum is
+# 0+1+4+...+225 = 1240, which is exact only if every job ran exactly once.
+#
+# Expected stdout, byte for byte:
+#     futures 0 1 4 9
+#     futures sum 14
+#     pool 16 jobs on 4 threads
+#     pool sum 1240
+#     slice 0 1 4 9 16 225
+import async
+import mem
+
+# A future's work: the square of its one argument.
+def square(x: int) -> int {
+    return x * x
+}
+
+# A pool's work: the square of the task's index, which is its argument.
+def task(x: int) -> int {
+    return x * x
+}
+
+def main() -> None {
+    # ---------------------------------------------------------------- futures
+    f0: int = async.start(square, 0)
+    f1: int = async.start(square, 1)
+    f2: int = async.start(square, 2)
+    f3: int = async.start(square, 3)
+    a0: int = async.wait(f0)
+    a1: int = async.wait(f1)
+    a2: int = async.wait(f2)
+    a3: int = async.wait(f3)
+    print(concat(concat("futures ", to_str(a0)),
+                 concat(concat(" ", to_str(a1)),
+                        concat(concat(" ", to_str(a2)),
+                               concat(" ", to_str(a3))))))
+    print(concat("futures sum ", to_str(a0 + a1 + a2 + a3)))
+
+    # ------------------------------------------------------------------- pool
+    mut fns: Array[int, 64]
+    mut args: Array[int, 64]
+    mut outs: Array[int, 64]
+    n: int = 16
+    mut i: int = 0
+    while i < n {
+        fns[i] = task
+        args[i] = i
+        outs[i] = 0
+        i += 1
+    }
+    started: int = async.run(fns, args, outs, n, 4)
+    print(concat(concat("pool ", to_str(n)),
+                 concat(concat(" jobs on ", to_str(started)), " threads")))
+    mut sum: int = 0
+    mut j: int = 0
+    while j < n {
+        sum += outs[j]
+        j += 1
+    }
+    print(concat("pool sum ", to_str(sum)))
+    print(concat(concat("slice ", to_str(outs[0])),
+                 concat(concat(" ", to_str(outs[1])),
+                        concat(concat(" ", to_str(outs[2])),
+                               concat(concat(" ", to_str(outs[3])),
+                                      concat(concat(" ", to_str(outs[4])),
+                                             concat(" ", to_str(outs[15]))))))))
+}

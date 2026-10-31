@@ -1,0 +1,161 @@
+# lib/async.vel -- work that runs somewhere else, and the two shapes it comes in.
+#
+# **A future** is one task on one thread: `future.start(f, arg)` hands `f` and its
+# argument to a new thread and answers a handle; `future.wait(handle)` joins that
+# thread and answers what it computed.  That is a Future in the sense the word is
+# usually used -- a value that will exist later -- and it is the whole of what a
+# callback-shaped API needs.
+#
+# **A pool** is a batch of tasks run by a fixed number of threads: `pool.run` claims
+# task indices under one lock and every worker exits when the batch is exhausted.  It
+# is a real pool and not a thread per task: the number of threads is the caller's
+# decision (usually `thread.cpus()`), the tasks are indexed by whoever gets to the
+# counter first, and the results land in per-index slots so `run` does not care which
+# worker ran which task.  What it is *not* is a long-lived pool with an idle queue --
+# that needs condition variables, which this runtime does not have yet, and pretending
+# otherwise would be a spinner pretending to be a scheduler.
+#
+# Both are built out of `lib/thread.vel` and `lib/mem.vel`, so both are ordinary Vela
+# code: no compiler support, no special case in either back end.
+import thread
+import mem
+
+# A future, as one 40-byte record in the host's memory:
+#     +0   the function value (an address, carried as an `int`)
+#     +8   its one argument
+#     +16  what it computed
+#     +24  1 once the result is in
+#     +32  the thread handle
+def run_future(rec: int) -> None {
+    f: (int) -> int = mem.load_i64(rec, 0)
+    a: int = mem.load_i64(rec, 8)
+    v: int = f(a)
+    mem.store_i64(rec, 16, v)
+    mem.store_i64(rec, 24, 1)
+}
+
+# Start `f(arg)` on a new thread.  0 when the record or the thread could not be made.
+def start(f: (int) -> int, arg: int) -> int {
+    rec: int = mem.block(40)
+    if rec == 0 {
+        return 0
+    }
+    mem.store_i64(rec, 0, f)
+    mem.store_i64(rec, 8, arg)
+    mem.store_i64(rec, 24, 0)
+    h: int = thread.spawn(run_future, rec)
+    if h == 0 {
+        mem.release(rec)
+        return 0
+    }
+    mem.store_i64(rec, 32, h)
+    return rec
+}
+
+def is_done(rec: int) -> bool {
+    if rec == 0 {
+        return False
+    }
+    return mem.load_i64(rec, 24) == 1
+}
+
+# The answer, waiting for the thread if it is still running.  The record is released
+# here, because this is the read that consumes the future -- and reading it twice is a
+# use-after-free the type system cannot see, so it is stated here instead of hidden.
+def wait(rec: int) -> int {
+    if rec == 0 {
+        return 0
+    }
+    h: int = mem.load_i64(rec, 32)
+    if h == 0 {
+        return 0
+    }
+    if not thread.join(h) {
+        return 0
+    }
+    v: int = mem.load_i64(rec, 16)
+    mem.release(rec)
+    return v
+}
+
+# A pool's work, as one 56-byte record:
+#     +0 fns      the address of an Array[int, 64] of function values
+#     +8 args     the address of an Array[int, 64] of their arguments
+#     +16 outs    the address of an Array[int, 64] for their results
+#     +24 n       how many tasks there are
+#     +32 next    the index the next worker claims, under the lock at +48
+#     +40 lock    the lock's handle
+#     +48 (pad)
+def worker(rec: int) -> None {
+    fns: int = mem.load_i64(rec, 0)
+    args: int = mem.load_i64(rec, 8)
+    outs: int = mem.load_i64(rec, 16)
+    n: int = mem.load_i64(rec, 24)
+    lock: int = mem.load_i64(rec, 40)
+    mut done: bool = False
+    while not done {
+        # claim one index, under the lock; whoever sees `n` has nothing left to do
+        thread.lock_enter(lock)
+        i: int = mem.load_i64(rec, 32)
+        mem.store_i64(rec, 32, i + 1)
+        thread.lock_leave(lock)
+        if i >= n {
+            done = True
+        } else {
+            plain: int = mem.load_i64(fns, i * 8)
+            f: (int) -> int = plain
+            a: int = mem.load_i64(args, i * 8)
+            mem.store_i64(outs, i * 8, f(a))
+        }
+    }
+}
+
+# Run `n` tasks on `workers` threads (at most `n`, at least 1) and answer how many
+# threads were started -- one per task is what the results' order is defined by, not by
+# which thread did what.  0 means the work could not be run at all.
+def run(fns: Array[int, 64], args: Array[int, 64], outs: Array[int, 64], n: int, workers: int) -> int {
+    if n <= 0 {
+        return 0
+    }
+    if n > 64 {
+        return 0
+    }
+    mut w: int = workers
+    if w > n {
+        w = n
+    }
+    if w < 1 {
+        w = 1
+    }
+    rec: int = mem.block(48)
+    lock: int = thread.lock_new()
+    if rec == 0 or lock == 0 {
+        return 0
+    }
+    mem.store_i64(rec, 0, addr(fns, 0))
+    mem.store_i64(rec, 8, addr(args, 0))
+    mem.store_i64(rec, 16, addr(outs, 0))
+    mem.store_i64(rec, 24, n)
+    mem.store_i64(rec, 32, 0)
+    mem.store_i64(rec, 40, lock)
+    mut hs: Array[int, 64]
+    mut started: int = 0
+    mut i: int = 0
+    while i < w {
+        hs[i] = thread.spawn(worker, rec)
+        if hs[i] != 0 {
+            started += 1
+        }
+        i += 1
+    }
+    mut j: int = 0
+    while j < w {
+        if hs[j] != 0 {
+            thread.join(hs[j])
+        }
+        j += 1
+    }
+    thread.lock_free(lock)
+    mem.release(rec)
+    return started
+}

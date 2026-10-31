@@ -1,0 +1,5 @@
+futures 0 1 4 9
+futures sum 14
+pool 16 jobs on 4 threads
+pool sum 1240
+slice 0 1 4 9 16 225
