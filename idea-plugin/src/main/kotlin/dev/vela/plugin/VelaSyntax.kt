@@ -2011,6 +2011,38 @@ class VelaSyntaxParser private constructor(
             advance()
             return "None"
         }
+        // `(int) -> int`, `(int, int) -> int`, `() -> None`: a *function type*, which
+        // is the type of a value that names a function.  The compiler's dump prints it
+        // as `fn[<result>,<arity>]` (measured: `param name=g type=fn[int,2]`), and this
+        // parser returns the spelling the dump needs, in the same shape, so a reader
+        // comparing the two is comparing answers rather than formats.
+        if (atOp(VelaOps.LPAREN)) {
+            advance()
+            var arity = 0
+            if (!atOp(VelaOps.RPAREN)) {
+                while (true) {
+                    parseType() ?: return null
+                    arity++
+                    if (atOp(VelaOps.COMMA)) {
+                        advance()
+                        continue
+                    }
+                    break
+                }
+            }
+            if (!atOp(VelaOps.RPAREN)) {
+                recover("expected ')' after the parameter types of a function type")
+                return null
+            }
+            advance()
+            if (!atOp(VelaOps.ARROW)) {
+                recover("expected '->' and a result type after a function type's parameter list")
+                return null
+            }
+            advance()
+            val ret = parseType() ?: return null
+            return "fn[" + ret + "," + arity + "]"
+        }
         if (!atName()) {
             recover("expected a type name")
             return null
