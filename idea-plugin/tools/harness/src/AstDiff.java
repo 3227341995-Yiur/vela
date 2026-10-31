@@ -530,16 +530,73 @@ public final class AstDiff {
      * those cases fall back to the file's own dump.
      */
     private static String mergedDump(Path file, VelaSyntaxTree tree) throws IOException {
-        StringBuilder body = new StringBuilder();
-        if (!splice(file, body, new LinkedHashSet<>(), new ArrayList<>())) {
+        List<Frag> frags = new ArrayList<>();
+        if (!splice(file, frags, new int[] { 0 }, new LinkedHashSet<>(), new ArrayList<>())) {
             return VelaSyntaxDump.INSTANCE.dump(tree);
+        }
+        // The loader's order is the splice's: a file's imports first, the file itself
+        // last (post-order), and the *index* the loader gives it is the order it was
+        // entered (pre-order), which `splice` records on the way in.  Renaming here, in
+        // merge order, is what makes a colliding top-level function print as
+        // `name$<index>` the way the compiler`s dump does -- measured before this:
+        // `tests/build/modules/same_name.vel` compared `same` against `same$2` and was
+        // reported as a difference that was purely the comparison`s.
+        java.util.Map<String, Integer> seen = new java.util.HashMap<>();
+        StringBuilder body = new StringBuilder();
+        for (Frag f : frags) {
+            body.append(renamed(f, seen));
         }
         return "module\n  block\n" + body;
     }
 
+    /** One file`s dumped statements, and the index the loader would give it. */
+    private static final class Frag {
+        final int idx;
+        final String text;
+
+        Frag(int idx, String text) {
+            this.idx = idx;
+            this.text = text;
+        }
+    }
+
+    /**
+     * One fragment with the loader`s rename applied: a function whose name an
+     * *earlier* file already declared becomes `name$<index>`, and every `name X` in the
+     * same fragment is renamed with it -- which is what `load_file`'s `rename_refs`
+     * does to that file`s nodes.  The suffix is not cosmetic: it is the handle the
+     * resolver looks up, so a fragment compared without it is a different program.
+     */
+    private static String renamed(Frag f, java.util.Map<String, Integer> seen) {
+        String text = f.text;
+        java.util.regex.Matcher d = java.util.regex.Pattern
+                .compile("def name=([A-Za-z0-9_]+)").matcher(text);
+        List<String> collide = new ArrayList<>();
+        while (d.find()) {
+            String nm = d.group(1);
+            Integer prev = seen.get(nm);
+            if (prev == null) {
+                seen.put(nm, f.idx);
+            } else if (prev != f.idx) {
+                collide.add(nm);
+            }
+        }
+        for (String nm : collide) {
+            String suf = "$" + f.idx;
+            String q = java.util.regex.Pattern.quote(nm);
+            text = text.replaceAll("(?<![A-Za-z0-9_])name=" + q + "(?![A-Za-z0-9_])",
+                    java.util.regex.Matcher.quoteReplacement("name=" + nm + suf));
+            text = text.replaceAll("(?<![A-Za-z0-9_])name " + q + "(?![A-Za-z0-9_])",
+                    java.util.regex.Matcher.quoteReplacement("name " + nm + suf));
+        }
+        return text;
+    }
+
     /** Post-order, like `load_file`: a file's imports, then the file itself. */
-    private static boolean splice(Path file, StringBuilder body,
+    private static boolean splice(Path file, List<Frag> frags, int[] next,
                                   Set<Path> loaded, List<Path> stack) throws IOException {
+        // the loader's file index: the order this file was *entered*
+        int mine = next[0]++;
         Path key = file.toAbsolutePath().normalize();
         if (stack.contains(key)) {
             return false;
@@ -580,7 +637,7 @@ public final class AstDiff {
             if (loaded.contains(target)) {
                 continue;
             }
-            if (!splice(target, body, loaded, stack)) {
+            if (!splice(target, frags, next, loaded, stack)) {
                 stack.remove(key);
                 return false;
             }
@@ -593,12 +650,14 @@ public final class AstDiff {
         // loader takes the import statements out of the chain again (the node says
         // how the program was assembled, not what it contains).  The splice above
         // is what proves the plugin read the path right.
+        StringBuilder own = new StringBuilder();
         for (int i = 2; i < lines.length - 1; i++) {
             if (lines[i].startsWith("    import \"") && !lines[i].startsWith("     ")) {
                 continue;
             }
-            body.append(lines[i]).append('\n');
+            own.append(lines[i]).append('\n');
         }
+        frags.add(new Frag(mine, own.toString()));
         loaded.add(key);
         stack.remove(key);
         return true;
