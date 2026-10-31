@@ -641,7 +641,12 @@ run       module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel
 refuse module_cycle                          tests/build/modules/cycle_a.vel
-refuse module_dup_name                       tests/build/modules/dup_name.vel
+run       module_dup_name                       tests/build/modules/dup_name.vel
+# Two modules, three sames: same_a.same (x+1), same_b.same (x*10) and the root's
+# (x-1).  A function name now belongs to the file that declares it, so a collision is
+# renamed name$<file> at merge time, and that file's own references are renamed with it.
+# 2 10 4 is the claim: each file answers with its own function.
+run       module_same_name                     tests/build/modules/same_name.vel
 refuse module_second_main                    tests/build/modules/second_main.vel
 refuse module_diag_in_import                 tests/build/modules/bad_root.vel
 

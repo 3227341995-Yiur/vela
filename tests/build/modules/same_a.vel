@@ -1,0 +1,9 @@
+# One half of the same-name pair: this module's `same` and the function that calls it.
+# `same` here is `x + 1`; `b.vel`'s is `x * 10`, and neither module can see the other's.
+def same(x: int) -> int {
+    return x + 1
+}
+
+def from_a(x: int) -> int {
+    return same(x)
+}

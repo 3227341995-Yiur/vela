@@ -1,5 +1,16 @@
-# Refuse-case: two files declaring one top-level name.  Without the refusal the
-# second definition silently wins, and which one that is depends on load order.
+# Two files that each declare `twice`.  This used to be the refuse-case for the
+# shared top-level namespace ("duplicate definition of 'twice' -- also declared in
+# 'tests/build/modules/helper.vel'"); since 2026-11-01 it is a *positive* case,
+# because a top-level function name belongs to the file that declares it:
+#
+#   * `helper.vel`'s `twice` keeps the name (it is merged first);
+#   * this file's `twice` is renamed `twice$0` before anything downstream sees it,
+#     and every reference in *this* file is renamed with it -- so `main` below calls
+#     this file's `twice` and prints 6, not the helper's 7.
+#
+# That is the property worth testing: not that both exist, but that neither file is
+# silently answering with the other's function.  Expected stdout, byte for byte:
+#     6
 import helper
 
 def twice(x: int) -> int {

@@ -1,0 +1,9 @@
+# The other half: a `same` with different behaviour, called by this module's own
+# `from_b`.  Its name collides with a.vel's, which is the point.
+def same(x: int) -> int {
+    return x * 10
+}
+
+def from_b(x: int) -> int {
+    return same(x)
+}

@@ -1317,8 +1317,29 @@ def decl_owner(mem: Array[int, 3741696], name: int) -> int {
     return -1
 }
 
-def decl_record(mut mem: Array[int, 3741696], name: int, file: int) -> None {
-    mut i: int = mem[MEM_LDECL()]
+# Every *reference* to a renamed top-level function, inside the file that declared
+# it.  A name node carries the interned handle the parser wrote, so a rename is the
+# same handle written in both places -- and the range is this file's nodes and
+# nothing else (`load_file`'s `ni0 .. ni1`), which is what keeps two modules that
+# each have a `same` from being renamed into each other.
+#
+# A local variable that happens to be spelled `same` is renamed too, with its
+# declaration, so what a program *means* does not change: the rename is a
+# consistent substitution inside one file, not a scope-aware pass.
+def rename_refs(mut nd: Array[int, 1310720], first: int, last: int, old: int,
+                fresh: int) -> None {
+    mut i: int = first
+    while i < last {
+        if nd_kind(nd, i) == 25 {
+            if nd[i * 10 + 1] == old {
+                nd[i * 10 + 1] = fresh
+            }
+        }
+        i += 1
+    }
+}
+
+def decl_record(mut mem: Array[int, 3741696], name: int, file: int) -> None {    mut i: int = mem[MEM_LDECL()]
     if i >= LDECL_MAX() {
         panic("vela: compiler: too many top-level names to check")
     }
@@ -1715,6 +1736,51 @@ def load_file(path: str, src: str, base: int, depth: int, file: int,
             }
             n0 += 1
         }
+    }
+
+    # ------------------------------------------- two files may name one function
+    #
+    # Until this pass, a top-level name belonged to the *program*: a second file that
+    # declared `helper` was refused ("duplicate definition of 'helper' -- also declared
+    # in ..."), and that is the one thing a library cannot live with -- `lib/io.vel`
+    # and `lib/fs.vel` both wanting an `open` is not a mistake, it is two modules.
+    #
+    # So a **function** whose name is already taken by another file is renamed here,
+    # before anything downstream sees it: `helper` becomes `helper$<file>`, and the
+    # suffix is the loader's own file index, so two modules cannot collide by
+    # construction.  A name is the handle the resolver will look up, and every
+    # reference in *this* file is rewritten with it (`rename_refs`), so each module
+    # keeps calling its own.
+    #
+    # What this deliberately does not do, and the refusal it keeps:
+    #
+    #   * `struct` and `enum` names are not renamed.  Their names are already in the
+    #     type table by the time this pass runs (`add_struct`/`add_enum_names` read
+    #     them from the AST during resolve), and a rename would have to rewrite type
+    #     records, layout rows and every annotation -- a different, larger pass.  Two
+    #     files declaring one struct are still refused by name.
+    #   * an `extern c` declaration is never renamed: its name *is* the C symbol.
+    #   * `main` is never renamed: it is how the entry point is found.
+    #
+    # The suffix is `$<index>`, not the path, because the name becomes a C identifier
+    # (`vl_` + the interned text): a path would put `/` and `.` in a symbol name.
+    s = nd[m * 10 + 1]
+    while s >= 0 {
+        if nd_kind(nd, s) == 2 {
+            if nd[s * 10 + 8] >= 0 {
+                old: int = nd[s * 10 + 1]
+                owner: int = decl_owner(mem, old)
+                if owner >= 0 and owner != file {
+                    if interned(old) != "main" {
+                        fresh: int = intern(concat(concat(interned(old), "$"),
+                                                   ck_int_text(file)))
+                        nd[s * 10 + 1] = fresh
+                        rename_refs(nd, ni0, ni1, old, fresh)
+                    }
+                }
+            }
+        }
+        s = nd[s * 10 + 7]
     }
 
     # and this file's own statements last, which is what puts every imported

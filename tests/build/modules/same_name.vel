@@ -1,0 +1,28 @@
+# Two imported modules that each declare `same`, a third `same` in this file, and the
+# rule that makes that legal (2026-11-01): a function name belongs to the file that
+# declares it, so a colliding name is renamed `name$<file>` at merge time and every
+# reference *inside that file* is renamed with it.
+#
+# The three numbers below are the whole claim: each file answers with its own `same`.
+#   from_a(1) -> a.vel's same -> 1 + 1  = 2
+#   from_b(1) -> b.vel's same -> 1 * 10 = 10
+#   same(5)   -> this file's same -> 5 - 1 = 4
+#
+# NOT supported, and not tested here: calling a *colliding* name through a module
+# alias, as in `same_a.same(1)`.  The alias pass turns `alias.member` into a plain
+# name before the loader knows what is ambiguous, so that spelling would resolve to
+# the root's `same`.  Fixing it means carrying the alias's module with the reference
+# -- a separate pass, and a refusal until it exists.
+#
+# Expected stdout, byte for byte:
+#     2 10 4
+import same_a
+import same_b
+
+def same(x: int) -> int {
+    return x - 1
+}
+
+def main() -> None {
+    print(same_a.from_a(1), same_b.from_b(1), same(5))
+}

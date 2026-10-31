@@ -1,2 +1,0 @@
-vela: type error: duplicate definition of 'twice' -- also declared in 'tests/build/modules/helper.vel'
-  at tests/build/modules/dup_name.vel:5
