@@ -537,6 +537,21 @@ int32_t vshim_arglist_add(int64_t arguments, int64_t value);
 int32_t vshim_arglist_abandon(int64_t arguments);
 int64_t vshim_call(int64_t arguments, int64_t function);
 
+/* A call through a *value*: `g(2)` where `g` is a parameter or a binding of
+ * function type.
+ *
+ * `vshim_call` takes the handle of a function the module *declares*, and
+ * `LLVMGlobalGetValueType` is what tells it the signature; a value has no such
+ * global, so the signature has to come from the caller -- `function_type` is the
+ * `LLVMFunctionType` the signature builders produced (`vshim_sig_begin` ...
+ * `vshim_sig_finish`) and `callee` is the function pointer itself.
+ *
+ * The arity and every argument's type are checked here before `LLVMBuildCall2`,
+ * because a mismatch there is an LLVM assertion and an assertion is not a
+ * refusal. */
+int64_t vshim_call_indirect(int64_t arguments, int64_t function_type,
+                            int64_t callee);
+
 /* ================================================================= output ====
  *
  * `vshim_emit_object` verifies first, on purpose: the verifier is the thing that

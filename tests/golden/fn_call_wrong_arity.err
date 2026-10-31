@@ -1,0 +1,2 @@
+vela: type error: this function value takes 2 argument(s), not 1
+  at tests/build/check_cases/fn_call_wrong_arity.vel:10

@@ -14,7 +14,7 @@
 # int64_t -> int, int32_t -> i32, uint8_t -> u8, double -> float,
 # bool -> bool, vela_str -> str, void -> None.
 #
-# 81 declarations, in the header's order.
+# 82 declarations, in the header's order.
 # ============================================================================
 
 # Handles (modules, types, functions, blocks, values) are `int` here because
@@ -87,6 +87,7 @@ extern c def vshim_arglist_begin(module: int) -> int
 extern c def vshim_arglist_add(arguments: int, value: int) -> i32
 extern c def vshim_arglist_abandon(arguments: int) -> i32
 extern c def vshim_call(arguments: int, function: int) -> int
+extern c def vshim_call_indirect(arguments: int, function_type: int, callee: int) -> int
 extern c def vshim_verify(module: int) -> i32
 # omitted: vshim_emit_object  (takes or returns a str; the scalar form is vshim_emit_object_buf, below)
 extern c def vshim_buf_reset() -> i32

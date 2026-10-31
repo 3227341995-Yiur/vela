@@ -537,6 +537,19 @@ run    enum_else_arm                         tests/build/enum_else_arm.vel
 run-c  enum_two_enums                        tests/build/enum_two_enums.vel
 ok     enum_in_array                         tests/build/enum_in_array.vel
 run    enum_exhaustive_switch                tests/build/enum_exhaustive_switch.vel
+
+
+# ------------------------------------- function types: a value that names a function
+#
+# `(int) -> int` is a type now, so a `def` name is a value: a parameter can be one
+# (`def apply(g: (int) -> int, x: int)`), a binding can hold one, one can be
+# returned, and a call through any of those is an indirect call.  The one shape that
+# is refused is calling a *call's* result (`pick(0)(1)`): a call site reads a
+# binding's slot in all three implementations, and a temporary has none.
+run     fn_type                              tests/build/fn_type.vel
+refuse  fn_call_of_a_call                    tests/build/check_cases/fn_call_of_a_call.vel
+refuse  fn_call_wrong_arity                  tests/build/check_cases/fn_call_wrong_arity.vel
+refuse  fn_call_not_a_function               tests/build/check_cases/fn_call_not_a_function.vel
 # The emitted C itself, for the one property of it that a program's output cannot
 # show: an exhaustive match becomes a `switch` with no `default`, so a variant
 # added to the enum without its arm is caught by the checker and by anyone reading

@@ -1,0 +1,7 @@
+# Refuse-case.  A value that is not a function cannot be called, and the refusal is
+# the resolver's rather than an LLVM type error: `n` is an `int` binding, so
+# `n(1)` has no callee to resolve.
+def main() -> None {
+    n: int = 1
+    print(n(2))
+}

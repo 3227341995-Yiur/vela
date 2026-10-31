@@ -362,6 +362,62 @@ def parse_type(src: str, tk: Array[int, 1572864], mut ty: Array[int, 262144],
         cx.ti += 1
         return ty_add(ty, cx, intern("None"), -1, -1, line)
     }
+    if at_op(tk, cx, 9) {
+        # `(int, str) -> bool`: a *function type*, which is the type of a value that
+        # names a function -- a parameter (`def apply(g: (int) -> int, x: int)`), a
+        # binding, or a result.  There is no other production that starts with `(`
+        # in type position, so this arm is unambiguous.
+        #
+        # The layout is fixed here and read by `ty_fret`/`ty_farity`/`ty_fparam`
+        # (vm_state.vel): the signature record is allocated first, and then one
+        # record per parameter *immediately after it*, which is what makes the
+        # parameter types reachable as `t + 1 + j` with no second table and no new
+        # region in `mem`.  Sixteen parameters is this spelling's limit, and a
+        # refusal naming it is better than a type that quietly drops the
+        # seventeenth.
+        cx.ti += 1
+        mut ptys: Array[int, 16]
+        mut np: int = 0
+        if not at_op(tk, cx, 10) {
+            while cx.err == 0 {
+                if np >= 16 {
+                    perr(cx, "a function type takes at most sixteen parameter types", ti_line(tk, cx))
+                    return -1
+                }
+                ptys[np] = parse_type(src, tk, ty, cx)
+                if cx.err != 0 {
+                    return -1
+                }
+                np += 1
+                if at_op(tk, cx, 11) {
+                    cx.ti += 1
+                    continue
+                }
+                break
+            }
+        }
+        if not at_op(tk, cx, 10) {
+            perr(cx, "expected ')' after the parameter types of a function type", ti_line(tk, cx))
+            return -1
+        }
+        cx.ti += 1
+        if not at_op(tk, cx, 26) {
+            perr(cx, "expected '->' and a result type after a function type's parameter list", ti_line(tk, cx))
+            return -1
+        }
+        cx.ti += 1
+        ret: int = parse_type(src, tk, ty, cx)
+        if cx.err != 0 {
+            return -1
+        }
+        t: int = ty_add(ty, cx, intern("fn"), ret, np, line)
+        mut i: int = 0
+        while i < np {
+            ty_add(ty, cx, ptys[i], -1, -1, line)
+            i += 1
+        }
+        return t
+    }
     if not at_name(tk, cx) {
         perr(cx, "expected a type name", line)
         return -1

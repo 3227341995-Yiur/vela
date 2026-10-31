@@ -1,0 +1,11 @@
+# Refuse-case.  A call through a value with the wrong number of arguments.  The
+# signature is in the binding's declared type, so this is a refusal with a line
+# number rather than an LLVM type error or a C crash at run time.
+def add(a: int, b: int) -> int {
+    return a + b
+}
+
+def main() -> None {
+    g: (int, int) -> int = add
+    print(g(1))
+}

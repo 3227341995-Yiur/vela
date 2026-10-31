@@ -1,0 +1,2 @@
+vela: type error: the callee here is an expression, not a name: bind the function to a variable first
+  at tests/build/check_cases/fn_call_of_a_call.vel:15

@@ -35,10 +35,12 @@ can (same C back end).
 | timing | `GetTickCount64`; `timeBeginPeriod(1)` makes `Sleep(1)` an actual millisecond |
 | widgets | `label` / `button` / `card` / `meter` / sidebar item, immediate mode |
 
-**Why there is no callback**: Vela 0.1 has no function types, and a Win32 window class
-wants a WNDPROC.  So the window is the system's own `STATIC` with `SS_OWNERDRAW`: it
-paints nothing itself, and the messages it does not handle — `WM_CLOSE` included — go
-to `DefWindowProc`, where the destroy is already written.
+**Why there is no callback**: this window was written when Vela had no function types,
+and a Win32 window class wants a WNDPROC.  The language has had them since 2026-10-31
+(`gui\README` predates that), but the design here does not need one: the window is the
+system's own `STATIC` with `SS_OWNERDRAW`, it paints nothing itself, and the messages it
+does not handle — `WM_CLOSE` included — go to `DefWindowProc`, where the destroy is
+already written.  A WNDPROC is the natural next step for this file, not a prerequisite.
 
 ## Measured
 

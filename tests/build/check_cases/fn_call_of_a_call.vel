@@ -1,0 +1,16 @@
+# Refuse-case.  `pick(0)(1)` -- calling a call's result -- is not a shape any of the
+# three implementations can build, and the refusal says which shape to write instead.
+# A function *value* is callable, so this is the one function-type spelling that
+# looks legal and is not: a call site reads a binding's slot, and a temporary has no
+# binding to read.
+def double(x: int) -> int {
+    return x * 2
+}
+
+def pick(which: int) -> (int) -> int {
+    return double
+}
+
+def main() -> None {
+    print(pick(0)(1))
+}

@@ -644,6 +644,13 @@ def ll_type_of(lg: LG, k: int) -> int {
     if k == K_STR() { return lg.t_str }
     if k == K_I32() { return lg.t_i32 }
     if k == K_U8() { return lg.t_i8 }
+    if k == K_FN() {
+        # A function value is a real function pointer in IR, which is what makes
+        # passing one a plain `ptr` argument and calling one an indirect call; the
+        # C back end spells the same value `int64_t` and casts, because C's
+        # declarator syntax would have cost a second name-aware type printer.
+        return lg.t_ptr
+    }
     return 0
 }
 
@@ -3289,6 +3296,10 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
              concat(concat("this builtin (`", ll_builtin_name(b)),
                     "`) is not compiled by the LLVM back end yet"))
     }
+    if sk == SYM_LOCAL() {
+        return ll_call_value(lg, nd, ty, flt, src, path, mem, vm, slots,
+                             slotkind, lit, fns, e, callee)
+    }
     if sk == SYM_STRUCT() {
         # `P(1)`: a struct call is a value of that very struct, and `ll_construct`
         # builds it field by field into the slot reserved for this node.
@@ -3370,6 +3381,109 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     return v
 }
 
+# `g(2)`: a call through a value.  The signature is the binding's declared type
+# (`ty_fret`/`ty_fparam`), the callee is the function pointer the slot holds, and
+# the call is `vshim_call_indirect` -- the shim's one addition for this feature,
+# because `vshim_call` reads a signature out of a *declared* function and a value
+# has no global to read one from.
+#
+# A result that comes back through a hidden pointer (`str`, a struct, an enum) is
+# refused here by name: the caller would have to supply storage of a type this
+# expression does not name, and inventing one for a case the corpus does not have
+# is how a back end acquires a silent wrong answer.  A scalar and a function
+# pointer come back in a register and are what this arm supports.
+def ll_call_value(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
+                  flt: Array[float, 262144], src: str, path: str,
+                  mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+                  slotkind: Array[int, 4096], lit: Array[int, 132096],
+                  fns: Array[int, 8192], e: int, callee: int) -> int {
+    line: int = nd_line(nd, e)
+    pk: int = local_kind(mem, callee)
+    if unpack_kind(pk) != K_FN() {
+        trap(path, line, "this is not something that can be called")
+    }
+    ft: int = unpack_len(pk)
+    if ft < 0 {
+        trap(path, line, "this function value has no signature")
+    }
+    rk: int = type_kind(ty, ty_fret(ty, ft), mem, vm)
+    if rk == K_STR() {
+        trap(path, line,
+             "a call through a function value that returns `str` is not compiled by the LLVM back end yet")
+    }
+    if rk == K_ST() {
+        trap(path, line,
+             "a call through a function value that returns a struct is not compiled by the LLVM back end yet")
+    }
+    if rk == K_ENUM() {
+        trap(path, line,
+             "a call through a function value that returns an enum is not compiled by the LLVM back end yet")
+    }
+    if is_array(rk) {
+        trap(path, line,
+             "a call through a function value that returns an array is not compiled by the LLVM back end yet")
+    }
+    ret_ir: int = ll_type_of(lg, rk)
+    if ret_ir == 0 {
+        trap(path, line, "this function value's result type has no IR spelling")
+    }
+    npar: int = ty_farity(ty, ft)
+    mut sig: int = vshim_sig_begin(lg.m, ret_ir)
+    if sig == 0 {
+        ll_fail(lg, "starting an indirect call's signature")
+    }
+    mut j: int = 0
+    while j < npar {
+        pkk: int = type_kind(ty, ty_fparam(ty, ft, j), mem, vm)
+        pir: int = ll_type_of(lg, pkk)
+        if pir == 0 {
+            trap(path, line,
+                 "a parameter of this function value has no IR spelling")
+        }
+        if vshim_sig_param(sig, pir) != 0 {
+            ll_fail(lg, "a parameter type of an indirect call")
+        }
+        j += 1
+    }
+    fnty: int = vshim_sig_finish(sig)
+    if fnty == 0 {
+        ll_fail(lg, "finishing an indirect call's signature")
+    }
+    mut l: int = vshim_arglist_begin(lg.m)
+    if l == 0 {
+        ll_fail(lg, "starting an indirect call's argument list")
+    }
+    mut a: int = nd[e * 10 + 2]
+    mut i: int = 0
+    while a > 0 {
+        if i >= 16 {
+            trap(path, line,
+                 "the LLVM back end's argument list holds sixteen arguments")
+        }
+        if i >= npar {
+            trap(path, line,
+                 "this function value takes fewer arguments than the call has")
+        }
+        mut v: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                             lit, fns, a)
+        pkk2: int = type_kind(ty, ty_fparam(ty, ft, i), mem, vm)
+        v = ll_adapt(lg, pkk2, expr_kind(nd, ty, mem, vm, a), v)
+        if vshim_arglist_add(l, v) != 0 {
+            vshim_arglist_abandon(l)
+            ll_fail(lg, "adding an argument to an indirect call")
+        }
+        i += 1
+        a = nd_nx(nd, a)
+    }
+    if i != npar {
+        trap(path, line,
+             "this function value takes more arguments than the call has")
+    }
+    cv: int = ll_name(lg, nd, ty, mem, vm, slots, slotkind, path, callee)
+    return ll_ck(lg, "an indirect call",
+                 vshim_call_indirect(l, fnty, cv))
+}
+
 def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             flt: Array[float, 262144], src: str, path: str,
             mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
@@ -3402,6 +3516,10 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             # a bare variant name is a value: `Empty`, `Red`.  Its value is the
             # address of the tagged block the reservation pass gave this node.
             return ll_variant_lit(lg, nd, path, mem, vm, lit, e)
+        }
+        if nt_get(mem, e, NT_SYM()) == SYM_FUNC() {
+            # a `def` used as a value: the function itself, which in IR is a pointer
+            return fns[nt_get(mem, e, NT_VAL())]
         }
         return ll_name(lg, nd, ty, mem, vm, slots, slotkind, path, e)
     }

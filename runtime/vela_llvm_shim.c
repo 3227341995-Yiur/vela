@@ -2423,11 +2423,79 @@ int64_t vshim_call(int64_t arguments, int64_t function)
     return h;
 }
 
+/* A call through a value: the signature comes from the caller because a value has
+ * no global to read one out of (`vshim_call` uses `LLVMGlobalGetValueType`).  Every
+ * argument is checked against the declared parameter type first -- a mismatch is an
+ * LLVM assertion, and an assertion is not a diagnosis. */
+int64_t vshim_call_indirect(int64_t arguments, int64_t function_type,
+                            int64_t callee)
+{
+    shim_args *a;
+    shim_module *am = NULL, *tm = NULL, *cm = NULL;
+    LLVMTypeRef fn_ty;
+    LLVMValueRef fn, call;
+    unsigned want, i;
+    int64_t h;
+
+    clear_error();
+    a = (shim_args *)lookup(arguments, SHIM_KIND_ARGS, &am);
+    if (!a) return 0;
+    fn_ty = (LLVMTypeRef)lookup(function_type, SHIM_KIND_TYPE, &tm);
+    if (!fn_ty) return 0;
+    fn = (LLVMValueRef)lookup(callee, SHIM_KIND_VALUE, &cm);
+    if (!fn) return 0;
+    if (am != tm || am != cm) {
+        fail("the callee, its signature and the argument list belong to different modules");
+        return 0;
+    }
+    if (LLVMGetTypeKind(fn_ty) != LLVMFunctionTypeKind) {
+        fail("an indirect call needs a function type, and this is not one");
+        return 0;
+    }
+    if (LLVMGetTypeKind(LLVMTypeOf(fn)) != LLVMPointerTypeKind) {
+        fail("an indirect call needs a function pointer, and this value is not one");
+        return 0;
+    }
+    want = LLVMCountParamTypes(fn_ty);
+    if (want != a->count) {
+        fail("the signature takes %u argument(s) and the list has %u", want, a->count);
+        return 0;
+    }
+    {
+        LLVMTypeRef *params = (LLVMTypeRef *)malloc(sizeof(LLVMTypeRef) * want);
+        if (!params) {
+            fail("out of memory");
+            return 0;
+        }
+        LLVMGetParamTypes(fn_ty, params);
+        for (i = 0; i < want; i++) {
+            if (LLVMTypeOf(a->values[i]) != params[i]) {
+                fail("argument %u is not the type this signature declares", i + 1);
+                free(params);
+                return 0;
+            }
+        }
+        free(params);
+    }
+    if (check_builder(am) != VSHIM_OK) return 0;
+
+    call = LLVMBuildCall2(am->builder, fn_ty, fn, a->values, a->count, "");
+    if (!call) {
+        fail("LLVMBuildCall2() returned NULL");
+        return 0;
+    }
+    h = slot_add(am, call, SHIM_KIND_VALUE);
+    if (!h) return 0;
+    consume(arguments);
+    free(a->values);
+    free(a);
+    return h;
+}
+
 /* =================================================================== output */
 
 int32_t vshim_verify(int64_t module)
-{
-    shim_module *m;
+{    shim_module *m;
     char *msg = NULL;
 
     clear_error();

@@ -116,6 +116,12 @@ written in Vela.
    that outlives its frame must be refused **by the type system**, not by a
    crash. Acceptance: a function taking a function parameter works; an escaping
    closure is a compile error naming the reason.
+   *Half landed 2026-10-31*: **function types** exist (`(int) -> int`), so a `def`
+   name is a value, a parameter can be one, one can be returned and a call through
+   any of them is an indirect call — the first half of the acceptance is met and
+   `tests/build/fn_type.vel` is its corpus case on all three paths.  **Closures
+   themselves are still missing**, and with them the escape rule: a function value
+   carries no environment, so nothing can dangle and nothing needs refusing.
 6. **A standard library**: `Vec`, `Map`, `str` methods, formatting, and the file
    and process calls the compiler already needs, all written in Vela. The
    compiler is the first customer, as it has been for everything else.

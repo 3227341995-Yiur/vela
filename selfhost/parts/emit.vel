@@ -408,6 +408,22 @@ def emit_ctype(kind: int, path: str, line: int) -> None {
         emit_str("void")
         return
     }
+    if kind == K_FN() {
+        # A function value in C is an `int64_t`: the *address* of the function, cast
+        # through `uintptr_t` so the two conversions are explicit and the value is
+        # one plain word that a binding, a parameter and a struct field can all hold
+        # with no declarator syntax.  The call site casts it back to a function
+        # pointer (`emit_call`), which is the one place the signature is known.
+        #
+        # The alternative -- spelling `int64_t (*)(int64_t)` here -- reads better and
+        # does not work: C's declarator puts the *name* inside the parentheses, and
+        # every emitter in this file writes `<type> <name>`, so a binding of function
+        # type would need a second, name-aware spelling in the declaration, the
+        # parameter list and the struct field.  One cast at each end buys that whole
+        # class of bugs away.
+        emit_str("int64_t")
+        return
+    }
     if is_array(kind) {
         emit_array_ctype(kind, path, line)
         return
@@ -788,7 +804,11 @@ def emit_name(nd: Array[int, 1310720], mem: Array[int, 3741696], path: str,
         return local_kind(mem, e)
     }
     if sk == SYM_FUNC() {
-        trap(path, nd_line(nd, e), "a function is not a value")
+        # a `def` used as a value: its address, cast into the word a function value
+        # is (see `emit_ctype`'s `K_FN` arm)
+        emit_str("(int64_t)(uintptr_t)")
+        emit_fn_name(nd, mem, nt_get(mem, e, NT_VAL()))
+        return pack_kind(K_FN(), 0)
     }
     if sk == SYM_STRUCT() {
         trap(path, nd_line(nd, e), "a struct name is not a value")
@@ -875,6 +895,42 @@ def emit_call(nd: Array[int, 1310720], ty: Array[int, 262144],
                             ft_get(mem, sv, FT_BODY()) < 0)
         emit_str(")")
         return ft_ret_kind(nd, ty, mem, vm, sv)
+    }
+    if sk == SYM_LOCAL() {
+        # `g(2)`: a call through a *value*.  The binding's declared type is the
+        # signature, so the cast names it exactly -- `((int64_t (*)(int64_t))
+        # (uintptr_t)vl_g)(2)` -- and the result's kind is the signature's own
+        # result type, because the caller of this function has to know what the
+        # expression is worth.
+        ft: int = unpack_len(local_kind(mem, callee))
+        if ft < 0 {
+            trap(path, nd_line(nd, e), "this function value has no signature")
+        }
+        emit_str("((")
+        ret: int = ty_fret(ty, ft)
+        emit_binding_ctype(nd, ty, mem, vm, path, type_packed(ty, ret, mem, vm),
+                           nd_line(nd, e))
+        emit_str(" (*)(")
+        npar: int = ty_farity(ty, ft)
+        if npar == 0 {
+            emit_str("void")
+        }
+        mut j: int = 0
+        while j < npar {
+            if j > 0 {
+                emit_str(", ")
+            }
+            emit_binding_ctype(nd, ty, mem, vm, path,
+                               type_packed(ty, ty_fparam(ty, ft, j), mem, vm),
+                               nd_line(nd, e))
+            j += 1
+        }
+        emit_str("))(uintptr_t)")
+        emit_cname(nd[callee * 10 + 1])
+        emit_str(")(")
+        emit_args(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+        emit_str(")")
+        return type_packed(ty, ret, mem, vm)
     }
     if sk == SYM_BUILTIN() {
         emit_str("(")
@@ -2645,6 +2701,12 @@ def param_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
             return pack_ptr(pack_kind(K_ENUM(), row))
         }
         return pack_kind(K_ENUM(), row)
+    }
+    if k == K_FN() {
+        # a function value crosses a call as the *type index* of its signature --
+        # the same word a binding carries, so a parameter and a local are the same
+        # value to every reader downstream
+        return pack_kind(K_FN(), t)
     }
     return pack_kind(k, ty_len(ty, t))
 }

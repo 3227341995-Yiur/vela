@@ -1,0 +1,2 @@
+vela: type error: this is not something that can be called
+  at tests/build/check_cases/fn_call_not_a_function.vel:6

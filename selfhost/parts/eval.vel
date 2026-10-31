@@ -107,9 +107,21 @@ def set_str(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
     fmem[c] = 0.0
 }
 
+# A function value.  Cell A is the function's index in the function table, which is
+# this interpreter's whole notion of "which function": a call through a value is
+# `call_user` with the index the cell holds, the same entry a direct call by name
+# uses, so a parameter, a binding and a `def` name are one thing here.
+def set_fn(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
+           c: int, fn: int) -> None {
+    mem[c * 4 + 0] = K_FN()
+    mem[c * 4 + 1] = fn
+    mem[c * 4 + 2] = 0
+    mem[c * 4 + 3] = 0
+    fmem[c] = 0.0
+}
+
 def set_none(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
-             c: int) -> None {
-    mem[c * 4 + 0] = K_NONE()
+             c: int) -> None {    mem[c * 4 + 0] = K_NONE()
     mem[c * 4 + 1] = 0
     mem[c * 4 + 2] = 0
     mem[c * 4 + 3] = 0
@@ -645,7 +657,11 @@ def eval_name(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
         return
     }
     if sk == SYM_FUNC() {
-        trap(path, vm.line, "a function is not a value in this language")
+        # A `def` used as a *value*: `apply(double, 21)`, `mut g: (int) -> int = double`.
+        # The function's table index is the value, and it is the same number a direct
+        # call resolves, so passing one and calling it costs nothing extra.
+        set_fn(mem, fmem, vm.dst, sv)
+        return
     }
     if sk == SYM_STRUCT() {
         trap(path, vm.line, "a struct name is not a value")
@@ -1785,6 +1801,20 @@ def eval_call(nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     sk: int = nt_get(mem, callee, NT_SYM())
     sv: int = nt_get(mem, callee, NT_VAL())
+    if sk == SYM_LOCAL() {
+        # a call *through a value*: `g(2)`.  The binding's cell holds the function's
+        # table index (set_fn), and from here it is the same call a direct one makes
+        # -- which is the reason the interpreter needed no second call path for this
+        # feature at all.
+        c: int = vm.fp + sv
+        if mem[c * 4 + 0] != K_FN() {
+            trap(path, vm.line, "this value is not a function")
+        }
+        keepf: int = vm.dst
+        call_user(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  mem[c * 4 + 1], args, keepf)
+        return
+    }
     if sk == SYM_FUNC() {
         call_user(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, sv,
                   args, vm.dst)

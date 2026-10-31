@@ -1,0 +1,64 @@
+# Function types: `(int) -> int` is the type of a *value that names a function*.
+#
+# Four claims, and each is checked on all three paths (the interpreter and both back
+# ends must print the same bytes):
+#
+#   1. a parameter of function type can be called (`apply(g, x)` is `g(x)`);
+#   2. a `def` name is a value, so it can be passed (`apply(double, 5)`) and bound
+#      (`mut g: (int) -> int = double`);
+#   3. a binding of function type is reassignable like any other binding;
+#   4. a function can *return* one, and the result can be bound and called.
+#
+# What this is *not*: there are no closures.  A function value carries no
+# environment, so a `def` is the only thing that can be one -- which is what a
+# callback or a thread entry point needs.
+#
+# Calling a call's result directly (`pick(1)(1)`) is refused by name: a callee has to
+# be a name or a method, so the result is bound first.  `fn_call_of_a_call` is the
+# corpus case for that refusal.
+#
+# Expected stdout, byte for byte:
+#     42
+#     10
+#     14
+#     42
+#     -3
+#     8
+def double(x: int) -> int {
+    return x * 2
+}
+
+def add(a: int, b: int) -> int {
+    return a + b
+}
+
+def negate(x: int) -> int {
+    return 0 - x
+}
+
+def apply(g: (int) -> int, x: int) -> int {
+    return g(x)
+}
+
+def apply2(g: (int, int) -> int, a: int, b: int) -> int {
+    return g(a, b)
+}
+
+def pick(which: int) -> (int) -> int {
+    if which == 0 {
+        return double
+    }
+    return negate
+}
+
+def main() -> None {
+    mut g: (int) -> int = double
+    print(g(21))
+    print(apply(double, 5))
+    print(apply(g, 7))
+    print(apply2(add, 20, 22))
+    g = negate
+    print(g(3))
+    h: (int) -> int = pick(0)
+    print(apply(h, 4))
+}

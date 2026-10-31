@@ -279,6 +279,14 @@ def type_kind(ty: Array[int, 262144], t: int, mem: Array[int, 3741696],
     if t < 0 {
         return K_NONE()
     }
+    # a function type is asked about *before* the array test: its signature record
+    # puts the result type in the same slot an array puts its element type, so
+    # asking the array question first would answer "an array of the result type"
+    # -- which is exactly the kind of silent misreading this file's comments are
+    # full of, and one lookup is cheaper than the bug
+    if ty_is_fn(ty, t) {
+        return K_FN()
+    }
     e: int = ty_elem(ty, t)
     if e >= 0 {
         ek: int = type_kind(ty, e, mem, vm)
@@ -653,15 +661,47 @@ def count_chain(nd: Array[int, 1310720], head: int) -> int {
     return n
 }
 
-def check_call(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
+def check_call(nd: Array[int, 1310720], ty: Array[int, 262144],
+               mut mem: Array[int, 3741696], path: str,
                vm: VM, e: int, callee: int) -> None {
     nargs: int = count_chain(nd, nd[e * 10 + 2])
-    if nd_kind(nd, callee) != 25 {
+    if nd_kind(nd, callee) == 32 {
         # `recv.method(...)`: which method it is depends on the receiver's value
         return
     }
+    if nd_kind(nd, callee) != 25 {
+        # `pick(0)(1)`: the callee is itself an expression.  A function *value* is
+        # callable, so a reader would expect this to work, and none of the three
+        # implementations can do it as written: a call site reads a *binding's* slot
+        # (the interpreter's cell, the C back end's cast of the name, the IR
+        # builder's load), and a temporary has no binding.  Refused here, by name,
+        # rather than left to three back ends that each say something worse --
+        # measured: the C back end and the LLVM back end both said "this is not
+        # something that can be called", which names the wrong thing.
+        fail(path, nd_line(nd, e),
+             "the callee here is an expression, not a name: bind the function to a variable first")
+    }
     sk: int = nt_get(mem, callee, NT_SYM())
     sv: int = nt_get(mem, callee, NT_VAL())
+    if sk == SYM_LOCAL() {
+        # A *call through a value*: `g(2)` where `g` is a parameter or a binding of
+        # function type.  Whether the call is legal is not a question about the
+        # name any more, it is a question about the binding's declared type -- and
+        # the arity is in the signature, so a wrong number of arguments is still a
+        # refusal with a line number rather than a crash in a back end.
+        ckfn: int = nt_get(mem, callee, NT_LIT())
+        if unpack_kind(ckfn) != K_FN() {
+            fail(path, nd_line(nd, e), "this is not something that can be called")
+        }
+        ft: int = unpack_len(ckfn)
+        if ty_farity(ty, ft) != nargs {
+            fail_kind(path, nd_line(nd, e), "type error",
+                      concat(concat("this function value takes ",
+                                    ck_int_text(ty_farity(ty, ft))),
+                             concat(" argument(s), not ", ck_int_text(nargs))))
+        }
+        return
+    }
     if sk == SYM_FUNC() {
         if ft_get(mem, sv, FT_NPARAM()) != nargs {
             fail(path, nd_line(nd, e), "wrong number of arguments")
@@ -769,7 +809,7 @@ def walk_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
             walk_expr(nd, ty, mem, path, vm, a)
             a = nd_nx(nd, a)
         }
-        check_call(nd, mem, path, vm, e, callee)
+        check_call(nd, ty, mem, path, vm, e, callee)
         return
     }
     if k == 27 {
@@ -878,6 +918,13 @@ def declare_local(nd: Array[int, 1310720], ty: Array[int, 262144],
         if sid < 0 {
             fail(path, nd_line(nd, decl), "unknown struct type")
         }
+    }
+    if kind == K_FN() {
+        # the signature's *type index*, not a struct row: an emitter that has to
+        # spell the value (a C cast at the call site, an IR function type) needs
+        # the parameter and result types, and that is the one number that reaches
+        # all three
+        ck = pack_kind(K_FN(), t)
     }
     sc_push(mem, vm, name, SYM_LOCAL(), slot, ck, sid)
     nt_put(mem, decl, NT_LIT(), ck)

@@ -69,6 +69,16 @@ def K_U8() -> int   { return 15 }   # the element kind u8 (an array tag is K_AB)
 # copier -- and K_ENUM is the kind of a *binding* whose type is an enum, which is
 # what `declare_local` and the C back end have to tell apart from a struct.
 def K_ENUM() -> int { return 16 }
+# `K_FN()` is 17, and it is the kind of a *value that names a function* rather than
+# of a call: a binding whose type is `(int) -> int`, a parameter of one, or a
+# top-level `def` used as an argument.  What the value *is* differs per path and is
+# each path's business: the interpreter keeps the function-table index in cell A,
+# the C back end spells `int64_t` and casts the function's address into it, and the
+# LLVM back end carries a real function pointer.  What the packed kind carries is
+# the same everywhere -- the *type index* of the signature, so the arity, the
+# parameter types and the result type are all one lookup away (`ty_farity`,
+# `ty_fparam`, `ty_fret`).
+def K_FN() -> int { return 17 }
 
 # ------------------------------------------------------------- mem cell words
 
@@ -719,4 +729,29 @@ def ty_elem(ty: Array[int, 262144], t: int) -> int {
 
 def ty_len(ty: Array[int, 262144], t: int) -> int {
     return ty[t * 4 + 3]
+}
+
+# A function type's signature.  The record's own slots say `base = intern("fn")`,
+# `elem = the result type` and `len = the number of parameters`, and the parameter
+# *types* are the `len` records immediately after it -- the parser allocates them
+# there, right after the record itself, which is the one place that decides the
+# layout (`parse_type`).  Those records are not types: their `base` slot holds a
+# type index instead of a name handle, and nothing but `ty_fparam` may read one.
+def ty_is_fn(ty: Array[int, 262144], t: int) -> bool {
+    return interned(ty_base(ty, t)) == "fn"
+}
+
+def ty_fret(ty: Array[int, 262144], t: int) -> int {
+    return ty_elem(ty, t)
+}
+
+def ty_farity(ty: Array[int, 262144], t: int) -> int {
+    return ty_len(ty, t)
+}
+
+def ty_fparam(ty: Array[int, 262144], t: int, j: int) -> int {
+    if j < 0 or j >= ty_len(ty, t) {
+        return -1
+    }
+    return ty_base(ty, t + 1 + j)
 }

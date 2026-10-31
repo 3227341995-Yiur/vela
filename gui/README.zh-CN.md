@@ -4,9 +4,9 @@
 
 <!--
 源文件 : README.md
-源文件字节 : 5318
-源文件 SHA256 : c5c936f99cde0a3a6e57b36cc968c3dc8b2bcb582a086f458b5a777a8d30488b
-翻译日期 : 2026-10-30
+源文件字节 : 5523
+源文件 SHA256 : a64794adde3f26b2f4762f9c70d8b20f0832959508392e512969e8e853b101c5
+翻译日期 : 2026-10-31
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过时，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
 -->
@@ -41,9 +41,10 @@ gui\app.exe 200                              ::  画 200 帧就退出，并打�
 | 计时 | `GetTickCount64`；`timeBeginPeriod(1)` 让 `Sleep(1)` 真的是 1 毫秒 |
 | 控件 | `label` / `button` / `card` / `meter` / 侧栏项，immediate mode |
 
-**为什么没有回调**：Vela 0.1 没有函数类型，而 Win32 的窗口类要一个 WNDPROC。所以窗口用的是
-系统自带的 `STATIC` + `SS_OWNERDRAW`：它自己不画东西，它不处理的消息（含 `WM_CLOSE`）交给
-`DefWindowProc`——那里本来就写好了销毁窗口的逻辑。
+**为什么没有回调**：这个窗口写的时候 Vela 还没有函数类型，而 Win32 的窗口类要一个 WNDPROC。语言自
+2026-10-31 起有了函数类型（这份 README 早于那件事），但这里的设计本来也不需要它：窗口用的是
+系统自带的 `STATIC` + `SS_OWNERDRAW`，它自己不画东西，它不处理的消息（含 `WM_CLOSE`）交给
+`DefWindowProc`——那里本来就写好了销毁窗口的逻辑。对这个文件来说，WNDPROC 是自然的下一步，而不是前提。
 
 ## 实测数字
 
