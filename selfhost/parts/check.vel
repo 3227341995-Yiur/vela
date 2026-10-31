@@ -39,7 +39,7 @@ def ck_type(path: str, line: int, msg: str) -> None {
     warn_str("\n  at ")
     warn_str(path_for_line(path, line))
     warn_str(":")
-    warn_int(line)
+    warn_int(line_for_file(path, line))
     warn_nl()
     panic("the program was refused")
 }
@@ -50,7 +50,7 @@ def ck_safety(path: str, line: int, msg: str) -> None {
     warn_str("\n  at ")
     warn_str(path_for_line(path, line))
     warn_str(":")
-    warn_int(line)
+    warn_int(line_for_file(path, line))
     warn_nl()
     panic("the program was refused")
 }

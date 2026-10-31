@@ -40,7 +40,7 @@ def fail_kind(path: str, line: int, kind: str, msg: str) -> None {
     warn_str("\n  at ")
     warn_str(path_for_line(path, line))
     warn_str(":")
-    warn_int(line)
+    warn_int(line_for_file(path, line))
     warn_nl()
     panic("the interpreted program was refused")
 }

@@ -30,7 +30,10 @@ def trap(path: str, line: int, msg: str) -> None {
     warn_str("\n  at ")
     warn_str(path_for_line(path, line))
     warn_str(":")
-    warn_int(line)
+    # the *file's own* line, not the merged program's: a diagnostic that says
+    # `bad_helper.vel:11` about a five-line file sends a reader to a line that does not
+    # exist.  Measured before this: the helper's error on its line 4 was reported as 11.
+    warn_int(line_for_file(path, line))
     warn_nl()
     panic("the interpreted program stopped")
 }
