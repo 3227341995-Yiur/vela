@@ -631,6 +631,17 @@ def d_node(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
         }
         return
     }
+    if k == 43 {
+        # The `errdefer` marker: a statement the checker reads and the back ends skip, kept
+        # in the body so the return points can find the errdefer chain.  It prints as `pass`
+        # because that is what it costs at run time -- and it used to print
+        # `unknown-node-43`, which is a dump gap a reader cannot act on (measured: the
+        # plugin's own comparison had to explain the missing line as "a marker node").
+        d_indent(depth)
+        emit_str("pass")
+        emit_nl()
+        return
+    }
     d_indent(depth)
     emit_str("unknown-node-")
     emit_int(k)

@@ -218,6 +218,9 @@ object VelaKw {
     @JvmField val STRUCT = 21
     @JvmField val PARALLEL = 22
     @JvmField val EXTERN = 23
+    /* 27 and 28 are `defer` and `errdefer`, the compiler's numbers (`keyword_id`). */
+    @JvmField val DEFER = 27
+    @JvmField val ERRDEFER = 28
 
     /*
      * 24 and 25 are `enum` and `match`, and they are the compiler's numbers too:
@@ -324,6 +327,8 @@ val VELA_KEYWORDS: Map<String, Int> = run {
     m["struct"] = VelaKw.STRUCT
     m["parallel"] = VelaKw.PARALLEL
     m["extern"] = VelaKw.EXTERN
+    m["defer"] = VelaKw.DEFER
+    m["errdefer"] = VelaKw.ERRDEFER
     m["enum"] = VelaKw.ENUM
     m["match"] = VelaKw.MATCH
     m["import"] = VelaKw.IMPORT
@@ -1320,6 +1325,10 @@ class VelaSyntaxParser private constructor(
             block.add(recover("expected a newline between statements, found '" + tokText() + "'"))
             if (atNl()) advance()
         }
+        while (deferred.isNotEmpty()) {
+            block.add(deferred.removeAt(0))
+            count++
+        }
         root.startTok = block.startTok
         root.endTok = block.endTok
         val tree = VelaSyntaxTree(root, toks, src, problems)
@@ -1327,6 +1336,16 @@ class VelaSyntaxParser private constructor(
     }
 
     // ------------------------------------------------------------- statements
+
+    /**
+     * The statements a `defer` block contributes to the END of the enclosing body.
+     *
+     * The compiler lowers `defer { ... }` to a `pass` where the statement stood, and splices
+     * the block's statements into the body's tail -- every `return` has to reach them, and
+     * the node pool keeps them as a kind-42 chain.  They are spliced in LIFO order, because
+     * the last `defer` runs first, so this list is filled front-to-back and drained in order.
+     */
+    private val deferred = ArrayList<VelaSyntaxNode>()
 
     private fun parseStatement(): VelaSyntaxNode? {
         if (recovering || atEof()) return null
@@ -1382,8 +1401,25 @@ class VelaSyntaxParser private constructor(
                     n.endTok = pos - 1
                     return n
                 }
-                VelaKw.PASS -> {
+                VelaKw.DEFER, VelaKw.ERRDEFER -> {
+                    val isErr = (t.code == VelaKw.ERRDEFER)
                     advance()
+                    val n = newNode(VelaNodeKind.PASS, at)
+                    n.endTok = pos - 1
+                    if (atOp(VelaOps.LBRACE)) {
+                        val body = parseBody()
+                        if (!isErr) {
+                            val kids = body.children
+                            var k = kids.size - 1
+                            while (k >= 0) {
+                                deferred.add(0, kids[k])
+                                k -= 1
+                            }
+                        }
+                    }
+                    return n
+                }
+                VelaKw.PASS -> {                    advance()
                     val n = newNode(VelaNodeKind.PASS, at)
                     n.endTok = pos - 1
                     return n
