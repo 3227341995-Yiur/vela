@@ -1,0 +1,75 @@
+# lib/thread.vel -- real OS threads and one lock, on top of six runtime calls.
+#
+# Two things make this module possible at all, and both are new:
+#
+#   * **a function type** (`(int) -> None`), so a thread can be handed *what to run*
+#     -- without it there is no way to name a body to start;
+#   * **`lib/mem.vel`**, because this language has no globals and no closures, so two
+#     threads can only share something if both were given its address.
+#
+# That second point is the whole shape of thread code here.  A thread does not
+# capture `main`'s locals; `main` allocates a block, stores what the thread needs in
+# it, and passes the block's address as the thread's one argument.  `lib/thread_app.vel`
+# is the worked example: eight threads, one shared counter, one lock, and a total that
+# is exactly right or the test fails.
+#
+# `spawn` answers a *handle* (the OS's thread handle, as an `int`) or 0 when the OS
+# refused; `join` waits and releases it.  A program that never joins leaks the handle
+# until it exits, which the OS then reclaims -- that is the same deal `lib/fs.vel`
+# makes with its file handles, and it is stated rather than hidden.
+extern c def vela_thread_spawn(fn: int, arg: int) -> int
+extern c def vela_thread_join(handle: int) -> int
+extern c def vela_lock_new() -> int
+extern c def vela_lock_enter(lock: int) -> int
+extern c def vela_lock_leave(lock: int) -> int
+extern c def vela_lock_free(lock: int) -> int
+extern c def vela_cpu_count() -> int
+
+# Start `entry` on a new thread, with `arg` as its argument.  The value handed across
+# is an `int` because that is what the runtime's trampoline carries -- a thread entry
+# takes exactly one word, and a program that needs more puts it behind an address.
+def spawn(entry: (int) -> None, arg: int) -> int {
+    return vela_thread_spawn(entry, arg)
+}
+
+def join(handle: int) -> bool {
+    return vela_thread_join(handle) != 0
+}
+
+# How many threads the machine can run at once: the number a pool sizes itself by.
+def cpus() -> int {
+    return vela_cpu_count()
+}
+
+# A lock is an opaque handle.  0 means the OS could not make one, and every function
+# below answers False for it rather than trapping: a program that cannot lock cannot
+# safely continue, and it is the caller that knows what to do about that.
+def lock_new() -> int {
+    return vela_lock_new()
+}
+
+def lock_enter(l: int) -> bool {
+    return vela_lock_enter(l) != 0
+}
+
+def lock_leave(l: int) -> bool {
+    return vela_lock_leave(l) != 0
+}
+
+def lock_free(l: int) -> bool {
+    return vela_lock_free(l) != 0
+}
+
+# `enter`, run the block, `leave` -- the shape every caller wants, and the reason
+# `defer` exists.  A panic inside `body` still releases the lock, because the cleanup
+# runs on the way out of the function that took it.
+def locked(l: int, body: () -> None) -> bool {
+    if not lock_enter(l) {
+        return False
+    }
+    defer {
+        lock_leave(l)
+    }
+    body()
+    return True
+}

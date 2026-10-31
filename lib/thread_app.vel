@@ -1,0 +1,98 @@
+# lib/thread_app.vel -- eight threads, one shared counter, one lock.
+#
+# What this program is evidence for, in order of how easy each is to get wrong:
+#
+#   1. threads really run: every thread writes its own id into a word only it can
+#      reach, and the sum of the eight words is checked (1+2+...+8 = 36);
+#   2. the lock is real: all eight threads add 2000 to *one shared* counter under it,
+#      and the total printed must be exactly 16000 -- without the lock this number is
+#      below 16000 on almost every run;
+#   3. joining really waits: every `join` answers True and the count is 8.
+#
+# The block layout is the interesting part, and it exists because this language has
+# no globals and no closures: a thread entry takes exactly one word, so `main` builds
+# a small record per thread and hands each thread its own record's address.
+#
+#     per-thread record (40 bytes)
+#       +0   the lock's handle (shared by all of them)
+#       +8   the address of the one shared counter word
+#       +16  how many increments this thread performs
+#       +24  this thread's id
+#       +32  the address of the one word this thread reports into
+#
+# Expected stdout, byte for byte:
+#     cpus at least 1
+#     counter 16000
+#     threads 8 sum 36
+#     all joined
+import thread
+import mem
+
+def work(rec: int) -> None {
+    lock: int = mem.load_i64(rec, 0)
+    counter: int = mem.load_i64(rec, 8)
+    target: int = mem.load_i64(rec, 16)
+    out: int = mem.load_i64(rec, 32)
+    mut i: int = 0
+    while i < target {
+        # read-modify-write on one shared word, inside the lock
+        thread.lock_enter(lock)
+        seen: int = mem.load_i64(counter, 0)
+        mem.store_i64(counter, 0, seen + 1)
+        thread.lock_leave(lock)
+        i += 1
+    }
+    # one writer for this word, so it needs no lock
+    mem.store_i64(out, 0, mem.load_i64(rec, 24) + 1)
+}
+
+def main() -> None {
+    if thread.cpus() >= 1 {
+        print("cpus at least 1")
+    }
+    lock: int = thread.lock_new()
+    counter: int = mem.block(8)
+    mem.store_i64(counter, 0, 0)
+    mut recs: Array[int, 8]
+    mut outs: Array[int, 8]
+    mut hs: Array[int, 8]
+    mut t: int = 0
+    while t < 8 {
+        recs[t] = mem.block(40)
+        outs[t] = mem.block(8)
+        mem.store_i64(recs[t], 0, lock)
+        mem.store_i64(recs[t], 8, counter)
+        mem.store_i64(recs[t], 16, 2000)
+        mem.store_i64(recs[t], 24, t)
+        mem.store_i64(recs[t], 32, outs[t])
+        hs[t] = thread.spawn(work, recs[t])
+        t += 1
+    }
+    mut joined: int = 0
+    mut u: int = 0
+    while u < 8 {
+        if thread.join(hs[u]) {
+            joined += 1
+        }
+        u += 1
+    }
+    print(concat("counter ", to_str(mem.load_i64(counter, 0))))
+    mut sum: int = 0
+    mut v: int = 0
+    while v < 8 {
+        sum += mem.load_i64(outs[v], 0)
+        v += 1
+    }
+    print(concat(concat("threads ", to_str(joined)), concat(" sum ", to_str(sum))))
+    if joined == 8 {
+        print("all joined")
+    }
+    thread.lock_free(lock)
+    mem.release(counter)
+    mut w: int = 0
+    while w < 8 {
+        mem.release(recs[w])
+        mem.release(outs[w])
+        w += 1
+    }
+}

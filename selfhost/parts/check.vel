@@ -3608,6 +3608,15 @@ def ck_extern_arg(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
     if unpack_kind(ak) == unpack_kind(pk) {
         return
     }
+    if unpack_kind(ak) == K_FN() and ck_is_int_kind(unpack_kind(pk)) {
+        # A function *value* crossing an `extern c` boundary is an address, and an
+        # address is what an `int` is here.  `lib/thread.vel` is why this arm exists:
+        # `vela_thread_spawn(fn: int, arg: int)` is handed a `(int) -> None` and the
+        # runtime calls it.  Both back ends convert rather than reinterpret (`ll_adapt`
+        # in the LLVM back end, the `int64_t` spelling of a function value in the C
+        # one), so this is a conversion the boundary states, not a hole in the check.
+        return
+    }
     fn: int = nd[callee * 10 + 1]
     if ck_is_int_kind(unpack_kind(ak)) and ck_is_int_kind(unpack_kind(pk)) {
         v: int = ck_const_int(nd, a)

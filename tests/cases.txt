@@ -611,6 +611,16 @@ run       str_order                          lib/str_order_app.vel
 run       str_search                         lib/str_search_app.vel
 run       math_library                       lib/math_app.vel
 native    mem_library                        lib/mem_app.vel
+native    mem_library                        lib/mem_app.vel
+# Threads and locks: eight OS threads, one shared counter, one `CRITICAL_SECTION`.
+# `native` because the interpreter cannot reach a C library at all -- the thread is
+# an OS thread started through `CreateThread`, and no interpreted twin can exist.
+# The golden is the *deterministic* half of the claim: the counter is exactly 8 x
+# 2000 = 16000 only if the lock is real, and the eight private words sum to 36 only
+# if all eight threads ran and were joined.  Both back ends print it (the `native-c`
+# row below is the C one).
+native    thread_library                      lib/thread_app.vel
+native-c  thread_library                      lib/thread_app.vel
 run       module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel

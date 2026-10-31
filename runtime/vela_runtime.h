@@ -1109,4 +1109,157 @@ static void vela_runtime_init(void)
     vela_arena_init(0);
 }
 
+/* ------------------------------------------------------------- threads */
+/* Real OS threads, and one lock primitive, because that is the smallest set a
+ * program can build a thread pool from.
+ *
+ * The entry point is a Vela **function value** (a `(int) -> None`), and the `int`
+ * it is handed is the caller's own argument -- typically the address of a block
+ * from `lib\mem.vel`, which is how two threads share anything at all: this language
+ * has no globals and no closures, so the shared state is memory both of them were
+ * given the address of.
+ *
+ * These functions are the first in this header that are **not `static`**, and the
+ * reason is the second translation unit: `runtime\vela_llvm_runtime.c` includes this
+ * header to get one implementation of everything, and the LLVM back end links that
+ * object file and calls these symbols by name.  A `static` definition would be
+ * invisible to it and the link would fail with an unresolved symbol.  One program is
+ * one translation unit, so a non-static definition here is still defined exactly
+ * once per binary.
+ *
+ * The trampoline is not optional: `CreateThread`'s entry is `DWORD WINAPI (LPVOID)`
+ * and a Vela function of type `(int) -> None` is `void (*)(int64_t)`.  Casting one
+ * to the other is undefined behaviour in the ABI (a different calling convention),
+ * so the thread is started at a C function of the right shape which then calls the
+ * Vela one.
+ *
+ * `join` waits for the thread and releases the handle.  A handle is the OS's and is
+ * never reused, so joining twice is a refusal rather than a silent success: the
+ * second `WaitForSingleObject` on a closed handle is exactly what that would be. */
+typedef struct vela_thread_start {
+    int64_t fn;
+    int64_t arg;
+} vela_thread_start;
+
+static DWORD WINAPI vela_thread_body(LPVOID p)
+{
+    vela_thread_start *s = (vela_thread_start *)p;
+    int64_t fn = s->fn;
+    int64_t arg = s->arg;
+    free(s);
+    ((void (*)(int64_t))(intptr_t)fn)(arg);
+    return 0;
+}
+
+/* 0 when the OS refused to start a thread. */
+static int64_t vela_impl_thread_spawn(int64_t fn, int64_t arg)
+{
+    vela_thread_start *s;
+    HANDLE h;
+    if (fn == 0) return 0;
+    s = (vela_thread_start *)malloc(sizeof(vela_thread_start));
+    if (s == NULL) return 0;
+    s->fn = fn;
+    s->arg = arg;
+    h = CreateThread(NULL, 0, vela_thread_body, s, 0, NULL);
+    if (h == NULL) {
+        free(s);
+        return 0;
+    }
+    return (int64_t)(intptr_t)h;
+}
+
+/* 1 when the thread was waited for, 0 for a handle this call could not use. */
+static int64_t vela_impl_thread_join(int64_t handle)
+{
+    HANDLE h = (HANDLE)(intptr_t)handle;
+    if (h == NULL) return 0;
+    if (WaitForSingleObject(h, INFINITE) != WAIT_OBJECT_0) return 0;
+    CloseHandle(h);
+    return 1;
+}
+
+/* A lock, as an opaque handle.  A CRITICAL_SECTION rather than a mutex object: the
+ * same exclusion for a fraction of the cost when there is no contention, and a
+ * program that needs the price paid for contention is not one this runtime can make
+ * a better call about. */
+static int64_t vela_impl_lock_new(void)
+{
+    CRITICAL_SECTION *cs = (CRITICAL_SECTION *)malloc(sizeof(CRITICAL_SECTION));
+    if (cs == NULL) return 0;
+    InitializeCriticalSection(cs);
+    return (int64_t)(intptr_t)cs;
+}
+
+static int64_t vela_impl_lock_enter(int64_t lock)
+{
+    if (lock == 0) return 0;
+    EnterCriticalSection((CRITICAL_SECTION *)(intptr_t)lock);
+    return 1;
+}
+
+static int64_t vela_impl_lock_leave(int64_t lock)
+{
+    if (lock == 0) return 0;
+    LeaveCriticalSection((CRITICAL_SECTION *)(intptr_t)lock);
+    return 1;
+}
+
+/* 1 when the lock was released.  A lock still held by another thread is the caller's
+ * bug, not this function's, so it is not waited for: a program that frees a lock it
+ * does not own is exactly the kind of mistake a refusal cannot fix. */
+static int64_t vela_impl_lock_free(int64_t lock)
+{
+    CRITICAL_SECTION *cs = (CRITICAL_SECTION *)(intptr_t)lock;
+    if (cs == NULL) return 0;
+    DeleteCriticalSection(cs);
+    free(cs);
+    return 1;
+}
+
+/* How many threads the machine can run at once, which is the only number a pool
+ * should size itself by. */
+static int64_t vela_impl_cpu_count(void)
+{
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    return (int64_t)si.dwNumberOfProcessors;
+}
+
+/* The two shapes this block takes, and why it takes both rather than one.
+ *
+ * The implementations above are `static` because this header is textually included
+ * in every program the C back end builds *and* in `runtime\vela_llvm_runtime.c`, and
+ * a non-static definition in both is LNK2005 -- measured, the first time these were
+ * written without `static`: seven duplicate-symbol errors from the stage-0 link.
+ *
+ * So the implementation is static, and each path exposes it:
+ *
+ *   * the C back end's program includes this header and calls `vela_thread_spawn`,
+ *     a thin `static` wrapper defined below (unless the other path is being built);
+ *   * `runtime\vela_llvm_runtime.c` defines `VELA_NO_THREAD_WRAPPERS` (the wrappers
+ *     below then vanish from that translation unit) and defines the same seven names
+ *     as ordinary exported functions that call the static implementation.
+ *
+ * This is the arrangement the memory block above already uses
+ * (`VELA_NO_MEM_WRAPPERS`), for the same reason: one implementation, two spellings of
+ * the boundary. */
+#ifndef VELA_NO_THREAD_WRAPPERS
+static int64_t vela_thread_spawn(int64_t fn, int64_t arg)
+{
+    return vela_impl_thread_spawn(fn, arg);
+}
+
+static int64_t vela_thread_join(int64_t handle)
+{
+    return vela_impl_thread_join(handle);
+}
+
+static int64_t vela_lock_new(void) { return vela_impl_lock_new(); }
+static int64_t vela_lock_enter(int64_t lock) { return vela_impl_lock_enter(lock); }
+static int64_t vela_lock_leave(int64_t lock) { return vela_impl_lock_leave(lock); }
+static int64_t vela_lock_free(int64_t lock) { return vela_impl_lock_free(lock); }
+static int64_t vela_cpu_count(void) { return vela_impl_cpu_count(); }
+#endif /* VELA_NO_THREAD_WRAPPERS */
+
 #endif /* VELA_RUNTIME_H */

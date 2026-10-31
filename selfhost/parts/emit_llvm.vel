@@ -1148,6 +1148,18 @@ def ll_narrow(lg: LG, k: int, v: int) -> int {
 # what reports it -- a store whose value type does not match the slot's pointee
 # fails verification with a sentence naming the instruction.
 def ll_adapt(lg: LG, dstk: int, srck: int, v: int) -> int {
+    if dstk == K_INT() and srck == K_FN() {
+        # a function *value* handed to an `int` parameter: the thread entry point
+        # (`lib/thread.vel`), and any C API that wants a callback as an address.  IR
+        # has the conversion, and doing it here keeps one rule -- the kinds decide
+        # the conversion -- instead of a special case at each call site.
+        return ll_ck(lg, "converting a function value to an address",
+                     vshim_build_ptrtoint(lg.m, lg.t_i64, v))
+    }
+    if dstk == K_FN() and srck == K_INT() {
+        return ll_ck(lg, "converting an address to a function value",
+                     vshim_build_inttoptr(lg.m, lg.t_ptr, v))
+    }
     if dstk == K_INT() and ll_iso_wide(srck) {
         return ll_wide(lg, srck, v)
     }
@@ -1159,6 +1171,12 @@ def ll_adapt(lg: LG, dstk: int, srck: int, v: int) -> int {
 
 def ll_adaptable(dstk: int, srck: int) -> bool {
     if dstk == srck {
+        return True
+    }
+    if dstk == K_INT() and srck == K_FN() {
+        return True
+    }
+    if dstk == K_FN() and srck == K_INT() {
         return True
     }
     if dstk == K_INT() and ll_iso_wide(srck) {
@@ -3423,7 +3441,15 @@ def ll_call_value(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         trap(path, line,
              "a call through a function value that returns an array is not compiled by the LLVM back end yet")
     }
-    ret_ir: int = ll_type_of(lg, rk)
+    mut ret_ir: int = 0
+    if rk == K_NONE() {
+        # a `() -> None` callback: the call has no result, and `void` is what the
+        # signature says.  `ll_type_of` answers 0 for `None` on purpose (it is the
+        # absence of a value), so the one place a *signature* is built states it.
+        ret_ir = lg.t_void
+    } else {
+        ret_ir = ll_type_of(lg, rk)
+    }
     if ret_ir == 0 {
         trap(path, line, "this function value's result type has no IR spelling")
     }

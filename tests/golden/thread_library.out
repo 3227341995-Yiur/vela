@@ -1,0 +1,4 @@
+cpus at least 1
+counter 16000
+threads 8 sum 36
+all joined

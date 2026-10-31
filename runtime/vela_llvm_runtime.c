@@ -47,6 +47,7 @@
 
 #define VELA_NO_LLVM_WRAPPERS
 #define VELA_NO_MEM_WRAPPERS
+#define VELA_NO_THREAD_WRAPPERS
 #include "vela_runtime.h"
 
 /* `bool` is used below (`vela_llvm_print_bool`, `vela_llvm_str_eq`) and in C it is
@@ -479,3 +480,26 @@ int64_t vela_copy(int64_t dst, int64_t src, int64_t n)
     memmove((void *)(intptr_t)dst, (void *)(intptr_t)src, (size_t)n);
     return dst;
 }
+/* ---------------------------------------------------------------- threads */
+
+/* The header's thread block is `static` (one translation unit per program, and the
+ * header is included by both this file and the C back end's output), so the exported
+ * spelling a linked program needs is defined here, calling the same implementation.
+ * The C back end's programs get the wrappers from the header itself; the two are one
+ * implementation with two spellings of the boundary -- the pattern the memory block
+ * above already uses. */
+int64_t vela_thread_spawn(int64_t fn, int64_t arg)
+{
+    return vela_impl_thread_spawn(fn, arg);
+}
+
+int64_t vela_thread_join(int64_t handle)
+{
+    return vela_impl_thread_join(handle);
+}
+
+int64_t vela_lock_new(void) { return vela_impl_lock_new(); }
+int64_t vela_lock_enter(int64_t lock) { return vela_impl_lock_enter(lock); }
+int64_t vela_lock_leave(int64_t lock) { return vela_impl_lock_leave(lock); }
+int64_t vela_lock_free(int64_t lock) { return vela_impl_lock_free(lock); }
+int64_t vela_cpu_count(void) { return vela_impl_cpu_count(); }
