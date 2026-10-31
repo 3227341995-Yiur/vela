@@ -1,0 +1,30 @@
+# The run that proves lib/map.vel.
+import map
+
+def main() -> None {
+    mut keys: Array[str, 64]
+    mut vals: Array[int, 64]
+    mut n: int = 0
+    print(map.has(keys, n, "id"))
+    n = map.put(keys, vals, n, "id", 42)
+    n = map.put(keys, vals, n, "name", 7)
+    n = map.put(keys, vals, n, "count", 3)
+    print(n)
+    print(map.get(keys, vals, n, "id", 0 - 1))
+    print(map.get(keys, vals, n, "count", 0 - 1))
+    print(map.get(keys, vals, n, "zzz", 0 - 1))
+    print(map.has(keys, n, "name"))
+    n = map.put(keys, vals, n, "name", 8)
+    print(n)
+    print(map.get(keys, vals, n, "name", 0 - 1))
+    print(map.key_at(keys, n, 1))
+    print(map.value_at(vals, n, 1))
+    print(map.key_at(keys, n, 9))
+    print(map.dump(keys, vals, n))
+    n = map.remove(keys, vals, n, "id")
+    print(n)
+    print(map.has(keys, n, "id"))
+    print(map.get(keys, vals, n, "count", 0 - 1))
+    n = map.remove(keys, vals, n, "nope")
+    print(n)
+}

@@ -1,0 +1,150 @@
+# lib/map.vel -- string keys to int values, over two fixed arrays and a length.
+#
+# The same shape as lib/list.vel, and for the same reasons: no growable array, no
+# arrays inside structs, and a `mut` *scalar* does not write back -- so a map is the
+# keys, the values and the length, all owned by the caller, and every function that
+# changes the length returns the new length:
+#
+#     mut keys: Array[str, 64]
+#     mut vals: Array[int, 64]
+#     mut n: int = 0
+#     n = map.put(keys, vals, n, "id", 42)
+#
+# What it is not: a hash map.  `find` is a linear scan, so a lookup is O(n) and the
+# order is insertion order, which is predictable and is a property worth having in a
+# language with no iterators yet.  A hash bucket table needs a hash function and an
+# array of buckets per slot -- both expressible, neither free -- and the day a program
+# has a map with a thousand keys is the day this comment should change, not before.
+#
+# Keys are compared with `==` on `str`, which is byte equality; duplicates are refused
+# by `put`'s contract (a second put on the same key replaces the value, it does not add
+# an entry), so the arrays can never disagree about which entry a key names.
+import str
+
+def find(keys: Array[str, 64], n: int, key: str) -> int {
+    mut i: int = 0
+    while i < n {
+        if keys[i] == key {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+def has(keys: Array[str, 64], n: int, key: str) -> bool {
+    return find(keys, n, key) >= 0
+}
+
+# The value for `key`, or `fallback` when the key is not in the map.
+def get(keys: Array[str, 64], vals: Array[int, 64], n: int, key: str,
+        fallback: int) -> int {
+    i: int = find(keys, n, key)
+    if i < 0 {
+        return fallback
+    }
+    return vals[i]
+}
+
+# Adds the key, or replaces its value when it is already there; the new length.
+def put(mut keys: Array[str, 64], mut vals: Array[int, 64], n: int, key: str,
+        value: int) -> int {
+    i: int = find(keys, n, key)
+    if i >= 0 {
+        vals[i] = value
+        return n
+    }
+    if n >= 64 {
+        return n
+    }
+    keys[n] = key
+    vals[n] = value
+    return n + 1
+}
+
+# Removes the key if it is there, shifting the rest down; the new length.
+def remove(mut keys: Array[str, 64], mut vals: Array[int, 64], n: int,
+           key: str) -> int {
+    i: int = find(keys, n, key)
+    if i < 0 {
+        return n
+    }
+    mut k: int = i
+    while k < n - 1 {
+        keys[k] = keys[k + 1]
+        vals[k] = vals[k + 1]
+        k += 1
+    }
+    return n - 1
+}
+
+def key_at(keys: Array[str, 64], n: int, i: int) -> str {
+    if i < 0 {
+        return ""
+    }
+    if i >= n {
+        return ""
+    }
+    return keys[i]
+}
+
+def value_at(vals: Array[int, 64], n: int, i: int) -> int {
+    if i < 0 {
+        return 0
+    }
+    if i >= n {
+        return 0
+    }
+    return vals[i]
+}
+
+# All the keys as one `k=v` line each, in insertion order: what a map looks like when a
+# program has to print one, and the only "iteration" this language can offer today.
+def dump(keys: Array[str, 64], vals: Array[int, 64], n: int) -> str {
+    mut out: str = ""
+    mut i: int = 0
+    while i < n {
+        if i > 0 {
+            out = concat(out, "\n")
+        }
+        out = concat(out, concat(keys[i], concat("=", map_int_text(vals[i]))))
+        i += 1
+    }
+    return out
+}
+
+# The int-to-text this module needs, under a name of its own: two modules in one program
+# may not both declare int_text (D4 refuses a duplicate top-level name), so a helper
+# that only this file uses says so in its name.
+# it is local because `import str` here would pull a whole module in for one call.
+def map_int_text(n: int) -> str {
+    if n == 0 {
+        return "0"
+    }
+    mut v: int = n
+    mut neg: bool = False
+    if v < 0 {
+        neg = True
+        v = 0 - v
+    }
+    mut out: str = ""
+    while v > 0 {
+        d: int = v - (v // 10) * 10
+        mut ch: str = "0"
+        if d == 1 { ch = "1" }
+        if d == 2 { ch = "2" }
+        if d == 3 { ch = "3" }
+        if d == 4 { ch = "4" }
+        if d == 5 { ch = "5" }
+        if d == 6 { ch = "6" }
+        if d == 7 { ch = "7" }
+        if d == 8 { ch = "8" }
+        if d == 9 { ch = "9" }
+        out = concat(ch, out)
+        v = v // 10
+    }
+    if neg {
+        return concat("-", out)
+    }
+    return out
+}
