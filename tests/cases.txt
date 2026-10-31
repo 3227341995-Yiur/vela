@@ -584,6 +584,7 @@ run       test_library                        lib/test_app.vel
 run       fstring_call_args                   lib/fstring_app.vel
 run       json_library                        lib/json_app.vel
 native    fs_library                          lib/fs_app.vel
+run       list_library                        lib/list_app.vel
 run       module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel

@@ -1,0 +1,39 @@
+# The run that proves lib/list.vel.
+import list
+
+def main() -> None {
+    mut items: Array[int, 64]
+    mut n: int = 0
+    print(list.is_empty(n))
+    n = list.push(items, n, 10)
+    n = list.push(items, n, 20)
+    n = list.push(items, n, 30)
+    print(n)
+    print(list.at(items, n, 0))
+    print(list.at(items, n, 2))
+    print(list.at(items, n, 9))
+    print(list.last(items, n))
+    print(list.index_of(items, n, 20))
+    print(list.index_of(items, n, 99))
+    print(list.contains(items, n, 30))
+    print(list.contains(items, n, 31))
+    print(list.sum(items, n))
+    n = list.insert_at(items, n, 1, 15)
+    print(n)
+    print(list.at(items, n, 1))
+    n = list.remove_at(items, n, 0)
+    print(n)
+    print(list.at(items, n, 0))
+    list.reverse(items, n)
+    print(list.at(items, n, 0))
+    print(list.at(items, n, 2))
+    print(list.set(items, n, 0, 7))
+    print(list.at(items, n, 0))
+    print(list.set(items, n, 99, 7))
+    n = list.pop(items, n)
+    print(n)
+    print(list.last(items, n))
+    mut other: Array[int, 64]
+    print(list.copy_to(items, n, other))
+    print(list.sum(other, n))
+}

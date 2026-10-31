@@ -1,0 +1,160 @@
+# lib/list.vel -- a growable-in-use list over a fixed array, and the reason it looks
+# like this.
+#
+# Vela has no growable array and no arrays inside structs, and a `mut` *scalar*
+# parameter does not write back to the caller (measured; a `mut` *array* parameter is a
+# reference, which is the asymmetry).  So a list is two things the caller owns -- the
+# storage and the length -- and every function that changes the length **returns the new
+# length**:
+#
+#     mut items: Array[int, 64]
+#     mut n: int = 0
+#     n = list.push(items, n, 42)
+#
+# That is more words than `items.push(42)` and it is the honest shape: the capacity is a
+# compile-time fact (`64`), so the one thing that can fail is the bound, and `push`
+# answers whether it took the value instead of hiding a reallocation that cannot happen.
+#
+# Capacity discipline: every function takes the array's own length as its ceiling and
+# returns `n` unchanged when the list is full, with `is_full` to ask first.
+
+def is_full(mut items: Array[int, 64], n: int) -> bool {
+    return n >= 64
+}
+
+def is_empty(n: int) -> bool {
+    return n <= 0
+}
+
+# Appends one value, or returns `n` unchanged when the list is full.
+def push(mut items: Array[int, 64], n: int, v: int) -> int {
+    if n >= 64 {
+        return n
+    }
+    items[n] = v
+    return n + 1
+}
+
+# Drops the last value, returning the new length.  `last` is the value that went, or 0
+# when there was nothing to drop: a list of ints cannot answer "absent" any other way,
+# so `is_empty` is the question to ask first.
+def pop(mut items: Array[int, 64], n: int) -> int {
+    if n <= 0 {
+        return 0
+    }
+    return n - 1
+}
+
+def last(mut items: Array[int, 64], n: int) -> int {
+    if n <= 0 {
+        return 0
+    }
+    return items[n - 1]
+}
+
+def at(mut items: Array[int, 64], n: int, i: int) -> int {
+    if i < 0 {
+        return 0
+    }
+    if i >= n {
+        return 0
+    }
+    return items[i]
+}
+
+def set(mut items: Array[int, 64], n: int, i: int, v: int) -> bool {
+    if i < 0 {
+        return False
+    }
+    if i >= n {
+        return False
+    }
+    items[i] = v
+    return True
+}
+
+# The index of the first value equal to `v`, or -1.
+def index_of(mut items: Array[int, 64], n: int, v: int) -> int {
+    mut i: int = 0
+    while i < n {
+        if items[i] == v {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+def contains(mut items: Array[int, 64], n: int, v: int) -> bool {
+    return index_of(items, n, v) >= 0
+}
+
+# Removes the value at `i`, shifting the rest down; the new length.
+def remove_at(mut items: Array[int, 64], n: int, i: int) -> int {
+    if i < 0 {
+        return n
+    }
+    if i >= n {
+        return n
+    }
+    mut k: int = i
+    while k < n - 1 {
+        items[k] = items[k + 1]
+        k += 1
+    }
+    return n - 1
+}
+
+# Inserts at `i`, shifting up; the new length (unchanged when full or out of range).
+def insert_at(mut items: Array[int, 64], n: int, i: int, v: int) -> int {
+    if n >= 64 {
+        return n
+    }
+    if i < 0 {
+        return n
+    }
+    if i > n {
+        return n
+    }
+    mut k: int = n
+    while k > i {
+        items[k] = items[k - 1]
+        k -= 1
+    }
+    items[i] = v
+    return n + 1
+}
+
+# Reverses in place.
+def reverse(mut items: Array[int, 64], n: int) -> int {
+    mut i: int = 0
+    mut j: int = n - 1
+    while i < j {
+        keep: int = items[i]
+        items[i] = items[j]
+        items[j] = keep
+        i += 1
+        j -= 1
+    }
+    return n
+}
+
+def sum(mut items: Array[int, 64], n: int) -> int {
+    mut total: int = 0
+    mut i: int = 0
+    while i < n {
+        total += items[i]
+        i += 1
+    }
+    return total
+}
+
+# A copy of `n` values into the caller's second array; the count copied.
+def copy_to(mut items: Array[int, 64], n: int, mut out: Array[int, 64]) -> int {
+    mut i: int = 0
+    while i < n {
+        out[i] = items[i]
+        i += 1
+    }
+    return n
+}
