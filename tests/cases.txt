@@ -592,6 +592,7 @@ run       range_step                         tests/build/range_step.vel
 run       str_order                          lib/str_order_app.vel
 run       str_search                         lib/str_search_app.vel
 run       math_library                       lib/math_app.vel
+native    mem_library                        lib/mem_app.vel
 run       module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel

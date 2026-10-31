@@ -1,0 +1,32 @@
+# The run that proves lib/mem.vel: a block of memory, words written and read back.
+#
+# Every value printed here was WRITTEN first.  The first version of this file also printed
+# a word it had never written, and the corpus caught it the way it should: a fresh `malloc`
+# block is not zeroed, so the line was different on every run and the comparison failed
+# with "the compiled program printed something else".  Determinism is part of the test.
+import mem
+
+def main() -> None {
+    p: int = mem.block(64)
+    print(p != 0)
+    print(mem.store_i64(p, 0, 42))
+    print(mem.load_i64(p, 0))
+    print(mem.store_i64(p, 8, 0 - 7))
+    print(mem.load_i64(p, 8))
+    print(mem.store_i64(p, 16, 1000))
+    print(mem.load_i64(p, 16))
+    print(mem.store_byte(p, 24, 65))
+    print(mem.load_byte(p, 24))
+    print(mem.fill(p, 4, 1))
+    print(mem.load_byte(p, 0))
+    print(mem.load_byte(p, 3))
+    # the copy's own answer is the destination ADDRESS, which differs every run, so this
+    # prints what landed there instead
+    print(mem.copy(p + 32, p + 8, 8) != 0)
+    print(mem.load_i64(p + 32, 0))
+    print(mem.store_i64(0, 0, 1))
+    print(mem.load_i64(0, 0))
+    print(mem.block(0))
+    print(mem.block(0 - 4))
+    print(mem.release(p))
+}

@@ -1,0 +1,88 @@
+# lib/mem.vel -- memory a program owns: allocate it, read and write words in it, free it.
+#
+# The four runtime calls underneath take and answer `int` (a pointer travels as a 64-bit
+# integer), and this module is the only place that names them: `load_i64(block(lots),
+# 8)` reads the third word of a block, and nothing here can be handed a pointer that was
+# not produced by `block`.
+#
+# Raw memory is what a socket buffer, a file format and a C library's callback argument
+# all hand a program, so this is the floor that `lib/net.vel` will stand on.  It is also
+# the one module where a wrong index is a segmentation fault rather than a refusal -- the
+# language cannot see the size of a `malloc` block -- so every function here is written to
+# answer 0 instead of crashing *when it can tell*: a null pointer, a zero length, or a
+# negative count are checked, an out-of-range index is not and cannot be.
+#
+# They are `extern c` wrappers rather than the CRT's own `malloc`, and that is not taste:
+# a Vela program that declares `extern c def malloc(n: int) -> int` collides with the
+# <stdlib.h> prototype in the generated C ("'malloc': 'int64_t (int64_t)' differs in levels
+# of indirection from 'void *(size_t)'").  The runtime carries the cast.
+extern c def vela_alloc(n: int) -> int
+extern c def vela_release(p: int) -> int
+extern c def vela_load_i64(p: int) -> int
+extern c def vela_store_i64(p: int, v: int) -> int
+extern c def vela_load_u8(p: int) -> int
+extern c def vela_store_u8(p: int, v: int) -> int
+extern c def vela_copy(dst: int, src: int, n: int) -> int
+
+# A block of `n` bytes, or 0 when the host refuses.  0 is the only failure this can
+# report, so a caller checks it once instead of trusting an exception that does not exist.
+def block(n: int) -> int {
+    return vela_alloc(n)
+}
+
+def release(p: int) -> bool {
+    return vela_release(p) == 0
+}
+
+def load_i64(p: int, offset: int) -> int {
+    if offset < 0 {
+        return 0
+    }
+    return vela_load_i64(p + offset)
+}
+
+# True when the word was written.
+def store_i64(p: int, offset: int, v: int) -> bool {
+    if offset < 0 {
+        return False
+    }
+    return vela_store_i64(p + offset, v) != 0
+}
+
+def load_byte(p: int, offset: int) -> int {
+    if offset < 0 {
+        return 0
+    }
+    return vela_load_u8(p + offset)
+}
+
+def store_byte(p: int, offset: int, v: int) -> bool {
+    if offset < 0 {
+        return False
+    }
+    return vela_store_u8(p + offset, v) != 0
+}
+
+# Copies `n` bytes from `src` to `dst`; the destination, or 0 when it could not.
+def copy(dst: int, src: int, n: int) -> int {
+    return vela_copy(dst, src, n)
+}
+
+# Fills `n` bytes with one value, one store at a time: a `memset` wrapper would be one
+# more symbol for a loop this short, and the loop is what a reader can check.
+def fill(p: int, n: int, v: int) -> bool {
+    if p == 0 {
+        return False
+    }
+    if n <= 0 {
+        return False
+    }
+    mut i: int = 0
+    while i < n {
+        if not store_byte(p, i, v) {
+            return False
+        }
+        i += 1
+    }
+    return True
+}

@@ -46,6 +46,7 @@
  */
 
 #define VELA_NO_LLVM_WRAPPERS
+#define VELA_NO_MEM_WRAPPERS
 #include "vela_runtime.h"
 
 /* `bool` is used below (`vela_llvm_print_bool`, `vela_llvm_str_eq`) and in C it is
@@ -427,3 +428,54 @@ int64_t vela_llvm_run_command(vela_str cmd)
  *     IR needs `i32 @main(i32, i8**)`, unmangled, and the three startup calls in the
  *     order shown at the top of this file.
  */
+
+/* The raw-memory wrappers, exported for the IR to call.  They are the header's own
+ * functions under the same names -- the header compiles them out here (VELA_NO_MEM_WRAPPERS)
+ * so this file is the one definition of each -- which is what keeps the C back end and the
+ * LLVM back end from disagreeing about what a store means. */
+int64_t vela_alloc(int64_t n)
+{
+    void *p;
+    if (n <= 0) return 0;
+    p = malloc((size_t)n);
+    return (int64_t)(intptr_t)p;
+}
+
+int64_t vela_release(int64_t p)
+{
+    if (p != 0) free((void *)(intptr_t)p);
+    return 0;
+}
+
+int64_t vela_load_i64(int64_t p)
+{
+    if (p == 0) return 0;
+    return *(int64_t *)(intptr_t)p;
+}
+
+int64_t vela_store_i64(int64_t p, int64_t v)
+{
+    if (p == 0) return 0;
+    *(int64_t *)(intptr_t)p = v;
+    return 1;
+}
+
+int64_t vela_load_u8(int64_t p)
+{
+    if (p == 0) return 0;
+    return (int64_t)(*(unsigned char *)(intptr_t)p);
+}
+
+int64_t vela_store_u8(int64_t p, int64_t v)
+{
+    if (p == 0) return 0;
+    *(unsigned char *)(intptr_t)p = (unsigned char)(v & 0xFF);
+    return 1;
+}
+
+int64_t vela_copy(int64_t dst, int64_t src, int64_t n)
+{
+    if (dst == 0 || src == 0 || n <= 0) return 0;
+    memmove((void *)(intptr_t)dst, (void *)(intptr_t)src, (size_t)n);
+    return dst;
+}

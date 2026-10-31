@@ -863,6 +863,81 @@ static int64_t vela_llvm_file_rename(const char *from, const char *to)
 { return vela_file_rename(from, to); }
 #endif
 
+/* ---------------------------------------------------------------- raw memory
+ *
+ * The four questions a program needs to touch memory it allocated itself: get a block,
+ * give it back, read a 64-bit word, write one.  Everything here takes and answers
+ * `int64_t` on purpose -- a Vela `int` is 64 bits and an `extern c` declaration can only
+ * promise a scalar -- so the pointer travels as an integer the program cannot dereference
+ * by accident, and `lib/mem.vel` is the only place that turns it into a value.
+ *
+ * These are wrappers and not the CRT's own names, for a reason that cost a build to learn:
+ * declaring `extern c def malloc(n: int) -> int` in a Vela program collides with
+ * <stdlib.h>'s prototype in the generated C --
+ *
+ *     error C2040: 'malloc': 'int64_t (int64_t)' differs in levels of indirection
+ *     from 'void *(size_t)'
+ *
+ * -- because the header is included in every program.  A Vela-shaped name cannot collide
+ * with anything, and the casts happen here, once, instead of in every program that wants
+ * to read a word of memory.
+ */
+#ifndef VELA_NO_MEM_WRAPPERS
+static int64_t vela_alloc(int64_t n)
+{
+    void *p;
+    if (n <= 0) return 0;
+    p = malloc((size_t)n);
+    return (int64_t)(intptr_t)p;
+}
+
+/* Answers 0 and does nothing for a null pointer: freeing null is legal in C, and a Vela
+ * program that loses track of a block should not lose the process with it. */
+static int64_t vela_release(int64_t p)
+{
+    if (p != 0) free((void *)(intptr_t)p);
+    return 0;
+}
+
+static int64_t vela_load_i64(int64_t p)
+{
+    if (p == 0) return 0;
+    return *(int64_t *)(intptr_t)p;
+}
+
+/* 1 when the word was written, 0 for a null pointer. */
+static int64_t vela_store_i64(int64_t p, int64_t v)
+{
+    if (p == 0) return 0;
+    *(int64_t *)(intptr_t)p = v;
+    return 1;
+}
+
+/* A byte, for the buffers a socket or a file format hands over: reading one word at a
+ * time out of a byte stream is the shape a parser wants, and it needs the byte. */
+static int64_t vela_load_u8(int64_t p)
+{
+    if (p == 0) return 0;
+    return (int64_t)(*(unsigned char *)(intptr_t)p);
+}
+
+static int64_t vela_store_u8(int64_t p, int64_t v)
+{
+    if (p == 0) return 0;
+    *(unsigned char *)(intptr_t)p = (unsigned char)(v & 0xFF);
+    return 1;
+}
+
+/* `memmove` and not `memcpy`: overlapping copies are the caller's business, and a
+ * segfault is a worse answer than the right one.  Returns the destination. */
+static int64_t vela_copy(int64_t dst, int64_t src, int64_t n)
+{
+    if (dst == 0 || src == 0 || n <= 0) return 0;
+    memmove((void *)(intptr_t)dst, (void *)(intptr_t)src, (size_t)n);
+    return dst;
+}
+#endif
+
 /* One host question: what is this named environment variable set to, if
  * anything?  A build driver has to know which host it is on and which C
  * compiler the user wants, and the answer to both is in the environment.
