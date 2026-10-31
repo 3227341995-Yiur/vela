@@ -590,6 +590,7 @@ interpret dotted_types                        lib/dotted_types.vel
 run       range_single_arg                   tests/build/range_single_arg.vel
 run       range_step                         tests/build/range_step.vel
 run       str_order                          lib/str_order_app.vel
+run       str_search                         lib/str_search_app.vel
 run       module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel

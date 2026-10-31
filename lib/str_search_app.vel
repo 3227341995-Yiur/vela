@@ -1,0 +1,25 @@
+# `index_of_from` / `last_index_of` / `after_last` / `before_last`.
+#
+# `index_of` answers only from the start, so "the next field after this one" and "the last
+# segment of this path" had no library call -- and the second one is the shape a dotted
+# name and a file path both need.
+import str
+
+def main() -> None {
+    text: str = "a:b:c:d"
+    print(str.index_of(text, ":"))
+    print(str.index_of_from(text, ":", 2))
+    print(str.index_of_from(text, ":", 8))
+    print(str.last_index_of(text, ":"))
+    print(str.last_index_of(text, "z"))
+    print(str.after_last(text, ":"))
+    print(str.before_last(text, ":"))
+    print(str.after_last(text, "-"))
+    print(str.before_last(text, "-"))
+    path: str = "lib/str.vel"
+    print(str.after_last(path, "/"))
+    print(str.before_last(path, "/"))
+    print(str.last_index_of("aaa", "aa"))
+    print(str.index_of_from("aaa", "aa", 1))
+    print(str.index_of_from("abc", "", 0))
+}

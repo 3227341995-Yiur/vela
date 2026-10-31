@@ -485,3 +485,60 @@ def max_str(a: str, b: str) -> str {
     }
     return b
 }
+# Searching from a place, and searching backwards -- the two shapes index_of cannot do,
+# and the two a parser reaches for first: "the next field after this one" and "the last
+# segment of this path".  Both answer -1 when there is nothing to find, like index_of,
+# so a caller checks one condition instead of remembering two conventions.
+def index_of_from(s: str, needle: str, from: int) -> int {
+    n: int = len(needle)
+    if n == 0 {
+        return 0 - 1
+    }
+    mut i: int = from
+    if i < 0 {
+        i = 0
+    }
+    while i + n <= len(s) {
+        if substr(s, i, i + n) == needle {
+            return i
+        }
+        i += 1
+    }
+    return 0 - 1
+}
+
+# The last occurrence, found by scanning backwards and stopping at the first match: a
+# forward scan would have to remember every hit it passed.
+def last_index_of(s: str, needle: str) -> int {
+    n: int = len(needle)
+    if n == 0 {
+        return 0 - 1
+    }
+    mut i: int = len(s) - n
+    while i >= 0 {
+        if substr(s, i, i + n) == needle {
+            return i
+        }
+        i -= 1
+    }
+    return 0 - 1
+}
+
+# Everything after the last sep, or the whole string when sep is not there: the shape
+# a path's file name and a dotted name's last component both want.
+def after_last(s: str, sep: str) -> str {
+    at: int = last_index_of(s, sep)
+    if at < 0 {
+        return s
+    }
+    return substr(s, at + len(sep), len(s))
+}
+
+# Everything before the last sep, or "" when it is not there.
+def before_last(s: str, sep: str) -> str {
+    at: int = last_index_of(s, sep)
+    if at < 0 {
+        return ""
+    }
+    return substr(s, 0, at)
+}
