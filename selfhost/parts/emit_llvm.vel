@@ -3435,6 +3435,19 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     if fns[f] == 0 {
         trap(path, nd_line(nd, e), "this function was never declared to the back end")
     }
+    if is_async_fn(nd, mem, f) {
+        # A call to an `async def` starts a thread and answers a future: the callee's
+        # address and its one `int` argument go to the runtime, and what comes back is
+        # the record, not the result.  The checker already required that signature.
+        mut av: int = 0
+        if nd[e * 10 + 2] > 0 {
+            av = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                         fns, nd[e * 10 + 2])
+        }
+        addr: int = ll_ck(lg, "the address of an async callee",
+                          vshim_build_ptrtoint(lg.m, lg.t_i64, fns[f]))
+        return ll_call2(lg, lg.f_future_start, addr, av)
+    }
     srf: int = ll_sret_of(lg, nd, ty, mem, vm, lit, path, f)
     mut ps: Array[int, 16]
     mut n: int = 0
@@ -3619,6 +3632,13 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             slotkind: Array[int, 4096], lit: Array[int, 132096],
             fns: Array[int, 8192], e: int) -> int {
     k: int = nd_kind(nd, e)
+    if k == 44 {
+        # `await f(x)`: join the thread and answer its result -- one runtime call whose
+        # machine type is `i64`, which is what the checker requires an async result to be.
+        hv: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                          fns, nd[e * 10 + 1])
+        return ll_call1(lg, lg.f_future_wait, hv)
+    }
     if k == 20 {
         return ll_ck(lg, "an integer constant",
                      vshim_const_i64(lg.m, nd[e * 10 + 1]))

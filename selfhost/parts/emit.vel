@@ -900,6 +900,18 @@ def emit_call(nd: Array[int, 1310720], ty: Array[int, 262144],
     sk: int = nt_get(mem, callee, NT_SYM())
     sv: int = nt_get(mem, callee, NT_VAL())
     if sk == SYM_FUNC() {
+        if is_async_fn(nd, mem, sv) {
+            # A call to an `async def` starts a thread and answers a future, so the shape
+            # is not `f(args)` but `vela_future_start(address, arg)` -- the function's
+            # address plus the one `int` the runtime's trampoline carries.  The checker
+            # requires exactly that signature, so nothing here has to guess.
+            emit_str("vela_future_start((int64_t)(uintptr_t)")
+            emit_fn_name(nd, mem, sv)
+            emit_str(", ")
+            emit_args(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
+            emit_str(")")
+            return pack_kind(K_FUTURE(), ft_get(mem, sv, FT_RETTY()))
+        }
         emit_fn_name(nd, mem, sv)
         emit_str("(")
         emit_args_vs_params(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2],
@@ -2466,6 +2478,16 @@ def emit_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
               flt: Array[float, 262144], src: str, path: str,
               mem: Array[int, 3741696], mut vm: VM, e: int) -> int {
     k: int = nd_kind(nd, e)
+    if k == 44 {
+        # `await f(x)`: join the thread `async def f` started and answer its result.
+        # One runtime call; the machine type is `int64_t` because the checker requires
+        # an async result to be an `int` in this slice, and the *Vela* kind is the
+        # declared one (see `expr_packed`'s kind 44), which is what the caller sees.
+        emit_str("vela_future_wait(")
+        emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 1])
+        emit_str(")")
+        return expr_packed(nd, ty, mem, vm, e)
+    }
     if k == 20 {
         emit_int_lit(nd[e * 10 + 1])
         return K_INT()
@@ -2606,6 +2628,19 @@ def expr_kind(nd: Array[int, 1310720], ty: Array[int, 262144],
 
 # The same walk, without the unpacking: an array's length travels beside its kind
 # (see pack_kind), and a bounds check needs the number.
+# Is this a call to an `async def`?  The flag rides on the def node (bit 16, where 1 is
+# a `mut` parameter, 2 a declaration, 4 `pure` and 8 "extern, no body"), because the
+# function table has no spare word and the def node is where the parser wrote it.
+def is_async_fn(nd: Array[int, 1310720], mem: Array[int, 3741696], f: int) -> bool {
+    if f < 0 {
+        return False
+    }
+    d: int = ft_get(mem, f, FT_DEF())
+    if d <= 0 {
+        return False
+    }
+    return (nd[d * 10 + 6] & 16) == 16
+}
 def expr_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mem: Array[int, 3741696], vm: VM, e: int) -> int {
     if e <= 0 {
@@ -2659,6 +2694,19 @@ def expr_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
         off: int = stb_get(mem, sid, STB_FOFF())
         return sfl_get(mem, off + idx * 2 + 1)
     }
+    if k == 44 {
+        # `await f(x)`: the future's packed kind carries the result type index, so the
+        # expression is worth that *declared* type rather than an int the caller has to
+        # reinterpret -- which is the whole reason `async` is a property of the function.
+        fp: int = expr_packed(nd, ty, mem, vm, nd[e * 10 + 1])
+        if unpack_kind(fp) == K_FUTURE() {
+            return type_packed(ty, unpack_len(fp), mem, vm)
+        }
+        # a future *bound to a variable* has lost its payload type by then (the binding
+        # is an int handle), and this slice requires an async result to be an int,
+        # so that is what such an await is worth.
+        return pack_kind(K_INT(), 0)
+    }
     if k == 26 {
         callee: int = nd[e * 10 + 1]
         if nd_kind(nd, callee) == 32 {
@@ -2679,6 +2727,11 @@ def expr_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
         sk2: int = nt_get(mem, callee, NT_SYM())
         sv2: int = nt_get(mem, callee, NT_VAL())
         if sk2 == SYM_FUNC() {
+            if is_async_fn(nd, mem, sv2) {
+                # a call to an `async def` answers a *future*; the packed kind carries
+                # the declared result type index, which is what makes `await` typed
+                return pack_kind(K_FUTURE(), ft_get(mem, sv2, FT_RETTY()))
+            }
             return type_packed(ty, ft_get(mem, sv2, FT_RETTY()), mem, vm)
         }
         if sk2 == SYM_BUILTIN() {

@@ -1582,6 +1582,29 @@ def ck_expr(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         ck_index(nd, mem, path, vm, e)
         return
     }
+    if k == 44 {
+        # `await e`: `e` must be a *future* -- the value a call to an `async def`
+        # answers -- and its packed kind is the only place that says so.
+        inner: int = nd[e * 10 + 1]
+        ck_expr(nd, mem, path, vm, inner)
+        # ck_arg_kind answers a bare kind (K_FUTURE, no payload), which is all the
+        # question needs: is this a future at all.
+        mut ak: int = ck_arg_kind(nd, mem, vm, inner)
+        if ak == K_FUTURE() {
+            ak = K_FUTURE()
+        }
+        if ak == K_INT() {
+            ak = K_INT()
+        }
+        # K_BAD is "this pass cannot name it": a name's kind is only known for the
+        # shapes `ck_arg_kind` answers, and a future handle is an `int` on the machine in
+        # every case this slice allows -- so unknown is not an error here.
+        if ak != K_FUTURE() and ak != K_INT() and ak != K_BAD() {
+            ck_type(path, nd_line(nd, e),
+                    "`await` needs a future: a call to an `async def`, or the `int` handle one was bound to")
+        }
+        return
+    }
     if k == 26 {
         callee: int = nd[e * 10 + 1]
         if nd_kind(nd, callee) == 32 {
@@ -3671,6 +3694,29 @@ def ck_function(nd: Array[int, 1310720], ty: Array[int, 262144],
                 path: str, mut vm: VM, f: int) -> None {
     d: int = ft_get(mem, f, FT_DEF())
     retp: int = type_packed(ty, ft_get(mem, f, FT_RETTY()), mem, vm)
+    if (nd[d * 10 + 6] & 16) == 16 {
+        # An `async def` is carried by a C trampoline of the shape `int64_t
+        # (*)(int64_t)`, so in this slice it takes exactly one `int` and answers an
+        # `int`.  Anything else is refused here, by name, rather than compiled into a
+        # call with the wrong ABI -- which is the one failure a thread would turn from a
+        # wrong answer into a crash somewhere else.
+        if unpack_kind(retp) != K_INT() {
+            ck_type(path, nd_line(nd, d),
+                    "an `async def` answers an `int` in this slice: its value comes back through the runtime's trampoline")
+            return
+        }
+        if ft_get(mem, f, FT_NPARAM()) != 1 {
+            ck_type(path, nd_line(nd, d),
+                    "an `async def` takes exactly one `int` parameter in this slice (that is what the runtime's trampoline carries)")
+            return
+        }
+        pk0: int = param_packed(nd, ty, mem, vm, ft_get(mem, f, FT_PARAM()))
+        if unpack_kind(pk0) != K_INT() {
+            ck_type(path, nd_line(nd, d),
+                    "an `async def`'s parameter is an `int` in this slice")
+            return
+        }
+    }
     if ck_is_array_ck(retp) {
         # an array lives in the callee's arena frame: returning one would hand
         # the caller memory that is released as the frame unwinds

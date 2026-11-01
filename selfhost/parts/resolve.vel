@@ -153,8 +153,6 @@ def builtin_id(h: int) -> int {
     if s == "run_command" { return B_RUN_CMD() }
     if s == "env" { return B_ENV() }
     if s == "addr" { return B_ADDR() }
-    if s == "future_start" { return B_FUTURE_START() }
-    if s == "future_wait" { return B_FUTURE_WAIT() }
     return 0
 }
 
@@ -852,6 +850,14 @@ def walk_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
             walk_expr(nd, ty, mem, path, vm, a)
             a = nd_nx(nd, a)
         }
+        return
+    }
+    if k == 44 {
+        # `await e`: the operand is an ordinary expression -- a call to an `async def`,
+        # or a binding that holds the handle -- so it is walked like any other.  Without
+        # this the name inside it was never bound, and the back end answered "only a
+        # local variable", which is a sentence about the wrong problem.
+        walk_expr(nd, ty, mem, path, vm, nd[e * 10 + 1])
         return
     }
     if k == 34 {

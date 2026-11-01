@@ -1,0 +1,11 @@
+# Refuse-case.  An `async def` is carried by the runtime's C trampoline, which has the
+# shape `int64_t (*)(int64_t)` -- so in this slice an async function takes exactly one
+# `int` and answers an `int`.  Anything else is refused here by name rather than compiled
+# into a call with the wrong ABI, which a thread would turn into a crash somewhere else.
+async def bad(x: int, y: int) -> int {
+    return x + y
+}
+
+def main() -> None {
+    print(await bad(1, 2))
+}

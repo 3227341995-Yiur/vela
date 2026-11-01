@@ -92,6 +92,11 @@ def K_F32() -> int { return 18 }
 # `Array[f32, N]`: elements are 4 bytes, so it is its own array kind rather than a
 # second name for `K_AF` (whose elements are 8).
 def K_AF32() -> int { return 19 }
+# `K_FUTURE()` is 20: the value a call to an `async def` answers.  It is not the
+# result -- it is a handle on work that may not have finished -- and its packed kind
+# carries the *result type index*, so `await` is statically typed: the expression is
+# worth the `async def`'s declared result, not an int the caller reinterprets.
+def K_FUTURE() -> int { return 20 }
 
 # ------------------------------------------------------------- mem cell words
 

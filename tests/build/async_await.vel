@@ -1,43 +1,54 @@
-# `async` / `await`: the two keywords, not the library.
+# `async def` and `await`: async is a property of the FUNCTION, not of a call site.
 #
-# `async f(x)` starts `f(x)` on a thread and answers a future handle; `await h` joins
-# that thread and answers what it computed.  Both are *contextual*: a word is the
-# operator only when the next token is not `.`, so `async.start(...)` (`lib/async.vel`,
-# a module called `async`) still means a member call and neither word is reserved.
+# `async def f(x: int) -> int` declares a function that runs on its own thread: calling
+# it answers a *future* (an `int` handle in this slice), and `await` is the only way to
+# the value.  A plain `def` stays synchronous, and nothing about its call sites changes --
+# which is the difference between this spelling and an operator on a call.
 #
 # What is checked here, and each line is a claim:
 #
-#   1. `async` starts the work and hands back a handle (`h` is a plain `int`);
-#   2. `await` waits for it and gives the value (`42` from `work(21)`);
-#   3. a future can be held while another is started -- `h1` and `h2` exist at the
-#      same time, and awaiting them in *either* order gives their own answers, which is
-#      the difference between a future and a race;
-#   4. an already-finished future still awaits correctly (await joins a thread that
-#      already exited).
+#   1. calling an `async def` answers a handle, not the result (`h` below);
+#   2. `await h` joins that thread and gives the value (`10` = 0+1+2+3+4);
+#   3. `await f(x)` works directly, without binding the handle (`6` = 0+1+2+3);
+#   4. two futures can be *held at the same time* and awaited in either order, each
+#      answering its own value -- the difference between a future and a race;
+#   5. a plain `def` is still called synchronously, in the same program, with no keyword.
 #
 # Expected stdout, byte for byte:
-#     42
 #     10
-#     6 49
-#     both 55
-def work(x: int) -> int {
+#     6
+#     1 40
+#     both 41
+#     sync 4
+def sync(x: int) -> int {
     return x * 2
 }
 
-def square(x: int) -> int {
-    return x * x
+async def sum_to(x: int) -> int {
+    # a body that takes a measurable moment, so the thread is real work
+    mut s: int = 0
+    mut i: int = 0
+    while i < x {
+        s += i
+        i += 1
+    }
+    return s
+}
+
+async def times(x: int) -> int {
+    return x * 10
 }
 
 def main() -> None {
-    h: int = async work(21)
-    v: int = await h
-    print(v)
-    print(await async work(5))
+    h: int = sum_to(5)
+    print(await h)
+    print(await sum_to(4))
 
-    h1: int = async work(3)
-    h2: int = async square(7)
+    h1: int = sum_to(2)
+    h2: int = times(4)
     a: int = await h1
     b: int = await h2
     print(a, b)
     print("both", a + b)
+    print("sync", sync(2))
 }

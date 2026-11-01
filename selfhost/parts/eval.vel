@@ -889,6 +889,13 @@ def eval_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
               src: str, path: str, mut vm: VM, e: int) -> None {
     vm.line = nd[e * 10 + 5]
     k: int = nd_kind(nd, e)
+    if k == 44 {
+        # `await h`: join the thread and answer its result.  The interpreter has no
+        # threads, so it refuses by name rather than pretending the work happened; the
+        # corpus rows for `async` / `await` are `native`.
+        trap(path, vm.line,
+             "`await` needs a thread to join: the interpreter has none, so `async` and `await` are compiled-only (the corpus mode is `native`)")
+    }
     if k == 20 {
         set_int(mem, fmem, vm.dst, nd[e * 10 + 1])
         return
@@ -1840,6 +1847,12 @@ def eval_call(nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if sk == SYM_FUNC() {
+        if is_async_fn(nd, mem, sv) {
+            # a call to an `async def`: the value is a future, and a future is a thread
+            # this interpreter does not have.  Refused by name, before anything runs.
+            trap(path, vm.line,
+                 "calling an `async def` needs a thread: the interpreter has none, so `async` and `await` are compiled-only (the corpus mode is `native`)")
+        }
         call_user(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm, sv,
                   args, vm.dst)
         return

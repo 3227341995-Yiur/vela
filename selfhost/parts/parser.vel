@@ -860,6 +860,23 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
         }
         return parse_funcdef(src, tk, tkf, nd, ty, flt, cx, 4)
     }
+    # `async def f(...)`: async is a property of the *function*, not of a call site.
+    # Calling one answers a future; `await` is the only way to the value.  The flag
+    # rides in the def node word 6 (bit 16 -- 1 is a `mut` parameter, 2 a declaration,
+    # 4 `pure` and 8 "extern, no body"), which is where `add_function` and the checker
+    # read the other four from.
+    if at_name(tk, cx) {
+        if name_eq(src, tk_off(tk, cx.ti), tk_len(tk, cx.ti), "async") {
+            if tk_kind(tk, cx.ti + 1) == 1 and tk_ival(tk, cx.ti + 1) == 1 {
+                cx.ti += 1
+                ad: int = parse_funcdef(src, tk, tkf, nd, ty, flt, cx, 0)
+                if ad > 0 {
+                    nd[ad * 10 + 6] = nd[ad * 10 + 6] | 16
+                }
+                return ad
+            }
+        }
+    }
     if at_kw(tk, cx, 1) {
         return parse_funcdef(src, tk, tkf, nd, ty, flt, cx, 0)
     }
@@ -1892,18 +1909,14 @@ def parse_unary(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
     if cx.err != 0 {
         return -1
     }
-    # `async f(x)` and `await h`: the two words this language spells as *operators*
-    # rather than as library calls, and both are contextual -- a word is the operator
-    # only when the next token is not `.`, so `async.start(...)` (the module
-    # `lib/async.vel`) still means a member call and neither word is reserved.
+    # `await f(x)`: wait for the future a call to an `async def` answered, and answer
+    # its value.  The word is *contextual* -- it is the operator only when the next
+    # token is not `.`, so `await.x` (a member of something called `await`) still
+    # parses as a member call and the word is not reserved.
     #
-    # The lowering is two builtins and nothing else:
-    #
-    #     async f(x)   ->   future_start(f, x)   a thread runs `f(x)`; the handle comes back
-    #     await h      ->   future_wait(h)       joins that thread and answers its result
-    #
-    # which is what `lib/async.vel` does by hand today.  A program should not have to
-    # spell the record layout and the trampoline in Vela, and with the sugar it does not.
+    # The operand is a future: its packed kind carries the *result type index* of the
+    # `async def` it came from, which is what makes `await` statically typed -- the
+    # expression is worth that type, not an `int` that the caller has to reinterpret.
     if at_name(tk, cx) {
         w: str = tok_text(src, tk, cx)
         if w == "await" and not at_op2(tk, cx, 1, 13) {
@@ -1913,30 +1926,9 @@ def parse_unary(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
             if cx.err != 0 {
                 return -1
             }
-            return mk_call2(nd, cx, "future_wait", operand, -1, line)
-        }
-        if w == "async" and not at_op2(tk, cx, 1, 13) {
-            line: int = ti_line(tk, cx)
-            cx.ti += 1
-            call: int = parse_power(src, tk, tkf, nd, ty, flt, cx)
-            if cx.err != 0 {
-                return -1
-            }
-            if call <= 0 or nd_kind(nd, call) != 26 {
-                perr(cx, "`async` takes a call: write `async f(x)`, with one argument", line)
-                return -1
-            }
-            callee: int = nd[call * 10 + 1]
-            arg: int = nd[call * 10 + 2]
-            if nd_kind(nd, callee) == 32 {
-                perr(cx, "`async` cannot take a method call yet: bind the function to a variable first", line)
-                return -1
-            }
-            if arg <= 0 or nd_nx(nd, arg) > 0 {
-                perr(cx, "`async` needs exactly one argument: write `async f(x)`", line)
-                return -1
-            }
-            return mk_call2(nd, cx, "future_start", callee, arg, line)
+            n: int = new_node(nd, cx, 44, line)
+            nd[n * 10 + 1] = operand
+            return n
         }
     }
     if at_op(tk, cx, 2) or at_op(tk, cx, 1) or at_op(tk, cx, 32) {

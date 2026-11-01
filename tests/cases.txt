@@ -639,12 +639,14 @@ native-c  f32_vector                          tests/build/f32_vector.vel
 # are: no interpreted twin can exist for an OS thread.
 native    async_library                      lib/async_app.vel
 native-c  async_library                      lib/async_app.vel
-# `async` / `await` as *keywords* (2026-11-01), lowered to `future_start`/
-# `future_wait`: two futures held at once, awaited in order, each answering its own
-# value, and `await async work(5)` (a future made and awaited on one line).  `native`
-# because the interpreter has no threads and refuses the two builtins by name.
+# `async def` / `await` (2026-11-01): async is a property of the FUNCTION.  Calling an
+# `async def` answers a future handle, `await` is the only way to the value, and a
+# plain `def` stays synchronous in the same program.  Two futures held at once, each
+# answering its own value.  `native` because the interpreter has no threads and
+# refuses both by name.
 native    async_await                          tests/build/async_await.vel
 native-c  async_await                          tests/build/async_await.vel
+refuse    async_two_params                    tests/build/check_cases/async_two_params.vel
 # Futures and a pool: four futures whose answers are read in the order they were
 # started, and 16 tasks on 4 threads whose per-index slots make the result order
 # independent of which worker ran what.  `native` for the same reason the thread rows
