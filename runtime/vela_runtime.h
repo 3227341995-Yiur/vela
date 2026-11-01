@@ -1217,6 +1217,70 @@ static int64_t vela_impl_lock_free(int64_t lock)
     return 1;
 }
 
+/* --------------------------------------------------------------- futures */
+/* `async f(x)` and `await h`: one thread, one result word, one join.
+ *
+ * The record is the same shape `lib/async.vel` writes by hand, and it lives here so
+ * that the two keywords need no library: `async` hands the runtime a function value
+ * and its one argument, `await` joins the thread and answers the result.
+ *
+ * The handle a program carries is the *record*, not the OS handle: joining closes the
+ * OS thread and keeps the record readable until `await` reads it, and freeing it is
+ * `await`'s job because that is the read that consumes the future. */
+typedef struct vela_future_rec {
+    int64_t fn;
+    int64_t arg;
+    int64_t result;
+    int64_t handle;
+} vela_future_rec;
+
+static DWORD WINAPI vela_future_body(LPVOID p)
+{
+    vela_future_rec *f = (vela_future_rec *)p;
+    int64_t fn = f->fn;
+    int64_t arg = f->arg;
+    f->result = ((int64_t (*)(int64_t))(intptr_t)fn)(arg);
+    return 0;
+}
+
+static int64_t vela_impl_future_start(int64_t fn, int64_t arg)
+{
+    vela_future_rec *f;
+    HANDLE h;
+    if (fn == 0) return 0;
+    f = (vela_future_rec *)malloc(sizeof(vela_future_rec));
+    if (f == NULL) return 0;
+    f->fn = fn;
+    f->arg = arg;
+    f->result = 0;
+    f->handle = 0;
+    h = CreateThread(NULL, 0, vela_future_body, f, 0, NULL);
+    if (h == NULL) {
+        free(f);
+        return 0;
+    }
+    f->handle = (int64_t)(intptr_t)h;
+    return (int64_t)(intptr_t)f;
+}
+
+static int64_t vela_impl_future_wait(int64_t rec)
+{
+    vela_future_rec *f = (vela_future_rec *)(intptr_t)rec;
+    int64_t v;
+    if (f == NULL) return 0;
+    if (f->handle != 0) {
+        if (WaitForSingleObject((HANDLE)(intptr_t)f->handle, INFINITE) !=
+            WAIT_OBJECT_0) {
+            return 0;
+        }
+        CloseHandle((HANDLE)(intptr_t)f->handle);
+        f->handle = 0;
+    }
+    v = f->result;
+    free(f);
+    return v;
+}
+
 /* How many threads the machine can run at once, which is the only number a pool
  * should size itself by. */
 static int64_t vela_impl_cpu_count(void)
@@ -1260,6 +1324,11 @@ static int64_t vela_lock_enter(int64_t lock) { return vela_impl_lock_enter(lock)
 static int64_t vela_lock_leave(int64_t lock) { return vela_impl_lock_leave(lock); }
 static int64_t vela_lock_free(int64_t lock) { return vela_impl_lock_free(lock); }
 static int64_t vela_cpu_count(void) { return vela_impl_cpu_count(); }
+static int64_t vela_future_start(int64_t fn, int64_t arg)
+{
+    return vela_impl_future_start(fn, arg);
+}
+static int64_t vela_future_wait(int64_t rec) { return vela_impl_future_wait(rec); }
 #endif /* VELA_NO_THREAD_WRAPPERS */
 
 #endif /* VELA_RUNTIME_H */

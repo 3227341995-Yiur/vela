@@ -503,3 +503,8 @@ int64_t vela_lock_enter(int64_t lock) { return vela_impl_lock_enter(lock); }
 int64_t vela_lock_leave(int64_t lock) { return vela_impl_lock_leave(lock); }
 int64_t vela_lock_free(int64_t lock) { return vela_impl_lock_free(lock); }
 int64_t vela_cpu_count(void) { return vela_impl_cpu_count(); }
+int64_t vela_future_start(int64_t fn, int64_t arg)
+{
+    return vela_impl_future_start(fn, arg);
+}
+int64_t vela_future_wait(int64_t rec) { return vela_impl_future_wait(rec); }

@@ -522,6 +522,12 @@ def B_TO_STR() -> int    { return 35 }
 # here -- `a[i]` has one, and `addr` is the spelling for the address you take when the
 # index is one the runtime's own checks already passed.
 def B_ADDR() -> int     { return 36 }
+# uture_start(f, x) and uture_wait(h): what `async f(x)` and `await h` lower
+# to (parser.vel).  They are builtins rather than library calls so that a program
+# needs no import for the two keywords, and the thread, the record and the join stay
+# in the runtime where they already were.
+def B_FUTURE_START() -> int { return 37 }
+def B_FUTURE_WAIT() -> int { return 38 }
 
 
 # The element kind of an Array record decides which pool holds its elements.

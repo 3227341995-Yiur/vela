@@ -248,13 +248,16 @@ struct LG {
     # both through the hidden pointer a `str` result always uses.
     f_inttext: int
     f_booltext: int
+    # sync f(x) / wait h: the two runtime calls the builtins lower to
+    f_future_start: int
+    f_future_wait: int
 }
 
 def ll_zero() -> LG {
     return LG(0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              0, 0, 0, 0)
+              0, 0, 0, 0, 0, 0)
 }
 
 # The frame-slot table this back end can address.  A slot is the resolver's own
@@ -1544,6 +1547,15 @@ def ll_declare_rt(mut lg: LG, path: str) -> None {
                                "declaring vela_llvm_read_text")
     ll_ckst(lg, "the sret on vela_llvm_read_text",
             vshim_fn_sret_param(lg.f_readtext, 0, lg.t_str))
+    ps[0] = lg.t_ptr
+    ps[1] = lg.t_ptr
+    ps[0] = lg.t_i64
+    ps[1] = lg.t_i64
+    lg.f_future_start = ll_declare(lg, "vela_future_start", lg.t_i64, ps, 2,
+                                  "declaring vela_future_start")
+    ps[0] = lg.t_i64
+    lg.f_future_wait = ll_declare(lg, "vela_future_wait", lg.t_i64, ps, 1,
+                                 "declaring vela_future_wait")
     ps[0] = lg.t_ptr
     ps[1] = lg.t_ptr
     lg.f_writetext = ll_declare(lg, "vela_llvm_write_text", lg.t_i1, ps, 2,
@@ -2942,6 +2954,8 @@ def ll_builtin_name(b: int) -> str {
     if b == B_NOW() { return "now" }
     if b == B_ENV() { return "env" }
     if b == B_ADDR() { return "addr" }
+    if b == B_FUTURE_START() { return "future_start" }
+    if b == B_FUTURE_WAIT() { return "future_wait" }
     return "unnamed"
 }
 
@@ -3195,6 +3209,29 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         if b == B_ADDR() {
             return ll_addr_of(lg, nd, ty, flt, src, path, mem, vm, slots,
                               slotkind, lit, fns, e)
+        }
+        if b == B_FUTURE_START() {
+            # sync f(x): the runtime starts the thread and answers the record.
+            a1: int = nd[e * 10 + 2]
+            fv: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                              lit, fns, a1)
+            av: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                              lit, fns, nd_nx(nd, a1))
+            # the callee is a function value: a *name* of a def has no packed kind of
+            # its own (NT_LIT is unset on a function name), so the ptr -> i64 conversion
+            # is chosen from the symbol, and a function *variable* from its kind
+            mut faddr: int = ll_adapt(lg, K_INT(), expr_kind(nd, ty, mem, vm, a1), fv)
+            if nt_get(mem, a1, NT_SYM()) == SYM_FUNC() {
+                faddr = ll_ck(lg, "the address of an async callee",
+                               vshim_build_ptrtoint(lg.m, lg.t_i64, fv))
+            }
+            return ll_call2(lg, lg.f_future_start, faddr, av)
+        }
+        if b == B_FUTURE_WAIT() {
+            # wait h: join that thread and answer its result.
+            hv: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
+                              lit, fns, nd[e * 10 + 2])
+            return ll_call1(lg, lg.f_future_wait, hv)
         }
         if b == B_WRITE_TEXT() {
             a1: int = nd[e * 10 + 2]

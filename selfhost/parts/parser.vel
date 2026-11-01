@@ -1868,11 +1868,76 @@ def parse_multiplicative(src: str, tk: Array[int, 1572864], tkf: Array[float, 26
     return node
 }
 
+def mk_call2(mut nd: Array[int, 1310720], mut cx: Ctx, name: str, a: int,
+              b: int, line: int) -> int {
+    # `future_start(f, x)` and `future_wait(h)` are the whole of what `async` and
+    # `await` mean, so the sugar builds exactly those two calls and every stage after
+    # the parser sees an ordinary call to an ordinary builtin.
+    nm: int = new_node(nd, cx, 25, line)
+    nd[nm * 10 + 1] = intern(name)
+    n: int = new_node(nd, cx, 26, line)
+    nd[n * 10 + 1] = nm
+    if a > 0 {
+        nd[n * 10 + 2] = a
+        if b > 0 {
+            nd[a * 10 + 7] = b
+        }
+    }
+    return n
+}
+
 def parse_unary(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                 mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
                 mut flt: Array[float, 262144], mut cx: Ctx) -> int {
     if cx.err != 0 {
         return -1
+    }
+    # `async f(x)` and `await h`: the two words this language spells as *operators*
+    # rather than as library calls, and both are contextual -- a word is the operator
+    # only when the next token is not `.`, so `async.start(...)` (the module
+    # `lib/async.vel`) still means a member call and neither word is reserved.
+    #
+    # The lowering is two builtins and nothing else:
+    #
+    #     async f(x)   ->   future_start(f, x)   a thread runs `f(x)`; the handle comes back
+    #     await h      ->   future_wait(h)       joins that thread and answers its result
+    #
+    # which is what `lib/async.vel` does by hand today.  A program should not have to
+    # spell the record layout and the trampoline in Vela, and with the sugar it does not.
+    if at_name(tk, cx) {
+        w: str = tok_text(src, tk, cx)
+        if w == "await" and not at_op2(tk, cx, 1, 13) {
+            line: int = ti_line(tk, cx)
+            cx.ti += 1
+            operand: int = parse_unary(src, tk, tkf, nd, ty, flt, cx)
+            if cx.err != 0 {
+                return -1
+            }
+            return mk_call2(nd, cx, "future_wait", operand, -1, line)
+        }
+        if w == "async" and not at_op2(tk, cx, 1, 13) {
+            line: int = ti_line(tk, cx)
+            cx.ti += 1
+            call: int = parse_power(src, tk, tkf, nd, ty, flt, cx)
+            if cx.err != 0 {
+                return -1
+            }
+            if call <= 0 or nd_kind(nd, call) != 26 {
+                perr(cx, "`async` takes a call: write `async f(x)`, with one argument", line)
+                return -1
+            }
+            callee: int = nd[call * 10 + 1]
+            arg: int = nd[call * 10 + 2]
+            if nd_kind(nd, callee) == 32 {
+                perr(cx, "`async` cannot take a method call yet: bind the function to a variable first", line)
+                return -1
+            }
+            if arg <= 0 or nd_nx(nd, arg) > 0 {
+                perr(cx, "`async` needs exactly one argument: write `async f(x)`", line)
+                return -1
+            }
+            return mk_call2(nd, cx, "future_start", callee, arg, line)
+        }
     }
     if at_op(tk, cx, 2) or at_op(tk, cx, 1) or at_op(tk, cx, 32) {
         op: int = ti_val(tk, cx)

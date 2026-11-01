@@ -1067,6 +1067,8 @@ def builtin_kind(b: int) -> int {
     if b == B_MAX_INT() { return K_INT() }
     if b == B_MIN_FLT() { return K_FLT() }
     if b == B_MAX_FLT() { return K_FLT() }
+    if b == B_FUTURE_START() { return K_INT() }
+    if b == B_FUTURE_WAIT() { return K_INT() }
     if b == B_BYTES_AT() { return K_INT() }
     if b == B_ADDR() { return K_INT() }
     if b == B_SUBSTR() { return K_STR() }
@@ -1311,6 +1313,19 @@ def emit_builtin(nd: Array[int, 1310720], ty: Array[int, 262144],
         emit_str("[")
         emit_expr(nd, ty, flt, src, path, mem, vm, nd_nx(nd, a1))
         emit_str("])")
+        return
+    }
+    if b == B_FUTURE_START() {
+        # sync f(x): the runtime starts the thread and answers a handle.
+        emit_str("vela_future_start(")
+        emit_two_args(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
+        return
+    }
+    if b == B_FUTURE_WAIT() {
+        emit_str("vela_future_wait(")
+        emit_one_arg(nd, ty, flt, src, path, mem, vm, e)
+        emit_str(")")
         return
     }
     if b == B_BYTES_AT() {

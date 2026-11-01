@@ -1,0 +1,43 @@
+# `async` / `await`: the two keywords, not the library.
+#
+# `async f(x)` starts `f(x)` on a thread and answers a future handle; `await h` joins
+# that thread and answers what it computed.  Both are *contextual*: a word is the
+# operator only when the next token is not `.`, so `async.start(...)` (`lib/async.vel`,
+# a module called `async`) still means a member call and neither word is reserved.
+#
+# What is checked here, and each line is a claim:
+#
+#   1. `async` starts the work and hands back a handle (`h` is a plain `int`);
+#   2. `await` waits for it and gives the value (`42` from `work(21)`);
+#   3. a future can be held while another is started -- `h1` and `h2` exist at the
+#      same time, and awaiting them in *either* order gives their own answers, which is
+#      the difference between a future and a race;
+#   4. an already-finished future still awaits correctly (await joins a thread that
+#      already exited).
+#
+# Expected stdout, byte for byte:
+#     42
+#     10
+#     6 49
+#     both 55
+def work(x: int) -> int {
+    return x * 2
+}
+
+def square(x: int) -> int {
+    return x * x
+}
+
+def main() -> None {
+    h: int = async work(21)
+    v: int = await h
+    print(v)
+    print(await async work(5))
+
+    h1: int = async work(3)
+    h2: int = async square(7)
+    a: int = await h1
+    b: int = await h2
+    print(a, b)
+    print("both", a + b)
+}

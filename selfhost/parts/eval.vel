@@ -1308,6 +1308,13 @@ def do_builtin(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         trap(path, vm.line,
              "`addr` has no meaning in the interpreter: an address inside the interpreter's own array pools names nothing outside it, so a program that needs one is compiled (the corpus mode is `native`)")
     }
+    if b == B_FUTURE_START() or b == B_FUTURE_WAIT() {
+        # `async` / `await`: the interpreter has no threads at all, so it refuses the
+        # two builtins by name rather than pretending the work happened.  The corpus
+        # cases for them are `native`, the same deal `addr` and `Array[f32, N]` make.
+        trap(path, vm.line,
+             "the interpreter cannot start a thread: `async` and `await` are compiled-only (the corpus mode is `native`)")
+    }
     if b == B_BYTES_AT() {
         arg_cell(mem, fmem, path, vm, argbase, K_STR())
         arg_cell(mem, fmem, path, vm, argbase + 1, K_INT())
