@@ -1,11 +1,11 @@
-# Refuse-case.  An `async def` is carried by the runtime's C trampoline, which has the
-# shape `int64_t (*)(int64_t)` -- so in this slice an async function takes exactly one
-# `int` and answers an `int`.  Anything else is refused here by name rather than compiled
-# into a call with the wrong ABI, which a thread would turn into a crash somewhere else.
-async def bad(x: int, y: int) -> int {
-    return x + y
+# Refuse-case.  Every argument of an `async def` crosses into the thread as one word of
+# the runtime's record, so in this slice the parameters are `int`s.  A `float` parameter
+# is refused here, by name, rather than packed as if it were an integer -- which would
+# hand the thread the bit pattern of a double and compute something wrong, quietly.
+async def scale(x: float) -> int {
+    return 1
 }
 
 def main() -> None {
-    print(await bad(1, 2))
+    print(await scale(1.5))
 }

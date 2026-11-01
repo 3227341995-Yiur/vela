@@ -251,13 +251,23 @@ struct LG {
     # sync f(x) / wait h: the two runtime calls the builtins lower to
     f_future_start: int
     f_future_wait: int
+    # the argument record an sync def with N parameters needs
+    f_args_new: int
+    f_args_set: int
+    f_args_free: int
+    # ela_disp0..ela_disp4: the thread entries, one per arity
+    f_disp0: int
+    f_disp1: int
+    f_disp2: int
+    f_disp3: int
+    f_disp4: int
 }
 
 def ll_zero() -> LG {
     return LG(0, "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              0, 0, 0, 0, 0, 0)
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 }
 
 # The frame-slot table this back end can address.  A slot is the resolver's own
@@ -1556,6 +1566,30 @@ def ll_declare_rt(mut lg: LG, path: str) -> None {
     ps[0] = lg.t_i64
     lg.f_future_wait = ll_declare(lg, "vela_future_wait", lg.t_i64, ps, 1,
                                  "declaring vela_future_wait")
+    ps[0] = lg.t_i64
+    lg.f_args_new = ll_declare(lg, "vela_args_new", lg.t_i64, ps, 1,
+                               "declaring vela_args_new")
+    ps[0] = lg.t_i64
+    ps[1] = lg.t_i64
+    ps[2] = lg.t_i64
+    lg.f_args_set = ll_declare(lg, "vela_args_set", lg.t_void, ps, 3,
+                               "declaring vela_args_set")
+    ps[0] = lg.t_i64
+    lg.f_args_free = ll_declare(lg, "vela_args_free", lg.t_void, ps, 1,
+                                "declaring vela_args_free")
+    # the thread entries: i64 (i64) each, so their addresses are what
+    # ela_future_start is given
+    ps[0] = lg.t_i64
+    lg.f_disp0 = ll_declare(lg, "vela_disp0", lg.t_i64, ps, 1,
+                            "declaring vela_disp0")
+    lg.f_disp1 = ll_declare(lg, "vela_disp1", lg.t_i64, ps, 1,
+                            "declaring vela_disp1")
+    lg.f_disp2 = ll_declare(lg, "vela_disp2", lg.t_i64, ps, 1,
+                            "declaring vela_disp2")
+    lg.f_disp3 = ll_declare(lg, "vela_disp3", lg.t_i64, ps, 1,
+                            "declaring vela_disp3")
+    lg.f_disp4 = ll_declare(lg, "vela_disp4", lg.t_i64, ps, 1,
+                            "declaring vela_disp4")
     ps[0] = lg.t_ptr
     ps[1] = lg.t_ptr
     lg.f_writetext = ll_declare(lg, "vela_llvm_write_text", lg.t_i1, ps, 2,
@@ -3436,17 +3470,44 @@ def ll_call_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         trap(path, nd_line(nd, e), "this function was never declared to the back end")
     }
     if is_async_fn(nd, mem, f) {
-        # A call to an `async def` starts a thread and answers a future: the callee's
-        # address and its one `int` argument go to the runtime, and what comes back is
-        # the record, not the result.  The checker already required that signature.
-        mut av: int = 0
-        if nd[e * 10 + 2] > 0 {
-            av = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
-                         fns, nd[e * 10 + 2])
+        # A call to an `async def` starts a thread and answers a future.  The thread
+        # entry is `vela_dispN` (one per arity) and the argument record carries the
+        # callee's address in word 0 and the arguments from word 1 on, so the
+        # runtime's one-word trampoline is no longer a limit on the count.
+        nargs: int = ft_get(mem, f, FT_NPARAM())
+        if nargs > 4 {
+            trap(path, nd_line(nd, e),
+                 "an ``async def`` takes at most four ``int`` parameters in this slice (the runtime carries ``vela_disp0``..``vela_disp4``)")
+        }
+        rec: int = ll_call1(lg, lg.f_args_new, vshim_const_i64(lg.m, nargs))
+        mut k2: int = 0
+        mut ap: int = nd[e * 10 + 2]
+        while ap > 0 {
+            mut av: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots,
+                                  slotkind, lit, fns, ap)
+            ll_call3(lg, lg.f_args_set, rec, vshim_const_i64(lg.m, k2), av)
+            k2 += 1
+            ap = nd_nx(nd, ap)
         }
         addr: int = ll_ck(lg, "the address of an async callee",
                           vshim_build_ptrtoint(lg.m, lg.t_i64, fns[f]))
-        return ll_call2(lg, lg.f_future_start, addr, av)
+        ll_call3(lg, lg.f_args_set, rec, vshim_const_i64(lg.m, -1), addr)
+        mut disp: int = lg.f_disp0
+        if nargs == 1 {
+            disp = lg.f_disp1
+        }
+        if nargs == 2 {
+            disp = lg.f_disp2
+        }
+        if nargs == 3 {
+            disp = lg.f_disp3
+        }
+        if nargs == 4 {
+            disp = lg.f_disp4
+        }
+        dh: int = ll_ck(lg, "the address of a thread entry",
+                        vshim_build_ptrtoint(lg.m, lg.t_i64, disp))
+        return ll_call2(lg, lg.f_future_start, dh, rec)
     }
     srf: int = ll_sret_of(lg, nd, ty, mem, vm, lit, path, f)
     mut ps: Array[int, 16]

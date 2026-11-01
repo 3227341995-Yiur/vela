@@ -1,8 +1,8 @@
 # `async def` and `await`: async is a property of the FUNCTION, not of a call site.
 #
-# `async def f(x: int) -> int` declares a function that runs on its own thread: calling
-# it answers a *future* (an `int` handle in this slice), and `await` is the only way to
-# the value.  A plain `def` stays synchronous, and nothing about its call sites changes --
+# `async def f(...) -> int` declares a function that runs on its own thread: calling it
+# answers a *future* (an `int` handle in this slice), and `await` is the only way to the
+# value.  A plain `def` stays synchronous, and nothing about its call sites changes --
 # which is the difference between this spelling and an operator on a call.
 #
 # What is checked here, and each line is a claim:
@@ -10,13 +10,16 @@
 #   1. calling an `async def` answers a handle, not the result (`h` below);
 #   2. `await h` joins that thread and gives the value (`10` = 0+1+2+3+4);
 #   3. `await f(x)` works directly, without binding the handle (`6` = 0+1+2+3);
-#   4. two futures can be *held at the same time* and awaited in either order, each
+#   4. several parameters cross into the thread through one argument record
+#      (`add3(1, 2, 3)` = 6), and a parameterless one works too (`tick()` = 7);
+#   5. two futures can be *held at the same time* and awaited in either order, each
 #      answering its own value -- the difference between a future and a race;
-#   5. a plain `def` is still called synchronously, in the same program, with no keyword.
+#   6. a plain `def` is still called synchronously, in the same program, no keyword.
 #
 # Expected stdout, byte for byte:
 #     10
 #     6
+#     6 7
 #     1 40
 #     both 41
 #     sync 4
@@ -35,6 +38,14 @@ async def sum_to(x: int) -> int {
     return s
 }
 
+async def add3(a: int, b: int, c: int) -> int {
+    return a + b + c
+}
+
+async def tick() -> int {
+    return 7
+}
+
 async def times(x: int) -> int {
     return x * 10
 }
@@ -43,6 +54,8 @@ def main() -> None {
     h: int = sum_to(5)
     print(await h)
     print(await sum_to(4))
+
+    print(await add3(1, 2, 3), await tick())
 
     h1: int = sum_to(2)
     h2: int = times(4)

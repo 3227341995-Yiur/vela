@@ -508,3 +508,24 @@ int64_t vela_future_start(int64_t fn, int64_t arg)
     return vela_impl_future_start(fn, arg);
 }
 int64_t vela_future_wait(int64_t rec) { return vela_impl_future_wait(rec); }
+
+int64_t vela_args_new(int64_t n)
+{
+    return (int64_t)(intptr_t)vela_impl_args_new(n);
+}
+
+int64_t vela_disp0(int64_t p) { return vela_impl_disp0(p); }
+int64_t vela_disp1(int64_t p) { return vela_impl_disp1(p); }
+int64_t vela_disp2(int64_t p) { return vela_impl_disp2(p); }
+int64_t vela_disp3(int64_t p) { return vela_impl_disp3(p); }
+int64_t vela_disp4(int64_t p) { return vela_impl_disp4(p); }
+
+void vela_args_set(int64_t rec, int64_t i, int64_t v)
+{
+    vela_impl_args_set(rec, i, v);
+}
+
+void vela_args_free(int64_t p)
+{
+    vela_impl_args_free(p);
+}

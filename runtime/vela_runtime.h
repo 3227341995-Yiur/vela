@@ -1243,6 +1243,139 @@ static DWORD WINAPI vela_future_body(LPVOID p)
     return 0;
 }
 
+
+/* The argument record an `async def` with parameters needs.
+ *
+ * The runtime's thread entry carries exactly one word, and `async f(a, b)` has more than
+ * one argument.  So the call site copies them into a heap record whose word 0 is the
+ * *function's address* and whose words 1.. are the arguments, then starts the thread on
+ * `vela_dispN` -- one dispatcher per arity, which casts the address back to the right
+ * signature and calls it.  The dispatcher frees the record, because it is the code that
+ * knows the record exists.
+ *
+ * Written as dispatchers rather than as a wrapper per async function because both back
+ * ends can then call the very same runtime entry: the C back end emits `vela_argsN(...)`
+ * and the LLVM back end builds the same record with `vela_args_new`/`vela_args_set`. */
+static int64_t *vela_impl_args_new(int64_t n)
+{
+    int64_t *p;
+    if (n < 0 || n > 62) return NULL;
+    p = (int64_t *)calloc((size_t)(n + 1), sizeof(int64_t));
+    return p;
+}
+
+static void vela_impl_args_set(int64_t rec, int64_t i, int64_t v)
+{
+    int64_t *p = (int64_t *)(intptr_t)rec;
+    /* -1 is the recorded function's own address (word 0); 0.. are its arguments. */
+    if (p == NULL || i < -1 || i > 62) return;
+    p[i + 1] = v;
+}
+
+/* One call builds the record, so a call site stays an *expression* in both back ends. */
+static int64_t vela_args0(int64_t fn)
+{
+    int64_t r = (int64_t)(intptr_t)vela_impl_args_new(0);
+    vela_impl_args_set(r, -1, fn);
+    return r;
+}
+
+static int64_t vela_args1(int64_t fn, int64_t a)
+{
+    int64_t r = (int64_t)(intptr_t)vela_impl_args_new(1);
+    vela_impl_args_set(r, -1, fn);
+    vela_impl_args_set(r, 0, a);
+    return r;
+}
+
+static int64_t vela_args2(int64_t fn, int64_t a, int64_t b)
+{
+    int64_t r = (int64_t)(intptr_t)vela_impl_args_new(2);
+    vela_impl_args_set(r, -1, fn);
+    vela_impl_args_set(r, 0, a);
+    vela_impl_args_set(r, 1, b);
+    return r;
+}
+
+static int64_t vela_args3(int64_t fn, int64_t a, int64_t b, int64_t c)
+{
+    int64_t r = (int64_t)(intptr_t)vela_impl_args_new(3);
+    vela_impl_args_set(r, -1, fn);
+    vela_impl_args_set(r, 0, a);
+    vela_impl_args_set(r, 1, b);
+    vela_impl_args_set(r, 2, c);
+    return r;
+}
+
+static int64_t vela_args4(int64_t fn, int64_t a, int64_t b, int64_t c, int64_t d)
+{
+    int64_t r = (int64_t)(intptr_t)vela_impl_args_new(4);
+    vela_impl_args_set(r, -1, fn);
+    vela_impl_args_set(r, 0, a);
+    vela_impl_args_set(r, 1, b);
+    vela_impl_args_set(r, 2, c);
+    vela_impl_args_set(r, 3, d);
+    return r;
+}
+
+static void vela_impl_args_free(int64_t p)
+{
+    if (p != 0) free((int64_t *)(intptr_t)p);
+}
+
+/* The thread entries, one per arity.  Each reads the function's address and the
+ * arguments out of the record, frees it, and calls -- in that order, so the record is
+ * never read after it is freed. */
+static int64_t vela_impl_disp0(int64_t p)
+{
+    int64_t *a = (int64_t *)(intptr_t)p;
+    int64_t fn = a[0];
+    free(a);
+    return ((int64_t (*)(void))(intptr_t)fn)();
+}
+
+static int64_t vela_impl_disp1(int64_t p)
+{
+    int64_t *a = (int64_t *)(intptr_t)p;
+    int64_t fn = a[0];
+    int64_t x0 = a[1];
+    free(a);
+    return ((int64_t (*)(int64_t))(intptr_t)fn)(x0);
+}
+
+static int64_t vela_impl_disp2(int64_t p)
+{
+    int64_t *a = (int64_t *)(intptr_t)p;
+    int64_t fn = a[0];
+    int64_t x0 = a[1];
+    int64_t x1 = a[2];
+    free(a);
+    return ((int64_t (*)(int64_t, int64_t))(intptr_t)fn)(x0, x1);
+}
+
+static int64_t vela_impl_disp3(int64_t p)
+{
+    int64_t *a = (int64_t *)(intptr_t)p;
+    int64_t fn = a[0];
+    int64_t x0 = a[1];
+    int64_t x1 = a[2];
+    int64_t x2 = a[3];
+    free(a);
+    return ((int64_t (*)(int64_t, int64_t, int64_t))(intptr_t)fn)(x0, x1, x2);
+}
+
+static int64_t vela_impl_disp4(int64_t p)
+{
+    int64_t *a = (int64_t *)(intptr_t)p;
+    int64_t fn = a[0];
+    int64_t x0 = a[1];
+    int64_t x1 = a[2];
+    int64_t x2 = a[3];
+    int64_t x3 = a[4];
+    free(a);
+    return ((int64_t (*)(int64_t, int64_t, int64_t, int64_t))(intptr_t)fn)(x0, x1, x2, x3);
+}
+
 static int64_t vela_impl_future_start(int64_t fn, int64_t arg)
 {
     vela_future_rec *f;
@@ -1329,6 +1462,16 @@ static int64_t vela_future_start(int64_t fn, int64_t arg)
     return vela_impl_future_start(fn, arg);
 }
 static int64_t vela_future_wait(int64_t rec) { return vela_impl_future_wait(rec); }
+static int64_t vela_args_new(int64_t n)
+{
+    return (int64_t)(intptr_t)vela_impl_args_new(n);
+}
+static void vela_args_free(int64_t p) { vela_impl_args_free(p); }
+static int64_t vela_disp0(int64_t p) { return vela_impl_disp0(p); }
+static int64_t vela_disp1(int64_t p) { return vela_impl_disp1(p); }
+static int64_t vela_disp2(int64_t p) { return vela_impl_disp2(p); }
+static int64_t vela_disp3(int64_t p) { return vela_impl_disp3(p); }
+static int64_t vela_disp4(int64_t p) { return vela_impl_disp4(p); }
 #endif /* VELA_NO_THREAD_WRAPPERS */
 
 #endif /* VELA_RUNTIME_H */

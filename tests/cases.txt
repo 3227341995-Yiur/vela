@@ -646,7 +646,7 @@ native-c  async_library                      lib/async_app.vel
 # refuses both by name.
 native    async_await                          tests/build/async_await.vel
 native-c  async_await                          tests/build/async_await.vel
-refuse    async_two_params                    tests/build/check_cases/async_two_params.vel
+refuse    async_non_int_param                 tests/build/check_cases/async_two_params.vel
 # Futures and a pool: four futures whose answers are read in the order they were
 # started, and 16 tasks on 4 threads whose per-index slots make the result order
 # independent of which worker ran what.  `native` for the same reason the thread rows

@@ -3705,16 +3705,19 @@ def ck_function(nd: Array[int, 1310720], ty: Array[int, 262144],
                     "an `async def` answers an `int` in this slice: its value comes back through the runtime's trampoline")
             return
         }
-        if ft_get(mem, f, FT_NPARAM()) != 1 {
-            ck_type(path, nd_line(nd, d),
-                    "an `async def` takes exactly one `int` parameter in this slice (that is what the runtime's trampoline carries)")
-            return
-        }
-        pk0: int = param_packed(nd, ty, mem, vm, ft_get(mem, f, FT_PARAM()))
-        if unpack_kind(pk0) != K_INT() {
-            ck_type(path, nd_line(nd, d),
-                    "an `async def`'s parameter is an `int` in this slice")
-            return
+        # Any number of `int` parameters: the call site packs them into one heap record
+        # (`vela_args1`..`vela_args4`) and the wrapper the back end generates unpacks
+        # them, so the runtime's one-word trampoline is no longer a limit on the count.
+        # A parameter of another type would have to be packed as well -- that is the
+        # next slice, and it is refused here by name rather than half-packed.
+        mut pp: int = ft_get(mem, f, FT_PARAM())
+        while pp > 0 {
+            if unpack_kind(param_packed(nd, ty, mem, vm, pp)) != K_INT() {
+                ck_type(path, nd_line(nd, d),
+                        "an `async def`'s parameters are `int`s in this slice: every argument is one word in the runtime's record")
+                return
+            }
+            pp = nd_nx(nd, pp)
         }
     }
     if ck_is_array_ck(retp) {

@@ -901,15 +901,27 @@ def emit_call(nd: Array[int, 1310720], ty: Array[int, 262144],
     sv: int = nt_get(mem, callee, NT_VAL())
     if sk == SYM_FUNC() {
         if is_async_fn(nd, mem, sv) {
-            # A call to an `async def` starts a thread and answers a future, so the shape
-            # is not `f(args)` but `vela_future_start(address, arg)` -- the function's
-            # address plus the one `int` the runtime's trampoline carries.  The checker
-            # requires exactly that signature, so nothing here has to guess.
-            emit_str("vela_future_start((int64_t)(uintptr_t)")
+            # A call to an `async def` starts a thread and answers a future.  The thread
+            # entry is the runtime's `vela_dispN` -- one per arity, which casts the
+            # address back and calls it -- and the argument record is one runtime call
+            # (`vela_argsN(fn, args...)`), so this stays an expression even for several
+            # parameters.  Word 0 of the record is the callee's own address.
+            nargs: int = ft_get(mem, sv, FT_NPARAM())
+            if nargs > 4 {
+                trap(path, nd_line(nd, e),
+                     "an `async def` takes at most four `int` parameters in this slice (the runtime carries `vela_disp0`..`vela_disp4`)")
+            }
+            emit_str("vela_future_start((int64_t)(uintptr_t)vela_disp")
+            emit_int(nargs)
+            emit_str(", vela_args")
+            emit_int(nargs)
+            emit_str("((int64_t)(uintptr_t)")
             emit_fn_name(nd, mem, sv)
-            emit_str(", ")
+            if nargs > 0 {
+                emit_str(", ")
+            }
             emit_args(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
-            emit_str(")")
+            emit_str("))")
             return pack_kind(K_FUTURE(), ft_get(mem, sv, FT_RETTY()))
         }
         emit_fn_name(nd, mem, sv)

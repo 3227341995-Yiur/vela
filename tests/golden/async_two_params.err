@@ -1,2 +1,2 @@
-vela: type error: an `async def` takes exactly one `int` parameter in this slice (that is what the runtime's trampoline carries)
+vela: type error: an `async def`'s parameters are `int`s in this slice: every argument is one word in the runtime's record
   at tests/build/check_cases/async_two_params.vel:5
