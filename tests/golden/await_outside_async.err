@@ -1,0 +1,2 @@
+vela: syntax error: `await` is only allowed inside the body of an `async def`: there is no thread to join here
+  at line 6

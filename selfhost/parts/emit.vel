@@ -2966,6 +2966,12 @@ def emit_program(nd: Array[int, 1310720], ty: Array[int, 262144],
     emit_str("int main(int argc, char **argv) {\n")
     emit_str("    vela_set_args(argc, argv);\n")
     emit_str("    vela_runtime_init();\n")
-    emit_str("    vl_main();\n")
+    # `async def main() -> None`: the entry point starts its thread and blocks on the
+    # future, because a C `main` cannot be asynchronous and something has to wait.
+    if is_async_fn(nd, mem, find_main(mem, vm, nd)) {
+        emit_str("    (void)vela_future_wait(vela_future_start((int64_t)(uintptr_t)vela_disp0, vela_args0((int64_t)(uintptr_t)vl_main)));\n")
+    } else {
+        emit_str("    vl_main();\n")
+    }
     emit_str("    return 0;\n}\n")
 }

@@ -868,8 +868,12 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
     if at_name(tk, cx) {
         if name_eq(src, tk_off(tk, cx.ti), tk_len(tk, cx.ti), "async") {
             if tk_kind(tk, cx.ti + 1) == 1 and tk_ival(tk, cx.ti + 1) == 1 {
+                # the body is parsed with this set, so `await` can be confined to it
+                mut saveda: int = cx.inasync
+                cx.inasync = 1
                 cx.ti += 1
                 ad: int = parse_funcdef(src, tk, tkf, nd, ty, flt, cx, 0)
+                cx.inasync = saveda
                 if ad > 0 {
                     nd[ad * 10 + 6] = nd[ad * 10 + 6] | 16
                 }
@@ -1920,6 +1924,13 @@ def parse_unary(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
     if at_name(tk, cx) {
         w: str = tok_text(src, tk, cx)
         if w == "await" and not at_op2(tk, cx, 1, 13) {
+            # `await` belongs to the body of an `async def` and nowhere else: outside
+            # one there is no thread to join, so the spelling is refused here rather
+            # than accepted and mis-meant.
+            if cx.inasync == 0 {
+                perr(cx, "`await` is only allowed inside the body of an `async def`: there is no thread to join here", ti_line(tk, cx))
+                return -1
+            }
             line: int = ti_line(tk, cx)
             cx.ti += 1
             operand: int = parse_unary(src, tk, tkf, nd, ty, flt, cx)

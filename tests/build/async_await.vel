@@ -50,7 +50,7 @@ async def times(x: int) -> int {
     return x * 10
 }
 
-def main() -> None {
+async def main() -> None {
     h: int = sum_to(5)
     print(await h)
     print(await sum_to(4))

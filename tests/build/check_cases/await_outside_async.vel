@@ -1,0 +1,7 @@
+# `await` belongs to the body of an `async def` and nowhere else: outside one there is
+# no thread to join, so the spelling can never mean anything.  This is a *syntax* rule,
+# refused by the parser with the line it stands on, not a checker verdict -- no types
+# make `await` legal in a synchronous body.
+def main() -> None {
+    print(await 1)
+}

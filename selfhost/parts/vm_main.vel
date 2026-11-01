@@ -1830,7 +1830,7 @@ def main() -> None {
     mut nd: Array[int, 1310720]
     mut ty: Array[int, 262144]
     mut flt: Array[float, 262144]
-    mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0)
+    mut cx: Ctx = Ctx(0, 1, 0, 0, 0, 0, 0, 0, 0, 0, -1, -1, 0, 0, 0, 0)
     # the arena is allocated here rather than inside each mode, because the
     # loader's tables live in it (vm_state.vel MEM_SRCS/MEM_LDECL/MEM_LSTK) and
     # the stages that print locations read them from there

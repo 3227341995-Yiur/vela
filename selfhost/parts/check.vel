@@ -3700,9 +3700,11 @@ def ck_function(nd: Array[int, 1310720], ty: Array[int, 262144],
         # `int`.  Anything else is refused here, by name, rather than compiled into a
         # call with the wrong ABI -- which is the one failure a thread would turn from a
         # wrong answer into a crash somewhere else.
-        if unpack_kind(retp) != K_INT() {
+        # `None` is allowed too: `async def main() -> None` is how a program starts its
+        # asynchronous work, and the entry point blocks on that future.
+        if unpack_kind(retp) != K_INT() and unpack_kind(retp) != K_NONE() {
             ck_type(path, nd_line(nd, d),
-                    "an `async def` answers an `int` in this slice: its value comes back through the runtime's trampoline")
+                    "an `async def` answers an `int` (or `None`) in this slice: its value comes back through the runtime's trampoline")
             return
         }
         # Any number of `int` parameters: the call site packs them into one heap record

@@ -6,6 +6,6 @@ async def scale(x: float) -> int {
     return 1
 }
 
-def main() -> None {
+async def main() -> None {
     print(await scale(1.5))
 }
