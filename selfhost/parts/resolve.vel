@@ -1037,14 +1037,21 @@ def walk_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
     k: int = nd_kind(nd, s)
     if k == 6 {
         tgt: int = nd[s * 10 + 1]
+        # The initialiser is resolved *in the enclosing scope*: a declaration is not
+        # in scope inside its own initialiser, so `mut y: int = y + 1` is "undeclared
+        # name y" instead of reading an uninitialised slot, and a shadowing
+        # `mut x: int = x + 1` reads the *outer* x (SPEC 6.2 says shadowing across
+        # blocks is legal, so the outer one is the only meaning it can have).
+        # Before this, the name was pushed first and both back ends compiled a read of
+        # an uninitialised slot: the interpreter panicked, LLVM and C printed garbage.
+        mut v0: int = nd[s * 10 + 2]
+        if v0 > 0 {
+            walk_expr(nd, ty, mem, path, vm, v0)
+        }
         if (nd[s * 10 + 6] & 2) == 2 {
             declare_local(nd, ty, mem, path, vm, s, tgt)
         } else {
             walk_expr(nd, ty, mem, path, vm, tgt)
-        }
-        v: int = nd[s * 10 + 2]
-        if v > 0 {
-            walk_expr(nd, ty, mem, path, vm, v)
         }
         return
     }
