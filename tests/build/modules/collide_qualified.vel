@@ -1,0 +1,20 @@
+# Two modules declare `same` and the root declares a third, so a module-qualified spelling
+# cannot say which one it means yet.  It used to answer with the root's, silently:
+#
+#     root same(5) = 4
+#     same_a.same(1) = 0      # owed 2
+#     same_b.same(1) = 0      # owed 10
+#
+# A refusal is the one answer worth trading a wrong answer for.  When the alias carries its
+# module through to the resolver, this becomes a `run` case whose golden is `2 10 4` --
+# the same numbers `same_name.vel` already prints through its non-colliding names.
+import same_a
+import same_b
+
+def same(x: int) -> int {
+    return x - 1
+}
+
+def main() -> None {
+    print(same(5), same_a.same(1), same_b.same(1))
+}

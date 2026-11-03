@@ -678,6 +678,9 @@ refuse    from_missing_module                tests/build/check_cases/from_import
 refuse    from_alias_not_yet                tests/build/check_cases/from_alias_not_yet.vel
 # `a, b = f()` is refused by name (it used to be "expected a newline ... found ,")
 refuse    unpack_not_yet                    tests/build/check_cases/unpack_not_yet.vel
+# two modules declare one name: the module-qualified spelling is refused rather than
+# answered with whichever file kept the plain name (measured: it used to answer 0)
+refuse    collide_qualified                  tests/build/modules/collide_qualified.vel
 # Futures and a pool: four futures whose answers are read in the order they were
 # started, and 16 tasks on 4 threads whose per-index slots make the result order
 # independent of which worker ran what.  `native` for the same reason the thread rows

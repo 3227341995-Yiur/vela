@@ -1502,7 +1502,8 @@ def alias_name(name: str, alias: str) -> str {
 # every file into one scope, so an unqualified `read(...)` also resolves, and two
 # modules exporting the same name still collide.  Real namespacing is mangling, and it
 # is the next step; the syntax and the call shape are this one's.
-def bind_alias(mut nd: Array[int, 1310720], alias: int,
+def bind_alias(mut nd: Array[int, 1310720], mem: Array[int, 3741696],
+               path: str, alias: int,
                from: int, to: int) -> None {
     # Descending: the outermost member of `vela.io.read` is the node created last, and
     # rewriting it first is what collapses the whole chain, leaving the inner nodes
@@ -1530,6 +1531,33 @@ def bind_alias(mut nd: Array[int, 1310720], alias: int,
                 }
             }
             if root_ok == 1 {
+                # Two modules may declare one name: the loader renames the loser to
+                # `name$<file>`, so `alias.name` is ambiguous and folding it to the plain
+                # name silently calls whichever file kept it.  That was measured:
+                # `same_a.same(1)` answered with the *root's* `same`.  Until the alias can
+                # carry its module through to the resolver, the ambiguous spelling is
+                # refused -- a wrong answer is the one outcome worth trading for a refusal.
+                mn: int = nd[n * 10 + 2]
+                mut amb: int = 0
+                mut k: int = 1
+                while k < src_count(mem) {
+                    mh: int = intern(concat(concat(interned(mn), "$"), ck_int_text(k)))
+                    if decl_owner(mem, mh) >= 0 {
+                        amb = 1
+                        k = src_count(mem)
+                    } else {
+                        k += 1
+                    }
+                }
+                if amb == 1 {
+                    mut msg: str = concat("`", interned(alias))
+                    msg = concat(msg, ".")
+                    msg = concat(msg, interned(mn))
+                    msg = concat(msg, "`: more than one module declares '")
+                    msg = concat(msg, interned(mn))
+                    msg = concat(msg, "', and the module-qualified spelling cannot say which one yet -- rename one of them, or call it unqualified")
+                    load_fail(path, nd_line(nd, n), msg)
+                }
                 nd[n * 10] = 25
                 nd[n * 10 + 1] = nd[n * 10 + 2]
                 nd[n * 10 + 2] = 0
@@ -1719,7 +1747,7 @@ def load_file(path: str, src: str, base: int, depth: int, file: int,
             # component (`io`), the way Python does.  A reference written `io.read(...)`
             # is the imported `read`, so the member node becomes a plain name here --
             # once, over this file's own nodes, before anything downstream sees them.
-            bind_alias(nd, intern(alias_name(lit, alias)), ni0, mine_end)
+            bind_alias(nd, mem, path, intern(alias_name(lit, alias)), ni0, mine_end)
         }
         s = nd[s * 10 + 7]
     }

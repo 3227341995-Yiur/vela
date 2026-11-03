@@ -1,0 +1,2 @@
+vela: type error: `same_b.same`: more than one module declares 'same', and the module-qualified spelling cannot say which one yet -- rename one of them, or call it unqualified
+  at tests/build/modules/collide_qualified.vel:19
