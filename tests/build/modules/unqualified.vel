@@ -18,4 +18,5 @@ import helper
 
 def main() -> None {
     print(twice(21))
+    print(helper.twice(10))
 }
