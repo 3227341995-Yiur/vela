@@ -1459,6 +1459,15 @@ class VelaSyntaxParser private constructor(
         val at = pos
         val t = tok()
         if (t.kind == VelaTokKind.NAME) {
+            // `async def f(...)`: `async` is a *contextual* word -- the marker only
+            // when the next token is `def`, so `async.start(...)` (a module named
+            // `async`) still parses as an ordinary name.
+            if (text(pos) == "async" && toks[pos + 1].kind == VelaTokKind.NAME &&
+                toks[pos + 1].code == VelaKw.DEF) {
+                val atAsync = pos
+                advance()
+                return parseFuncdef(atAsync, 16)
+            }
             when (t.code) {
                 VelaKw.PURE -> {
                     advance()
@@ -2536,6 +2545,19 @@ class VelaSyntaxParser private constructor(
      * the compiler refuses.
      */
     private fun parseUnary(): VelaSyntaxNode? {
+        // `await e`: a contextual prefix, like the compiler parses it -- the word is
+        // the operator only when the next token is not `.`, so `await.x` stays a
+        // member access and nothing in the language reserves the name.  It is a
+        // UNARY node with op -1, which is how the dumper tells it from `-`/`+`/`~`.
+        if (atName() && text(pos) == "await" && !atOp2(1, VelaOps.DOT)) {
+            val atAwait = pos
+            advance()
+            val operand = parseUnary() ?: return null
+            val n = VelaSyntaxNode(VelaNodeKind.UNARY, atAwait, operand.endTok)
+            n.op = -1
+            n.add(operand)
+            return n
+        }
         if (recovering) return null
         if (atOp(VelaOps.MINUS) || atOp(VelaOps.PLUS) || atOp(VelaOps.TILDE)) {
             val op = tok().code

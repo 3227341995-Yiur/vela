@@ -1,0 +1,7 @@
+sync double(21) = 42
+await work(5) = 15
+await work(4) = 10
+await add3(1, 2, 3) = 6
+held at once = 6 60
+pair span = 7
+parallel sum = 63

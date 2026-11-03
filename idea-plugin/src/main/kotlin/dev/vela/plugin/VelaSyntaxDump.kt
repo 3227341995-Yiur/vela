@@ -164,6 +164,9 @@ object VelaSyntaxDump {
             VelaNodeKind.DEF -> {
                 indent(sb, depth)
                 sb.append("def name=").append(n.name)
+                // `async=1` only for an `async def`, which is what makes the dump of
+                // every other file byte-identical to what it was.
+                if (n.flags and 16 != 0) sb.append(" async=1")
                 sb.append(" pure=").append(flag(n.flags, 4))
                 sb.append(" ret=").append(n.retType.ifEmpty { "-" })
                 sb.append('\n')
@@ -439,6 +442,14 @@ object VelaSyntaxDump {
             }
 
             VelaNodeKind.UNARY -> {
+                // op -1 is `await`: a prefix that names a *future*, not an arithmetic
+                // operator, so it is spelled the way the compiler`s dumper spells it.
+                if (n.op == -1) {
+                    indent(sb, depth)
+                    sb.append("await").append('\n')
+                    for (c in n.children) dumpNode(sb, tree, c, depth + 1)
+                    return
+                }
                 indent(sb, depth)
                 sb.append("unary op=").append(velaUnaryOpName(n.op)).append('\n')
                 for (c in n.children) dumpNode(sb, tree, c, depth + 1)

@@ -1,0 +1,71 @@
+# async.vel — `async def`, `await`, and the threads they stand on.
+#
+# This is the second runnable demo (`tour.vel` is the first): each block below is one
+# construct, and `expected\async.txt` is the exact stdout it must print.
+#
+#   * `async def` declares a function that runs on its own thread; calling it answers a
+#     *future* (an `int` handle), and `await` is the only way to its value
+#   * `await` is legal only inside an `async def` body, which is why `main` is async here
+#     -- the entry point starts it and waits for it
+#   * several parameters cross into the thread through one argument record, so
+#     `add3(1, 2, 3)` is as ordinary as `work(7)`
+#   * `parallel for` is the other kind of concurrency in this language: a loop whose
+#     iterations are proved independent, rather than a thread per call
+#
+# `mut` locals are written back; a plain `def` stays synchronous and is called with no
+# keyword at all.
+struct Pair {
+    lo: int
+    hi: int
+
+    def span(self: Pair) -> int {
+        return self.hi - self.lo
+    }
+}
+
+def double(x: int) -> int {
+    return x * 2
+}
+
+async def work(x: int) -> int {
+    mut s: int = 0
+    mut i: int = 1
+    while i <= x {
+        s += i
+        i += 1
+    }
+    return s
+}
+
+async def add3(a: int, b: int, c: int) -> int {
+    return a + b + c
+}
+
+async def main() -> None {
+    print("sync double(21) =", double(21))
+
+    h: int = work(5)
+    print("await work(5) =", await h)
+    print("await work(4) =", await work(4))
+    print("await add3(1, 2, 3) =", await add3(1, 2, 3))
+
+    # two futures held at the same time, awaited in the same order they were started
+    mut h1: int = work(3)
+    mut h2: int = add3(10, 20, 30)
+    print("held at once =", await h1, await h2)
+
+    mut p: Pair = Pair(3, 10)
+    print("pair span =", p.span())
+
+    mut n: int = 6
+    mut a: Array[int, 6] = [1, 2, 3, 4, 5, 6]
+    mut out: Array[int, 6] = [0, 0, 0, 0, 0, 0]
+    parallel for i in range(0, n) {
+        out[i] = a[i] * 3
+    }
+    mut sum: int = 0
+    for i in range(0, n) {
+        sum += out[i]
+    }
+    print("parallel sum =", sum)
+}

@@ -19,11 +19,13 @@ checkout" below.  It has nothing to do with `vela\tests\` and depends on nothing
 |---|---|
 | `hello.vel` | the smallest legal program, printing three lines.  Used to confirm that "it runs from inside IDEA" |
 | `tour.vel` | the file that demonstrates the editing features: a struct + methods, functions with parameters, a function calling a function, one `mut` local, and one legal `parallel for` |
+| `async.vel` | the second runnable demo, and the one to read after `tour.vel`: `async def` + `await` (a thread per call, a future as the handle), several parameters crossing into the thread, a plain `def` called synchronously beside them, and one `parallel for` for contrast.  It needs `build-c`: the LLVM back end refuses `parallel for` by design |
 | `broken.vel` | **deliberately wrong**: an intentional type error, which the plugin draws as a diagnostic in the editor |
 | `modules.vel` | a program out of **two files**: `import "geometry.vel"` (`MODULES_PLAN.md` step 2).  The compiler's `check` and `run` take it; `build` still refuses a multi-file program by name (D8), so this one is run through the interpreter |
 | `geometry.vel` | the module `modules.vel` imports: `area` and `perimeter`, and no `main` — `main` belongs to the file you run (D5) |
 | `expected\hello.txt` | the exact stdout `hello.vel` must print (the real machine's own output, byte for byte) |
 | `expected\tour.txt` | the exact stdout `tour.vel` must print (likewise) |
+| `expected\async.txt` | the exact stdout `async.vel` must print (likewise) |
 | `expected\modules.txt` | the exact stdout `modules.vel` must print (likewise, measured with `vm.exe run`) |
 | `README.md` | this file |
 

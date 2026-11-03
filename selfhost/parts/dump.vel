@@ -211,10 +211,24 @@ def d_node(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
         d_body(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
         return
     }
+    if k == 44 {
+        # the prefix `await`: one arm, so the dumper names it instead of printing
+        # `unknown-node-44` for a construct the parser produces on purpose.
+        d_indent(depth)
+        emit_str("await")
+        emit_nl()
+        d_node(src, nd, ty, flt, nd[n * 10 + 1], depth + 1)
+        return
+    }
     if k == 2 {
         d_indent(depth)
         emit_str("def name=")
         d_name(nd, n)
+        # `async=1` only for an `async def`, so a program without one dumps exactly
+        # the text it always did (the digests of every other file stay put).
+        if (nd[n * 10 + 6] & 16) == 16 {
+            emit_str(" async=1")
+        }
         emit_str(" pure=")
         d_flag(nd, n, 4)
         emit_str(" ret=")

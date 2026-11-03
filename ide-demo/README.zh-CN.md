@@ -4,8 +4,8 @@
 
 <!--
 源文件 : README.md
-源文件字节 : 18587
-源文件 SHA256 : a11966dc498abdeabf1691240b308dfee027d5fca46b02569456acbe1bf72768
+源文件字节 : 19392
+源文件 SHA256 : 2f053f63d069c049b8aa7e3ec5bc6bf7369f2ef19ee43c1a2528ea6bb286cd4f
 翻译日期 : 2026-10-30
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -30,11 +30,13 @@ A small, real project for trying the Vela plugin in IntelliJ IDEA. 每个文件�
 |---|---|
 | `hello.vel` | 最小的合法程序，打印三行。用来确认"从 IDEA 里能跑起来"。 |
 | `tour.vel` | 演示编辑功能的文件：struct + 方法、带参数的函数、函数调用函数、一个 `mut` 局部变量、一个合法的 `parallel for`。 |
+| `async.vel` | 第二个可运行演示，也是读完 `tour.vel` 该读的文件：`async def` + `await`（每次调用一个线程、句柄是 future）、多个参数跨进线程、旁边一个同步调用的普通 `def`，以及一个作对比的 `parallel for`。它要用 `build-c`：LLVM 后端按设计拒绝 `parallel for` |
 | `broken.vel` | **故意写错**的一个文件：故意的类型错误，插件会在编辑器里画出诊断。 |
 | `modules.vel` | 一个**两文件**的程序：`import "geometry.vel"`（`MODULES_PLAN.md` 第 2 步）。编译器的 `check` 与 `run` 接受它；`build` 仍按名字拒绝多文件程序（D8），所以这一个用解释器跑。 |
 | `geometry.vel` | `modules.vel` 导入的那个模块：`area` 与 `perimeter`，没有 `main`——`main` 属于你运行的那个文件（D5）。 |
 | `expected\hello.txt` | `hello.vel` 必须打印的确切 stdout（就是真机输出本身，逐字节）。 |
 | `expected\tour.txt` | `tour.vel` 必须打印的确切 stdout（同上）。 |
+| `expected\async.txt` | `async.vel` 必须打印的确切 stdout（同上） |
 | `expected\modules.txt` | `modules.vel` 必须打印的确切 stdout（同上，用 `vm.exe run` 实测）。 |
 | `README.md` | 本文件。 |
 
