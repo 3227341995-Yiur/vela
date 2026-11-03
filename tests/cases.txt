@@ -654,6 +654,10 @@ run-c     struct_not_a_class                  tests/build/struct_not_a_class.vel
 # parameter and the inner meaning wins -- the three answers the checker used to
 # give to that one question are now one answer
 run       loop_shadows_local                   tests/build/loop_shadows_local.vel
+# `mut` guards writes to a binding, not passing it on: a non-mut binding may go to a
+# `mut` parameter and the callee may write through it.  Stated as a decision, not an
+# oversight -- the compiler itself relies on it (see the case header).
+run-c     mut_parameter_needs_no_mut_argument  tests/build/mut_parameter_needs_no_mut_argument.vel
 refuse    async_non_int_param                 tests/build/check_cases/async_two_params.vel
 refuse    await_outside_async                 tests/build/check_cases/await_outside_async.vel
 refuse    mut_self_needs_mut                  tests/build/check_cases/mut_self_needs_mut.vel

@@ -1,0 +1,35 @@
+# `mut` guards *writes to a binding*, not *passing it on*: a binding that is not `mut`
+# may be handed to a `mut` parameter, and the callee may write through it.  This case
+# pins that, because it is the one place where `mut` looks like it leaks -- and the
+# decision is deliberate, not an oversight:
+#
+#   `mut` is not a borrow checker.  It answers "may this function write to *this name*",
+#   and the callee's `mut` parameter is where the permission to write lives.  A language
+#   with no borrow checker cannot also police who passes what without a great deal more
+#   machinery, and the compiler itself relies on the rule: nearly every function in
+#   `selfhost/parts` takes `mut mem: Array[int, 3741696]` and passes it to the next one,
+#   many of which declare it without `mut`.  Refusing that would refuse the compiler.
+#
+# What `mut` does still guarantee, and `tests/build/check_cases/immutable_array_element.vel`
+# pins it: *this* function cannot write through a binding it did not declare `mut`.  So a
+# caller that wants its array untouched must not hand it to a `mut` parameter -- the
+# compiler will not decide that for it.
+#
+# Expected stdout, byte for byte:
+#     before: 0
+#     after fill: 42
+def fill(mut a: Array[int, 4], v: int) -> None {
+    a[0] = v
+}
+
+def peek(a: Array[int, 4]) -> int {
+    # a non-`mut` parameter cannot write: the same rule, seen from the callee's side
+    return a[0]
+}
+
+def main() -> None {
+    a: Array[int, 4] = [0, 0, 0, 0]
+    print("before:", peek(a))
+    fill(a, 42)
+    print("after fill:", peek(a))
+}
