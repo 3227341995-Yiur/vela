@@ -1,0 +1,2 @@
+vela: type error: no module named 'geometry': looked for 'geometry.vel' beside 'tests/build/check_cases/from_import_not_yet.vel' and under 'lib/' beside the program
+  at tests/build/check_cases/from_import_not_yet.vel:13

@@ -1,0 +1,4 @@
+# A module imported with `from`: no `main`, just declarations.
+def area(w: int) -> int {
+    return w * w
+}

@@ -585,6 +585,9 @@ run-c     module_two_files                   tests/build/modules/two_files.vel
 # `import helper` then `twice(21)`: unqualified access to an imported name, which the
 # merge already provides -- pinned so it cannot regress while `from` is being added
 run-c     module_unqualified                 tests/build/modules/unqualified.vel
+# `from geometry import area` parses and binds the module as `import geometry` does,
+# so an unqualified `area(...)` works; `run-c` makes both back ends prove it
+run-c     module_from_import                 tests/build/modules/from_import.vel
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is
 # the case the loader got wrong until the shift below `load_file` was narrowed to the
@@ -667,7 +670,7 @@ refuse    mut_self_needs_mut                  tests/build/check_cases/mut_self_n
 # `from x import y` is not implemented, and the refusal now names a spelling that
 # works today (`import x` + unqualified call) instead of a path form that was
 # removed -- the old text told the reader to write something that also fails
-refuse    from_import_not_yet               tests/build/check_cases/from_import_not_yet.vel
+refuse    from_missing_module                tests/build/check_cases/from_import_not_yet.vel
 # Futures and a pool: four futures whose answers are read in the order they were
 # started, and 16 tasks on 4 threads whose per-index slots make the result order
 # independent of which worker ran what.  `native` for the same reason the thread rows

@@ -840,20 +840,83 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
     if at_kw(tk, cx, 26) {
         return parse_import(src, tk, nd, cx, line, top)
     }
-    # The corpus's other spelling, `from mathlib import add`.  Its own step is 6; what this arm
-    # owes today is a refusal that names the shape instead of the token after it, which is what
-    # `tests/accept/modules/module_import_from.vel` and `module_import_missing.vel` record.
+    # The corpus's other spelling, `from mathlib import add`.
+    #
+    # It desugars to the `import` this front end already has: the module is bound exactly
+    # as `import mathlib` binds it, and the names after `import` are checked only for
+    # shape.  That is enough for the spelling to *work* -- the loader merges every
+    # imported declaration into one namespace, so `add(...)` is reachable unqualified --
+    # and it is deliberately not more than that: an alias (`add as plus`) does not yet
+    # rebind, and a name two modules both declare still resolves to whichever file kept
+    # the plain name.  Both limits are pinned by cases rather than left to be discovered.
     if at_from_import_shape(src, tk, cx, top) {
-        nm: str = tok_text_at(src, tk, cx, 1)
-        mut fmsg: str = concat("`from ", nm)
-        fmsg = concat(fmsg, " import x` is not implemented yet: write `import ")
-        fmsg = concat(fmsg, nm)
-        fmsg = concat(fmsg, "` and call the name unqualified (`x(...)`), which the merge")
-        fmsg = concat(fmsg, " already makes reachable, or `")
-        fmsg = concat(fmsg, nm)
-        fmsg = concat(fmsg, ".x(...)` for the module-qualified spelling")
-        perr_kind(cx, "syntax error", fmsg, line)
-        return -1
+        if top != 1 {
+            perr(cx,
+                 "`from ... import ...` declares what the file uses, so it belongs at the top level",
+                 line)
+            return -1
+        }
+        cx.ti += 1
+        if not at_name(tk, cx) {
+            perr(cx, "expected a module name after `from`: write `from geometry import area`",
+                 line)
+            return -1
+        }
+        off: int = tk_off(tk, cx.ti)
+        mut end: int = off + tk_len(tk, cx.ti)
+        cx.ti += 1
+        while at_op(tk, cx, 13) {
+            cx.ti += 1
+            if not at_name(tk, cx) {
+                perr(cx, "expected a module name after '.' in this `from`", line)
+                return -1
+            }
+            end = tk_off(tk, cx.ti) + tk_len(tk, cx.ti)
+            cx.ti += 1
+        }
+        if not at_kw(tk, cx, 26) {
+            perr(cx, "expected `import` after the module name: write `from geometry import area`",
+                 line)
+            return -1
+        }
+        cx.ti += 1
+        if not at_name(tk, cx) {
+            perr(cx, "`from ... import` needs a name to import: write `from geometry import area`",
+                 line)
+            return -1
+        }
+        # the name list, checked for shape only: `a`, `b as c`, `a, b`
+        mut more: int = 1
+        while more == 1 {
+            cx.ti += 1
+            if at_name(tk, cx) {
+                if tok_text(src, tk, cx) == "as" {
+                    cx.ti += 1
+                    if not at_name(tk, cx) {
+                        perr(cx, "expected a name after `as` in this `from` import", line)
+                        return -1
+                    }
+                    cx.ti += 1
+                }
+            }
+            if at_op(tk, cx, 11) {
+                cx.ti += 1
+                if not at_name(tk, cx) {
+                    perr(cx, "expected a name after ',' in this `from` import", line)
+                    return -1
+                }
+            } else {
+                more = 0
+            }
+        }
+        n: int = new_node(nd, cx, 40, line)
+        nd[n * 10 + 1] = off
+        nd[n * 10 + 2] = end - off
+        nd[n * 10 + 3] = 0
+        nd[n * 10 + 4] = 0
+        nd[n * 10 + 6] = 0
+        nd[n * 10 + 8] = 0
+        return n
     }
     if at_kw(tk, cx, 20) {
         cx.ti += 1

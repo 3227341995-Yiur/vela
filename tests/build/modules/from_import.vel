@@ -1,0 +1,14 @@
+# `from geometry import area` -- the spelling now parses and binds the module exactly as
+# `import geometry` does, so `area` is reachable unqualified.
+#
+# What this does NOT do yet, and what the cases around it pin: an alias (`area as a`) is
+# accepted but does not rebind, and a name that two modules both declare still resolves to
+# whichever file kept the plain name.  See `same_name.vel` for the colliding half.
+#
+# Expected stdout, byte for byte:
+#     9
+from geometry import area
+
+def main() -> None {
+    print(area(3))
+}
