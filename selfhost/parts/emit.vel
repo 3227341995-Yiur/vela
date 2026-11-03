@@ -2032,8 +2032,10 @@ def emit_for(nd: Array[int, 1310720], ty: Array[int, 262144],
         emit_for_cond(nd, s)
         emit_str("; ")
         emit_for_incr(nd, path, s, line)
-        emit_str(") {\n")
+        emit_str(") {\n{\n")
         emit_body(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 8], indent + 2)
+        emit_indent(indent + 2)
+        emit_str("}\n")
         emit_indent(indent + 1)
         emit_str("}\n")
         emit_indent(indent)
@@ -2042,8 +2044,12 @@ def emit_for(nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     emit_str("while (")
     emit_for_cond(nd, s)
-    emit_str(") {\n")
+    # the body is a block of its own, so a declaration in it may shadow the loop
+    # variable: the increment below must keep writing the *outer* one
+    emit_str(") {\n{\n")
     emit_body(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 8], indent + 2)
+    emit_indent(indent + 2)
+    emit_str("}\n")
     emit_indent(indent + 2)
     emit_for_incr(nd, path, s, line)
     emit_str(";\n")
@@ -2923,9 +2929,13 @@ def emit_function(nd: Array[int, 1310720], ty: Array[int, 262144],
     emit_fn_name(nd, mem, f)
     emit_str("(")
     emit_params(nd, ty, mem, vm, path, f, True, False)
-    emit_str(") {\n")
+    # The body gets a block of its own: C forbids a local that shadows a parameter
+    # (`error C2082: redefinition of parameter`), and Vela allows the shadow, so the
+    # extra `{ }` is what lets the two agree.  Without it a program the checker
+    # accepts does not compile at all.
+    emit_str(") {\n{\n")
     emit_body(nd, ty, flt, src, path, mem, vm, ft_get(mem, f, FT_BODY()), 1)
-    emit_str("}\n\n")
+    emit_str("}\n}\n\n")
 }
 
 # The banner is printed into every program's C, so it says what this back end
