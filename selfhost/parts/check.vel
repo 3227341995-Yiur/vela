@@ -3482,7 +3482,16 @@ def ck_stmt(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         ck_expr(nd, mem, path, vm, nd[s * 10 + 3])
         ck_expr(nd, mem, path, vm, nd[s * 10 + 4])
         name: int = nd[s * 10 + 1]
-        if ck_seen(mem, vm, name, mark) {
+        # The loop variable lives in a scope of its own, so it may shadow an outer
+        # local and a parameter alike -- `SPEC.md` 6.2 says shadowing across blocks is
+        # legal, and a loop header is a block.  Before this, the check compared against
+        # the *enclosing* block's mark, so `for i` over a same-block `i` was refused
+        # while `for i` over a parameter `i` was allowed, and a `mut i` in the body was
+        # allowed as well: one question, three answers.  Comparing against the mark
+        # taken just before the push makes all three the same answer -- legal, with the
+        # inner meaning winning, which is what shadowing already means everywhere else.
+        mut lmark: int = vm.scn
+        if ck_seen(mem, vm, name, lmark) {
             ck_type(path, nd_line(nd, s),
                     ck_quoted("'", name,
                               "' is already declared in this scope"))

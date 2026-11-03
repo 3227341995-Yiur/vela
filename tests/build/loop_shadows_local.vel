@@ -1,0 +1,24 @@
+# The `for` variable lives in a scope of its own, so it shadows like any other block
+# binding: `SPEC.md` 6.2 says shadowing across blocks is legal, and a loop header is a
+# block.  This case pins that, because the checker used to answer the same question three
+# different ways:
+#
+#   `for i` over a same-block local `i`   -> REFUSED  ("'i' is already declared")
+#   `for i` over a parameter `i`          -> allowed
+#   `mut i: int = 5` inside the body      -> allowed
+#
+# All three are the same question, so all three now get the same answer: legal, and the
+# inner binding wins inside its own block.  The last two lines are the whole claim --
+# the loop sees 0 and 1, and the outer `i` is untouched at 9 afterwards.
+#
+# Expected stdout, byte for byte:
+#     loop: 0
+#     loop: 1
+#     after: 9
+def main() -> None {
+    mut i: int = 9
+    for i in range(0, 2) {
+        print("loop:", i)
+    }
+    print("after:", i)
+}

@@ -650,6 +650,10 @@ native-c  async_await                          tests/build/async_await.vel
 # semantics, `mut self` methods with a checked receiver, and the array-handle idiom
 # for shared state.  `run-c` so the C back end has to agree with the other two.
 run-c     struct_not_a_class                  tests/build/struct_not_a_class.vel
+# the `for` variable is a block binding, so it shadows a same-block local or a
+# parameter and the inner meaning wins -- the three answers the checker used to
+# give to that one question are now one answer
+run       loop_shadows_local                   tests/build/loop_shadows_local.vel
 refuse    async_non_int_param                 tests/build/check_cases/async_two_params.vel
 refuse    await_outside_async                 tests/build/check_cases/await_outside_async.vel
 refuse    mut_self_needs_mut                  tests/build/check_cases/mut_self_needs_mut.vel
