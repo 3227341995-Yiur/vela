@@ -582,6 +582,9 @@ refuse enum_nested_pattern                   tests/build/enum_nested_pattern.vel
 # The refusals below are the four the plan owes messages for, plus the diagnostic
 # that has to name the *imported* file rather than the root's path.
 interpret module_two_files                   tests/build/modules/two_files.vel
+# `import helper` then `twice(21)`: unqualified access to an imported name, which the
+# merge already provides -- pinned so it cannot regress while `from` is being added
+interpret module_unqualified                 tests/build/modules/unqualified.vel
 interpret module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is
 # the case the loader got wrong until the shift below `load_file` was narrowed to the

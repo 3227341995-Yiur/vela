@@ -1,0 +1,21 @@
+# `import helper` and then `twice(21)` -- no `helper.` prefix needed.
+#
+# This is the half of "import ergonomics" that already works, and it is pinned here so it
+# cannot regress: the loader merges every imported file's declarations into one
+# namespace, so an imported function is reachable by its own name.  `helper.twice(21)`
+# also works (`tests/build/modules/two_files.vel` uses that spelling), so a program may
+# choose either.
+#
+# What is NOT pinned here, because it does not work yet: calling a **colliding** name
+# through its module -- `same_a.same(1)` where three files each declare `same` -- resolves
+# to the plain name, which belongs to whichever file kept it.  That is a known defect with
+# a named plan, and `tests/build/modules/same_name.vel` records the colliding case that
+# does work (each module calling its own through its own `from_a`/`from_b`).
+#
+# Expected stdout, byte for byte:
+#     42
+import helper
+
+def main() -> None {
+    print(twice(21))
+}
