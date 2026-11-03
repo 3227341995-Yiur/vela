@@ -1853,7 +1853,26 @@ def ck_store(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         return
     }
     if k == 32 {
-        ck_expr(nd, mem, path, vm, nd[tgt * 10 + 1])
+        # `b.v = 5` and `a[i] = 5` answer to one rule: `mut` belongs to the* *binding,
+        # and a binding that is not `mut` owns its contents -- a struct field is as
+        # much storage as an array element.  Before this, elements needed `mut` and
+        # fields did not, so the same object had two rules depending on how it was
+        # written to (measured: non-mut `b.v = 5` was accepted, non-mut `a[0] = 5`
+        # was refused).
+        rc0: int = nd[tgt * 10 + 1]
+        if nd_kind(nd, rc0) == 25 {
+            rname: int = nd[rc0 * 10 + 1]
+            ri: int = ck_bound(mem, vm, rname)
+            if ri >= 0 {
+                if not is_mut_binding(sc_ckind(mem, ri)) {
+                    ck_safety(path, nd_line(nd, s),
+                              ck_quoted("cannot write to a field of '",
+                                        rname,
+                                        "': it was not declared mut"))
+                }
+            }
+        }
+        ck_expr(nd, mem, path, vm, rc0)
         ck_member_write(nd, mem, path, vm, tgt)
         return
     }

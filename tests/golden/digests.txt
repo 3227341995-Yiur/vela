@@ -73,8 +73,8 @@ lex parser 486258411
 parse parser 200934963
 lex resolve 624764292
 parse resolve 473363560
-lex check 49867426
-parse check 985267073
+lex check 213714348
+parse check 890905905
 lex eval 255227462
 parse eval 697374267
 lex emit_part 596992445
@@ -83,9 +83,9 @@ lex dump 171366966
 parse dump 447796304
 lex vm_main 882167697
 parse vm_main 345316378
-lex vm 686504748
-parse vm 494059175
-emit vm 9967573
+lex vm 769100674
+parse vm 774081697
+emit vm 318562963
 lex run_tests 548121490
 parse run_tests 573314752
 emit run_tests 840151045
