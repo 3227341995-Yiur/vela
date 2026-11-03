@@ -664,6 +664,10 @@ run-c     mut_parameter_needs_no_mut_argument  tests/build/mut_parameter_needs_n
 refuse    async_non_int_param                 tests/build/check_cases/async_two_params.vel
 refuse    await_outside_async                 tests/build/check_cases/await_outside_async.vel
 refuse    mut_self_needs_mut                  tests/build/check_cases/mut_self_needs_mut.vel
+# `from x import y` is not implemented, and the refusal now names a spelling that
+# works today (`import x` + unqualified call) instead of a path form that was
+# removed -- the old text told the reader to write something that also fails
+refuse    from_import_not_yet               tests/build/check_cases/from_import_not_yet.vel
 # Futures and a pool: four futures whose answers are read in the order they were
 # started, and 16 tasks on 4 threads whose per-index slots make the result order
 # independent of which worker ran what.  `native` for the same reason the thread rows

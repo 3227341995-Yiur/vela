@@ -69,8 +69,8 @@ parse vela_lexer 478413005
 emit vela_lexer 969219808
 lex vm_state 768632433
 parse vm_state 864985065
-lex parser 486258411
-parse parser 200934963
+lex parser 139945056
+parse parser 549770734
 lex resolve 624764292
 parse resolve 473363560
 lex check 533275839
@@ -83,9 +83,9 @@ lex dump 171366966
 parse dump 447796304
 lex vm_main 882167697
 parse vm_main 345316378
-lex vm 62927210
-parse vm 16481681
-emit vm 863016064
+lex vm 1572958
+parse vm 909824400
+emit vm 295079512
 lex run_tests 548121490
 parse run_tests 573314752
 emit run_tests 840151045

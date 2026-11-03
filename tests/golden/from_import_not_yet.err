@@ -1,0 +1,2 @@
+vela: syntax error: `from geometry import x` is not implemented yet: write `import geometry` and call the name unqualified (`x(...)`), which the merge already makes reachable, or `geometry.x(...)` for the module-qualified spelling
+  at line 13

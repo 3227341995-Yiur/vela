@@ -1,0 +1,17 @@
+# `from geometry import area` is not implemented yet, and this case pins what the
+# compiler says today so the gap is recorded in the corpus rather than only in a plan.
+#
+# The refusal names the shape and where it stands: `from` and `as` are ordinary
+# identifiers, `import` is keyword 26, and the merge that makes an imported name
+# reachable unqualified already exists -- see `tests/build/modules/unqualified.vel`.  What
+# is missing is the *binding*: `from m import a` should make `a` mean m's declaration even
+# when another file declares the same spelling, which is the same question
+# `tests/build/modules/same_name.vel` answers for functions today.
+#
+# When this is implemented, this case moves from `refuse` to `run` and its golden becomes
+# the program's output -- a deliberate change, not a silent one.
+from geometry import area
+
+def main() -> None {
+    print(area(3))
+}

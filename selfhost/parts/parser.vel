@@ -846,9 +846,12 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
     if at_from_import_shape(src, tk, cx, top) {
         nm: str = tok_text_at(src, tk, cx, 1)
         mut fmsg: str = concat("`from ", nm)
-        fmsg = concat(fmsg, " import x` is MODULES_PLAN.md step 6: `from` and `as` are ordinary")
-        fmsg = concat(fmsg, " identifiers until then, so the spelling today is a path string --")
-        fmsg = concat(fmsg, " write `import <path>/<name>.vel`")
+        fmsg = concat(fmsg, " import x` is not implemented yet: write `import ")
+        fmsg = concat(fmsg, nm)
+        fmsg = concat(fmsg, "` and call the name unqualified (`x(...)`), which the merge")
+        fmsg = concat(fmsg, " already makes reachable, or `")
+        fmsg = concat(fmsg, nm)
+        fmsg = concat(fmsg, ".x(...)` for the module-qualified spelling")
         perr_kind(cx, "syntax error", fmsg, line)
         return -1
     }
