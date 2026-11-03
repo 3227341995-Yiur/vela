@@ -4,8 +4,8 @@
 
 <!--
 源文件 : README.md
-源文件字节 : 19685
-源文件 SHA256 : 4899d8841e9b525fdee4c2803c1c383deac20d10449ad9e5c47fa8752f029373
+源文件字节 : 19740
+源文件 SHA256 : 3c5a6b26546621a55f8b762b9067f9751f88feee697fc0b4e4a1e66b5bf90b18
 翻译日期 : 2026-10-30
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -32,7 +32,7 @@ A small, real project for trying the Vela plugin in IntelliJ IDEA. 每个文件�
 | `tour.vel` | 演示编辑功能的文件：struct + 方法、带参数的函数、函数调用函数、一个 `mut` 局部变量、一个合法的 `parallel for`。 |
 | `async.vel` | 第二个可运行演示，也是读完 `tour.vel` 该读的文件：`async def` + `await`（每次调用一个线程、句柄是 future）、多个参数跨进线程、旁边一个同步调用的普通 `def`，以及一个作对比的 `parallel for`。它要用 `build-c`：LLVM 后端按设计拒绝 `parallel for` |
 | `broken.vel` | **故意写错**的一个文件：故意的类型错误，插件会在编辑器里画出诊断。 |
-| `modules.vel` | 一个**两文件**的程序：`import "geometry.vel"`（`MODULES_PLAN.md` 第 2 步）。编译器的 `check` 与 `run` 接受它；`build` 仍按名字拒绝多文件程序（D8），所以这一个用解释器跑。 |
+| `modules.vel` | 一个**两文件**的程序，两种导入写法都演示：`import geometry` + `from geometry import area`，调用是裸名，另有一处 `geometry.area(...)` 限定形式。两个后端都能编它（`build` 现在是 LLVM 后端，`build-c` 是 C 后端），所以它既被编译也被运行。 |
 | `geometry.vel` | `modules.vel` 导入的那个模块：`area` 与 `perimeter`，没有 `main`——`main` 属于你运行的那个文件（D5）。 |
 | `expected\hello.txt` | `hello.vel` 必须打印的确切 stdout（就是真机输出本身，逐字节）。 |
 | `expected\tour.txt` | `tour.vel` 必须打印的确切 stdout（同上）。 |
@@ -147,7 +147,7 @@ hello from Vela
 goodbye
 ```
 
-39 字节，SHA256 `4899d8841e9b525fdee4c2803c1c383deac20d10449ad9e5c47fa8752f029373`
+39 字节，SHA256 `3c5a6b26546621a55f8b762b9067f9751f88feee697fc0b4e4a1e66b5bf90b18`
 （`expected\hello.txt` 的哈希与它完全相同）。
 解释器 `vm.exe run ide-demo\hello.vel` 打印出**同样**的 39 字节。
 
@@ -162,7 +162,7 @@ sum(out) = 72
 out[7] = 16
 ```
 
-87 字节，SHA256 `4899d8841e9b525fdee4c2803c1c383deac20d10449ad9e5c47fa8752f029373`
+87 字节，SHA256 `3c5a6b26546621a55f8b762b9067f9751f88feee697fc0b4e4a1e66b5bf90b18`
 （`expected\tour.txt` 的哈希与它完全相同）。
 
 最后两行就是那个 `parallel for` 的结果：`sum(out) = 2×(1+2+…+8) = 72`，
@@ -203,7 +203,7 @@ selfhost\build\vm.exe run   ide-demo\modules.vel
 14
 ```
 
-8 字节，SHA256 `4899d8841e9b525fdee4c2803c1c383deac20d10449ad9e5c47fa8752f029373`
+8 字节，SHA256 `3c5a6b26546621a55f8b762b9067f9751f88feee697fc0b4e4a1e66b5bf90b18`
 （`expected\modules.txt` 的哈希与它完全相同）。`3 × 4 = 12` 是 `area`，
 `2 × (3 + 4) = 14` 是 `perimeter`，两个都来自被导入的文件。
 
@@ -324,14 +324,14 @@ cd C:\Users\lu\Downloads\vela
 
 ## 这些数字是怎么来的 / How these numbers were measured
 
-* 编译器：`C:\Users\lu\Downloads\vela\selfhost\build\vm.exe`，196858 字节，
-  SHA256 `D35B330E3A72D00AFA4E84FBEB4F91A31F19685674E017FEA417D184BB990D6`。
+* 编译器：`C:\Users\lu\Downloads\vela\selfhost\build\vm.exe`，197408 字节，
+  SHA256 `D35B330E3A72D00AFA4E84FBEB4F91A31F19740674E017FEA417D184BB990D6`。
 * 所有 `build` 都在仓库根目录执行，源文件写作 `ide-demo\<名字>.vel`；
   `hello.exe`、`tour.exe` 的退出码都是 **0**，`check broken.vel` 是 **2**。
 * `expected\*.txt` 是用 shell 重定向抓下来的**原始 stdout 字节**，然后原样复制进
   `expected\`，再对比 SHA256 确认一致（不是照着屏幕重打的）。
 * 四个 `tour` 输出（解释器、默认、1 线程、8 线程）SHA256 全等，就是
-  `4899d8841e9b525fdee4c2803c1c383deac20d10449ad9e5c47fa8752f029373`。
+  `3c5a6b26546621a55f8b762b9067f9751f88feee697fc0b4e4a1e66b5bf90b18`。
 * 编译器往上找的走法（`locate()` / `runtimeDir()`）是按
   `idea-plugin\src\main\kotlin\dev\vela\plugin\VelaCompiler.kt` 里的循环原样重走
   一遍量出来的，输出见上面「为什么放在仓库里面」。
