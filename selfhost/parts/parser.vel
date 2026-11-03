@@ -1077,7 +1077,10 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
     # not know that was Vela" and "Vela says it cannot do unpacking yet, and here is what
     # to write instead".
     if at_name(tk, cx) {
-        if at_op2(tk, cx, 1, 11) {
+        # A *name* after the comma, not just any token: `a, 2` is not several names, and
+        # telling its author about unpacking would be a message about a construct they did
+        # not write.  Measured before this precision: `a, 2` got the unpacking sentence.
+        if at_op2(tk, cx, 1, 11) and tk_kind(tk, cx.ti + 2) == 1 and tk_ival(tk, cx.ti + 2) == 0 {
             perr(cx, "`a, b = f()` unpacks several names from one value, which is not implemented yet: return a struct from `f` and read its fields, or bind two names separately", line)
             return -1
         }
