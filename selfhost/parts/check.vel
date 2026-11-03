@@ -1744,12 +1744,12 @@ def ck_store_name(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         if nd_kind(nd, s) == 7 {
             ck_safety(path, nd_line(nd, s),
                       ck_quoted("cannot modify '", name,
-                                "': it was declared immutable"))
+                                "': it is read-only here (declared without `mut`, or a loop variable)"))
             return
         }
         ck_safety(path, nd_line(nd, s),
                   ck_quoted("cannot assign to '", name,
-                            "': it was declared immutable"))
+                            "': it is read-only here (declared without `mut`, or a loop variable)"))
         return
     }
     if ck_is_array_ck(ck) {

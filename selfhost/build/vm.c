@@ -8053,10 +8053,10 @@ static void vl_ck_store_name(int64_t* vl_nd, int64_t* vl_mem, vela_str vl_path, 
     int64_t vl_ck = vl_sc_ckind(vl_mem, vl_i);
     if ((!vl_is_mut_binding(vl_ck))) {
         if ((vl_nd_kind(vl_nd, vl_s) == 7LL)) {
-            (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_s), vl_ck_quoted(vela_str_lit("cannot modify '", 15), vl_name, vela_str_lit("': it was declared immutable", 28))));
+            (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_s), vl_ck_quoted(vela_str_lit("cannot modify '", 15), vl_name, vela_str_lit("': it is read-only here (declared without `mut`, or a loop variable)", 68))));
             return;
         }
-        (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_s), vl_ck_quoted(vela_str_lit("cannot assign to '", 18), vl_name, vela_str_lit("': it was declared immutable", 28))));
+        (void)(vl_ck_safety(vl_path, vl_nd_line(vl_nd, vl_s), vl_ck_quoted(vela_str_lit("cannot assign to '", 18), vl_name, vela_str_lit("': it is read-only here (declared without `mut`, or a loop variable)", 68))));
         return;
     }
     if (vl_ck_is_array_ck(vl_ck)) {

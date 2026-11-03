@@ -1,2 +1,2 @@
-vela: safety error: cannot modify 'i': it was declared immutable
+vela: safety error: cannot modify 'i': it is read-only here (declared without `mut`, or a loop variable)
   at tests/build/check_cases/mutate_loop_variable.vel:3

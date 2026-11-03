@@ -1,2 +1,2 @@
-vela: safety error: cannot modify 's': it was declared immutable
+vela: safety error: cannot modify 's': it is read-only here (declared without `mut`, or a loop variable)
   at tests/build/check_cases/string_concat_immutable.vel:3
