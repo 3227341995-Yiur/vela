@@ -1949,12 +1949,25 @@ def enter_call(nd: Array[int, 1310720], ty: Array[int, 262144],
         dbg_tr_set(mem, vm.vdepth, fn, fn, vm.line)
     }
 
+    # A struct argument that is *not* a `mut` parameter is bound by value: the compiled
+    # back ends pass such a struct by value, so a write to a field inside the callee
+    # must not be visible to the caller.  `copy_cell` copies the reference to the
+    # field cells, which made `run` answer 99 where both compiled back ends answer 1.
+    mut pk: int = ft_get(mem, fn, FT_PARAM())
     mut k: int = 0
     while k < nparam {
-        copy_cell(mem, fmem, fp + k, argbase + k)
+        if pk > 0 {
+            if mem[(argbase + k) * 4 + 0] == K_ST() and (nd[pk * 10 + 6] & 1) == 0 {
+                copy_value(mem, fmem, path, vm, fp + k, argbase + k)
+            } else {
+                copy_cell(mem, fmem, fp + k, argbase + k)
+            }
+            pk = nd_nx(nd, pk)
+        } else {
+            copy_cell(mem, fmem, fp + k, argbase + k)
+        }
         k += 1
     }
-    vm.dst = dst
     run_body(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
              ft_get(mem, fn, FT_BODY()))
 
