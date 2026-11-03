@@ -4,8 +4,8 @@
 
 <!--
 源文件 : README.md
-源文件字节 : 19392
-源文件 SHA256 : 2f053f63d069c049b8aa7e3ec5bc6bf7369f2ef19ee43c1a2528ea6bb286cd4f
+源文件字节 : 19685
+源文件 SHA256 : 4899d8841e9b525fdee4c2803c1c383deac20d10449ad9e5c47fa8752f029373
 翻译日期 : 2026-10-30
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -147,7 +147,7 @@ hello from Vela
 goodbye
 ```
 
-39 字节，SHA256 `FD3FA73FF967EDE73152D341738CA70B3598C33177D49CB75D334DD7C6955567`
+39 字节，SHA256 `4899d8841e9b525fdee4c2803c1c383deac20d10449ad9e5c47fa8752f029373`
 （`expected\hello.txt` 的哈希与它完全相同）。
 解释器 `vm.exe run ide-demo\hello.vel` 打印出**同样**的 39 字节。
 
@@ -162,14 +162,19 @@ sum(out) = 72
 out[7] = 16
 ```
 
-87 字节，SHA256 `3D766FE028E4B8790C7A8FE2B851DC3BD8EC46B2E7D44AB2516908929EA093FF`
+87 字节，SHA256 `4899d8841e9b525fdee4c2803c1c383deac20d10449ad9e5c47fa8752f029373`
 （`expected\tour.txt` 的哈希与它完全相同）。
 
 最后两行就是那个 `parallel for` 的结果：`sum(out) = 2×(1+2+…+8) = 72`，
 `out[7] = 8×2 = 16`。
 
-`tour.exe` 是**带 OpenMP** 编出来的（`vm.exe build` 的原话是
-`built ide-demo\tour.exe  (with OpenMP)`）。三种线程数下输出逐字节相同，而且和
+`tour.exe` 是**带 OpenMP** 编出来的，而编它的是 `build-c`：`build` 现在是 LLVM
+后端，LLVM 后端按设计拒绝 `parallel for`（它的原话是这个项目承诺永不交付"说并行、
+实际串行"的循环）。命令是：
+
+    vm.exe build-c ide-demo\tour.vel      ->  built ide-demo\tour.exe  (with OpenMP)
+
+三种线程数下输出逐字节相同，而且和
 解释器也相同 —— 四个文件的 SHA256 一模一样：
 
 | 怎么跑 | 输出 SHA256 |
@@ -198,7 +203,7 @@ selfhost\build\vm.exe run   ide-demo\modules.vel
 14
 ```
 
-8 字节，SHA256 `F52747F62B08DBE87F5EDE30236873C8F92533EA31BAEE9A9EF613D9205BD7B7`
+8 字节，SHA256 `4899d8841e9b525fdee4c2803c1c383deac20d10449ad9e5c47fa8752f029373`
 （`expected\modules.txt` 的哈希与它完全相同）。`3 × 4 = 12` 是 `area`，
 `2 × (3 + 4) = 14` 是 `perimeter`，两个都来自被导入的文件。
 
@@ -309,7 +314,7 @@ built C:\Users\lu\Downloads\vela\ide-demo\hello.exe      [退出码 0]
 cd C:\Users\lu\Downloads\vela
 .\selfhost\build\vm.exe build ide-demo\hello.vel      # -> built ide-demo\hello.exe
 .\ide-demo\hello.exe                                  # -> hello from Vela / 3 * 14 = 42 / goodbye
-.\selfhost\build\vm.exe build ide-demo\tour.vel       # -> built ide-demo\tour.exe  (with OpenMP)
+.\selfhost\build\vm.exe build-c ide-demo\tour.vel     # -> built ide-demo\tour.exe  (with OpenMP)
 .\ide-demo\tour.exe
 .\selfhost\build\vm.exe run ide-demo\tour.vel         # 解释器，输出应完全相同
 .\selfhost\build\vm.exe check ide-demo\broken.vel     # -> 上面那条诊断，退出码 2
@@ -319,14 +324,14 @@ cd C:\Users\lu\Downloads\vela
 
 ## 这些数字是怎么来的 / How these numbers were measured
 
-* 编译器：`C:\Users\lu\Downloads\vela\selfhost\build\vm.exe`，508928 字节，
-  SHA256 `D35B330E3A72D00AFA4E84FBEB4F91A31F77971674E017FEA417D184BB990D6`。
+* 编译器：`C:\Users\lu\Downloads\vela\selfhost\build\vm.exe`，196858 字节，
+  SHA256 `D35B330E3A72D00AFA4E84FBEB4F91A31F19685674E017FEA417D184BB990D6`。
 * 所有 `build` 都在仓库根目录执行，源文件写作 `ide-demo\<名字>.vel`；
   `hello.exe`、`tour.exe` 的退出码都是 **0**，`check broken.vel` 是 **2**。
 * `expected\*.txt` 是用 shell 重定向抓下来的**原始 stdout 字节**，然后原样复制进
   `expected\`，再对比 SHA256 确认一致（不是照着屏幕重打的）。
 * 四个 `tour` 输出（解释器、默认、1 线程、8 线程）SHA256 全等，就是
-  `3D766FE028E4B8790C7A8FE2B851DC3BD8EC46B2E7D44AB2516908929EA093FF`。
+  `4899d8841e9b525fdee4c2803c1c383deac20d10449ad9e5c47fa8752f029373`。
 * 编译器往上找的走法（`locate()` / `runtimeDir()`）是按
   `idea-plugin\src\main\kotlin\dev\vela\plugin\VelaCompiler.kt` 里的循环原样重走
   一遍量出来的，输出见上面「为什么放在仓库里面」。

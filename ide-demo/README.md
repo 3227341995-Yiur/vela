@@ -169,9 +169,15 @@ out[7] = 16
 The last two lines are that `parallel for`'s result: `sum(out) = 2×(1+2+…+8) = 72`,
 `out[7] = 8×2 = 16`.
 
-`tour.exe` is built **with OpenMP** (`vm.exe build` says exactly
-`built ide-demo\tour.exe  (with OpenMP)`).  Its output is byte-identical at three
-thread counts, and identical to the interpreter's too — one SHA256 for all four:
+`tour.exe` is built **with OpenMP**, and it is `build-c` that builds it: `build` is the
+LLVM back end now, and the LLVM back end refuses `parallel for` by design ("a loop that
+says it is parallel while running serially is the one failure mode this project has
+promised never to ship").  So the command is
+
+    vm.exe build-c ide-demo\tour.vel      ->  built ide-demo\tour.exe  (with OpenMP)
+
+and its output is byte-identical at three thread counts, and identical to the
+interpreter's too — one SHA256 for all four:
 
 | how it was run | output SHA256 |
 |---|---|
