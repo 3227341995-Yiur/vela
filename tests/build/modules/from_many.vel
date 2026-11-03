@@ -1,0 +1,5 @@
+from geometry import area, perimeter
+
+def main() -> None {
+    print(area(3), perimeter(3))
+}

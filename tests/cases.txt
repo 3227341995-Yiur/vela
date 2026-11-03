@@ -588,6 +588,8 @@ run-c     module_unqualified                 tests/build/modules/unqualified.vel
 # `from geometry import area` parses and binds the module as `import geometry` does,
 # so an unqualified `area(...)` works; `run-c` makes both back ends prove it
 run-c     module_from_import                 tests/build/modules/from_import.vel
+# the comma-separated list: `from geometry import area, perimeter` -- otherwise untested
+run-c     module_from_many                   tests/build/modules/from_many.vel
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is
 # the case the loader got wrong until the shift below `load_file` was narrowed to the

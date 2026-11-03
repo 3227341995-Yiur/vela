@@ -1468,6 +1468,43 @@ class VelaSyntaxParser private constructor(
                 advance()
                 return parseFuncdef(atAsync, 16)
             }
+            // `from geometry import area`: the compiler parses this into the same `import`
+            // node it builds for `import geometry` (the module is what gets bound), so this
+            // parser does the same -- one IMPORT node whose text is the module name, with the
+            // name list consumed for shape.  Building an ERROR node here instead was a real
+            // mismatch: the gate only caught it once the frozen compiler copy was refreshed,
+            // because the stale copy refused `from` and the file was skipped, not compared.
+            if (text(pos) == "from") {
+                val atFrom = pos
+                var k = 1
+                if (pos + k < toks.size && toks[pos + k].kind == VelaTokKind.NAME) {
+                    k++
+                    while (pos + k + 1 < toks.size &&
+                        toks[pos + k].kind == VelaTokKind.OP &&
+                        toks[pos + k].code == VelaOps.DOT &&
+                        toks[pos + k + 1].kind == VelaTokKind.NAME) {
+                        k += 2
+                    }
+                    if (pos + k < toks.size && toks[pos + k].kind == VelaTokKind.NAME &&
+                        toks[pos + k].code == VelaKw.IMPORT) {
+                        val sb = StringBuilder()
+                        var j = pos + 1
+                        while (j < pos + k) {
+                            if (toks[j].kind == VelaTokKind.NAME) sb.append(text(j))
+                            else sb.append('.')
+                            j++
+                        }
+                        advance(k) // `from`, the module, `import`
+                        // the name list: `a`, `b as c`, `a, b`
+                        while (!recovering && !atEof() && !atNl() && !atClose()) {
+                            advance()
+                        }
+                        val n = VelaSyntaxNode(VelaNodeKind.IMPORT, atFrom, pos - 1)
+                        n.text = sb.toString()
+                        return n
+                    }
+                }
+            }
             when (t.code) {
                 VelaKw.PURE -> {
                     advance()

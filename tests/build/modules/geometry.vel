@@ -1,4 +1,12 @@
 # A module imported with `from`: no `main`, just declarations.
+#
+# `main` belongs to the file that is run, so a module has none (D5).  Both names are what
+# `from geometry import area, perimeter` reaches in `from_many.vel` -- the comma-separated
+# list is the part of the `from` shape that is otherwise untested.
 def area(w: int) -> int {
     return w * w
+}
+
+def perimeter(w: int) -> int {
+    return w * 4
 }
