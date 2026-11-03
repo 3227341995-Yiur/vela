@@ -1,0 +1,9 @@
+# `from geometry import area as a` is refused by name: the module is what gets bound, so
+# an alias would be a name that resolves to nothing.  Accepting it and doing nothing is
+# worse than refusing, and this case was measured in exactly that state first: the program
+# parsed, ran, and `a` was "undeclared" at the call site.
+from geometry import area as a
+
+def main() -> None {
+    print(a(3))
+}

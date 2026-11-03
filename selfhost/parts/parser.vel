@@ -896,7 +896,16 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                         perr(cx, "expected a name after `as` in this `from` import", line)
                         return -1
                     }
-                    cx.ti += 1
+                    # An alias is accepted by the shape and then refused here, because
+                    # nothing would rebind it: the module is what gets bound, so `b` in
+                    # `from geometry import area as b` would be a name that resolves to
+                    # nothing.  Accepting it and doing nothing is the one answer worse than
+                    # refusing, and this is measured: before this refusal the same program
+                    # parsed, ran, and `b` was "undeclared" at the call site.
+                    perr(cx,
+                         "`from ... import name as alias` does not rebind yet: the module is what gets bound, so write `from geometry import name` and call `name(...)`",
+                         line)
+                    return -1
                 }
             }
             if at_op(tk, cx, 11) {
