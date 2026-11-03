@@ -646,6 +646,10 @@ native-c  async_library                      lib/async_app.vel
 # refuses both by name.
 native    async_await                          tests/build/async_await.vel
 native-c  async_await                          tests/build/async_await.vel
+# `class` is not introduced, and this case is the measured statement of why: value
+# semantics, `mut self` methods with a checked receiver, and the array-handle idiom
+# for shared state.  `run-c` so the C back end has to agree with the other two.
+run-c     struct_not_a_class                  tests/build/struct_not_a_class.vel
 refuse    async_non_int_param                 tests/build/check_cases/async_two_params.vel
 refuse    await_outside_async                 tests/build/check_cases/await_outside_async.vel
 refuse    mut_self_needs_mut                  tests/build/check_cases/mut_self_needs_mut.vel

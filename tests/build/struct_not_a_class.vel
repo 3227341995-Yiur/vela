@@ -1,0 +1,62 @@
+# Is Vela missing `class`?  This file is the measured answer: no, and each line below is
+# one of the three things a class is usually for, expressed with what the language has.
+#
+#   1. a mutable object with behaviour
+#        `struct Counter` + `def bump(mut self: Counter, ...)`.  The method mutates the
+#        receiver, and `mut self` is checked: calling it on a binding that is not `mut`
+#        is refused ("cannot call the `mut self` method ...: the receiver was not
+#        declared mut").  That is the mutable-object part.
+#
+#   2. a value that copies on assignment
+#        `mut b: Counter = a` copies; `b.bump(10)` leaves `a` at 1 and takes `b` to 11.
+#        A class would share here; a struct is a value.  Which one a language should
+#        default to is a design choice, and this one is stated by measurement rather than
+#        by a comment: all three engines print `a: 1 b: 11`.
+#
+#   3. shared, identified state
+#        the handle idiom: one array holds the objects and the *index* is the handle.
+#        `pool[i]` is the shared slot, and passing `i` around passes the identity without
+#        passing a pointer.  `Array` is the only thing in this slice that a struct may not
+#        hold, which is why the pool is a local array and the handles are ints.
+#
+# What a `class` would add on top of that is inherited layout and a mutable reference
+# that is *automatic*.  Neither is here, and neither is faked: this file does not claim
+# to be a class, it shows the three uses are already expressible and adds a case that
+# pins the value semantics so a future change cannot quietly turn `b = a` into sharing.
+#
+# Expected stdout, byte for byte:
+#     a: 1 b: 11
+#     after call a: 1
+#     pool[0]: 5
+struct Counter {
+    v: int
+
+    def bump(mut self: Counter, k: int) -> None {
+        self.v = self.v + k
+    }
+
+    def get(self: Counter) -> int {
+        return self.v
+    }
+}
+
+def peek(c: Counter) -> int {
+    # a non-`mut` parameter cannot change the caller's struct: the compiler refuses the
+    # write, and this read is all the callee is allowed to do
+    return c.get()
+}
+
+def main() -> None {
+    mut a: Counter = Counter(1)
+    mut b: Counter = a
+    b.bump(10)
+    print("a:", a.get(), "b:", b.get())
+
+    peek(a)
+    print("after call a:", a.get())
+
+    mut pool: Array[int, 2] = [0, 0]
+    mut i: int = 0
+    pool[i] = 5
+    print("pool[0]:", pool[0])
+}
