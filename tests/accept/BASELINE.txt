@@ -5,7 +5,7 @@
 # is what the compiler says today.  A difference is a failure even when it looks like
 # progress: the day a feature lands, this file is what says so, and the program moves
 # into tests\cases.txt with a golden.  Shape:  name | outcome | first diagnostic line
-# recorded against compiler sha256 eeea4524abaccf92a5d2822b90e112b4639c2d1a61bad273e8de7fa0d284b96d
+# recorded against compiler sha256 ac28af9bfd53ef7fcdd0bf038fad0c65b9f0a9504a06bbbb21034a1e5d86b1f8
 tests/accept/closure_escaping_refused.vel | REFUSED | vela: syntax error: expected '{' to open a block, found '('
 tests/accept/closure_fn_parameter.vel | REFUSED | vela: syntax error: expected ')' after the parameters
 tests/accept/closure_lambda_as_argument.vel | REFUSED | vela: syntax error: expected ')' after the parameters
@@ -18,14 +18,14 @@ tests/accept/iterate_forin_array.vel | REFUSED | vela: syntax error: this front 
 tests/accept/iterate_forin_array_of_structs.vel | REFUSED | vela: syntax error: this front end iterates range(...) only
 tests/accept/iterate_forin_not_iterable.vel | REFUSED | vela: syntax error: this front end iterates range(...) only
 tests/accept/modules/mathlib.vel | REFUSED | vela: type error: no 'main' function
-tests/accept/modules/module_cycle_a.vel | REFUSED | vela: syntax error: a module name is not this spelling yet (module_cycle_b): a name and the rule that finds it are MODULES_PLAN.md step 6, so the spelling today is a path string -- `import <path>/<name>.vel`
-tests/accept/modules/module_cycle_b.vel | REFUSED | vela: syntax error: a module name is not this spelling yet (module_cycle_a): a name and the rule that finds it are MODULES_PLAN.md step 6, so the spelling today is a path string -- `import <path>/<name>.vel`
-tests/accept/modules/module_import_from.vel | REFUSED | vela: syntax error: `from mathlib import x` is MODULES_PLAN.md step 6: `from` and `as` are ordinary identifiers until then, so the spelling today is a path string -- write `import <path>/<name>.vel`
-tests/accept/modules/module_import_missing.vel | REFUSED | vela: syntax error: `from nosuchmodule import x` is MODULES_PLAN.md step 6: `from` and `as` are ordinary identifiers until then, so the spelling today is a path string -- write `import <path>/<name>.vel`
-tests/accept/modules/module_import_qualified.vel | REFUSED | vela: syntax error: a module name is not this spelling yet (mathlib): a name and the rule that finds it are MODULES_PLAN.md step 6, so the spelling today is a path string -- `import <path>/<name>.vel`
+tests/accept/modules/module_cycle_a.vel | REFUSED | vela: type error: import cycle: C:\Users\lu\Downloads\vela\tests\accept\modules\module_cycle_a.vel -> C:\Users\lu\Downloads\vela\tests\accept\modules\module_cycle_b.vel -> C:\Users\lu\Downloads\vela\tests\accept\modules\module_cycle_a.vel
+tests/accept/modules/module_cycle_b.vel | REFUSED | vela: type error: a second `main` in 'C:\Users\lu\Downloads\vela\tests\accept\modules\module_cycle_a.vel': the program's `main` belongs to 'C:\Users\lu\Downloads\vela\tests\accept\modules\module_cycle_b.vel' (MODULES_PLAN.md D5)
+tests/accept/modules/module_import_from.vel | ACCEPTED | 
+tests/accept/modules/module_import_missing.vel | REFUSED | vela: type error: no module named 'nosuchmodule': looked for 'nosuchmodule.vel' beside 'C:\Users\lu\Downloads\vela\tests\accept\modules\module_import_missing.vel' and under 'lib/' beside the program
+tests/accept/modules/module_import_qualified.vel | ACCEPTED | 
 tests/accept/modules/module_import_reserved_name.vel | REFUSED | vela: syntax error: `import` is a keyword since MODULES_PLAN.md step 1 (SPEC.md 1.3 reserves it for the module system), so it is not a name here -- rename this binding
-tests/accept/modules/module_import_twice.vel | REFUSED | vela: syntax error: a module name is not this spelling yet (mathlib): a name and the rule that finds it are MODULES_PLAN.md step 6, so the spelling today is a path string -- `import <path>/<name>.vel`
-tests/accept/modules/module_import_unknown_name.vel | REFUSED | vela: syntax error: `from mathlib import x` is MODULES_PLAN.md step 6: `from` and `as` are ordinary identifiers until then, so the spelling today is a path string -- write `import <path>/<name>.vel`
+tests/accept/modules/module_import_twice.vel | ACCEPTED | 
+tests/accept/modules/module_import_unknown_name.vel | ACCEPTED | 
 tests/accept/nested_fn_called.vel | REFUSED | vela: type error: nested functions are not supported
 tests/accept/nested_fn_capture_refused.vel | REFUSED | vela: type error: nested functions are not supported
 tests/accept/nested_fn_recurse.vel | REFUSED | vela: type error: nested functions are not supported
@@ -34,9 +34,9 @@ tests/accept/result_question_generic.vel | REFUSED | vela: syntax error: charact
 tests/accept/result_question_non_result.vel | REFUSED | vela: syntax error: character is not part of Vela
 tests/accept/result_question_propagate.vel | REFUSED | vela: syntax error: character is not part of Vela
 tests/accept/result_question_void_function.vel | REFUSED | vela: syntax error: character is not part of Vela
-tests/accept/slices_array_const.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
-tests/accept/slices_const_out_of_range.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
-tests/accept/slices_reversed_bounds.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
-tests/accept/slices_runtime_end_out_of_range.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
-tests/accept/slices_str.vel | REFUSED | vela: type error: slices are not implemented in Vela 0.1
+tests/accept/slices_array_const.vel | REFUSED | vela: type error: a slice is only defined for a str: a view over an array would need a type Vela 0.1 does not have
+tests/accept/slices_const_out_of_range.vel | REFUSED | vela: type error: a slice is only defined for a str: a view over an array would need a type Vela 0.1 does not have
+tests/accept/slices_reversed_bounds.vel | REFUSED | vela: type error: a slice is only defined for a str: a view over an array would need a type Vela 0.1 does not have
+tests/accept/slices_runtime_end_out_of_range.vel | REFUSED | vela: type error: a slice is only defined for a str: a view over an array would need a type Vela 0.1 does not have
+tests/accept/slices_str.vel | ACCEPTED | 
 tests/accept/string_concat_int_operand.vel | REFUSED | vela: type error: operator '+' mixes str and int
