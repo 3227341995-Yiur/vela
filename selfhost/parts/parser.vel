@@ -1070,6 +1070,18 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
         cx.ti += 1
         return new_node(nd, cx, 15, line)
     }
+    # `a, b = f()` -- a declaration of several names at once, which this front end does
+    # not have.  Without this arm the statement reached the expression grammar and the
+    # reader got "expected a newline between statements, found ','": a complaint about a
+    # token, not about the construct.  Naming the shape is the difference between "I did
+    # not know that was Vela" and "Vela says it cannot do unpacking yet, and here is what
+    # to write instead".
+    if at_name(tk, cx) {
+        if at_op2(tk, cx, 1, 11) {
+            perr(cx, "`a, b = f()` unpacks several names from one value, which is not implemented yet: return a struct from `f` and read its fields, or bind two names separately", line)
+            return -1
+        }
+    }
     return parse_simple(src, tk, tkf, nd, ty, flt, cx)
 }
 
