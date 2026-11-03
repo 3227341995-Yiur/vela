@@ -1,13 +1,20 @@
-# The demo's modules example: a program out of two files.
+# The demo's modules example: a program out of two files, and both import spellings.
 #
-# `MODULES_PLAN.md` step 2 makes `import geometry` load that file -- the path
-# is read relative to THIS file -- and the imported declarations come first, so
-# `area` and `perimeter` are in scope below.  The compiler's `check` and `run` take
-# this program; `build` still refuses a multi-file program by name (D8, steps 3-4),
-# which is why the expected output below is the interpreter's.
+# `import geometry` loads that file (the module is read relative to THIS file) and its
+# declarations come first, so `area` and `perimeter` are in scope below -- unqualified, no
+# `geometry.` prefix needed, because the loader merges every imported file into one
+# namespace.  The qualified spelling `geometry.area(...)` works too.
+#
+# `from geometry import area` is the other spelling: the same `import` underneath, with the
+# names after `import` accepted for shape.
+#
+# Both back ends take this program (`build` is the LLVM back end now, `build-c` the C one),
+# so the expected output is a real build's as well as the interpreter's.
 import geometry
+from geometry import area
 
 def main() -> None {
     print(area(3, 4))
     print(perimeter(3, 4))
+    print(geometry.area(3, 4))
 }
