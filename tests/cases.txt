@@ -42,11 +42,11 @@
 
 # -------------------------------------------------------------- what it prints
 
-run arith_basics                             tests/build/arith_basics.vel
-run python_floor_semantics                   tests/build/python_floor_semantics.vel
-run recursion_fib                            tests/build/recursion_fib.vel
-run struct_and_methods                       tests/build/struct_and_methods.vel
-run struct_value_semantics                   tests/build/struct_value_semantics.vel
+run-c   arith_basics                             tests/build/arith_basics.vel
+run-c   python_floor_semantics                   tests/build/python_floor_semantics.vel
+run-c   recursion_fib                            tests/build/recursion_fib.vel
+run-c   struct_and_methods                       tests/build/struct_and_methods.vel
+run-c   struct_value_semantics                   tests/build/struct_value_semantics.vel
 # The permanent guard for three operators that were WRONG IN THE INTERPRETER for as long as
 # nobody used them.  `parts/eval.vel`'s `combine` answered op 17 with `a ^ b`, 18 with `a & b`
 # and 19 with `a | b`, while `dump.vel`'s own `op_name` and the C back end say 17 = `&`,
@@ -57,7 +57,7 @@ run struct_value_semantics                   tests/build/struct_value_semantics.
 # written for another purpose (2026-09-24).  The program is `tests/llvm-shapes/bitwise_ops.vel`
 # and it also covers `~`, `u8` shifts and a `u8` comparison, because the mixed-width and
 # promotion paths were being fixed in the same batch.
-run bitwise_ops                              tests/llvm-shapes/bitwise_ops.vel
+run-c   bitwise_ops                              tests/llvm-shapes/bitwise_ops.vel
 # Two live arrays in one body: the permanent guard for a silent wrong answer that survived
 # every gate this project had, including a 24-case three-way differential with DIVERGE 0.
 #
@@ -79,9 +79,9 @@ run bitwise_ops                              tests/llvm-shapes/bitwise_ops.vel
 # sent this to struct field offsets first.  Fixed 2026-09-24; `tools/selfhost-llvm.ps1` is the
 # gate that was red for it.  This row pins the three-way answer inside the suite as well, so
 # the case is not only in `tools/llvm-column.ps1`'s shapes corpus.
-run two_arrays                               tests/llvm-shapes/two_arrays.vel
-run arrays_and_len_folding                   tests/build/arrays_and_len_folding.vel
-run array_zero_filled                        tests/build/array_zero_filled.vel
+run-c   two_arrays                               tests/llvm-shapes/two_arrays.vel
+run-c   arrays_and_len_folding                   tests/build/arrays_and_len_folding.vel
+run-c   array_zero_filled                        tests/build/array_zero_filled.vel
 # `run-c`, not `run`: these are two of the seven programs the LLVM back end
 # refuses **by name and by design**, because LLVM IR has no OpenMP and emitting the
 # runtime ABI (`__kmpc_fork_call`) is out of scope for it.  A loop that says it is
@@ -95,10 +95,10 @@ run array_zero_filled                        tests/build/array_zero_filled.vel
 # moves from `run-c` to `run`, the ledger has to move with it or the gate goes red.
 run-c parallel_for_correct                   tests/build/parallel_for_correct.vel
 run-c parallel_nested_2d                     tests/build/parallel_nested_2d.vel
-run while_with_narrowing                     tests/build/while_with_narrowing.vel
-run int_width_literals                       tests/build/int_width_literals.vel
-run strings                                  tests/build/strings.vel
-run string_escapes                           tests/build/string_escapes.vel
+run-c   while_with_narrowing                     tests/build/while_with_narrowing.vel
+run-c   int_width_literals                       tests/build/int_width_literals.vel
+run-c   strings                                  tests/build/strings.vel
+run-c   string_escapes                           tests/build/string_escapes.vel
 # `to_str` and `f"..."`.  The two rows are one feature seen from both ends:
 # interpolation lowers to `concat` plus a call to the `to_str` *builtin*, so the
 # token sequence the lexer builds and the tree the parser builds are the only new
@@ -107,8 +107,8 @@ run string_escapes                           tests/build/string_escapes.vel
 # has one text form and it names its precision, so `to_str(1.5)` -- and therefore
 # `f"{1.5}"` -- is a refusal with a line, not a rounding difference between the
 # interpreter and the compiled binary.
-run to_str_builtin                           tests/build/to_str_builtin.vel
-run fstring_basic                            tests/build/fstring_basic.vel
+run-c   to_str_builtin                           tests/build/to_str_builtin.vel
+run-c   fstring_basic                            tests/build/fstring_basic.vel
 refuse to_str_float                          tests/build/check_cases/to_str_float.vel
 refuse fstring_float_refused                 tests/build/check_cases/fstring_float_refused.vel
 # Both spellings of "build a string" are refused inside a `parallel for`, and the
@@ -135,15 +135,15 @@ refuse parallel_to_str                       tests/build/check_cases/parallel_to
 # re-recorded without them.  `refuse string_concat_not_implemented` is gone for the
 # same reason, and its case file and golden with it: the entire content of that case
 # was that this feature was missing.
-run string_concat_basic                       tests/build/string_concat_basic.vel
-run string_concat_growth                      tests/build/string_concat_growth.vel
-run string_concat_append                      tests/build/string_concat_append.vel
+run-c   string_concat_basic                       tests/build/string_concat_basic.vel
+run-c   string_concat_growth                      tests/build/string_concat_growth.vel
+run-c   string_concat_append                      tests/build/string_concat_append.vel
 # `s[i]` and `s[a:b]`.  A character is a one-byte `str` -- Vela has no `char` type,
 # so no new value kind had to be invented -- and a slice is `vela_substr`, the very
 # runtime function `substr` already calls, so the two spellings cannot drift apart.
 # The `panic` row is the other half: an index the program got wrong has to stop it,
 # in the interpreter and in the compiled binary, with the same sentence in both.
-run str_index_slice                           tests/build/str_index_slice.vel
+run-c   str_index_slice                           tests/build/str_index_slice.vel
 panic str_index_out_of_range                  tests/build/str_index_out_of_range.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
@@ -183,17 +183,17 @@ dumps string_concat_append                    tests/build/string_concat_append.v
 # than present-and-lying.
 
 # run host_surface                           tests/build/host_surface.vel   -- source lost
-run control_flow                             tests/build/control_flow.vel
-run float_and_math                           tests/build/float_and_math.vel
+run-c   control_flow                             tests/build/control_flow.vel
+run-c   float_and_math                           tests/build/float_and_math.vel
 # `run-c`: the third of the seven `parallel for` programs, refused by the LLVM back
 # end by design.  See the comment above `parallel_for_correct` for the ledger, and
 # tests\llvm-refusals.txt for the sentence this refusal must contain.
 run-c pure_call_inside_parallel              tests/build/pure_call_inside_parallel.vel
-run bool_logic                               tests/build/bool_logic.vel
+run-c   bool_logic                               tests/build/bool_logic.vel
 # run bom_check                              tests/build/bom_check.vel      -- source lost
 # run crlf_check                             tests/build/crlf_check.vel     -- source lost
-run host_roundtrip                           tests/probes/host_roundtrip.vel
-run hello                                    examples/hello.vel
+run-c   host_roundtrip                           tests/probes/host_roundtrip.vel
+run-c   hello                                    examples/hello.vel
 
 # ------------------------------------------- a C library, called from Vela
 #
@@ -306,7 +306,7 @@ refuse nested_function                       tests/build/check_cases/nested_func
 # end have to agree line for line; the C back end was checked by hand with `build-c`
 # (same output) and is not a separate row because the program is not one the LLVM
 # back end refuses.
-run defer_blocks                             tests/build/defer_blocks.vel
+run-c   defer_blocks                             tests/build/defer_blocks.vel
 # The four shapes the language refuses around a cleanup: a `defer` in a loop (it
 # registers once), a `defer` in a conditional block (it would run even when the block
 # did not), a `return` inside a cleanup, and a `defer` at a file's top level.
@@ -319,7 +319,7 @@ refuse defer_at_top                          tests/build/check_cases/defer_at_to
 # back end has no enum lowering, so `tests/llvm-refusals.txt` carries the line that says
 # so, and the C back end and the interpreter have to agree on the answer (they were made
 # to: the two groups run error-first, then plain).
-run   errdefer_groups                        tests/build/errdefer_groups.vel
+run-c   errdefer_groups                        tests/build/errdefer_groups.vel
 refuse errdefer_needs_result                 tests/build/check_cases/errdefer_needs_result.vel
 refuse tuple                                 tests/build/check_cases/tuple.vel
 refuse adjacent_string_literals              tests/build/check_cases/adjacent_string_literals.vel
@@ -531,12 +531,12 @@ fixpoint selfhost_fixpoint                   selfhost/vm.vel
 # payload cell is one `i64`, or the two halves of a `str`).  That is a named refusal
 # with a line of its own in the ledger, and the C back end -- whose payload is a real
 # union member of the nested struct's type -- compiles it.
-run    enum_payload_bind                     tests/build/enum_payload_bind.vel
-run    enum_match_no_else                    tests/build/enum_match_no_else.vel
-run    enum_else_arm                         tests/build/enum_else_arm.vel
+run-c   enum_payload_bind                     tests/build/enum_payload_bind.vel
+run-c   enum_match_no_else                    tests/build/enum_match_no_else.vel
+run-c   enum_else_arm                         tests/build/enum_else_arm.vel
 run-c  enum_two_enums                        tests/build/enum_two_enums.vel
 ok     enum_in_array                         tests/build/enum_in_array.vel
-run    enum_exhaustive_switch                tests/build/enum_exhaustive_switch.vel
+run-c   enum_exhaustive_switch                tests/build/enum_exhaustive_switch.vel
 
 
 # ------------------------------------- function types: a value that names a function
@@ -546,7 +546,7 @@ run    enum_exhaustive_switch                tests/build/enum_exhaustive_switch.
 # returned, and a call through any of those is an indirect call.  The one shape that
 # is refused is calling a *call's* result (`pick(0)(1)`): a call site reads a
 # binding's slot in all three implementations, and a temporary has none.
-run     fn_type                              tests/build/fn_type.vel
+run-c   fn_type                              tests/build/fn_type.vel
 refuse  fn_call_of_a_call                    tests/build/check_cases/fn_call_of_a_call.vel
 refuse  fn_call_wrong_arity                  tests/build/check_cases/fn_call_wrong_arity.vel
 refuse  fn_call_not_a_function               tests/build/check_cases/fn_call_not_a_function.vel
@@ -594,25 +594,25 @@ run-c     nested_module_literals              tests/build/modules/nested_lit.vel
 # The standard library's first two modules, and the only case with two levels of
 # import below `lib/` (`io_app` -> `io` -> `str`).  `interpret`, not `run`: a
 # multi-file program is still refused by both back ends by name (MODULES_PLAN D8).
-run       io_module                           lib/io_app.vel
+run-c     io_module                           lib/io_app.vel
 # Errors as values: `lib/result.vel`'s `Result` is an enum with payloads, so this row
 # exercises `match` completeness, payload binding, and the one place a value error
 # meets a panic (`unwrap` of an `Err` prints the reason and stops the program --
 # measured: `vela: panic: boom  at lib/result.vel:76`).
-run       result_library                      lib/result_app.vel
-run       time_library                        lib/time_app.vel
-run       test_library                        lib/test_app.vel
-run       fstring_call_args                   lib/fstring_app.vel
-run       json_library                        lib/json_app.vel
+run-c     result_library                      lib/result_app.vel
+run-c     time_library                        lib/time_app.vel
+run-c     test_library                        lib/test_app.vel
+run-c     fstring_call_args                   lib/fstring_app.vel
+run-c     json_library                        lib/json_app.vel
 native    fs_library                          lib/fs_app.vel
-run       list_library                        lib/list_app.vel
-run       map_library                         lib/map_app.vel
+run-c     list_library                        lib/list_app.vel
+run-c     map_library                         lib/map_app.vel
 run-c     dotted_types                        lib/dotted_types.vel
-run       range_single_arg                   tests/build/range_single_arg.vel
-run       range_step                         tests/build/range_step.vel
-run       str_order                          lib/str_order_app.vel
-run       str_search                         lib/str_search_app.vel
-run       math_library                       lib/math_app.vel
+run-c     range_single_arg                   tests/build/range_single_arg.vel
+run-c     range_step                         tests/build/range_step.vel
+run-c     str_order                          lib/str_order_app.vel
+run-c     str_search                         lib/str_search_app.vel
+run-c     math_library                       lib/math_app.vel
 native    mem_library                        lib/mem_app.vel
 native    mem_library                        lib/mem_app.vel
 # Threads and locks: eight OS threads, one shared counter, one `CRITICAL_SECTION`.
@@ -656,7 +656,7 @@ run-c     struct_not_a_class                  tests/build/struct_not_a_class.vel
 # the `for` variable is a block binding, so it shadows a same-block local or a
 # parameter and the inner meaning wins -- the three answers the checker used to
 # give to that one question are now one answer
-run       loop_shadows_local                   tests/build/loop_shadows_local.vel
+run-c     loop_shadows_local                   tests/build/loop_shadows_local.vel
 # `mut` guards writes to a binding, not passing it on: a non-mut binding may go to a
 # `mut` parameter and the callee may write through it.  Stated as a decision, not an
 # oversight -- the compiler itself relies on it (see the case header).
@@ -673,16 +673,16 @@ refuse    from_import_not_yet               tests/build/check_cases/from_import_
 # independent of which worker ran what.  `native` for the same reason the thread rows
 # are: no interpreted twin can exist for an OS thread.
 native-c  thread_library                      lib/thread_app.vel
-run       module_twin                        tests/build/modules/twin.vel
+run-c     module_twin                        tests/build/modules/twin.vel
 
 refuse module_missing                        tests/build/modules/missing.vel
 refuse module_cycle                          tests/build/modules/cycle_a.vel
-run       module_dup_name                       tests/build/modules/dup_name.vel
+run-c     module_dup_name                       tests/build/modules/dup_name.vel
 # Two modules, three sames: same_a.same (x+1), same_b.same (x*10) and the root's
 # (x-1).  A function name now belongs to the file that declares it, so a collision is
 # renamed name$<file> at merge time, and that file's own references are renamed with it.
 # 2 10 4 is the claim: each file answers with its own function.
-run       module_same_name                     tests/build/modules/same_name.vel
+run-c     module_same_name                     tests/build/modules/same_name.vel
 refuse module_second_main                    tests/build/modules/second_main.vel
 refuse module_diag_in_import                 tests/build/modules/bad_root.vel
 
