@@ -1101,6 +1101,25 @@ def ck_member_call(nd: Array[int, 1310720], mem: Array[int, 3741696],
         ck_type(path, nd_line(nd, callee),
                 ck_member_arity_msg(mem, sid, nm, want, got))
     }
+    # `mut self` writes through the receiver, so the receiver has to be a `mut`
+    # binding -- the same rule a field write answers to.  `MET_MUTSELF` was recorded by
+    # the resolver and read by nothing, so `b.set(...)` written on a non-`mut` local
+    # wrote through it in all three engines; measured before this rule: `b.v: 11`.
+    if met_get(mem, mi, MET_MUTSELF()) == 1 {
+        recv: int = nd[callee * 10 + 1]
+        if nd_kind(nd, recv) == 25 {
+            rn: int = nd[recv * 10 + 1]
+            bi: int = ck_bound(mem, vm, rn)
+            if bi >= 0 {
+                if not is_mut_binding(sc_ckind(mem, bi)) {
+                    ck_safety(path, nd_line(nd, callee),
+                              ck_quoted("cannot call the `mut self` method '",
+                                        nm,
+                                        "': the receiver was not declared mut"))
+                }
+            }
+        }
+    }
 }
 
 def ck_shift_count(nd: Array[int, 1310720], path: str, line: int,

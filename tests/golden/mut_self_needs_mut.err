@@ -1,0 +1,2 @@
+vela: safety error: cannot call the `mut self` method 'bump': the receiver was not declared mut
+  at tests/build/check_cases/mut_self_needs_mut.vel:15

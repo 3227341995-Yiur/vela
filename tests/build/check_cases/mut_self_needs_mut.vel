@@ -1,0 +1,17 @@
+# Refuse-case.  A `mut self` method writes through its receiver, so the receiver has to
+# be a `mut` binding -- the same rule a field write answers to.  Without this rule the
+# call was accepted and the write went through in all three engines, which made "mut
+# owns its contents" true everywhere except at the one place that mattered.
+struct Box {
+    v: int
+
+    def bump(mut self: Box, k: int) -> None {
+        self.v = self.v + k
+    }
+}
+
+def main() -> None {
+    b: Box = Box(1)
+    b.bump(10)
+    print("b.v:", b.v)
+}
