@@ -896,6 +896,26 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                         perr(cx, "expected a name after `as` in this `from` import", line)
                         return -1
                     }
+                    # `from geometry import area as a`, one alias: record the pair as a
+                    # kind-45 child of the import node (+1 imported, +2 local) and answer
+                    # the statement here.  `ti - 2` is `area`, `ti - 1` is `as`, `ti` is
+                    # `a` -- measured, because `ti - 3` recorded a neighbouring token and
+                    # the loader then rewrote the wrong name.  What follows this return is
+                    # the refusal it replaces, left as dead text for the moment.
+                    an2: int = new_node(nd, cx, 45, line)
+                    nd[an2 * 10 + 1] = intern(substr(src, tk_off(tk, cx.ti - 2),
+                                                     tk_off(tk, cx.ti - 2) + tk_len(tk, cx.ti - 2)))
+                    nd[an2 * 10 + 2] = intern(substr(src, tk_off(tk, cx.ti),
+                                                     tk_off(tk, cx.ti) + tk_len(tk, cx.ti)))
+                    cx.ti += 1
+                    n2: int = new_node(nd, cx, 40, line)
+                    nd[n2 * 10 + 1] = off
+                    nd[n2 * 10 + 2] = end - off
+                    nd[n2 * 10 + 3] = 0
+                    nd[n2 * 10 + 4] = 0
+                    nd[n2 * 10 + 6] = 0
+                    nd[n2 * 10 + 8] = an2
+                    return n2
                     # An alias is accepted by the shape and then refused here, because
                     # nothing would rebind it: the module is what gets bound, so `b` in
                     # `from geometry import area as b` would be a name that resolves to

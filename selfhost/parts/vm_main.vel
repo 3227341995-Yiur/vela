@@ -1811,6 +1811,21 @@ def load_file(path: str, src: str, base: int, depth: int, file: int,
         s = nd[s * 10 + 7]
     }
 
+    # `from m import area as a`: rewrite this file's references to `a` into the module's own
+    # `area`, after the rename pass above so a name it rewrote is the name this lands on.
+    # The pair was recorded by the parser on the import node's slot 8 (kind 45: +1 the
+    # imported name, +2 the local one).
+    s = nd[m * 10 + 1]
+    while s >= 0 {
+        if nd_kind(nd, s) == 40 {
+            if nd[s * 10 + 8] > 0 {
+                pr: int = nd[s * 10 + 8]
+                rename_refs(nd, ni0, ni1, nd[pr * 10 + 2], nd[pr * 10 + 1])
+            }
+        }
+        s = nd[s * 10 + 7]
+    }
+
     # and this file's own statements last, which is what puts every imported
     # declaration in front of the root's (D4)
     s = nd[m * 10 + 1]

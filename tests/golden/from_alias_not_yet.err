@@ -1,2 +1,0 @@
-vela: syntax error: `from ... import name as alias` does not rebind yet: the module is what gets bound, so write `from geometry import name` and call `name(...)`
-  at line 5

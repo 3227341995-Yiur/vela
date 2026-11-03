@@ -590,6 +590,7 @@ run-c     module_unqualified                 tests/build/modules/unqualified.vel
 run-c     module_from_import                 tests/build/modules/from_import.vel
 # the comma-separated list: `from geometry import area, perimeter` -- otherwise untested
 run-c     module_from_many                   tests/build/modules/from_many.vel
+# `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is
 # the case the loader got wrong until the shift below `load_file` was narrowed to the
@@ -675,7 +676,6 @@ refuse    mut_self_needs_mut                  tests/build/check_cases/mut_self_n
 refuse    from_missing_module                tests/build/check_cases/from_import_not_yet.vel
 # an alias is refused because nothing would rebind it -- accepting it and doing nothing
 # would leave `a` as a name that resolves to nothing (measured in exactly that state)
-refuse    from_alias_not_yet                tests/build/check_cases/from_alias_not_yet.vel
 # `a, b = f()` is refused by name (it used to be "expected a newline ... found ,")
 refuse    unpack_not_yet                    tests/build/check_cases/unpack_not_yet.vel
 # two modules declare one name: the module-qualified spelling is refused rather than
