@@ -437,7 +437,15 @@ def emit_ctype(kind: int, path: str, line: int) -> None {
         return
     }
     if kind == K_ST() {
-        trap(path, line, "structs are not implemented in this slice of the back end")
+        # Reached when a struct value's *storage* has to be spelled, which in practice
+        # means an `Array[S, N]`: this back end keeps a struct in a pool and passes it as
+        # a handle (`int64_t`), while an array stores its elements inline, so the two have
+        # no common width -- `emit_array_ctype`'s `K_AX` arm refuses the same shape from
+        # the other side.  The old sentence ("structs are not implemented in this slice of
+        # the back end") described the back end's internals and left the reader to guess
+        # which part of their program asked; measured: `mut xs: Array[Leaf, 3] = [Leaf(1),
+        # Leaf(2), Leaf(3)]` runs on the interpreter and stopped here.
+        trap(path, line, "an array whose element is a struct is not compiled by the C back end yet: a struct is a pool handle here and an array's elements are inline storage, so `Array[S, N]` has no C spelling (the interpreter runs it)")
     }
     trap(path, line, "this type has no C spelling")
 }

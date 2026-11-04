@@ -784,6 +784,16 @@ def ll_store_into(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                 vshim_build_store(lg.m, sv2, fa))
         return
     }
+    if k == K_ENUM() {
+        # A field of enum type: the enum owns its own storage row (tag plus payload
+        # cells), and this back end has no spelling for one *inside* another struct's
+        # layout.  The C back end refuses the same definition for its own reason
+        # ("structs are defined before enums"), so the two agree that this shape is
+        # missing -- and the interpreter runs it.  Naming the construct is the point:
+        # the generic sentence below describes the back end, not the program.
+        trap(path, nd_line(nd, v),
+             "a struct field of enum type is not compiled by the LLVM back end yet: an enum has its own storage shape, and this back end has no field spelling for one")
+    }
     t: int = ll_type_of(lg, k)
     if t == 0 {
         trap(path, nd_line(nd, v),

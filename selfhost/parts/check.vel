@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# selfhost/parts/check.vel — the semantic verdicts, in Vela.
+# selfhost/parts/check.vel �?the semantic verdicts, in Vela.
 #
 # `resolve.vel` answers "where does this name live".  This pass answers the other
 # question: "is this program allowed to exist".  Stage 0 keeps both in one file
@@ -13,7 +13,7 @@
 # rule is now kept by the recorded goldens instead:
 #
 #   * the message is the one stage 0 wrote, byte for byte, and
-#     `tests/golden/<name>.err` is where that text is now recorded — the harness
+#     `tests/golden/<name>.err` is where that text is now recorded �?the harness
 #     compared the text, not merely the verdict, and a golden does the same.
 #     Building a message like `'x' is already declared in this scope` is why
 #     `concat` exists.
@@ -27,7 +27,7 @@
 # This slice holds the rules that need no static types: assignment targets,
 # same-scope redeclaration, duplicate parameters, immutable assignment, array
 # rebinding, constant indices and divisors, condition types, purity, the entry
-# point, and the `parallel for` proofs — which bring their own interval
+# point, and the `parallel for` proofs �?which bring their own interval
 # arithmetic, since "the range of j is wider than the stride" is arithmetic.
 # Static types and the operator table land next; `selfhost/CHECKER_PLAN.md` has
 # the order it was ported in.
@@ -56,8 +56,8 @@ def ck_safety(path: str, line: int, msg: str) -> None {
 }
 
 # `checker.py` writes these as f-strings; the same text has to be built here.
-# The caller spells both quotes — `ck_quoted("cannot assign to '", name,
-# "': it was declared immutable")` — so the name lands *between* them and the
+# The caller spells both quotes �?`ck_quoted("cannot assign to '", name,
+# "': it was declared immutable")` �?so the name lands *between* them and the
 # helper never has to guess which of the two was meant.
 def ck_quoted(prefix: str, name: int, suffix: str) -> str {
     return concat(concat(prefix, interned(name)), suffix)
@@ -149,7 +149,7 @@ def ck_is_array_ck(ck: int) -> bool {
 #
 # The same stack `resolve.vel` fills, read the same way: a name is "in this
 # scope" when it sits at or above the mark its block started at.  That is the
-# whole of Vela's shadowing rule — shadowing across blocks is legal, rebinding
+# whole of Vela's shadowing rule �?shadowing across blocks is legal, rebinding
 # inside one block is not.
 #
 # The checker pushes its own entries, because mutability is *not* in the entry
@@ -224,7 +224,7 @@ def ck_check_main(nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     # stage 0 points both of the next two at the module's first statement rather
-    # than at the `def` (checker.py:373-375) — a quirk kept, because the harness
+    # than at the `def` (checker.py:373-375) �?a quirk kept, because the harness
     # compares what the compiler said *and* where
     first: int = nd[1]
     mut line: int = 1
@@ -259,7 +259,7 @@ def ck_no_const() -> int { return 9223372036854775807 }
 # constant indices has to see through it or it misses exactly the case a reader
 # would write first.
 # Constant folding, as far as a *checker* needs it: enough to see `4`, `-1` and
-# `0 - 1` as the same kind of fact.  The bound is deliberate — the compiler's own
+# `0 - 1` as the same kind of fact.  The bound is deliberate �?the compiler's own
 # arithmetic is wrapping (it is built with --fast-int), so a fold that could
 # overflow is declined rather than performed wrongly.  Declining means the rule
 # does not fire, which shows up as a `diff_check` difference rather than as a
@@ -329,7 +329,7 @@ def ck_const_int(nd: Array[int, 1310720], e: int) -> int {
 # Just enough of a type for the operator table to be *checked*: what kind of
 # value an expression has, or K_BAD when this front end cannot say.  K_BAD is the
 # important half.  Every rule below is written so that an unknown operand makes
-# the rule silent rather than wrong — refusing a program stage 0 accepts is a
+# the rule silent rather than wrong �?refusing a program stage 0 accepts is a
 # bug, while not catching one it refuses is a gap, and a gap is visible in
 # `tests/diff_check.py` instead of in a user's build.
 #
@@ -391,7 +391,7 @@ def ck_is_int_kind(k: int) -> bool {
 
 # The packed kind a binding carries, with the checker's own bits taken off
 # (`MUT_BIT`, `PARAM_BIT`): what is left is the kind and, for an array or a
-# struct, the length or the struct id — the same word `type_packed` produces.
+# struct, the length or the struct id �?the same word `type_packed` produces.
 def ck_kind_of_ck(ck: int) -> int {
     return pack_kind(unpack_kind(ck), unpack_len(ck))
 }
@@ -544,7 +544,7 @@ def ck_arith(nd: Array[int, 1310720], path: str, line: int, e: int, op: int,
             # `a + b` on two `str`s joins them, and the result is a `str`.  This
             # is the one place the operator table is not the whole story: every
             # other row below says whether two kinds may meet, and this one says
-            # what the meeting *means* — so the whole of the rule is here, and
+            # what the meeting *means* �?so the whole of the rule is here, and
             # `concat(a, b)` (SPEC 8) is the same operation under a name.  The
             # back ends lower the two to one call for exactly that reason.
             #
@@ -776,8 +776,8 @@ def ck_binop(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         }
         # `x / 0.0` is refused too, and separately: IEEE would hand back an
         # infinity or a nan, which is almost never what the line meant.  The
-        # value of a float literal is not on the node — it is in the parser's
-        # float pool — so the lexer marks the ones that are exactly zero (flag 2)
+        # value of a float literal is not on the node �?it is in the parser's
+        # float pool �?so the lexer marks the ones that are exactly zero (flag 2)
         # and this asks the mark, not the pool.
         if nd_kind(nd, rhs) == 21 {
             if (nd[rhs * 10 + 6] & 2) == 2 {
@@ -942,8 +942,8 @@ def ck_compare(nd: Array[int, 1310720], mem: Array[int, 3741696], path: str,
 # cannot drift about what a member is.
 #
 # What this rule reaches, and what telling the two failures apart bought: the
-# receiver's kind is resolved through *both* shapes that name a place — a plain
-# name, and a field of a place (`o.inner`, and `o.inner.x` through it) — because a
+# receiver's kind is resolved through *both* shapes that name a place �?a plain
+# name, and a field of a place (`o.inner`, and `o.inner.x` through it) �?because a
 # member rule that stops at a plain name is silent about every receiver one field
 # deep, which is the shape real code writes.  `ck_recv_ck` answers 0 for "this
 # pass cannot tell" (a call, an array element, a literal: `P(1).scale(2.0)` is
@@ -980,7 +980,7 @@ def ck_recv_ck(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
     if k == 32 {
         # `o.inner`: the field's own declared type is the answer, so the lookup is
         # one step out and recursion is the whole of it.  A field that does not
-        # exist is *not* this rule's business — the read that named it is reported
+        # exist is *not* this rule's business �?the read that named it is reported
         # as rule 87 on its own line, and reporting it twice would bury it.
         base: int = ck_recv_ck(nd, mem, vm, nd[recv * 10 + 1])
         if unpack_kind(base) != K_ST() {
@@ -1020,7 +1020,7 @@ def ck_no_struct_name_msg(rc: int, what: str, name: int) -> str {
     return concat(m, "'")
 }
 
-# `Pt.dot() takes 1 argument(s), got 3` — the struct, the method, what the
+# `Pt.dot() takes 1 argument(s), got 3` �?the struct, the method, what the
 # declaration takes past the receiver, and what the call site wrote.
 def ck_member_arity_msg(mem: Array[int, 3741696], sid: int, name: int,
                         want: int, got: int) -> str {
@@ -1045,7 +1045,7 @@ def ck_member_read(nd: Array[int, 1310720], mem: Array[int, 3741696],
     nm: int = nd[e * 10 + 2]
     if unpack_kind(rc) != K_ST() {
         # rule 54, "attribute target must be a struct".  The receiver is a name
-        # the pass *can* read the kind of, and that kind has no fields at all —
+        # the pass *can* read the kind of, and that kind has no fields at all �?
         # the interpreter refuses this program too, in its own words ("only a
         # struct has fields"), and the C back end refuses the member expression it
         # emits.  Silence here was the checker blessing a program neither front
@@ -1234,7 +1234,8 @@ def ck_arms_return(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
 # belongs to, and the answer is the shape row the resolver wrote: a name node
 # carries the row of its binding (`NT_ROW`), and an index carries its base's row,
 # because an array's row is already the row of its elements.
-def ck_row_of(nd: Array[int, 1310720], mem: Array[int, 3741696], e: int) -> int {
+def ck_row_of(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
+              e: int) -> int {
     if e <= 0 {
         return -1
     }
@@ -1242,8 +1243,25 @@ def ck_row_of(nd: Array[int, 1310720], mem: Array[int, 3741696], e: int) -> int 
     if k == 25 {
         return nt_get(mem, e, NT_ROW())
     }
+    if k == 32 {
+        # `match holder.sh`: what this needs is the *field's* type row, not the struct's,
+        # and the field record carries it -- a packed kind's `len` half is the struct-table
+        # row for a struct or an enum (`pack_kind(K_ST(), sid)` / `pack_kind(K_ENUM(),
+        # sid)`).  Without this arm the subject was reported as "not an enum value" when
+        # it is one: measured, `match holder.sh` was refused while `show(holder.sh)` --
+        # the same value as a parameter -- compiled and printed `1.5`.  That is a refusal
+        # about the expression's shape, not about its type.
+        pk: int = ck_recv_ck(nd, mem, vm, e)
+        if pk == 0 {
+            return -1
+        }
+        if unpack_kind(pk) == K_ENUM() or unpack_kind(pk) == K_ST() {
+            return unpack_len(pk)
+        }
+        return -1
+    }
     if k == 31 {
-        return ck_row_of(nd, mem, nd[e * 10 + 1])
+        return ck_row_of(nd, mem, vm, nd[e * 10 + 1])
     }
     if k == 26 {
         callee: int = nd[e * 10 + 1]
@@ -1263,7 +1281,7 @@ def ck_row_of(nd: Array[int, 1310720], mem: Array[int, 3741696], e: int) -> int 
 # enough.
 def ck_match_complete(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
                       s: int) -> bool {
-    eid: int = enum_of_row(mem, vm, ck_row_of(nd, mem, nd[s * 10 + 1]))
+    eid: int = enum_of_row(mem, vm, ck_row_of(nd, mem, vm, nd[s * 10 + 1]))
     if eid < 0 {
         return False
     }
@@ -1313,7 +1331,7 @@ def ck_match(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
              path: str, mut vm: VM, s: int) -> None {
     subj: int = nd[s * 10 + 1]
     ck_expr(nd, mem, path, vm, subj)
-    eid: int = enum_of_row(mem, vm, ck_row_of(nd, mem, subj))
+    eid: int = enum_of_row(mem, vm, ck_row_of(nd, mem, vm, subj))
     if eid < 0 {
         ck_type(path, nd_line(nd, s),
                 "the subject of a match must be an enum value, and this one is not")
@@ -1494,7 +1512,7 @@ def ck_index(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         # that decides a verdict.  It used to read `ln <= 0`, and that one
         # character waved every constant index into a zero-length array past the
         # very check written to catch it: `Array[int, 0]` has no element for any
-        # constant index to reach, which is the whole of `SPEC.md` §6 item 7 —
+        # constant index to reach, which is the whole of `SPEC.md` §6 item 7 �?
         # "a constant index that is provably out of range is a compile error".
         return
     }
@@ -1589,7 +1607,7 @@ def ck_expr(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
             path: str, vm: VM, e: int) -> None {
     # The rules that need a static type of their own still come later; what this
     # walk does is reach every subexpression, so that the rules which need only
-    # what is *written* — a constant index, a literal divisor — can fire wherever
+    # what is *written* �?a constant index, a literal divisor �?can fire wherever
     # they appear.
     if e <= 0 {
         return
@@ -1685,8 +1703,8 @@ def ck_expr(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         return
     }
     if k == 32 {
-        # a field belongs to a *place*: a struct value that exists nowhere —
-        # `P(1).x` — has no field to read, and stage 0 refuses rather than
+        # a field belongs to a *place*: a struct value that exists nowhere �?
+        # `P(1).x` �?has no field to read, and stage 0 refuses rather than
         # inventing storage for it
         base: int = nd[e * 10 + 1]
         bk: int = nd_kind(nd, base)
@@ -1738,8 +1756,8 @@ def ck_store_name(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
     }
     ck: int = sc_ckind(mem, i)
     if not is_mut_binding(ck) {
-        # `x = e` and `x += e` are two different mistakes in stage 0's eyes —
-        # "cannot assign to" against "cannot modify" (checker.py:702, 788) — and
+        # `x = e` and `x += e` are two different mistakes in stage 0's eyes �?
+        # "cannot assign to" against "cannot modify" (checker.py:702, 788) �?and
         # the reader who wrote a compound assignment is owed the second one.
         if nd_kind(nd, s) == 7 {
             ck_safety(path, nd_line(nd, s),
@@ -1762,8 +1780,8 @@ def ck_store_name(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
 #
 # `u8` and `i32` hold a value the language can represent in an `int` but not in the
 # slot: `mut x: u8 = 300` has no byte that means 300.  Before this rule the answer
-# depended on which front end ran the program — the interpreter kept 300 and the
-# compiled binary kept 44 (C's `uint8_t vl_x = 300`) — which is one program with
+# depended on which front end ran the program �?the interpreter kept 300 and the
+# compiled binary kept 44 (C's `uint8_t vl_x = 300`) �?which is one program with
 # two answers, and SAFETY.md §3 carried it as `hole_narrowing_binding_u8` under
 # SPEC 3.1's "state that refusal rather than guessing at the widening".
 #
@@ -1902,8 +1920,8 @@ def ck_store(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
 # never ran it, so `check` blessed an assignment the interpreter refuses at run
 # time ("this struct has no field of that name") and the C back end refuses only
 # because cl.exe rejects the `vl_a.f_zzz` the emitter had already written out.
-# Three engines, three different answers, and the one the language is sold on —
-# `check` — was the permissive one.
+# Three engines, three different answers, and the one the language is sold on �?
+# `check` �?was the permissive one.
 #
 # The lookup is the read path's lookup, so the message is the read path's message
 # (`Rule 87: {bt.name} has no field '{attr}'`), reported at the line of the
@@ -1933,15 +1951,15 @@ def ck_member_write(nd: Array[int, 1310720], mem: Array[int, 3741696],
 #
 # `parallel for` is not a promise the programmer makes, it is a *theorem the
 # compiler checks*: a body whose writes cannot be proved race-free does not
-# compile at all.  Nothing in the generated C is different — Vela 0.1 emits the
-# loop sequentially — so the whole worth of the keyword is this pass, and it is
+# compile at all.  Nothing in the generated C is different �?Vela 0.1 emits the
+# loop sequentially �?so the whole worth of the keyword is this pass, and it is
 # stage 0's `verify_parallel` (checker.py:899-1113) rule for rule:
 #
 #   * every write must land on an element of an array declared `mut` in *this*
 #     function: a parameter could alias another array, and two aliases race;
 #   * every write to one array must go through one index expression, textually
 #     the same one;
-#   * that expression must pick a distinct element per iteration — either
+#   * that expression must pick a distinct element per iteration �?either
 #     `c * i + j` where `|c|` is strictly wider than the range of `j`, or
 #     `i * K + j` where the inner loop runs `j in range(0, K)`: then (i, j) are
 #     the base-K digits of the index, so no two pairs collide whatever K is;
@@ -1961,7 +1979,7 @@ def ck_member_write(nd: Array[int, 1310720], mem: Array[int, 3741696],
 # `items[0]`, and the table is walked in first-write order, so the refusal a
 # reader sees is the one stage 0 would have printed.
 #
-# Two narrowings, both in the safe direction — they can refuse a program stage 0
+# Two narrowings, both in the safe direction �?they can refuse a program stage 0
 # accepts, never accept one it refuses:
 #   * the interval environment holds the loops *inside* the parallel body, not
 #     the ones it is nested in: stage 0's interval scopes also carry those, and
@@ -1971,7 +1989,7 @@ def ck_member_write(nd: Array[int, 1310720], mem: Array[int, 3741696],
 #     front end has not grown yet.
 
 # One interval: `analysis.Interval` with each end optional, so "at least 0,
-# unbounded above" is expressible — which is what a range with a runtime bound
+# unbounded above" is expressible �?which is what a range with a runtime bound
 # gives.
 struct Iv {
     mut lo: int
@@ -2131,7 +2149,7 @@ def ck_iv_mod(mut out: Iv, a: Iv, b: Iv) -> None {
         hi = b.hi - 1
     }
     # a positive divisor bounds the remainder by it, and its sign makes 0 a
-    # lower bound — the one non-obvious line of the whole thing
+    # lower bound �?the one non-obvious line of the whole thing
     out.lo = 0
     out.hi = hi
     out.lok = 1
@@ -2167,13 +2185,13 @@ def ck_iv_pow(mut out: Iv, a: Iv, b: Iv) -> None {
 #
 # Their live counts live in `Par` rather than being two more `mut int`
 # parameters, and that is not a style choice: **a `mut` scalar parameter does not
-# write through in Vela 0.1** — `def f(mut n: int)` receives a copy, so
+# write through in Vela 0.1** �?`def f(mut n: int)` receives a copy, so
 # `n += 1` inside it changes nothing at the call site, while `mut` on a struct (or
 # an array, which is already a pointer) does.  Probe:
 # `tests/probes/mut_scalar_parameter.vel`, with `mut_struct_parameter.vel` beside
 # it as the contrast.  SPEC.md:148 reads "`mut` before a parameter means the
 # callee may write through it", so this is an implementation gap, not a design
-# one — but both front ends agree on the behaviour today, and a checker that
+# one �?but both front ends agree on the behaviour today, and a checker that
 # leaned on the documented reading would compile here and misbehave in C.
 struct Par {
     mut ni: int
@@ -2368,7 +2386,7 @@ def ck_iv_expr(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
 # `analysis.linear_form`, with the remainder's interval delivered instead of a
 # node.  The coefficient comes back as the return value; `ck_no_const()` means
 # "not linear in `var`".  An absent remainder is the exact interval [0, 0],
-# which is what stage 0's `width = 0` means — a constant index really is the
+# which is what stage 0's `width = 0` means �?a constant index really is the
 # same element every iteration, so it must not be reported as provable.
 def ck_linear(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
               iv: Array[int, 64], ni: int, e: int, var: int,
@@ -2479,7 +2497,7 @@ def ck_linear(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
 # `expr_key(a) == expr_key(b)`, without the strings: two index expressions are
 # "the same element" when they are literally the same tree.  Float and string
 # literals compare by their span in the literal pools rather than by their
-# *value* — `1.0` and `1.00` are one value and two receipts, and a difference
+# *value* �?`1.0` and `1.00` are one value and two receipts, and a difference
 # there can only make this pass see two keys where stage 0 sees one, which is
 # the refusal it already makes when it sees two.
 def ck_same_expr(nd: Array[int, 1310720], a: int, b: int) -> bool {
@@ -2789,8 +2807,8 @@ def TW_KCAP() -> int { return 8 }
 # call it makes is pure.  The first index expression to reach an array is the
 # one judged, which is what makes the order of this table mean something.
 #
-# `idx` is the `a[i]` node itself — the thing stage 0 names `items[0]` and points
-# its refusal at — and the expression the proof is about is the node *inside* it,
+# `idx` is the `a[i]` node itself �?the thing stage 0 names `items[0]` and points
+# its refusal at �?and the expression the proof is about is the node *inside* it,
 # `a[i]`'s second word.  Two different questions, two different words.
 def ck_pwrite(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
               iv: Array[int, 64], ni: int, lb: Array[int, 64], nlb: int,
@@ -2837,7 +2855,7 @@ def ck_pwrite(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
 }
 
 # An assignment to a name the body did not declare is an assignment to something
-# every iteration shares — which is a race, and the two spellings of it are told
+# every iteration shares �?which is a race, and the two spellings of it are told
 # apart because stage 0 tells them apart.
 def ck_pname(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
              vm: VM, s: int, aug: int) -> None {
@@ -2894,9 +2912,9 @@ def ck_pure_method(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
 # Concatenation inside a `parallel for`, and the one operator this rule judges
 # without a call in sight.  The decision, and why it is this one:
 #
-# **`+` on two `str`s is impure for this rule.**  It is pure everywhere else —
+# **`+` on two `str`s is impure for this rule.**  It is pure everywhere else �?
 # it reads no binding, writes no binding, and is deterministic given its two
-# operands — but concatenation *allocates*, in the permanent string region
+# operands �?but concatenation *allocates*, in the permanent string region
 # `runtime/vela_runtime.h` reserves for every `str` that is not a literal.  That
 # region is extended by a bump pointer (`vela_persist_region.used`) which is one
 # plain variable, and the C back end hands a `parallel for` to OpenMP: two
@@ -2906,15 +2924,15 @@ def ck_pure_method(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
 # ship one.  So the loop is refused rather than serialised or guessed at.
 #
 # **`concat(a, b)` gets the same verdict.**  The rule above is about an operator
-# and the builtin is about a function, but the two are one operation — the same
-# runtime call, the same allocation — and a language that refused the spelling
+# and the builtin is about a function, but the two are one operation �?the same
+# runtime call, the same allocation �?and a language that refused the spelling
 # and admitted the function would be describing its own back end instead of its
 # semantics.  So this is one message used at both sites, and a program that
 # concatenates inside a parallel loop is refused whichever way it spells it.
 #
 # What this does *not* settle, left standing rather than papered over: allocating
 # in that region is not the only impure thing a builtin here can do, and the rest
-# of the list is still whatever `ck_pure` says below — `read_text` grows the same
+# of the list is still whatever `ck_pure` says below �?`read_text` grows the same
 # region and is admitted, and `print` is refused for a reason of its own.  Those
 # are other decisions about other builtins; this one is about concatenation.
 def ck_concat_msg() -> str {
@@ -3028,7 +3046,7 @@ def ck_pure(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
 }
 
 # The walk itself.  A statement list is followed with `nx`, and the four block
-# kinds recurse back into this same function — one function rather than a list
+# kinds recurse back into this same function �?one function rather than a list
 # walker and a statement walker, because the two would be mutually recursive and
 # Vela has no forward declaration to make that legal.
 #
@@ -3136,10 +3154,10 @@ def ck_pcol(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
 #
 #     parallel for i in range(0, 64) { a[i] = a[i - 1] + 1 }
 #
-# is refused — every iteration reads the element its neighbour is writing, which is
+# is refused �?every iteration reads the element its neighbour is writing, which is
 # a loop-carried dependence, and `#pragma omp parallel for` over it gives a
 # different answer on every run (measured: nine distinct wrong values in twenty
-# runs of one program) — while
+# runs of one program) �?while
 #
 #     parallel for i in range(0, 64) { out[i] = a[i] * 2 }
 #
@@ -3150,7 +3168,7 @@ def ck_pcol(nd: Array[int, 1310720], mut mem: Array[int, 3741696], path: str,
 # body used (`TW_WX`), which is well defined because a body with more than one
 # write expression was already refused.  And the walk is a *second* pass, run
 # after every write-side verdict, because a read may sit above the statement that
-# writes the array — and because a body refused today must keep the message it
+# writes the array �?and because a body refused today must keep the message it
 # has today.
 def ck_twrow(tb: Array[int, 448], bn: int) -> int {
     n: int = tb[TW_NB()]
@@ -3179,8 +3197,8 @@ def ck_pread_msg(name: int, wline: int, rline: int) -> str {
 
 # Every `a[e]` in an expression, where `a` is an array this loop writes: reading
 # it at an index other than the write's is the race.  The comparison is
-# `ck_same_expr` — the same notion of "the identical index expression" the write
-# rule already uses — so `a[i] = a[i] + 1` and `a[i] += 1` stay legal: each
+# `ck_same_expr` �?the same notion of "the identical index expression" the write
+# rule already uses �?so `a[i] = a[i] + 1` and `a[i] += 1` stay legal: each
 # iteration reads exactly the element it writes.
 def ck_pread_expr(nd: Array[int, 1310720], path: str, tb: Array[int, 448],
                   e: int) -> None {
@@ -3246,7 +3264,7 @@ def ck_pread_expr(nd: Array[int, 1310720], path: str, tb: Array[int, 448],
 }
 
 # The statements, one body: the same block kinds `ck_pcol` walks, and the
-# conditions it deliberately leaves alone — a condition is an expression and a
+# conditions it deliberately leaves alone �?a condition is an expression and a
 # read in one is a read (stage 0 never looked for purity in a condition; it never
 # looked for a race in one either, because this rule did not exist).
 def ck_pread(nd: Array[int, 1310720], path: str, tb: Array[int, 448],
@@ -3277,7 +3295,7 @@ def ck_pread(nd: Array[int, 1310720], path: str, tb: Array[int, 448],
 }
 
 # The verdict.  Stage 0's order is the order here: no writes at all first, then
-# for each array in first-write order — is it a local `mut` array, does it have
+# for each array in first-write order �?is it a local `mut` array, does it have
 # one index expression, and is that expression injective.
 def ck_parallel(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                 path: str, vm: VM, s: int) -> None {
@@ -3536,7 +3554,7 @@ def ck_stmt(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         # The proof runs here, and *here* is the point: the body's own bindings
         # have just gone out of scope again, while the loop variable has not.  A
         # name the body declared is therefore private to an iteration and a name
-        # it did not declare is shared by all of them — which is exactly the
+        # it did not declare is shared by all of them �?which is exactly the
         # question the parallel rules ask, and exactly the state stage 0 asks it
         # in (checker.py:883-888).
         if (nd[s * 10 + 6] & 1) == 1 {
@@ -3562,7 +3580,7 @@ def ck_stmt(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
 # `extern c def sqrt(x: float) -> float` declares a C function.  The rule the
 # boundary needs is one sentence: **the types are scalars**.  A `str` is a length
 # and a pointer into Vela's own string region, not a `char *`, and an array is
-# storage whose length Vela owns — handing either across would be inventing an
+# storage whose length Vela owns �?handing either across would be inventing an
 # ABI, and inventing an ABI is how a safe language stops being one.  `i32` and
 # `u8` exist so that a C `int` and a C `unsigned char` can be declared *exactly*;
 # whether a declaration matches the C prototype is the user's to get right, and
@@ -3601,11 +3619,11 @@ def ck_is_extern_param(pk: int) -> bool {
 # a C compiler converts an `int` to a `float`, a `float` to an `int` and a pointer
 # to an `int` without a word, so `abs(1.5)` prints 1 and `abs(some_array)`
 # truncates an address.  Vela already refuses exactly these conversions between
-# two Vela values — "operator '+' mixes float and int" — so the boundary refuses
+# two Vela values �?"operator '+' mixes float and int" �?so the boundary refuses
 # them too, in the same voice and with the line of the call.
 #
 # The rule is one sentence: **an argument crosses only as the type the parameter
-# declares**, with the one implicit conversion the language has anywhere — an int
+# declares**, with the one implicit conversion the language has anywhere �?an int
 # *constant* whose value fits, the same test `ck_adapt_pair` applies to `i32 + 1`
 # and the reason `abs(-7)` can be written.
 
@@ -3614,14 +3632,14 @@ def ck_is_extern_param(pk: int) -> bool {
 # shapes are worth one more step, and for both the answer is already written
 # down:
 #
-#   * a *call* — `ck_record_decls` files every function's packed return kind in
+#   * a *call* �?`ck_record_decls` files every function's packed return kind in
 #     the `NT_TY` slot of its `def` node, so `abs(g(x))` is as knowable as
 #     `abs(x)`, and a function returning a `float` is not taken for an `i32`;
 #   * a struct *value*, which `ck_etype` deliberately leaves unknown because it
-#     cannot spell a struct's name — "struct" is the spelling this rule needs,
+#     cannot spell a struct's name �?"struct" is the spelling this rule needs,
 #     and it is the reason no C prototype can carry one.
 #
-# What stays unknown — a field read, an array literal, a method call — is
+# What stays unknown �?a field read, an array literal, a method call �?is
 # `K_BAD`, and a rule that reads this stays quiet about it, which is the same
 # honesty as everywhere else in this pass.
 def ck_arg_kind(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
@@ -3655,8 +3673,8 @@ def ck_arg_kind(nd: Array[int, 1310720], mut mem: Array[int, 3741696], vm: VM,
 
 # Declarations first, once, before any body is walked: the verdict must not
 # depend on whether the `extern c` line sits before or after the call that
-# reaches it.  The node table has the room for this — `NT_TY` is declared for a
-# node's static type and until now nothing wrote it — and a struct cannot hold a
+# reaches it.  The node table has the room for this �?`NT_TY` is declared for a
+# node's static type and until now nothing wrote it �?and a struct cannot hold a
 # pool, so a slot next to the node is the only place a call site can be told what
 # the *callee* declared.
 def ck_record_decls(nd: Array[int, 1310720], ty: Array[int, 262144],
@@ -3744,7 +3762,7 @@ def ck_extern_call(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
     callee: int = nd[e * 10 + 1]
     if nd_kind(nd, callee) != 25 {
         # `recv.name(...)`: the receiver is not in the argument chain, and an
-        # `extern c` method is refused where it is declared — its receiver is a
+        # `extern c` method is refused where it is declared �?its receiver is a
         # struct, which no C prototype can carry
         return
     }
@@ -3813,7 +3831,7 @@ def ck_function(nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     # a foreign function is the one with no body (`FT_BODY` is -1, which is what
     # the parser wrote and the resolver copied): nothing to walk, nothing to
-    # prove about returning — but its own kinds have to be legal, which is the
+    # prove about returning �?but its own kinds have to be legal, which is the
     # only thing Vela will ever know about it
     mut ext: bool = False
     if ft_get(mem, f, FT_BODY()) < 0 {

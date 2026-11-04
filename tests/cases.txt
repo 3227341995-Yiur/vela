@@ -605,6 +605,10 @@ run-c     module_from_alias                   tests/build/modules/from_alias.vel
 # the LLVM back end used to refuse the type once the field struct was not struct 0
 run       nested_fields                       tests/build/nested_fields.vel
 run-c     nested_fields                       tests/build/nested_fields.vel
+# the nested-struct family through parameter, return, `mut self` and a copy: all three
+# paths print `w 101 / 103 / 103 9` (the shapes that do not work are in llvm-gaps)
+run       nested_family                       tests/build/nested_family.vel
+run-c     nested_family                       tests/build/nested_family.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is

@@ -1,0 +1,29 @@
+enum Shape {
+    Circle(radius: float)
+    Empty
+}
+
+struct Holder {
+    sh: Shape
+}
+
+def main() -> None {
+    mut h: Holder = Holder(Circle(1.5))
+    match h.sh {
+        Circle(r) {
+            print(r)
+        }
+        Empty {
+            print(0.0)
+        }
+    }
+    h.sh = Circle(2.5)
+    match h.sh {
+        Circle(r) {
+            print(r)
+        }
+        Empty {
+            print(0.0)
+        }
+    }
+}

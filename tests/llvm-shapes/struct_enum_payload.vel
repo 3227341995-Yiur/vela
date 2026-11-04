@@ -1,0 +1,20 @@
+struct Leaf {
+    x: int
+}
+
+enum Shape {
+    Wrap(l: Leaf)
+    Dot
+}
+
+def main() -> None {
+    mut s: Shape = Wrap(Leaf(3))
+    match s {
+        Wrap(l) {
+            print(l.x)
+        }
+        Dot {
+            print(0)
+        }
+    }
+}

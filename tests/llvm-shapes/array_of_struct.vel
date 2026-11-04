@@ -1,0 +1,13 @@
+struct Leaf {
+    x: int
+}
+
+def main() -> None {
+    mut xs: Array[Leaf, 3] = [Leaf(1), Leaf(2), Leaf(3)]
+    print(xs[0].x, xs[1].x)
+    xs[1].x = 9
+    print(xs[1].x)
+    mut t: Leaf = xs[2]
+    t.x = 7
+    print(xs[2].x, t.x)
+}

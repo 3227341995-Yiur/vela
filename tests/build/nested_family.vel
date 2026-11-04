@@ -1,0 +1,46 @@
+# The nested-struct family, in the shapes that work on all three paths.  Written as one
+# program because a case that exercises them separately would let a back end be right
+# about one shape and wrong about the next without the difference showing.
+#
+#   * a nested field through a *parameter* and through a *return* (`make` / `take`)
+#   * a nested field written through `mut self` (`bump`, `peek`)
+#   * value semantics kept when the inner struct is copied (`copy`)
+#   * a `str` inside a nested struct, which is the address-shaped field
+#
+# The shapes that do NOT work are recorded as gaps rather than hidden: `Array[Leaf, N]`
+# (both compiled back ends refuse) and an enum field inside a struct (both refuse); see
+# tests/llvm-gaps.txt and the shapes beside it.
+struct Leaf {
+    label: str
+    x: int
+}
+
+struct Wrap {
+    l: Leaf
+}
+
+def make(v: int) -> Wrap {
+    mut w: Wrap = Wrap(Leaf("w", v))
+    w.l.x = w.l.x + 100
+    return w
+}
+
+def take(w: Wrap) -> int {
+    return w.l.x
+}
+
+def bump(mut self: Wrap) -> None {
+    self.l.x = self.l.x + 1
+}
+
+def main() -> None {
+    mut w: Wrap = make(1)
+    print(w.l.label, w.l.x)
+    bump(w)
+    bump(w)
+    print(take(w))
+
+    mut copy: Leaf = w.l
+    copy.x = 9
+    print(w.l.x, copy.x)
+}

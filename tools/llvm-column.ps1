@@ -130,19 +130,29 @@ function Judge-One {
         $script:counts.missing++
         return
     }
-    Copy-Item -LiteralPath $Source -Destination (Join-Path $dir 'prog.vel') -Force
+    # The program runs from the **repository root**, not from this scratch directory, and
+    # that is what its own file says it needs: a module is found beside the program and
+    # under `lib/` beside it, and a case like `lib/io_app.vel` writes `tests/build/...` --
+    # a path that only means the same thing from the root.  Copying just the one file into
+    # `$dir` (what this script used to do) made every program that imports something fail
+    # the loader with "no module named", which the gate then reported as the *back end*
+    # refusing it: measured, seven module cases came out
+    # "REFUSED-and-not-on-a-ledger (llvm build exit 2)" on a tree where those same
+    # programs compiled from their own directory.
+    $root = Split-Path -Parent $PSScriptRoot
+    $absSource = (Resolve-Path -LiteralPath $Source).Path
 
     # A .bat per program: `cmd /c "a & b"` on one line expands %errorlevel% before the
     # program has run, and a byte comparison needs real redirection.
     $bat = @(
         '@echo off',
-        ("cd /d `"$dir`""),
-        ("`"$vm`" run prog.vel > i.out 2> i.err"),
-        'echo %errorlevel% > i.code',
-        ("`"$vm`" build-llvm prog.vel > l.build 2>&1"),
-        'echo %errorlevel% > l.build.code',
-        '.\prog.exe > l.out 2> l.err',
-        'echo %errorlevel% > l.code'
+        ("cd /d `"$root`""),
+        ("`"$vm`" run `"$absSource`" > `"$(Join-Path $dir 'i.out')`" 2> `"$(Join-Path $dir 'i.err')`""),
+        ('echo %errorlevel% > ' + (Join-Path $dir 'i.code')),
+        ("`"$vm`" build-llvm `"$absSource`" > `"$(Join-Path $dir 'l.build')`" 2>&1"),
+        ('echo %errorlevel% > ' + (Join-Path $dir 'l.build.code')),
+        ('"' + [System.IO.Path]::ChangeExtension($absSource, '.exe') + '" > ' + (Join-Path $dir 'l.out') + ' 2> ' + (Join-Path $dir 'l.err')),
+        ('echo %errorlevel% > ' + (Join-Path $dir 'l.code'))
     )
     [System.IO.File]::WriteAllText((Join-Path $dir 'run.bat'), ($bat -join "`r`n") + "`r`n")
     & cmd /c (Join-Path $dir 'run.bat') | Out-Null
