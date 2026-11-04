@@ -274,6 +274,27 @@ object VelaSyntaxDump {
                 sb.append("binding name=").append(n.name).append('\n')
             }
 
+            /*
+             * `a, b = f()` -- the compiler's kind 46, printed the way `dump.vel`
+             * prints it: the count, then one `target` line per name in binding
+             * order, then the value expression.  `_` prints as itself because that
+             * is what the reader wrote; the compiler stores an absent name handle
+             * for it and prints the same word.
+             */
+            VelaNodeKind.UNPACK -> {
+                indent(sb, depth)
+                sb.append("unpack names=").append(n.op).append('\n')
+                var ti = 0
+                while (ti + 1 < n.children.size) {
+                    val target = n.children[ti]
+                    indent(sb, depth + 1)
+                    sb.append("target ").append(target.name).append('\n')
+                    ti++
+                }
+                val value = n.children.lastOrNull()
+                if (value != null) dumpNode(sb, tree, value, depth + 1)
+            }
+
             VelaNodeKind.DECL -> {
                 indent(sb, depth)
                 sb.append("decl name=").append(n.name)

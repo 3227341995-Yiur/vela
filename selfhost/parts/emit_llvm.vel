@@ -2263,6 +2263,22 @@ def ll_reserve_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                         nd[s * 10 + 2])
         return
     }
+    if k == 46 {
+        # `a, b = f()`: every target is a local of the frame, so the reservation
+        # pass gives each one the same entry-block slot a declaration gets.  The
+        # value's own storage is the call site's (`ll_reserve_expr` reserves a slot
+        # for a struct-returning call), and `_` names no local and reserves none.
+        mut t46: int = nd[s * 10 + 1]
+        while t46 > 0 {
+            if nd[t46 * 10 + 1] != 0 {
+                ll_reserve_decl(lg, nd, mem, vm, slots, slotkind, lit, path, t46)
+            }
+            t46 = nd_nx(nd, t46)
+        }
+        ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
+                        nd[s * 10 + 2])
+        return
+    }
     if k == 7 {
         ll_reserve_expr(lg, nd, ty, flt, src, path, mem, vm, slots, lit,
                         nd[s * 10 + 2])
@@ -4048,6 +4064,68 @@ def ll_assign(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                               h))
 }
 
+# `a, b = f()`: the value's storage first, then one `getelementptr` + `load` per
+# name.
+#
+# What `ll_expr` answers for a struct-returning call is the *address* of the slot
+# the reservation pass gave that call -- the "a struct value is an address" rule
+# this whole back end follows -- so the fields are read through that address and
+# each target is a store into its own entry-block slot.  Reading from the call's
+# slot rather than from a temporary of this statement's is what keeps the call made
+# once: the slot belongs to the call site and is reused where the call is emitted,
+# the way the string-literal slots are.
+def ll_unpack(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
+              flt: Array[float, 262144], src: str, path: str,
+              mut mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
+              slotkind: Array[int, 4096], mut lit: Array[int, 132096],
+              fns: Array[int, 8192], s: int) -> None {
+    line: int = nd_line(nd, s)
+    sid: int = nt_get(mem, s, NT_ROW())
+    if sid < 0 {
+        trap(path, line, "this unpacking has no struct row")
+    }
+    st: int = ll_sty_of(lg, mem, vm, lit, sid, path, line)
+    base: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
+                        fns, nd[s * 10 + 2])
+    mut t: int = nd[s * 10 + 1]
+    mut i: int = 0
+    while t > 0 {
+        if nd[t * 10 + 1] != 0 {
+            pk: int = nt_get(mem, t, NT_LIT())
+            k: int = unpack_kind(pk)
+            h: int = ll_slot_for(lg, slots, slotkind, nt_get(mem, t, NT_SLOT()), k,
+                                 path, line)
+            fa: int = ll_ck(lg, "an unpacked field's address",
+                            vshim_build_gep_field(lg.m, st, base, i))
+            if k == K_ST() {
+                sv: int = ll_load_st(lg, mem, vm, lit, unpack_len(pk), fa, path, line)
+                ll_ckst(lg, "copying a struct out of an unpacking",
+                        vshim_build_store(lg.m, sv, h))
+            } else if k == K_STR() {
+                svs: int = ll_ck(lg, "reading a str to copy it",
+                                 vshim_build_load(lg.m, lg.t_str, fa))
+                ll_ckst(lg, "copying a str out of an unpacking",
+                        vshim_build_store(lg.m, svs, h))
+            } else if k == K_ENUM() {
+                trap(path, line,
+                     "a struct field of enum type is not compiled by the LLVM back end yet: the C back end refuses the same struct definition")
+            } else {
+                vt: int = ll_type_of(lg, k)
+                if vt == 0 {
+                    trap(path, line,
+                         "this field's kind has no IR spelling in the LLVM back end")
+                }
+                val: int = ll_ck(lg, "reading an unpacked field",
+                                 vshim_build_load(lg.m, vt, fa))
+                ll_ckst(lg, "storing an unpacked field",
+                        vshim_build_store(lg.m, val, h))
+            }
+        }
+        t = nd_nx(nd, t)
+        i += 1
+    }
+}
+
 def ll_aug(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
            flt: Array[float, 262144], src: str, path: str,
            mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
@@ -4585,6 +4663,10 @@ def ll_stmt(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     if k == 6 {
         ll_assign(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
                   fns, s)
+        return
+    }
+    if k == 46 {
+        ll_unpack(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit, fns, s)
         return
     }
     if k == 7 {

@@ -1031,6 +1031,74 @@ def walk_arm(nd: Array[int, 1310720], ty: Array[int, 262144],
     vm.scn = mark
 }
 
+# `a, b = f()`: which struct the value has, or a refusal that names what to write.
+#
+# The parser cannot answer this and must not try: a target's type is a *field*
+# type, and the field table is built here.  So the shape the resolver accepts is
+# the narrow honest one -- the right-hand side is a call to a plain function whose
+# declared result is a struct -- and everything else is refused by name, with the
+# alternative spelled out.  A method call and a struct constructor look like calls
+# to a reader and are not: a method's result type depends on its receiver
+# (`check_call` returns early for one), and a constructor is a struct *name* bound
+# as SYM_STRUCT.
+def unpack_row(nd: Array[int, 1310720], ty: Array[int, 262144],
+               mut mem: Array[int, 3741696], path: str, vm: VM,
+               s: int) -> int {
+    line: int = nd_line(nd, s)
+    v: int = nd[s * 10 + 2]
+    if v <= 0 {
+        fail_kind(path, line, "type error",
+                  "`a, b = f()` needs a value on the right-hand side")
+    }
+    if nd_kind(nd, v) == 44 {
+        # `a, b = await f()`: the awaited value is a struct, but the await node is
+        # an expression this back end's back ends do not evaluate as storage, so
+        # the fields are not readable here.  Named rather than left to the
+        # not-a-call arm below, which would tell the reader nothing about `await`.
+        fail_kind(path, line, "type error",
+                  "`a, b = await f()` is not implemented yet: await the call into one binding (`mut t: Pair = await f()`) and read `t.field`")
+    }
+    if nd_kind(nd, v) != 26 {
+        fail_kind(path, line, "type error",
+                  "the right-hand side of `a, b = f()` must be a call to a function that returns a struct: bind a struct value with `mut t: Pair = p` and read its fields as `t.field`")
+    }
+    callee: int = nd[v * 10 + 1]
+    if nd_kind(nd, callee) != 25 {
+        fail_kind(path, line, "type error",
+                  "the right-hand side of `a, b = f()` must be a call to a function that returns a struct, not a field of one")
+    }
+    sk: int = nt_get(mem, callee, NT_SYM())
+    if sk != SYM_FUNC() {
+        fail_kind(path, line, "type error",
+                  "the right-hand side of `a, b = f()` must be a call to a plain function that returns a struct: a struct constructor and a method call are not unpacked here, so bind the value with `mut t: T = ...` and read `t.field`")
+    }
+    fn: int = nt_get(mem, callee, NT_VAL())
+    if ft_get(mem, fn, FT_BODY()) < 0 {
+        fail_kind(path, line, "type error",
+                  "an `extern c` function's result cannot be unpacked: the two back ends disagree about returning a struct across the C boundary")
+    }
+    if (nd[ft_get(mem, fn, FT_DEF()) * 10 + 6] & 16) == 16 {
+        # A call to an `async def` answers a *future*, not its declared result, so
+        # the fields are not there to take: the value has to be awaited first.
+        fail_kind(path, line, "type error",
+                  ck_quoted("'", nd[callee * 10 + 1],
+                            "' is an `async def`, so calling it answers a future rather than the struct: await the call into one binding and read its fields"))
+    }
+    t: int = ft_get(mem, fn, FT_RETTY())
+    if type_kind(ty, t, mem, vm) != K_ST() {
+        fail_kind(path, line, "type error",
+                  ck_quoted("`a, b = f()` unpacks the fields of a struct, and '",
+                            nd[callee * 10 + 1],
+                            "' does not return one: write `a = f()` for a single value"))
+    }
+    sid: int = struct_of_type(ty, t, mem, vm)
+    if sid < 0 {
+        fail_kind(path, line, "type error",
+                  "the right-hand side of `a, b = f()` returns an unknown struct type")
+    }
+    return sid
+}
+
 def walk_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
               mut mem: Array[int, 3741696], path: str, mut vm: VM,
               s: int) -> None {
@@ -1052,6 +1120,54 @@ def walk_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
             declare_local(nd, ty, mem, path, vm, s, tgt)
         } else {
             walk_expr(nd, ty, mem, path, vm, tgt)
+        }
+        return
+    }
+    if k == 46 {
+        # `a, b = f()`: the value is resolved *first*, in the enclosing scope, for
+        # the same reason a declaration's initialiser is (see the k == 6 arm): a
+        # target is not in scope inside the expression that produces its value.
+        v46: int = nd[s * 10 + 2]
+        if v46 > 0 {
+            walk_expr(nd, ty, mem, path, vm, v46)
+        }
+        sid46: int = unpack_row(nd, ty, mem, path, vm, s)
+        nf46: int = stb_get(mem, sid46, STB_NFIELD())
+        want46: int = nd[s * 10 + 3]
+        if want46 > nf46 {
+            fail_kind(path, nd_line(nd, s), "type error",
+                      ck_quoted("'", stb_get(mem, sid46, STB_NAME()),
+                                concat(concat("' has ", ck_int_text(nf46)),
+                                       " field(s), so this unpacking names too many variables")))
+        }
+        # The row travels in the *node table*, not in the node: this pass never
+        # writes `nd` (see the header), and `NT_ROW` is the word a name node already
+        # spends on the shape row of its value -- so an unpack node's row and a
+        # target's row are read the same way by the back ends.
+        nt_put(mem, s, NT_ROW(), sid46)
+        off46: int = stb_get(mem, sid46, STB_FOFF())
+        mut t46: int = nd[s * 10 + 1]
+        mut i46: int = 0
+        while t46 > 0 {
+            name46: int = nd[t46 * 10 + 1]
+            if name46 != 0 {
+                if vm.nlocal >= CELL_STACK_MAX() {
+                    fail(path, nd_line(nd, s), "a function has too many local variables")
+                }
+                slot46: int = vm.nlocal
+                vm.nlocal += 1
+                packed46: int = sfl_get(mem, off46 + i46 * 2 + 1)
+                row46: int = row_of_packed(packed46)
+                sc_push(mem, vm, name46, SYM_LOCAL(), slot46, packed46, row46)
+                # the target node carries the same four facts a declaration carries,
+                # so the checker and both back ends treat it as one without a second
+                # notion of "declared": its slot, its packed kind, its shape row
+                nt_put(mem, t46, NT_SLOT(), slot46)
+                nt_put(mem, t46, NT_LIT(), packed46)
+                nt_put(mem, t46, NT_ROW(), row46)
+            }
+            t46 = nd_nx(nd, t46)
+            i46 += 1
         }
         return
     }

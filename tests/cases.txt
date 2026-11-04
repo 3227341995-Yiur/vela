@@ -47,6 +47,13 @@ run-c   python_floor_semantics                   tests/build/python_floor_semant
 run-c   recursion_fib                            tests/build/recursion_fib.vel
 run-c   struct_and_methods                       tests/build/struct_and_methods.vel
 run-c   struct_value_semantics                   tests/build/struct_value_semantics.vel
+# `a, b = f()`: the fields of a struct come out into names, in declaration order, and
+# `_` in a target position skips one.  Two rows for one file, the shape `native` and
+# `native-c` already use: no single mode builds with *both* back ends, and this
+# statement's whole promise is that all three agree, so the default path (LLVM) and
+# the C path are both asked, each with the interpreter in front of its golden.
+run     unpack_assign                            tests/build/unpack_assign.vel
+run-c   unpack_assign                            tests/build/unpack_assign.vel
 # The permanent guard for three operators that were WRONG IN THE INTERPRETER for as long as
 # nobody used them.  `parts/eval.vel`'s `combine` answered op 17 with `a ^ b`, 18 with `a & b`
 # and 19 with `a | b`, while `dump.vel`'s own `op_name` and the C back end say 17 = `&`,
@@ -676,8 +683,14 @@ refuse    mut_self_needs_mut                  tests/build/check_cases/mut_self_n
 refuse    from_missing_module                tests/build/check_cases/from_import_not_yet.vel
 # an alias is refused because nothing would rebind it -- accepting it and doing nothing
 # would leave `a` as a name that resolves to nothing (measured in exactly that state)
-# `a, b = f()` is refused by name (it used to be "expected a newline ... found ,")
-refuse    unpack_not_yet                    tests/build/check_cases/unpack_not_yet.vel
+# `a, b = f()` used to be refused by name ("expected a newline ... found ," before that).
+# It is a feature now (`unpack_assign` above), and these three rows pin what it does *not*
+# do: names more variables than the struct has fields, unpacks something that is not a
+# struct, and takes a place (`p.a`) for a target.  Each refusal quotes the count, the
+# function's real result, or the spelling that works -- measured, not assumed.
+refuse    unpack_too_many_names              tests/build/check_cases/unpack_too_many_names.vel
+refuse    unpack_not_a_struct                tests/build/check_cases/unpack_not_a_struct.vel
+refuse    unpack_target_not_a_name           tests/build/check_cases/unpack_target_not_a_name.vel
 # two modules declare one name: the module-qualified spelling is refused rather than
 # answered with whichever file kept the plain name (measured: it used to answer 0)
 refuse    collide_qualified                  tests/build/modules/collide_qualified.vel

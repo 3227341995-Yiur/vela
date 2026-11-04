@@ -1,0 +1,18 @@
+# A target of an unpacking is a plain name or `_`.  `p.a` is a field of a struct,
+# which is a *place*, and binding it would mean writing back into `p` -- the one
+# reading of `a, b = f()` that this slice does not take.  The refusal says so and
+# names the spelling that works.
+struct Pair {
+    a: int
+    b: float
+}
+
+def pair() -> Pair {
+    return Pair(7, 1.5)
+}
+
+def main() -> None {
+    p: Pair = pair()
+    p.a, b = pair()
+    print(p.a, b)
+}

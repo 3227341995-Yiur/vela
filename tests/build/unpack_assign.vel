@@ -1,0 +1,58 @@
+# `a, b = f()`: the fields of the struct `f` returns come out into names, in the
+# order the fields are declared.  `_` in a target position skips that field.
+#
+# The program is written so that a difference between the three implementations has
+# somewhere to show, which is what makes one case worth running three ways:
+#
+#   * a `str` field, whose C spelling is a 16-byte struct and whose IR spelling is
+#     a load and a store -- the binding has to be a copy, not the address;
+#   * an `i32` field and a `bool` field, whose declared widths are narrower than
+#     the value cell an interpreter keeps;
+#   * `_` first and `_` last, because the field a target reads is its *position*,
+#     not its order among the names;
+#   * an unpacking inside a loop and inside an `if`, so neither back end can get
+#     away with storage that only works once.
+#
+# A field that is *itself* a struct is deliberately not here.  The LLVM back end
+# refuses one whose struct is not the first in the table ("a struct field's type has
+# no IR spelling"), and that refusal predates this statement: the compiler built from
+# the checked-in seed C at the commit before unpacking answers the same thing.  It is
+# a gap in a different feature, and a case for unpacking is not where it should be
+# discovered.
+struct Pair {
+    a: int
+    b: float
+}
+
+struct Label {
+    text: str
+    count: i32
+    on: bool
+}
+
+def pair() -> Pair {
+    return Pair(7, 1.5)
+}
+
+def label() -> Label {
+    return Label("abc", 9, True)
+}
+
+def main() -> None {
+    a, b = pair()
+    print(a, b)
+    _, f = pair()
+    print(f)
+    s, n, ok = label()
+    print(s, n, ok)
+    mut i: int = 0
+    while i < 2 {
+        x, y = pair()
+        print(x, y)
+        i += 1
+    }
+    if True {
+        name, _ = label()
+        print(name)
+    }
+}

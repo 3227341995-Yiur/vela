@@ -66,6 +66,17 @@
 # Nothing else walks it, which is why it is the one kind with no arms in resolve,
 # check, dump or either back end.
 #
+# kind 46 unpack      a=first target  b=value  c=name count
+#
+# A target is an ordinary kind-25 name node, with one convention: its name word is
+# 0 for `_`, which means "skip that field".  `intern` never answers 0 for a
+# non-empty spelling, so the word is a name handle everywhere it is non-zero; the
+# unpack arm in resolve is the only reader of the convention.  The count is what
+# the arity refusal quotes.  Word 4 stays -1: resolve never writes `nd`, so the
+# struct row it works out travels in the node table (`NT_ROW` of this node), and a
+# target carries its own slot, packed kind and row there, exactly like a
+# declaration.
+#
 # kind 40 is the one node the *driver* consumes rather than the resolver: it is
 # the only statement that is not part of the program, it is part of how the
 # program was assembled (MODULES_PLAN.md step 2), so `resolve_module` never sees
@@ -824,6 +835,127 @@ def defers_stamp(mut nd: Array[int, 1310720], first: int, dchain: int,
     }
 }
 
+# `a, b = f()` -- several names out of one struct value.  The statement is
+# recognised by its *shape*, not by a keyword: a NAME, and then a `,` before the
+# first `=` of the statement, both at bracket depth 0.  No other Vela statement
+# has a top-level comma before its top-level `=`, which is what makes the shape
+# unambiguous even though the comma is what the expression grammar cannot read.
+#
+# The scan is deliberately wider than "name, name, =": `p.x, b = f()` and
+# `a[0], b = f()` are unpackings whose *targets* are wrong, and the refusal for a
+# wrong target is a better answer than "expected a newline between statements,
+# found ','".  `parse_unpack` is where a target that is not a plain name or `_`
+# is named.  A newline at depth 0, or the end of the file, ends the scan: a
+# statement does not continue past one.
+#
+# It was a refusal before it was a feature: the arm that produced "unpacks
+# several names from one value, which is not implemented yet" is replaced by
+# this one, and `tests/build/check_cases/unpack_not_yet.vel` became
+# `tests/build/unpack_assign.vel` instead of pinning the sentence.
+def at_unpack_shape(tk: Array[int, 1572864], cx: Ctx) -> bool {
+    if not at_name(tk, cx) {
+        return False
+    }
+    mut k: int = 1
+    mut depth: int = 0
+    mut commas: int = 0
+    mut scanning: int = 1
+    while scanning == 1 {
+        kk: int = tk_kind(tk, cx.ti + k)
+        if kk == 9 {
+            return False
+        }
+        if kk == 6 and depth == 0 {
+            return False
+        }
+        if kk == 5 {
+            opv: int = tk_ival(tk, cx.ti + k)
+            if opv == 9 or opv == 14 or opv == 33 {
+                depth += 1
+            } else if opv == 10 or opv == 15 or opv == 34 {
+                if depth == 0 {
+                    return False
+                }
+                depth -= 1
+            } else if depth == 0 {
+                if opv == 11 {
+                    commas += 1
+                } else if opv == 8 {
+                    return commas > 0
+                }
+            }
+        }
+        k += 1
+    }
+    return False
+}
+
+# `a, b = f()`, `a, _ = f()`, `_, b = f()`.  The targets are name nodes in a
+# chain, and `_` is a name node whose name word is 0 -- see the header's kind-46
+# note for why the marker is the absent handle rather than a second kind.
+#
+# Nothing here decides whether the right-hand side is a struct or how many
+# fields it has: both are questions about types, and types do not exist until
+# resolve has read the function and struct tables.  So this function's whole job
+# is the shape, and resolve refuses the shapes it cannot honour.
+def parse_unpack(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
+                 mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
+                 mut flt: Array[float, 262144], mut cx: Ctx,
+                 line: int) -> int {
+    n: int = new_node(nd, cx, 46, line)
+    mut head: int = -1
+    mut tail: int = -1
+    mut count: int = 0
+    mut more: int = 1
+    while more == 1 {
+        if not at_name(tk, cx) {
+            if kw_as_name(tk, cx, ti_line(tk, cx)) {
+                return -1
+            }
+            perr(cx,
+                 "a name to unpack into must be a plain name or `_`: write `a, b = f()` and read `x.field` for anything else",
+                 ti_line(tk, cx))
+            return -1
+        }
+        tline: int = ti_line(tk, cx)
+        t: int = new_node(nd, cx, 25, tline)
+        if tok_text(src, tk, cx) == "_" {
+            nd[t * 10 + 1] = 0
+        } else {
+            nd[t * 10 + 1] = name_id(src, tk, cx)
+        }
+        if head < 0 {
+            head = t
+        } else {
+            nd[tail * 10 + 7] = t
+        }
+        tail = t
+        count += 1
+        cx.ti += 1
+        if at_op(tk, cx, 11) {
+            cx.ti += 1
+        } else {
+            more = 0
+        }
+    }
+    if not at_op(tk, cx, 8) {
+        perr(cx,
+             "a name to unpack into must be a plain name or `_`: write `a, b = f()` and read `x.field` for anything else",
+             ti_line(tk, cx))
+        return -1
+    }
+    cx.ti += 1
+    val: int = parse_expr(src, tk, tkf, nd, ty, flt, cx)
+    if cx.err != 0 {
+        return -1
+    }
+    nd[n * 10 + 1] = head
+    nd[n * 10 + 2] = val
+    nd[n * 10 + 3] = count
+    nd[n * 10 + 4] = -1
+    return n
+}
+
 def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
                mut nd: Array[int, 1310720], mut ty: Array[int, 262144],
                mut flt: Array[float, 262144], mut cx: Ctx, top: int) -> int {
@@ -1090,20 +1222,15 @@ def parse_stmt(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
         cx.ti += 1
         return new_node(nd, cx, 15, line)
     }
-    # `a, b = f()` -- a declaration of several names at once, which this front end does
-    # not have.  Without this arm the statement reached the expression grammar and the
-    # reader got "expected a newline between statements, found ','": a complaint about a
-    # token, not about the construct.  Naming the shape is the difference between "I did
-    # not know that was Vela" and "Vela says it cannot do unpacking yet, and here is what
-    # to write instead".
-    if at_name(tk, cx) {
-        # A *name* after the comma, not just any token: `a, 2` is not several names, and
-        # telling its author about unpacking would be a message about a construct they did
-        # not write.  Measured before this precision: `a, 2` got the unpacking sentence.
-        if at_op2(tk, cx, 1, 11) and tk_kind(tk, cx.ti + 2) == 1 and tk_ival(tk, cx.ti + 2) == 0 {
-            perr(cx, "`a, b = f()` unpacks several names from one value, which is not implemented yet: return a struct from `f` and read its fields, or bind two names separately", line)
-            return -1
-        }
+    # `a, b = f()` -- several names out of one struct value.  This used to be a
+    # refusal that named the shape (before it, the statement reached the
+    # expression grammar and the reader got "expected a newline between
+    # statements, found ','": a complaint about a token, not about the
+    # construct).  It is the feature now, and the arm sits above the expression
+    # grammar because the comma after the first name is what the expression
+    # grammar cannot read.
+    if at_unpack_shape(tk, cx) {
+        return parse_unpack(src, tk, tkf, nd, ty, flt, cx, line)
     }
     return parse_simple(src, tk, tkf, nd, ty, flt, cx)
 }
@@ -1729,6 +1856,16 @@ def parse_simple(src: str, tk: Array[int, 1572864], tkf: Array[float, 262144],
         }
         nm: int = name_id(src, tk, cx)
         cx.ti += 1
+        # `mut a, b = f()`: `mut` marks one binding, and an unpacking declares one
+        # binding per name.  Without this arm the reader was told "a 'mut' binding
+        # needs an initialiser or a type", which is true of the token it was looking
+        # at and says nothing about the statement that was written.
+        if at_op(tk, cx, 11) {
+            perr(cx,
+                 "`mut` declares one binding: write the unpacking without it (`a, b = f()` binds two read-only names) and declare a `mut` binding of its own where a value has to change",
+                 line)
+            return -1
+        }
         mut decl: int = -1
         if at_op(tk, cx, 12) {
             cx.ti += 1

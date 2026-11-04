@@ -66,6 +66,8 @@ internal object VelaNodeTypes {
     @JvmField val SUBJECT: IElementType = IElementType("VELA_SUBJECT", VelaLanguage)
     @JvmField val ARM: IElementType = IElementType("VELA_ARM", VelaLanguage)
     @JvmField val BINDING: IElementType = IElementType("VELA_BINDING", VelaLanguage)
+    // `a, b = f()` -- unpacking a struct's fields into names (the compiler's kind 46).
+    @JvmField val UNPACK: IElementType = IElementType("VELA_UNPACK", VelaLanguage)
 
     /** The element type for a node kind.  Total: no `else` on purpose. */
     fun of(kind: VelaNodeKind): IElementType = when (kind) {
@@ -112,6 +114,7 @@ internal object VelaNodeTypes {
         VelaNodeKind.SUBJECT -> SUBJECT
         VelaNodeKind.ARM -> ARM
         VelaNodeKind.BINDING -> BINDING
+        VelaNodeKind.UNPACK -> UNPACK
     }
 
     /**

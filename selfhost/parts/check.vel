@@ -3402,6 +3402,40 @@ def ck_stmt(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         }
         return
     }
+    if k == 46 {
+        # `a, b = f()`.  The resolver has already refused every shape it cannot
+        # honour (a non-struct result, more names than fields, a target that is not
+        # a name), and given every target its packed kind and shape row -- the same
+        # two words a declaration carries.  What is left for this pass is the one
+        # question resolve cannot ask: whether a *name* about to be bound collides
+        # with one already in this scope, and then putting the names in the
+        # checker's own scope so the rest of the block sees them.
+        v46: int = nd[s * 10 + 2]
+        ck_expr(nd, mem, path, vm, v46)
+        # a second net under resolve's judgement, and the cheaper of the two to
+        # read: the same packed return type the argument rules use for a call
+        if ck_arg_kind(nd, mem, vm, v46) != K_ST() {
+            ck_type(path, nd_line(nd, s),
+                    "`a, b = f()` unpacks the fields of a struct, and this value is not one")
+        }
+        mut t46: int = nd[s * 10 + 1]
+        while t46 > 0 {
+            name46: int = nd[t46 * 10 + 1]
+            if name46 != 0 {
+                if ck_seen(mem, vm, name46, mark) {
+                    ck_type(path, nd_line(nd, t46),
+                            ck_quoted("'", name46,
+                                      "' is already declared in this scope"))
+                }
+                # not `mut`: `a, b = f()` has no `mut` to write, so the two names it
+                # binds are ordinary immutable bindings, the same as `a: T = ...`
+                ck_push(mem, vm, name46, nt_get(mem, t46, NT_LIT()), False,
+                        nt_get(mem, t46, NT_ROW()))
+            }
+            t46 = nd_nx(nd, t46)
+        }
+        return
+    }
     if k == 7 {
         ck_store(nd, mem, path, vm, s)
         # `x += v` holds an expression in `v`, and until this line the walk stopped

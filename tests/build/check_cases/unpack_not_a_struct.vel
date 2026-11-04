@@ -1,0 +1,12 @@
+# The right-hand side of an unpacking has to be a struct: there are no fields to
+# take out of an `int`.  The refusal names the function and the spelling that does
+# work, because "unpacking from a non-struct" is a construct the reader wrote on
+# purpose and not a typo.
+def one() -> int {
+    return 1
+}
+
+def main() -> None {
+    a, b = one()
+    print(a, b)
+}

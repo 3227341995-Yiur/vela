@@ -2306,6 +2306,44 @@ def exec_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
         vm.sp = mark
         return C_NEXT()
     }
+    if k == 46 {
+        # `a, b = f()`: the value once, then one field copy per name.  Copying the
+        # *fields* rather than keeping the block is what makes a target an ordinary
+        # local: the block a call returns belongs to the heap cursor of this frame
+        # and is released when the frame exits, and a target outlives that -- it is
+        # a cell in the frame, exactly as a declaration's is.
+        sid46: int = nt_get(mem, s, NT_ROW())
+        if sid46 < 0 {
+            trap(path, vm.line, "this unpacking has no struct row")
+        }
+        mark46: int = vm.sp
+        keep46: int = vm.dst
+        tmp46: int = cell_alloc(vm)
+        vm.dst = tmp46
+        eval_expr(nd, ty, mem, fmem, flt, ipool, fpool, bpool, src, path, vm,
+                  nd[s * 10 + 2])
+        vm.dst = keep46
+        if mem[tmp46 * 4 + 0] != K_ST() {
+            trap(path, vm.line, "this value is not a struct")
+        }
+        base46: int = mem[tmp46 * 4 + 1]
+        mut t46: int = nd[s * 10 + 1]
+        mut i46: int = 0
+        while t46 > 0 {
+            if nd[t46 * 10 + 1] != 0 {
+                dst46: int = vm.fp + nt_get(mem, t46, NT_SLOT())
+                copy_value(mem, fmem, path, vm, dst46, base46 + i46)
+                # a target of a narrow field (`i32`, `u8`) passes through the same
+                # check a store does: the declared width is a promise about the
+                # value, and a field read is a place a value arrives from
+                narrow_check(mem, path, vm, nt_get(mem, t46, NT_LIT()), dst46)
+            }
+            t46 = nd_nx(nd, t46)
+            i46 += 1
+        }
+        vm.sp = mark46
+        return C_NEXT()
+    }
     if k == 7 {
         tgt2: int = nd[s * 10 + 1]
         mark2: int = vm.sp

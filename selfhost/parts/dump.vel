@@ -375,6 +375,29 @@ def d_node(src: str, nd: Array[int, 1310720], ty: Array[int, 262144],
         emit_nl()
         return
     }
+    if k == 46 {
+        # `a, b = f()`: the names first, in the order they bind fields, then the
+        # value.  `_` is printed as itself rather than as the absent handle the
+        # parser stores, because the dump is a record of what the reader wrote.
+        d_indent(depth)
+        emit_str("unpack names=")
+        emit_int(nd[n * 10 + 3])
+        emit_nl()
+        mut t46: int = nd[n * 10 + 1]
+        while t46 > 0 {
+            d_indent(depth + 1)
+            emit_str("target ")
+            if nd[t46 * 10 + 1] == 0 {
+                emit_str("_")
+            } else {
+                emit_str(interned(nd[t46 * 10 + 1]))
+            }
+            emit_nl()
+            t46 = nd[t46 * 10 + 7]
+        }
+        d_node(src, nd, ty, flt, nd[n * 10 + 2], depth + 1)
+        return
+    }
     if k == 6 {
         if (nd[n * 10 + 6] & 2) != 0 {
             d_indent(depth)

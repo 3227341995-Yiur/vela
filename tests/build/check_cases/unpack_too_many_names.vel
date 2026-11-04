@@ -1,0 +1,16 @@
+# `a, b, c = f()` names three values and `Pair` has two fields.  Refused by name,
+# with the count, rather than binding two names and leaving the third unbound -- and
+# rather than silently ignoring the extra one.
+struct Pair {
+    a: int
+    b: float
+}
+
+def pair() -> Pair {
+    return Pair(7, 1.5)
+}
+
+def main() -> None {
+    a, b, c = pair()
+    print(a, b, c)
+}

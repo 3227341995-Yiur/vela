@@ -1,2 +1,0 @@
-vela: syntax error: `a, b = f()` unpacks several names from one value, which is not implemented yet: return a struct from `f` and read its fields, or bind two names separately
-  at line 18

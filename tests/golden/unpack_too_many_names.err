@@ -1,0 +1,2 @@
+vela: type error: 'Pair' has 2 field(s), so this unpacking names too many variables
+  at tests/build/check_cases/unpack_too_many_names.vel:14

@@ -1621,6 +1621,54 @@ def emit_assign(nd: Array[int, 1310720], ty: Array[int, 262144],
     emit_str(";\n")
 }
 
+# `a, b = f()`: one call, then one member read per name.
+#
+# The value is kept in a temporary of the struct's own C type, and that is not a
+# style choice: `f().f_x, f().f_y` would call `f` once per name, which is a
+# different program the moment `f` has a side effect.  The temporary is named
+# after the *statement*, whose index is unique in the file, so two unpackings
+# cannot share one.
+def emit_unpack(nd: Array[int, 1310720], ty: Array[int, 262144],
+                flt: Array[float, 262144], src: str, path: str,
+                mem: Array[int, 3741696], mut vm: VM, s: int,
+                indent: int) -> None {
+    line: int = nd_line(nd, s)
+    sid: int = nt_get(mem, s, NT_ROW())
+    if sid < 0 {
+        trap(path, line, "this unpacking has no struct row")
+    }
+    emit_packed_ctype(mem, vm, path, line, pack_kind(K_ST(), sid))
+    emit_str(" vela_unpack_")
+    emit_int(s)
+    emit_str(" = ")
+    emit_expr(nd, ty, flt, src, path, mem, vm, nd[s * 10 + 2])
+    emit_str(";\n")
+    off: int = stb_get(mem, sid, STB_FOFF())
+    mut t: int = nd[s * 10 + 1]
+    mut i: int = 0
+    # the first *emitted* name starts where `emit_stmt` already put the indent,
+    # which is not the same thing as the first target: `_, b = f()` skips one
+    mut first: int = 1
+    while t > 0 {
+        if nd[t * 10 + 1] != 0 {
+            if first == 0 {
+                emit_indent(indent)
+            }
+            first = 0
+            emit_packed_ctype(mem, vm, path, line, nt_get(mem, t, NT_LIT()))
+            emit_str(" ")
+            emit_cname(nd[t * 10 + 1])
+            emit_str(" = vela_unpack_")
+            emit_int(s)
+            emit_str(".")
+            emit_field_name(mem, sfl_get(mem, off + i * 2))
+            emit_str(";\n")
+        }
+        t = nd_nx(nd, t)
+        i += 1
+    }
+}
+
 # The left-hand side of an assignment.  It cannot be `emit_expr`: a read of an
 # indexed element is a comma expression, and a comma expression is not an lvalue
 # in C, so a store emits the element directly and relies on the check that was
@@ -2126,6 +2174,10 @@ def emit_stmt(nd: Array[int, 1310720], ty: Array[int, 262144],
             }
         }
         emit_assign(nd, ty, flt, src, path, mem, vm, s, indent)
+        return
+    }
+    if k == 46 {
+        emit_unpack(nd, ty, flt, src, path, mem, vm, s, indent)
         return
     }
     if k == 7 {

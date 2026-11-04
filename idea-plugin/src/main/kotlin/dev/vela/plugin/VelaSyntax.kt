@@ -1013,6 +1013,18 @@ enum class VelaNodeKind {
     SUBJECT,
     ARM,
     BINDING,
+
+    /*
+     * `a, b = f()` -- the compiler's node kind 46.
+     *
+     * The names it binds are ordinary [NAME] children, in the order they bind the
+     * struct's fields, with `_` written as the name `_`; the value is the last
+     * child.  Keeping the names as name nodes is deliberate: the compiler keeps a
+     * kind-25 node per target too (with an absent handle for `_`), and a reader of
+     * this tree wants the same thing the compiler's own dumper prints -- a list of
+     * targets followed by the expression.
+     */
+    UNPACK,
 }
 
 /**
@@ -2352,7 +2364,82 @@ class VelaSyntaxParser private constructor(
      * for its side effect: the dump calls it `expr`, and the compiler is where
      * "useless expression statement" is refused, not here.
      */
+    /**
+     * `a, b = f()` -- a NAME, and then a `,` before the first `=` of the statement,
+     * both at bracket depth 0.
+     *
+     * This is `selfhost/parts/parser.vel`'s `at_unpack_shape`, transcribed.  No
+     * other Vela statement has a top-level comma before its top-level `=`, which is
+     * what makes the shape unambiguous; the comma is also what the expression
+     * grammar cannot read, so the test has to happen *before* [parseSimple]'s
+     * expression path.
+     *
+     * The scan is deliberately wider than "name, name, =": `p.x, b = f()` is an
+     * unpacking whose *target* is wrong, and [parseUnpack] is where that is refused
+     * with a sentence about targets rather than "expected a newline".
+     */
+    private fun atUnpackShape(): Boolean {
+        if (!atName()) return false
+        var k = 1
+        var depth = 0
+        var commas = 0
+        while (true) {
+            val i = pos + k
+            if (i >= toks.size) return false
+            val t = toks[i]
+            if (t.kind == VelaTokKind.EOF) return false
+            if (t.kind == VelaTokKind.NEWLINE && depth == 0) return false
+            if (t.kind == VelaTokKind.OP) {
+                when (t.code) {
+                    VelaOps.LPAREN, VelaOps.LBRACKET, VelaOps.LBRACE -> depth++
+                    VelaOps.RPAREN, VelaOps.RBRACKET, VelaOps.RBRACE -> {
+                        if (depth == 0) return false
+                        depth--
+                    }
+                    VelaOps.COMMA -> if (depth == 0) commas++
+                    VelaOps.EQ -> if (depth == 0) return commas > 0
+                }
+            }
+            k++
+        }
+    }
+
+    /**
+     * `a, b = f()`, `a, _ = f()`, `_, b = f()`.
+     *
+     * The targets are [VelaNodeKind.NAME] children and the value is the last child,
+     * which is the shape `VelaSyntaxDump` prints as `target` lines and the compiler
+     * stores as a chain of kind-25 nodes.  `_` is written as the name `_`: it is a
+     * name token and the only position it means "skip this field" is a target, so
+     * nothing is gained by a node kind of its own.
+     */
+    private fun parseUnpack(at: Int): VelaSyntaxNode? {
+        val badTarget = "a name to unpack into must be a plain name or `_`: write `a, b = f()` and read `x.field` for anything else"
+        val n = newNode(VelaNodeKind.UNPACK, at)
+        var count = 0
+        var more = true
+        while (more) {
+            if (!atName()) return recover(badTarget)
+            val t = VelaSyntaxNode(VelaNodeKind.NAME, pos, pos)
+            t.name = text(pos)
+            n.add(t)
+            count++
+            advance()
+            if (atOp(VelaOps.COMMA)) advance() else more = false
+        }
+        if (!atOp(VelaOps.EQ)) return recover(badTarget)
+        advance()
+        val v = parseExpr()
+        if (v != null) n.add(v)
+        n.op = count
+        n.endTok = if (pos > 0) pos - 1 else at
+        return n
+    }
+
     private fun parseSimple(at: Int): VelaSyntaxNode? {
+        if (atUnpackShape()) {
+            return parseUnpack(at)
+        }
         if (atKw(VelaKw.MUT)) {
             advance()
             if (!atName()) {

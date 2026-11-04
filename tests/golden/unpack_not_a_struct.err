@@ -1,0 +1,2 @@
+vela: type error: `a, b = f()` unpacks the fields of a struct, and 'one' does not return one: write `a = f()` for a single value
+  at tests/build/check_cases/unpack_not_a_struct.vel:10

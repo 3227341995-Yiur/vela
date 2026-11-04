@@ -1,0 +1,2 @@
+vela: syntax error: a name to unpack into must be a plain name or `_`: write `a, b = f()` and read `x.field` for anything else
+  at line 16
