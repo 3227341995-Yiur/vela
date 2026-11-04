@@ -2080,6 +2080,36 @@ def dst_packed_of(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
     return K_BAD()
 }
 
+# The cell a *place* names, without copying anything on the way down.
+#
+# A field store used to evaluate its base as an expression, which is right for `p.x`
+# (the name's cell holds the struct's own storage) and silently wrong for `o.m.i.x`:
+# reading `o.m.i` gives a *copy* of the inner struct -- value semantics, correctly --
+# so the store landed in the copy and the program printed the old field.  Measured
+# before this: `o.i.x = 5; print(o.i.x)` printed `1` on the interpreter while the C
+# back end printed `5`, and the single-level `p.x = 5` printed `5` on both, which is
+# what made the bug look like it was about nesting rather than about copying.
+#
+# Answers `-1` when the chain is not a place (an element, a call's result, an
+# `extern c` value), and the caller keeps the old path for those.
+def place_cell(nd: Array[int, 1310720], mem: Array[int, 3741696], path: str,
+               mut vm: VM, tgt: int) -> int {
+    if nd_kind(nd, tgt) == 25 {
+        if nt_get(mem, tgt, NT_SYM()) != SYM_LOCAL() {
+            return -1
+        }
+        return vm.fp + nt_get(mem, tgt, NT_VAL())
+    }
+    if nd_kind(nd, tgt) == 32 {
+        inner: int = place_cell(nd, mem, path, vm, nd[tgt * 10 + 1])
+        if inner < 0 {
+            return -1
+        }
+        return field_cell(mem, path, vm, inner, nd[tgt * 10 + 2])
+    }
+    return -1
+}
+
 def store_place(nd: Array[int, 1310720], ty: Array[int, 262144],
                 mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
                 flt: Array[float, 262144], mut ipool: Array[int, 2097152],
@@ -2114,6 +2144,14 @@ def store_place(nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if nd_kind(nd, tgt) == 32 {
+        # A place is written *in place*: `o.m.i.x` walks down to the cell that already
+        # holds the value, instead of evaluating `o.m.i` into a copy and writing there.
+        pc: int = place_cell(nd, mem, path, vm, tgt)
+        if pc >= 0 {
+            narrow_check(mem, path, vm, dst_packed_of(nd, mem, vm, tgt), value)
+            assign_value(mem, fmem, path, vm, pc, value)
+            return
+        }
         mark: int = vm.sp
         rc: int = cell_alloc(vm)
         keep: int = vm.dst

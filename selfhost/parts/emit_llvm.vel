@@ -446,7 +446,14 @@ def ll_sty_of(mut lg: LG, mem: Array[int, 3741696], vm: VM,
     mut i: int = 0
     while i < n {
         fk: int = sfl_get(mem, off + i * 2 + 1)
-        ft: int = ll_type_of_st(lg, mem, vm, sty, path, line, fk, unpack_len(fk))
+        # `unpack_kind`, not the packed word: `pack_kind(K_ST(), sid)` differs from
+        # `K_ST()` as soon as `sid > 0`, so passing it whole made every struct field
+        # whose type is *not the first struct in the table* look like an unknown kind --
+        # the answer was "a struct field's type has no IR spelling" for a field the C
+        # back end compiles happily.  Measured before this: `struct Wrap { l: Leaf }`
+        # laid out when `Leaf` was struct 0 and refused when it was struct 1.
+        ft: int = ll_type_of_st(lg, mem, vm, sty, path, line, unpack_kind(fk),
+                                unpack_len(fk))
         if ft == 0 {
             trap(path, line,
                  "a struct field's type has no IR spelling, so this struct has no IR layout")
@@ -686,6 +693,28 @@ def ll_field_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   slotkind: Array[int, 4096], mut lit: Array[int, 132096],
                   path: str, e: int) -> int {
     base: int = nd[e * 10 + 1]
+    if nd_kind(nd, base) == 32 {
+        # `o.i.x`: the base is itself a field, so what this GEP starts from is the
+        # *address* of that field -- this same function one level down, which is what
+        # the C back end's `emit_field_base` does by taking the inner field's address
+        # first (`&o.i`).  Measured before this arm: `print(o.i.x)` compiled and printed
+        # `1` through the C back end and stopped here with "a field of a struct that is
+        # not a name", so the two back ends disagreed on a program one of them answered.
+        bp0: int = expr_packed(nd, ty, mem, vm, base)
+        sid0: int = unpack_len(bp0)
+        if sid0 < 0 or sid0 >= lg.nstruct {
+            trap(path, nd_line(nd, e), "this struct has no id this back end knows")
+        }
+        st0: int = ll_sty_of(lg, mem, vm, lit, sid0, path, nd_line(nd, e))
+        h0: int = ll_field_addr(lg, nd, ty, mem, vm, slots, slotkind, lit, path, base)
+        name0: int = nd[e * 10 + 2]
+        idx0: int = ll_find_field(mem, sid0, name0)
+        if idx0 < 0 {
+            trap(path, nd_line(nd, e), "this struct has no field of that name")
+        }
+        return ll_ck(lg, "a field's address",
+                     vshim_build_gep_field(lg.m, st0, h0, idx0))
+    }
     if nd_kind(nd, base) != 25 {
         trap(path, nd_line(nd, e),
              "a field of a struct that is not a name is not compiled by the LLVM back end yet: the base's address has to be a slot this back end reserved")

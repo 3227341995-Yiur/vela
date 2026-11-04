@@ -1,0 +1,54 @@
+# A struct field whose type is a struct: three levels of it, read through the path and
+# written through the path.  Two separate defects lived here, and this file is one program
+# that would have caught either:
+#
+#   * the interpreter *silently* wrote into a copy.  A field store evaluated its base as
+#     an expression, so `o.m.i.x = 7` copied `o.m.i` (value semantics, correctly) and
+#     stored into the copy: the program printed the old value.  The C back end, which
+#     takes an address, printed the new one -- so the two disagreed about a program and
+#     neither said anything.  The fix is `place_cell`, which walks the chain to the cell
+#     that already holds the value.
+#
+#   * the LLVM back end refused the type of any struct field whose struct was not the
+#     first in the table ("a struct field's type has no IR spelling").  The layout code
+#     passed a *packed* kind (`pack_kind(K_ST(), sid)`) where a kind was wanted, and
+#     that word differs from `K_ST()` exactly when `sid > 0`.  Fixing the extraction
+#     (`unpack_kind`) is what lets `Wrap { l: Leaf }` exist next to another struct.
+#
+# Value semantics are pinned on purpose: `copy` below is a copy of the whole inner struct,
+# so writing through it must not touch `o`.
+#
+# Expected stdout, byte for byte, on the interpreter and on both compiled back ends:
+#     4
+#     7 9
+#     7
+#     99
+struct Leaf {
+    x: int
+}
+
+struct Wrap {
+    l: Leaf
+}
+
+struct Outer {
+    w: Wrap
+    n: int
+}
+
+def build(v: int) -> Outer {
+    return Outer(Wrap(Leaf(v)), v + 5)
+}
+
+def main() -> None {
+    mut o: Outer = build(4)
+    print(o.w.l.x)
+
+    o.w.l.x = 7
+    print(o.w.l.x, o.n)
+
+    mut copy: Leaf = o.w.l
+    copy.x = 99
+    print(o.w.l.x)
+    print(copy.x)
+}
