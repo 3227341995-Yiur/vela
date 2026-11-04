@@ -27,6 +27,8 @@ checkout" below.  It has nothing to do with `vela\tests\` and depends on nothing
 | `expected\tour.txt` | the exact stdout `tour.vel` must print (likewise) |
 | `expected\async.txt` | the exact stdout `async.vel` must print (likewise) |
 | `expected\modules.txt` | the exact stdout `modules.vel` must print (likewise, measured with `vm.exe run`) |
+| `unpack.vel` | `a, b = f()`: a call's struct fields come out into names in declaration order, `_` skips a field, and the statement declares its targets.  Both back ends build it |
+| `expected\unpack.txt` | the exact stdout `unpack.vel` must print (measured with both `vm.exe run` and a `build-c` binary) |
 | `README.md` | this file |
 
 After a run, the directory grows `hello.c` / `hello.exe` / `hello.obj` / `tour.c` /

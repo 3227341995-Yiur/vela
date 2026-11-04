@@ -1,0 +1,28 @@
+# unpack.vel -- `a, b = f()`: the fields of the struct a call returns come out into
+# names, in the order the fields are declared, and each name is a new binding (no `mut`
+# and no earlier declaration -- the statement declares its targets).
+#
+# `_` in a target position skips that field, so the name a target reads is its
+# *position*, not its order among the names: `_, mid, _` takes the middle field.
+#
+# This is the shortest program in the demo that shows the statement.  It prints the same
+# lines on the interpreter, the LLVM back end and the C back end; the case that holds
+# that down across every field width is `tests/build/unpack_assign.vel`, and this file is
+# here so the editor has something small to try it on.
+struct Reading {
+    label: str
+    value: int
+    valid: bool
+}
+
+def measure(n: int) -> Reading {
+    return Reading("m", n * 2, n > 0)
+}
+
+def main() -> None {
+    label, value, valid = measure(4)
+    print(label, value, valid)
+
+    _, mid, _ = measure(3)
+    print(mid)
+}
