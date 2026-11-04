@@ -1,0 +1,17 @@
+# alias.vel -- `from geometry import area as area2`: the imported name gets a local one,
+# and every `area2` in this file *is* `geometry`'s `area`.
+#
+# The rebinding happens once, when the file is loaded: the parser records the pair on the
+# import statement and the loader rewrites this file's references after it has renamed
+# colliding names across files.  Two consequences worth knowing in the editor:
+#
+#   * the alias is per file -- another file that imports `geometry` is unaffected;
+#   * one alias per file (the parser carries one pair), and a second one is refused by
+#     name rather than silently ignored.
+#
+# Prints the same number as `modules.vel`'s first line, because it is the same call.
+from geometry import area as area2
+
+def main() -> None {
+    print(area2(3, 4))
+}
