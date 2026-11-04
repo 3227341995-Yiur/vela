@@ -1,0 +1,5 @@
+from geometry import area as a
+
+def main() -> None {
+    print(a(3))
+}

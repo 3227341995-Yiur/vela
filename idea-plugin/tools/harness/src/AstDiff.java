@@ -553,10 +553,13 @@ public final class AstDiff {
     private static final class Frag {
         final int idx;
         final String text;
+        /** `from m import x as y` pairs in this file: {local, imported}, in source order. */
+        final List<String[]> aliases;
 
-        Frag(int idx, String text) {
+        Frag(int idx, String text, List<String[]> aliases) {
             this.idx = idx;
             this.text = text;
+            this.aliases = aliases;
         }
     }
 
@@ -589,7 +592,35 @@ public final class AstDiff {
             text = text.replaceAll("(?<![A-Za-z0-9_])name " + q + "(?![A-Za-z0-9_])",
                     java.util.regex.Matcher.quoteReplacement("name " + nm + suf));
         }
+        // `from geometry import area as a`: `load_file` rewrites this file`s references
+        // from `a` to the module`s own `area` once, after the rename pass above, and the
+        // compiler`s dump therefore says `area` where this fragment still says `a`.  Doing
+        // the same here is what lets a file that *uses* an alias be compared at all --
+        // measured before this: `tests/build/modules/from_alias.vel` matched on node count
+        // (24 and 24) and differed on exactly those names.
+        for (String[] pair : f.aliases) {
+            String local = java.util.regex.Pattern.quote(pair[0]);
+            String target = java.util.regex.Matcher.quoteReplacement("name " + pair[1]);
+            text = text.replaceAll("(?<![A-Za-z0-9_])name " + local + "(?![A-Za-z0-9_])", target);
+        }
         return text;
+    }
+
+    /**
+     * The `from m import x as y` pairs in one file`s source, as {local, imported}.  The
+     * parser records the pair on the import node and the loader applies it, so this is
+     * the harness reading the same statement the same way rather than a second rule.
+     */
+    private static List<String[]> fromAliases(String src) {
+        List<String[]> out = new ArrayList<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?m)^[ \\t]*from[ \\t]+[A-Za-z0-9_.]+[ \\t]+import[ \\t]+"
+                        + "([A-Za-z0-9_]+)[ \\t]+as[ \\t]+([A-Za-z0-9_]+)")
+                .matcher(src);
+        while (m.find()) {
+            out.add(new String[] { m.group(2), m.group(1) });
+        }
+        return out;
     }
 
     /** Post-order, like `load_file`: a file's imports, then the file itself. */
@@ -657,7 +688,7 @@ public final class AstDiff {
             }
             own.append(lines[i]).append('\n');
         }
-        frags.add(new Frag(mine, own.toString()));
+        frags.add(new Frag(mine, own.toString(), fromAliases(src)));
         loaded.add(key);
         stack.remove(key);
         return true;
