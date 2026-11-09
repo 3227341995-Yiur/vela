@@ -96,11 +96,17 @@ array_of_struct | an array of this element kind is not compiled by the LLVM back
 # struct id would need (`unpack_len` reads "array length **or** struct id").  So `xs[i].x`
 # arrives at the back end knowing "element is a struct" and not *which* struct.
 #
-# The narrow fix, not attempted yet: have the checker stamp the element packed kind on every
-# index node (field 3 is free for kind 31) and let `expr_packed` return it.  That is one
-# stamped field and one arm, and all three back ends would benefit; it is *not* a change to
-# `pack_kind` and not a side table.  Before doing it, confirm field 3 is unused for kind 31
-# by every pass, and that no pass relies on it being 0.
+# The fix, corrected after following it one step further: stamping the index node would not
+# have been enough.  The struct id is already gone by the time an index node exists -- it is
+# lost where the *binding* records its own kind, `local_kind(mem, e)` answering
+# `pack_kind(K_AX(), length)`.  So the information has to survive the encoding, e.g. keep the
+# length in bits 8..39 (which `unpack_len` masks, so nothing that reads a length moves) and
+# put the element struct id above it, with a sibling of `unpack_len` to read it back.
+#
+# The C back end does not need any of this, and that is why this looks smaller than it is:
+# it emits a field access by *name* (`emit_field_name` writes `f_<interned>`, and a C struct
+# has named members), so it never needs the struct id at an access site.  LLVM needs the
+# struct *type* to GEP and load, and a type can only be spelled from the id.
 #
 # Until then the LLVM back end refuses this shape by name and the corpus keeps the case as
 # `run-c` + `interpret`, which is the honest record.
