@@ -1,0 +1,51 @@
+# shapes.vel -- two shapes the C back end learned recently, in one program a reader can run:
+# an array whose element is a struct, and a struct that holds an enum.
+#
+# Both are `run-c` claims in the corpus (`array_of_struct`, `enum_field_in_struct`), and the
+# LLVM back end still refuses both by name -- they are in `tests/llvm-gaps.txt`.  This file is
+# here so the editor has something small to show them on; `tools/demo-check.ps1` runs it on
+# the interpreter and on a `build-c` binary and compares against `expected/shapes.txt`.
+struct Leaf {
+    x: int
+}
+
+enum Shape {
+    Point
+    Sized(w: int)
+}
+
+struct Drawing {
+    name: str
+    kind: Shape
+}
+
+def main() -> None {
+    # an array of structs: element field read, write, and a copy that must not alias
+    mut xs: Array[Leaf, 3] = [Leaf(1), Leaf(2), Leaf(3)]
+    print(xs[0].x, xs[2].x)
+    xs[1].x = 9
+    mut t: Leaf = xs[1]
+    t.x = 5
+    print(xs[1].x, t.x)
+
+    # a struct that holds an enum, matched through the field
+    mut d: Drawing = Drawing("frame", Sized(4))
+    print(d.name)
+    match d.kind {
+        Sized(w) {
+            print(w)
+        }
+        Point {
+            print(0)
+        }
+    }
+    d.kind = Point
+    match d.kind {
+        Sized(w) {
+            print(w)
+        }
+        Point {
+            print(-1)
+        }
+    }
+}

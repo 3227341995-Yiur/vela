@@ -31,6 +31,8 @@ checkout" below.  It has nothing to do with `vela\tests\` and depends on nothing
 | `expected\unpack.txt` | the exact stdout `unpack.vel` must print (measured with both `vm.exe run` and a `build-c` binary) |
 | `alias.vel` | `from geometry import area as area2`: an imported name under a local one. The loader rewrites this file's references once, so the alias is per file, and a file may hold as many aliases as it writes (`tests/build/modules/two_aliases.vel` measures that). Both back ends build it |
 | `expected\\alias.txt` | the exact stdout `alias.vel` must print (likewise, both back ends) |
+| `shapes.vel` | two shapes the C back end learned recently, in one program: `Array[Leaf, 3]` (element field read, write, and a copy that must not alias) and `struct Drawing` holding `enum Shape`, matched through the field.  Both still refused by the LLVM back end by name (`tests\llvm-gaps.txt`) |
+| `expected\shapes.txt` | the exact stdout `shapes.vel` must print (interpreter and a `build-c` binary both measured) |
 | `README.md` | this file |
 
 Every demo above is run by `tools\demo-check.ps1`: it executes the interpreter and a
