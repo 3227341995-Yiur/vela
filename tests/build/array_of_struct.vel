@@ -1,9 +1,14 @@
-# `Array[S, N]` -- an array whose element is a struct.  The interpreter runs it; both
-# compiled back ends refuse it by name, and that refusal is recorded as `array_of_struct`
-# in tests/llvm-gaps.txt with a shape beside it (tests/llvm-shapes/).  This row is the
-# interpreter agreeing with what the case comment says it prints, so the gap is measured
-# from both sides: the shapes corpus proves the back ends refuse it, and this proves the
-# other two paths have an answer worth reaching.
+# `Array[S, N]`: an array whose element is a struct -- element field read, element field
+# write, and a copy of an element that must not alias.  The interpreter always ran this; the
+# C back end learned it from two things: the element type has to be spelled from the *packed*
+# kind (`K_ST()` alone has lost the struct id), and a field of an element has to be addressed
+# as a *place*, with the checked index hoisted into a statement, because a comma expression is
+# an rvalue in C (`xs[1].x = 9` was C2106 before that).  Spelling the index for reads the same
+# way is a wrong answer rather than a refusal: measured, `xs[0].x, xs[1].x` printed `1, 1`
+# while reading through a temporary nobody had assigned.
+#
+# The LLVM back end still refuses this shape by name; it is `array_of_struct` in
+# tests/llvm-gaps.txt with a shape beside it, which is why this case is `run-c`.
 #
 # Expected stdout, byte for byte:
 #     1 2

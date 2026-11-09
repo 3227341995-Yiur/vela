@@ -502,6 +502,13 @@ def emit_ty_ctype(ty: Array[int, 262144], t: int, mem: Array[int, 3741696],
             trap(path, line,
                  "an array of enum values is not compiled by the C back end yet (Array[E, N] has no C spelling in this slice)")
         }
+        # `Array[S, N]` of a struct: a pointer to the struct's own C type.  C copies a
+        # struct on assignment, which is Vela's value semantics for an element, so the
+        # spelling is the whole implementation on this side.
+        emit_packed_ctype(mem, vm, path, line,
+                          type_packed(ty, ty_elem(ty, t), mem, vm))
+        emit_str("*")
+        return
     }
     emit_ctype(k, path, line)
 }
@@ -1615,11 +1622,23 @@ def emit_assign(nd: Array[int, 1310720], ty: Array[int, 262144],
         emit_str(";\n")
         return
     }
-    if nd_kind(nd, tgt) == 31 {
-        # a store cannot carry its own check (a comma expression is not an
-        # lvalue), so the check is hoisted in front of the statement
-        emit_index_check(nd, ty, flt, src, path, mem, vm, tgt)
-        emit_str(";\n")
+    # A store cannot carry its own bounds check (a comma expression is not an
+    # lvalue), so every index in the target chain is checked first.
+    mut h: int = tgt
+    mut hoisted: int = 0
+    while h > 0 {
+        if nd_kind(nd, h) == 31 {
+            emit_index_check(nd, ty, flt, src, path, mem, vm, h)
+            emit_str(";\n")
+            hoisted = 1
+        }
+        if nd_kind(nd, h) == 32 {
+            h = nd[h * 10 + 1]
+        } else {
+            h = 0
+        }
+    }
+    if hoisted == 1 {
         emit_indent(indent)
     }
     emit_lvalue(nd, ty, flt, src, path, mem, vm, tgt)
@@ -1690,7 +1709,14 @@ def emit_lvalue(nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if nd_kind(nd, tgt) == 32 {
-        emit_field_base(nd, ty, flt, src, path, mem, vm, nd[tgt * 10 + 1])
+        base: int = nd[tgt * 10 + 1]
+        # `xs[1].x = ...`: the index must read the temporary the store hoisted.
+        if nd_kind(nd, base) == 31 {
+            emit_index_place(nd, ty, flt, src, path, mem, vm, base)
+            emit_str(".")
+        } else {
+            emit_field_base(nd, ty, flt, src, path, mem, vm, base)
+        }
         emit_field_name(mem, nd[tgt * 10 + 2])
         return
     }
@@ -2127,20 +2153,21 @@ def emit_array_decl(nd: Array[int, 1310720], ty: Array[int, 262144],
         trap(path, nd_line(nd, s), "this array declaration has no declared length")
     }
     n: int = ty_len(ty, t)
-    ek: int = type_kind(ty, ty_elem(ty, t), mem, vm)
+    # The *packed* element kind: `K_ST()` alone has lost the struct id.
+    epk: int = type_packed(ty, ty_elem(ty, t), mem, vm)
     if n < 0 {
         trap(path, nd_line(nd, s), "this array declaration has no declared length")
     }
-    emit_ctype(ek, path, nd_line(nd, s))
+    emit_packed_ctype(mem, vm, path, nd_line(nd, s), epk)
     emit_str("* ")
     tgt: int = nd[s * 10 + 1]
     emit_cname(nd[tgt * 10 + 1])
     emit_str(" = (")
-    emit_ctype(ek, path, nd_line(nd, s))
+    emit_packed_ctype(mem, vm, path, nd_line(nd, s), epk)
     emit_str("*)vela_arena_alloc((size_t)")
     emit_int(n)
     emit_str(" * sizeof(")
-    emit_ctype(ek, path, nd_line(nd, s))
+    emit_packed_ctype(mem, vm, path, nd_line(nd, s), epk)
     emit_str("));\n")
     v: int = nd[s * 10 + 2]
     if v <= 0 {
