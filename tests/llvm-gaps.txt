@@ -79,5 +79,4 @@
 # guess what is missing -- but they are work owed, not designs.
 
 array_of_struct | an array of this element kind is not compiled by the LLVM back end yet
-struct_enum_payload | an enum payload that is itself a struct or an enum is not compiled by the LLVM back end yet
 enum_field_in_struct | a struct field of enum type is not compiled by the LLVM back end yet
