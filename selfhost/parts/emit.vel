@@ -2642,7 +2642,11 @@ def emit_expr(nd: Array[int, 1310720], ty: Array[int, 262144],
             emit_index_temp(e)
             emit_str(" = ")
             emit_expr(nd, ty, flt, src, path, mem, vm, nd[e * 10 + 2])
-            emit_str("), ")
+            # `emit_location` writes its own leading `, `, so this arm must not: it used to,
+            # and `s[i]` then emitted `vela_str_at(s, (ix = i), , "file", line)` -- an empty
+            # argument that made the C compiler refuse the whole file (C2059).  Measured:
+            # `str_index_slice` and `fstring_basic` were red in the suite for that alone.
+            emit_str(")")
             emit_location(path, nd_line(nd, e))
             emit_str(")")
             return K_STR()
