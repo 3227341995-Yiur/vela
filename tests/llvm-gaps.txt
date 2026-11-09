@@ -79,6 +79,7 @@
 # guess what is missing -- but they are work owed, not designs.
 
 array_of_struct | an array of this element kind is not compiled by the LLVM back end yet
+array_struct_elem | an array of this element kind is not compiled by the LLVM back end yet
 #
 # WHY `array_of_struct` IS STILL A GAP, measured on 2026-11-10 (HEAD 0fbad3a):
 #
