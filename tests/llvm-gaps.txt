@@ -79,4 +79,29 @@
 # guess what is missing -- but they are work owed, not designs.
 
 array_of_struct | an array of this element kind is not compiled by the LLVM back end yet
+#
+# WHY `array_of_struct` IS STILL A GAP, measured on 2026-11-10 (HEAD 0fbad3a):
+#
+# The declaration side is already spelled out.  A declaration node carries its type row in
+# `nd[s * 10 + 3]`, which the C back end uses as
+# `type_packed(ty, ty_elem(ty, t), mem, vm)` -- that packed kind *does* carry the struct id,
+# and it is what `1055592` built its `Array[S, N]` on.  A byte count for the arena needs no
+# shim either: `ptrtoint(gep(et, inttoptr(0), n))` is `n * sizeof(et)` and agrees with
+# `ll_esize` on every scalar (8, 8, 4, 1, 1, 16).
+#
+# The access side is where it stops.  An index node is built as `new_node(nd, cx, 31, line)`
+# and only fields 1 (base) and 2 (index) are ever written -- no pass stamps a type row on it,
+# so `nd[e * 10 + 3]` is 0.  What `expr_packed` can recover is the *binding* kind, and for an
+# array that is `pack_kind(K_AX(), length)`: the length occupies bits 8..39, the very bits a
+# struct id would need (`unpack_len` reads "array length **or** struct id").  So `xs[i].x`
+# arrives at the back end knowing "element is a struct" and not *which* struct.
+#
+# The narrow fix, not attempted yet: have the checker stamp the element packed kind on every
+# index node (field 3 is free for kind 31) and let `expr_packed` return it.  That is one
+# stamped field and one arm, and all three back ends would benefit; it is *not* a change to
+# `pack_kind` and not a side table.  Before doing it, confirm field 3 is unused for kind 31
+# by every pass, and that no pass relies on it being 0.
+#
+# Until then the LLVM back end refuses this shape by name and the corpus keeps the case as
+# `run-c` + `interpret`, which is the honest record.
 enum_field_in_struct | a struct field of enum type is not compiled by the LLVM back end yet
