@@ -1,4 +1,4 @@
-﻿# The one-file twin of two_files.vel: same output, one file, no import.
+# The one-file twin of two_files.vel: same output, one file, no import.
 def twice(x: int) -> int {
     return x * 2
 }

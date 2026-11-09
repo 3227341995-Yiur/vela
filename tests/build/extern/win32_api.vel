@@ -1,4 +1,4 @@
-﻿# The operating system's own API, from Vela.  `extern c` with a `str` argument is
+# The operating system's own API, from Vela.  `extern c` with a `str` argument is
 # what makes Win32 reachable at all, and this case proves it without opening a
 # window (a window in a test suite is a test that hangs on a machine with no
 # desktop):

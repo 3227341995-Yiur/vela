@@ -1,3 +1,3 @@
-﻿def greet(who: str) -> str {
+def greet(who: str) -> str {
     return concat("hello, ", who)
 }

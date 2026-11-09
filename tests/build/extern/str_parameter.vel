@@ -1,4 +1,4 @@
-﻿# `str` crosses into C -- the case that used to be refused and is now the proof.
+# `str` crosses into C -- the case that used to be refused and is now the proof.
 #
 # A Vela `str` is a length plus a pointer into Vela's own string region, so the
 # boundary makes a NUL-terminated copy (`vela_cstr`) and the declaration is spelled

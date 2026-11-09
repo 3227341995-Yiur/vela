@@ -1,4 +1,4 @@
-﻿import m_util
+import m_util
 
 def main() -> None {
     print(m_util.add(2, 3))

@@ -132,6 +132,38 @@ if ($bigIgnored.Count -eq 0) {
     if ($Strict) { $bad.Add(('{0} ignored file(s) over {1} MB inside the checkout (-Strict)' -f $bigIgnored.Count, $WarnMB)) }
 }
 
+# ---------------------------------------------------------------- line endings
+#
+# A `.vel` file may be CRLF (the `selfhost\parts\*.vel` the compiler is linked from) or LF
+# (the library, the corpus, the seed), but it may not be *both*.  One stray CR makes a file
+# byte-different from every sibling, and it costs real time: a script that builds a
+# replacement string the "obvious" way then matches nothing at all, with no error to explain
+# why.  That happened repeatedly on 2026-11-10 -- `selfhost\parts\emit_llvm.vel` is CRLF and a
+# dozen multi-line replacements silently did nothing -- and the same class of stray CR was
+# sitting in two library files where nothing reported it:
+#
+#     lib\str.vel       1 CRLF of 543 lines
+#     lib\str_app.vel   1 CRLF of  46 lines
+#
+# Both are LF-only now, and this rule keeps them that way.
+$mixedEndings = @()
+foreach ($f in (git ls-files '*.vel')) {
+    if (-not (Test-Path -LiteralPath $f)) { continue }
+    $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $f))
+    $lf = 0
+    $crlf = 0
+    for ($i = 0; $i -lt $bytes.Length; $i++) {
+        if ($bytes[$i] -eq 10) {
+            $lf++
+            if ($i -gt 0 -and $bytes[$i - 1] -eq 13) { $crlf++ }
+        }
+    }
+    if ($lf -gt 0 -and $crlf -gt 0 -and $crlf -lt $lf) {
+        $mixedEndings += ('{0} ({1} CRLF of {2} lines)' -f $f, $crlf, $lf)
+    }
+}
+foreach ($m in $mixedEndings) { $bad.Add('mixed line endings: ' + $m) }
+
 Say ''
 Say '============================================================'
 foreach ($b in $bad) { Say ('  ' + $b) }
