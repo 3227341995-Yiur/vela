@@ -616,7 +616,10 @@ run-c     struct_enum_payload                 tests/build/struct_enum_payload.ve
 # the two gaps above, seen from the interpreter: the compiled back ends refuse them by
 # name, and the answer the other path has is what these two rows pin
 interpret array_of_struct                    tests/build/array_of_struct.vel
-interpret enum_field_in_struct              tests/build/enum_field_in_struct.vel
+# `enum_field_in_struct` on the two paths that run it now: the C back end learned to put an
+# enum's definition after the structs when no enum payload holds a struct (an empty
+# payload here), so a struct may hold an enum field (LLVM still refuses: gaps ledger)
+run-c     enum_field_in_struct              tests/build/enum_field_in_struct.vel
 # `Array[S, N]` of a struct on the two paths that run it: element field read, write, and a
 # copy that must not alias (the LLVM back end refuses the shape: `array_of_struct` in
 # tests\llvm-gaps.txt)

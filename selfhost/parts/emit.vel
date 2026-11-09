@@ -102,7 +102,32 @@ def emit_fn_ret_ctype(nd: Array[int, 1310720], ty: Array[int, 262144],
 # be emitted here: `emit_enum_defs` writes the tagged definition for it, and a
 # second `struct vl_Shape {...}` would be a redefinition.  The row is recognised by
 # being some enum's `ENB_SID()`.
-def emit_struct_defs(mem: Array[int, 3741696], vm: VM, path: str) -> None {
+# Does any enum payload hold a struct *by value*?  If one does, the enum definitions must
+# come after the struct definitions (a C `union` member has to be a complete type) and a
+# struct field of enum type stays refused, because C has no order in which both hold.  If
+# none does, enums go first and a struct may hold an enum -- which is the common case.
+def enum_payload_holds_struct(mem: Array[int, 3741696], vm: VM) -> bool {
+    mut e: int = 0
+    while e < vm.nenum {
+        mut i: int = 0
+        while i < enb_get(mem, e, ENB_NVAR()) {
+            vi: int = enb_get(mem, e, ENB_VOFF()) + i
+            mut f: int = 0
+            while f < vrb_get(mem, vi, VRB_NFIELD()) {
+                if unpack_kind(vfl_get(mem, vrb_get(mem, vi, VRB_FOFF()) + f * 2 + 1)) == K_ST() {
+                    return True
+                }
+                f += 1
+            }
+            i += 1
+        }
+        e += 1
+    }
+    return False
+}
+
+def emit_struct_defs(mem: Array[int, 3741696], vm: VM, path: str,
+                     enums_first: int) -> None {
     mut s: int = 0
     while s < vm.nstruct {
         if enum_of_row(mem, vm, s) < 0 {
@@ -115,13 +140,14 @@ def emit_struct_defs(mem: Array[int, 3741696], vm: VM, path: str) -> None {
             while i < n {
                 fk: int = unpack_kind(sfl_get(mem, off + i * 2 + 1))
                 if fk == K_ENUM() {
-                    # Refused rather than emitted as an incomplete type: structs
-                    # are defined before enums here, because an enum's payload may
-                    # be a struct (`union` members must be complete types), and C
-                    # has no order in which both hold.  This is the side of that
-                    # trade the back end does not take, and it says so by name.
-                    trap(path, 0,
-                         "a struct field of enum type is not compiled by the C back end yet: structs are defined before enums, and C needs a complete type for a by-value field")
+                    # Reachable only when an enum payload holds a struct: then the enums
+                    # had to be defined second, and C cannot spell a field whose type is
+                    # not complete yet.  Refused by name rather than emitted as an
+                    # incomplete type -- C has no order in which both cases hold.
+                    if enums_first == 0 {
+                        trap(path, 0,
+                             "a struct field of enum type is not compiled by the C back end yet: an enum payload here holds a struct, so the enums must be defined after the structs, and C needs a complete type for a by-value field")
+                    }
                 }
                 emit_packed_ctype(mem, vm, "<struct field>", 0,
                                   sfl_get(mem, off + i * 2 + 1))
@@ -202,7 +228,8 @@ def emit_variant_name(mem: Array[int, 3741696], h: int) -> None {
 # The shape row of a match subject, -1 when this back end cannot name one.  The
 # same walk the checker does, for the same reason: an array's row is its
 # elements', so `match a[i]` reads the row the resolver left on the name `a`.
-def emit_row_of(nd: Array[int, 1310720], mem: Array[int, 3741696], e: int) -> int {
+def emit_row_of(nd: Array[int, 1310720], ty: Array[int, 262144],
+                mem: Array[int, 3741696], vm: VM, e: int) -> int {
     if e <= 0 {
         return -1
     }
@@ -211,7 +238,18 @@ def emit_row_of(nd: Array[int, 1310720], mem: Array[int, 3741696], e: int) -> in
         return nt_get(mem, e, NT_ROW())
     }
     if k == 31 {
-        return emit_row_of(nd, mem, nd[e * 10 + 1])
+        return emit_row_of(nd, ty, mem, vm, nd[e * 10 + 1])
+    }
+    if k == 32 {
+        # `match holder.sh`: the row is the *field's* own type row.  The checker needed
+        # the same arm (`ck_row_of`) for the same reason: the subject is an enum
+        # value whether it is a name, an element or a field, and this side used to
+        # answer -1 and then report that it could not name a type it could name.
+        pk: int = expr_packed(nd, ty, mem, vm, e)
+        if unpack_kind(pk) == K_ENUM() or unpack_kind(pk) == K_ST() {
+            return unpack_len(pk)
+        }
+        return -1
     }
     if k == 26 {
         callee: int = nd[e * 10 + 1]
@@ -240,7 +278,7 @@ def emit_match(nd: Array[int, 1310720], ty: Array[int, 262144],
                mem: Array[int, 3741696], mut vm: VM, s: int,
                indent: int) -> None {
     subj: int = nd[s * 10 + 1]
-    row: int = emit_row_of(nd, mem, subj)
+    row: int = emit_row_of(nd, ty, mem, vm, subj)
     if row < 0 {
         trap(path, nd_line(nd, s),
              "the subject of a match must be an enum value, and this back end cannot name its type")
@@ -3043,8 +3081,16 @@ def emit_program(nd: Array[int, 1310720], ty: Array[int, 262144],
     emit_str(" * emitted deliberately: consuming them is ELISION_PLAN.md's work. */\n")
     emit_str("#include \"vela_runtime.h\"\n")
     emit_str("#include <stdbool.h>\n\n")
-    emit_struct_defs(mem, vm, path)
-    emit_enum_defs(mem, vm, path)
+    # Enums first when no enum payload holds a struct: that is what lets a struct hold an
+    # enum field at all.  When a payload does hold one, the old order stays and
+    # `emit_struct_defs` keeps refusing such a field by name.
+    if enum_payload_holds_struct(mem, vm) {
+        emit_struct_defs(mem, vm, path, 0)
+        emit_enum_defs(mem, vm, path)
+    } else {
+        emit_enum_defs(mem, vm, path)
+        emit_struct_defs(mem, vm, path, 1)
+    }
     if find_main(mem, vm, nd) < 0 {
         fail(path, 1, "this program has no `def main() -> None` to compile")
     }
