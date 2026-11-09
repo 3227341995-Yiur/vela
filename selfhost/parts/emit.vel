@@ -2823,6 +2823,12 @@ def expr_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
         if unpack_kind(base) == K_STR() {
             return K_STR()
         }
+        # An element of `Array[S, N]` keeps the struct id its array type carries:
+        # `elem_kind_of` alone answers K_ST and then no back end can spell the element.'s
+        # type, which is *why* `xs[i].x` could not be compiled on the LLVM side.
+        if elem_kind_of(unpack_kind(base)) == K_ST() {
+            return pack_kind(K_ST(), unpack_elem_sid(base))
+        }
         return elem_value_kind(elem_kind_of(unpack_kind(base)))
     }
     if k == 34 {

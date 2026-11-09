@@ -297,6 +297,21 @@ def unpack_len(packed: int) -> int {
     return (packed >> 8) & 1073741823
 }
 
+# The element's struct id, for an *array of structs*.  An array's packed kind carries its
+# length in bits 8..39 -- the bits a struct id would otherwise want -- so the id goes above
+# them.  `unpack_len` masks only up to bit 39, so every existing reader of a length is
+# untouched; this is the reader for the new bits, and `pack_elem_sid` its writer.
+def unpack_elem_sid(packed: int) -> int {
+    return (packed >> 40) & 1048575
+}
+
+def pack_elem_sid(packed: int, sid: int) -> int {
+    if sid <= 0 {
+        return packed
+    }
+    return packed + sid * 1099511627776
+}
+
 def pack_ptr(packed: int) -> int {
     return packed + 1099511627776
 }

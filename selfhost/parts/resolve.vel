@@ -366,6 +366,15 @@ def type_packed(ty: Array[int, 262144], t: int,
     if k == K_ENUM() {
         return pack_kind(K_ENUM(), shape_of_type(ty, t, mem, vm))
     }
+    if is_array(k) {
+        # `Array[S, N]`: the length goes where a length goes, and the element's struct id
+        # goes above it -- the two facts have to travel together, because every access site
+        # can name the element kind but not which struct it is.
+        ep: int = type_packed(ty, ty_elem(ty, t), mem, vm)
+        if unpack_kind(ep) == K_ST() {
+            return pack_elem_sid(pack_kind(k, ty_len(ty, t)), unpack_len(ep))
+        }
+    }
     return pack_kind(k, ty_len(ty, t))
 }
 
