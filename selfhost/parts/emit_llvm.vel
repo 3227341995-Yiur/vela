@@ -563,11 +563,31 @@ def ll_field_cells(k: int) -> int {
     return -1
 }
 
-def ll_payload_cells(k: int, path: str, line: int) -> int {
+def ll_payload_cells(mem: Array[int, 3741696], packed: int, path: str,
+                     line: int) -> int {
+    k: int = unpack_kind(packed)
+    if k == K_ST() {
+        # A struct payload is *flattened* into cells, one per field (a `str` is two): a payload
+        # cell is one i64 and an aggregate has no cell of its own.  Flattening is also why
+        # copying an enum value stays a flat copy.
+        sid: int = unpack_len(packed)
+        if sid < 0 or sid >= 1024 {
+            trap(path, line, "this struct has no row this back end knows")
+        }
+        n: int = stb_get(mem, sid, STB_NFIELD())
+        off: int = stb_get(mem, sid, STB_FOFF())
+        mut total: int = 0
+        mut i: int = 0
+        while i < n {
+            total += ll_payload_cells(mem, sfl_get(mem, off + i * 2 + 1), path, line)
+            i += 1
+        }
+        return total
+    }
     w: int = ll_field_cells(k)
     if w < 0 {
         trap(path, line,
-             "an enum payload that is itself a struct or an enum is not compiled by the LLVM back end yet: a payload cell is one i64 (or the two halves of a str), and an aggregate has no cell width in this back end")
+             "an enum payload that is itself an enum is not compiled by the LLVM back end yet: a payload cell is one i64 (or the two halves of a str), and a second tag has no cell width here")
     }
     return w
 }
@@ -579,7 +599,7 @@ def ll_variant_cells(mem: Array[int, 3741696], vi: int, path: str,
     mut n: int = 0
     mut f: int = 0
     while f < nf {
-        n += ll_payload_cells(unpack_kind(vfl_get(mem, off + f * 2 + 1)), path,
+        n += ll_payload_cells(mem, vfl_get(mem, off + f * 2 + 1), path,
                               line)
         f += 1
     }
@@ -595,7 +615,7 @@ def ll_payload_cell_of(mem: Array[int, 3741696], vi: int, j: int, path: str,
     mut n: int = 0
     mut f: int = 0
     while f < j {
-        n += ll_payload_cells(unpack_kind(vfl_get(mem, off + f * 2 + 1)), path,
+        n += ll_payload_cells(mem, vfl_get(mem, off + f * 2 + 1), path,
                               line)
         f += 1
     }
@@ -941,8 +961,10 @@ def ll_variant_lit(mut lg: LG, nd: Array[int, 1310720], path: str,
 # function may carry sixteen parameters and the reader of a *payload* would have
 # needed eighteen (`nd`, `ty`, `flt`, `src`, `slots`, `slotkind`, `lit` and `fns` are
 # all only there to call `ll_expr`).
-def ll_enum_put(mut lg: LG, path: str, et: int, base: int, off: int, fk: int,
-                av: int, ak: int, line: int) -> None {
+def ll_enum_put(mut lg: LG, path: str, mem: Array[int, 3741696], vm: VM,
+                mut lit: Array[int, 132096], et: int, base: int, off: int,
+                packed: int, av: int, ak: int, line: int) -> None {
+    fk: int = unpack_kind(packed)
     if fk == K_STR() {
         # `av` is the address of the 16 bytes, so the cell pair is its data pointer
         # and its length -- not the address of the pair, which would dangle the
@@ -986,8 +1008,42 @@ def ll_enum_put(mut lg: LG, path: str, et: int, base: int, off: int, fk: int,
                       line)
         return
     }
-    if fk == K_STR() or fk == K_ST() or fk == K_ENUM() {
-        trap(path, line, "this payload field has no cell in the LLVM back end")
+    if fk == K_ST() {
+        # A struct payload: field by field into consecutive cells.  A struct value is an
+        # address here and a `str` value is the address of its pair, so those two are passed
+        # through as they are; every other field is *loaded* first, because `av` means a
+        # value everywhere else and passing the field's address instead is what stored a
+        # pointer where an integer belonged.
+        sid: int = unpack_len(packed)
+        n: int = stb_get(mem, sid, STB_NFIELD())
+        foff: int = stb_get(mem, sid, STB_FOFF())
+        st: int = ll_sty_of(lg, mem, vm, lit, sid, path, line)
+        mut acc: int = 0
+        mut i: int = 0
+        while i < n {
+            fpk: int = sfl_get(mem, foff + i * 2 + 1)
+            fk2: int = unpack_kind(fpk)
+            fa: int = ll_ck(lg, "the address of a struct payload's field",
+                            vshim_build_gep_field(lg.m, st, av, i))
+            mut fv: int = 0
+            if fk2 == K_ST() or fk2 == K_STR() {
+                fv = fa
+            } else {
+                ft: int = ll_type_of(lg, fk2)
+                if ft == 0 {
+                    trap(path, line, "this struct field has no IR type here")
+                }
+                fv = ll_ck(lg, "loading a struct payload's field",
+                           vshim_build_load(lg.m, ft, fa))
+            }
+            ll_enum_put(lg, path, mem, vm, lit, et, base, off + acc, fpk, fv, fk2, line)
+            acc += ll_payload_cells(mem, fpk, path, line)
+            i += 1
+        }
+        return
+    }
+    if fk == K_ENUM() {
+        trap(path, line, "a payload field that is an enum is not compiled by the LLVM back end yet")
     }
     mut wv: int = av
     if ak == K_FLT() {
@@ -1030,14 +1086,15 @@ def ll_variant_make(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             trap(path, line,
                  "this variant takes fewer values than this construction has")
         }
-        fk: int = unpack_kind(vfl_get(mem, foff + j * 2 + 1))
+        fpk: int = vfl_get(mem, foff + j * 2 + 1)
         off: int = 1 + ll_payload_cell_of(mem, vi, j, path, line)
         # the argument is read *here*, in source order, and its value is what the
         # cell writer gets -- see `ll_enum_put` for why the writer does not read it
         av: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
                           lit, fns, a)
         ak: int = expr_kind(nd, ty, mem, vm, a)
-        ll_enum_put(lg, path, et, dst, off, fk, av, ak, nd_line(nd, a))
+        ll_enum_put(lg, path, mem, vm, lit, et, dst, off, fpk, av, ak,
+                     nd_line(nd, a))
         j += 1
         a = nd_nx(nd, a)
     }
@@ -1053,14 +1110,86 @@ def ll_variant_make(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
 # `%vela_str` slot -- so mutating what the arm's name refers to cannot reach back
 # into the enum value, which is the value semantics `copy_value` gives the
 # interpreter and a by-value union member gives the C back end.
-def ll_enum_bind(mut lg: LG, path: str, mem: Array[int, 3741696], slots: Array[int, 4096],
+def ll_enum_take(mut lg: LG, path: str, mem: Array[int, 3741696], vm: VM,
+                 mut lit: Array[int, 132096], et: int, base: int, off: int,
+                 packed: int, dst: int, line: int) -> None {
+    k: int = unpack_kind(packed)
+    if k == K_ST() {
+        sid: int = unpack_len(packed)
+        n: int = stb_get(mem, sid, STB_NFIELD())
+        foff: int = stb_get(mem, sid, STB_FOFF())
+        st: int = ll_sty_of(lg, mem, vm, lit, sid, path, line)
+        mut acc: int = 0
+        mut i: int = 0
+        while i < n {
+            fpk: int = sfl_get(mem, foff + i * 2 + 1)
+            fa: int = ll_ck(lg, "the address of a struct binding's field",
+                            vshim_build_gep_field(lg.m, st, dst, i))
+            ll_enum_take(lg, path, mem, vm, lit, et, base, off + acc, fpk, fa, line)
+            acc += ll_payload_cells(mem, fpk, path, line)
+            i += 1
+        }
+        return
+    }
+    cp: int = ll_cell_addr(lg, et, base, off, path, line)
+    cv: int = ll_ck(lg, "loading an enum payload cell",
+                    vshim_build_load(lg.m, lg.t_i64, cp))
+    if k == K_STR() {
+        dpv: int = ll_ck(lg, "the pointer of a str payload",
+                         vshim_build_inttoptr(lg.m, lg.t_ptr, cv))
+        cp2: int = ll_cell_addr(lg, et, base, off + 1, path, line)
+        ln: int = ll_ck(lg, "the length of a str payload",
+                        vshim_build_load(lg.m, lg.t_i64, cp2))
+        h0: int = ll_ck(lg, "the data field of a str",
+                        vshim_build_gep_field(lg.m, lg.t_str, dst, 0))
+        ll_ckst(lg, "restoring a str payload's pointer",
+                vshim_build_store(lg.m, dpv, h0))
+        h1: int = ll_ck(lg, "the length field of a str",
+                        vshim_build_gep_field(lg.m, lg.t_str, dst, 1))
+        ll_ckst(lg, "restoring a str payload's length",
+                vshim_build_store(lg.m, ln, h1))
+        return
+    }
+    if k == K_FLT() {
+        fv: int = ll_ck(lg, "reading a float payload",
+                        vshim_build_bitcast(lg.m, lg.t_f64, cv))
+        ll_ckst(lg, "restoring a float payload", vshim_build_store(lg.m, fv, dst))
+        return
+    }
+    if k == K_BOOL() {
+        bv: int = ll_ck(lg, "narrowing a bool payload",
+                        vshim_build_trunc(lg.m, lg.t_i1, cv))
+        ll_ckst(lg, "restoring a bool payload", vshim_build_store(lg.m, bv, dst))
+        return
+    }
+    if k == K_I32() or k == K_U8() {
+        nv: int = ll_narrow(lg, k, cv)
+        ll_ckst(lg, "restoring a narrow payload", vshim_build_store(lg.m, nv, dst))
+        return
+    }
+    if k == K_INT() {
+        ll_ckst(lg, "restoring an int payload", vshim_build_store(lg.m, cv, dst))
+        return
+    }
+    trap(path, line, "an arm binding of this kind has no cell in this back end")
+}
+
+def ll_enum_bind(mut lg: LG, path: str, mem: Array[int, 3741696], vm: VM,
+                 mut lit: Array[int, 132096], slots: Array[int, 4096],
                  slotkind: Array[int, 4096], et: int, base: int, vi: int, j: int,
                  b: int, nd: Array[int, 1310720]) -> None {
     line: int = nd_line(nd, b)
-    k: int = unpack_kind(nt_get(mem, b, NT_LIT()))
+    packed: int = nt_get(mem, b, NT_LIT())
+    k: int = unpack_kind(packed)
     slot: int = nt_get(mem, b, NT_SLOT())
     h: int = ll_slot_for(lg, slots, slotkind, slot, k, path, line)
     off: int = 1 + ll_payload_cell_of(mem, vi, j, path, line)
+    if k == K_ST() {
+        # The binding's slot is already an alloca of the struct's own type (the reserve pass
+        # made it one), so the payload goes straight into it.
+        ll_enum_take(lg, path, mem, vm, lit, et, base, off, packed, h, line)
+        return
+    }
     cp: int = ll_cell_addr(lg, et, base, off, path, line)
     cv: int = ll_ck(lg, "loading an enum payload cell",
                     vshim_build_load(lg.m, lg.t_i64, cp))
@@ -4675,7 +4804,7 @@ def ll_match(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             mut b: int = nd[a3 * 10 + 2]
             mut j: int = 0
             while b > 0 {
-                ll_enum_bind(lg, path, mem, slots, slotkind, et, addr, vi3, j, b,
+                ll_enum_bind(lg, path, mem, vm, lit, slots, slotkind, et, addr, vi3, j, b,
                              nd)
                 j += 1
                 b = nd_nx(nd, b)

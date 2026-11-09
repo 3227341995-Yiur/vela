@@ -613,6 +613,9 @@ run-c     nested_fields                       tests/build/nested_fields.vel
 run       nested_family                       tests/build/nested_family.vel
 run-c     nested_family                       tests/build/nested_family.vel
 run-c     struct_enum_payload                 tests/build/struct_enum_payload.vel
+# the LLVM back end carries this shape now too, so the case is judged three ways: the
+# two compiled back ends and the interpreter must print the same byte for byte
+run       struct_enum_payload                  tests/build/struct_enum_payload.vel
 # the two gaps above, seen from the interpreter: the compiled back ends refuse them by
 # name, and the answer the other path has is what these two rows pin
 interpret array_of_struct                    tests/build/array_of_struct.vel

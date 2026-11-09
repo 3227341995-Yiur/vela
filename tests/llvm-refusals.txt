@@ -42,4 +42,4 @@ parallel_alias_nested_rowmajor   | is refused by the LLVM back end, deliberately
 # refusal.  The C back end compiles it (its payload is a real union member of the
 # nested type), so `enum_two_enums` stays a `run-c` row with this line as its other
 # side.
-enum_two_enums                   | an enum payload that is itself a struct or an enum is not compiled by the LLVM back end yet
+enum_two_enums                   | an enum payload that is itself an enum is not compiled by the LLVM back end yet
