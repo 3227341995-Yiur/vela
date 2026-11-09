@@ -1,0 +1,43 @@
+# An enum stored in a struct field, matched through that field.  The interpreter runs it;
+# the LLVM back end refuses it by name and the C back end refuses the *definition* ("structs
+# are defined before enums, and C needs a complete type for a by-value field").  Both are
+# recorded as `enum_field_in_struct` in tests/llvm-gaps.txt, with the same program in
+# tests/llvm-shapes/ for the back ends to be judged on.
+#
+# The checker used to refuse this one too, and wrongly: `match holder.sh` was reported as
+# "the subject of a match must be an enum value" while `show(holder.sh)` -- the same value as
+# a parameter -- compiled.  The subject's row is its *field's* type row, and `ck_row_of` now
+# reads it (commit 63692ce).
+#
+# Expected stdout, byte for byte:
+#     1.500000
+#     2.500000
+enum Shape {
+    Circle(radius: float)
+    Empty
+}
+
+struct Holder {
+    sh: Shape
+}
+
+def main() -> None {
+    mut h: Holder = Holder(Circle(1.5))
+    match h.sh {
+        Circle(r) {
+            print(r)
+        }
+        Empty {
+            print(0.0)
+        }
+    }
+    h.sh = Circle(2.5)
+    match h.sh {
+        Circle(r) {
+            print(r)
+        }
+        Empty {
+            print(0.0)
+        }
+    }
+}

@@ -610,6 +610,10 @@ run-c     nested_fields                       tests/build/nested_fields.vel
 run       nested_family                       tests/build/nested_family.vel
 run-c     nested_family                       tests/build/nested_family.vel
 run-c     struct_enum_payload                 tests/build/struct_enum_payload.vel
+# the two gaps above, seen from the interpreter: the compiled back ends refuse them by
+# name, and the answer the other path has is what these two rows pin
+interpret array_of_struct                    tests/build/array_of_struct.vel
+interpret enum_field_in_struct              tests/build/enum_field_in_struct.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is

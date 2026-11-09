@@ -1,0 +1,26 @@
+# `Array[S, N]` -- an array whose element is a struct.  The interpreter runs it; both
+# compiled back ends refuse it by name, and that refusal is recorded as `array_of_struct`
+# in tests/llvm-gaps.txt with a shape beside it (tests/llvm-shapes/).  This row is the
+# interpreter agreeing with what the case comment says it prints, so the gap is measured
+# from both sides: the shapes corpus proves the back ends refuse it, and this proves the
+# other two paths have an answer worth reaching.
+#
+# Expected stdout, byte for byte:
+#     1 2
+#     9
+#     3 7
+struct Leaf {
+    x: int
+}
+
+def main() -> None {
+    mut xs: Array[Leaf, 3] = [Leaf(1), Leaf(2), Leaf(3)]
+    print(xs[0].x, xs[1].x)
+
+    xs[1].x = 9
+    print(xs[1].x)
+
+    mut t: Leaf = xs[2]
+    t.x = 7
+    print(xs[2].x, t.x)
+}
