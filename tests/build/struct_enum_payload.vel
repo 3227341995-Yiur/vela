@@ -1,0 +1,30 @@
+# An enum variant whose payload is a struct.  Both the interpreter and the C back end
+# build it; the LLVM back end refuses it by name ("an enum payload that is itself a struct
+# or an enum ... a payload cell is one i64"), which is recorded as `struct_enum_payload` in
+# tests/llvm-gaps.txt with the same program in tests/llvm-shapes/.  The row is `run-c` for
+# that reason, and it is also the case that made `tools\llvm-column.ps1` stop judging the
+# corpus against the *permanent refusal* ledger alone: a gap recorded in the gaps ledger is
+# a record, and a corpus row refused for it is not an undocumented refusal.
+#
+# Expected stdout, byte for byte:
+#     3
+struct Leaf {
+    x: int
+}
+
+enum Shape {
+    Wrap(l: Leaf)
+    Dot
+}
+
+def main() -> None {
+    mut s: Shape = Wrap(Leaf(3))
+    match s {
+        Wrap(l) {
+            print(l.x)
+        }
+        Dot {
+            print(0)
+        }
+    }
+}

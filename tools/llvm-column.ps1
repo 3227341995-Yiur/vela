@@ -256,8 +256,18 @@ foreach ($line in (Get-Content -LiteralPath $casesFile)) {
 Say ''
 Say ("== the corpus: {0} 'run'/'run-c' row(s) from tests\cases.txt" -f $cases.Count)
 foreach ($c in $cases) {
+    # A corpus row may be refused *permanently* (`tests\llvm-refusals.txt`: `parallel for`
+    # has no IR) or for a reason recorded as an open *gap* (`tests\llvm-gaps.txt`).  Both are
+    # records; only an unrecorded refusal is a failure.  Until this branch the corpus pass
+    # consulted the refusals ledger alone, so a gap could never appear in `tests\cases.txt`
+    # at all -- measured: `array_of_struct` was reported "REFUSED-and-not-on-a-ledger" while
+    # `tests\llvm-gaps.txt` carried its entry and the refusal contained the recorded text.
+    $ledger = if ($refusals.Table.ContainsKey($c.Name)) { $refusals.Table }
+              elseif ($gaps.Table.ContainsKey($c.Name)) { $gaps.Table }
+              else { $refusals.Table }
+    $isGap = (-not $refusals.Table.ContainsKey($c.Name)) -and $gaps.Table.ContainsKey($c.Name)
     Judge-One -Name $c.Name -Source (Join-Path $root ($c.Path -replace '/', '\')) `
-              -Ledger $refusals.Table -IsGapLedger $false -ScratchRoot (Join-Path $scratch 'corpus')
+              -Ledger $ledger -IsGapLedger $isGap -ScratchRoot (Join-Path $scratch 'corpus')
 }
 foreach ($k in $refusals.Order) {
     if (-not ($cases | Where-Object { $_.Name -eq $k })) {
