@@ -33,6 +33,12 @@ checkout" below.  It has nothing to do with `vela\tests\` and depends on nothing
 | `expected\\alias.txt` | the exact stdout `alias.vel` must print (likewise, both back ends) |
 | `README.md` | this file |
 
+Every demo above is run by `tools\demo-check.ps1`: it executes the interpreter and a
+`build-c` binary for each file and compares their stdout against `expected\` byte for byte
+(`async.vel` on the C path alone, `broken.vel` judged as a refusal, `geometry.vel` as a
+module).  Its `-SelfTest` switch proves the comparison can fail, which is the only thing
+that makes a green run mean anything.
+
 After a run, the directory grows `hello.c` / `hello.exe` / `hello.obj` / `tour.c` /
 `tour.exe` / `tour.obj`: those are compile products and are expected.  The rule
 `vm.exe build` follows is "write the `.c` and the `.exe` beside the source file".
