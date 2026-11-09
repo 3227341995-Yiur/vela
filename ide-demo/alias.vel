@@ -6,8 +6,8 @@
 # colliding names across files.  Two consequences worth knowing in the editor:
 #
 #   * the alias is per file -- another file that imports `geometry` is unaffected;
-#   * one alias per file (the parser carries one pair), and a second one is refused by
-#     name rather than silently ignored.
+#   * a file may hold as many aliases as it writes: the pairs are a chain on the import
+#     statement, and the test that says so is `tests/build/modules/two_aliases.vel`.
 #
 # Prints the same number as `modules.vel`'s first line, because it is the same call.
 from geometry import area as area2

@@ -600,6 +600,9 @@ run-c     module_from_many                   tests/build/modules/from_many.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the module's name, and
 # the harness applies the same rewrite the loader does, so this file can be compared
 run-c     module_from_alias                   tests/build/modules/from_alias.vel
+# two aliases in one file: the pair chain on the import node carries as many as the file
+# writes (a claim that only one per file worked was wrong, and this row is the check)
+run-c     module_two_aliases                  tests/build/modules/two_aliases.vel
 # a struct field whose type is a struct, three deep: read and written through the path,
 # and value semantics kept -- the interpreter used to store into a copy silently, and
 # the LLVM back end used to refuse the type once the field struct was not struct 0

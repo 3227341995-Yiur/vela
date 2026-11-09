@@ -1,0 +1,18 @@
+# Two aliases in one file, both used.  A claim that used to stand in `ide-demo/alias.vel`
+# and both READMEs -- "one alias per file, a second is refused by name" -- was wrong: the
+# parser records a pair chain on the import node, so any number of aliases in one file
+# rebind, and this case is the measurement that says so.
+#
+#     from geometry import area as a      ->  a(3) = 9
+#     from geometry import perimeter as b ->  b(3) = 12
+#
+# Expected stdout, byte for byte:
+#     9
+#     12
+from geometry import area as a
+from geometry import perimeter as b
+
+def main() -> None {
+    print(a(3))
+    print(b(3))
+}

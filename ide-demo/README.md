@@ -29,7 +29,7 @@ checkout" below.  It has nothing to do with `vela\tests\` and depends on nothing
 | `expected\modules.txt` | the exact stdout `modules.vel` must print (likewise, measured with `vm.exe run`) |
 | `unpack.vel` | `a, b = f()`: a call's struct fields come out into names in declaration order, `_` skips a field, and the statement declares its targets.  Both back ends build it |
 | `expected\unpack.txt` | the exact stdout `unpack.vel` must print (measured with both `vm.exe run` and a `build-c` binary) |
-| `alias.vel` | `from geometry import area as area2`: an imported name under a local one. The loader rewrites this file's references once, so the alias is per file; one alias per file, and a second is refused by name. Both back ends build it |
+| `alias.vel` | `from geometry import area as area2`: an imported name under a local one. The loader rewrites this file's references once, so the alias is per file, and a file may hold as many aliases as it writes (`tests/build/modules/two_aliases.vel` measures that). Both back ends build it |
 | `expected\\alias.txt` | the exact stdout `alias.vel` must print (likewise, both back ends) |
 | `README.md` | this file |
 
