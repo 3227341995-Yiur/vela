@@ -1,0 +1,9 @@
+# Programs the C back end refuses, with the reason.
+#
+# Read by `tools\threeway.ps1`, and two-sided for the same reason the LLVM ledgers are: an
+# entry that stops being refused fails the run, so a gap that closes gets recorded by deleting
+# its line instead of quietly disappearing.
+#
+# Format, one per line:
+#
+#     <case name from tests/cases.txt> | <substring the refusal must contain>

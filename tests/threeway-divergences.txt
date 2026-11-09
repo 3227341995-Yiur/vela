@@ -1,0 +1,9 @@
+# Divergences between the two compiled back ends that are accepted for now, with the reason.
+#
+# Read by `tools\threeway.ps1`.  An entry here is a *known wrong answer on one of the two
+# back ends*, never a design decision: it exists so the tool can go green while the work is
+# owed, and closing it means deleting the line.
+#
+# Format, one per line:
+#
+#     <case name from tests/cases.txt> | <why this is accepted today>
