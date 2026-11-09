@@ -113,6 +113,11 @@ Say ("compiler: {0} bytes, sha256 {1}" -f (Get-Item -LiteralPath $vm).Length, $h
 
 $failures = New-Object System.Collections.ArrayList
 $counts = @{ match = 0; refusedOk = 0; gapOpen = 0; unexpected = 0; diverge = 0; stale = 0; missing = 0 }
+# A gap is judged once per program that exercises it, and one entry may have two
+# programs (the shapes corpus and a `tests\cases.txt` row).  Counting the judgements
+# made the summary read `open gaps 6/3`, which looks like an error; the summary counts
+# the *entries* seen open instead.
+$script:gapNames = @{}
 
 function Judge-One {
     param(
@@ -184,6 +189,7 @@ function Judge-One {
         }
         if ($IsGapLedger) {
             $script:counts.gapOpen++
+            $script:gapNames[$Name] = $true
             if ($VerbosePreference -ne 'SilentlyContinue') { Say ("  {0,-22} gap-still-open" -f $Name) }
         } else {
             $script:counts.refusedOk++
@@ -298,7 +304,7 @@ $hashAfter = (Get-FileHash -LiteralPath $vm -Algorithm SHA256).Hash
 Say ''
 Say ("compiler unchanged during the run: {0}  ({1})" -f ($hashBefore -eq $hashAfter), $hashBefore.ToLowerInvariant().Substring(0, 16))
 Say ("match {0}   refused-by-design {1}/{2}   open gaps {3}/{4}   DIVERGE {5}   unexpected refusal {6}   stale ledger {7}   missing {8}" -f `
-    $counts.match, $counts.refusedOk, $refusals.Table.Count, $counts.gapOpen, $gaps.Table.Count,
+    $counts.match, $counts.refusedOk, $refusals.Table.Count, $script:gapNames.Count, $gaps.Table.Count,
     $counts.diverge, $counts.unexpected, $counts.stale, $counts.missing)
 
 if ($hashBefore -ne $hashAfter) {
