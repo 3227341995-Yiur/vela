@@ -826,14 +826,15 @@ def ll_store_into(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         return
     }
     if k == K_ENUM() {
-        # A field of enum type: the enum owns its own storage row (tag plus payload
-        # cells), and this back end has no spelling for one *inside* another struct's
-        # layout.  The C back end refuses the same definition for its own reason
-        # ("structs are defined before enums"), so the two agree that this shape is
-        # missing -- and the interpreter runs it.  Naming the construct is the point:
-        # the generic sentence below describes the back end, not the program.
-        trap(path, nd_line(nd, v),
-             "a struct field of enum type is not compiled by the LLVM back end yet: an enum has its own storage shape, and this back end has no field spelling for one")
+        # A field of enum type holds the enum *block* inline, so the value -- an address of
+        # the enum's own `{i64 tag, cells}` shape -- is loaded and stored: the same copy the
+        # struct case above makes, which is why the field needs no separate layout rule.
+        et_e: int = ll_enum_ty(lg, mem, vm, lit, unpack_len(fk), path, nd_line(nd, v))
+        sv_e: int = ll_ck(lg, "reading an enum to copy it",
+                          vshim_build_load(lg.m, et_e, val))
+        ll_ckst(lg, "copying an enum into a field",
+                vshim_build_store(lg.m, sv_e, fa))
+        return
     }
     t: int = ll_type_of(lg, k)
     if t == 0 {
@@ -4104,7 +4105,7 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         }
         fa: int = ll_field_addr(lg, nd, ty, mem, vm, slots, slotkind, lit, path, e, flt, src, fns)
         fkind: int = unpack_kind(fk)
-        if fkind == K_ST() or fkind == K_STR() {
+        if fkind == K_ST() or fkind == K_STR() or fkind == K_ENUM() {
             return fa
         }
         ft: int = ll_type_of_st(lg, mem, vm, lit, path, nd_line(nd, e), fkind,

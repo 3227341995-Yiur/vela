@@ -109,4 +109,3 @@
 #
 # Until then the LLVM back end refuses this shape by name and the corpus keeps the case as
 # `run-c` + `interpret`, which is the honest record.
-enum_field_in_struct | a struct field of enum type is not compiled by the LLVM back end yet
