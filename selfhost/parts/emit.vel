@@ -2827,6 +2827,13 @@ def expr_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
         # `elem_kind_of` alone answers K_ST and then no back end can spell the element.'s
         # type, which is *why* `xs[i].x` could not be compiled on the LLVM side.
         if elem_kind_of(unpack_kind(base)) == K_ST() {
+            # the element's struct row is already recorded on the base name (`NT_ROW` is the
+            # shape the scope cache carries), so an element of `Array[S, N]` keeps its id
+            # without any extra bits anywhere.
+            row: int = nt_get(mem, nd[e * 10 + 1], NT_ROW())
+            if row >= 0 {
+                return pack_kind(K_ST(), row)
+            }
             return pack_kind(K_ST(), unpack_elem_sid(base))
         }
         return elem_value_kind(elem_kind_of(unpack_kind(base)))
