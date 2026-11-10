@@ -719,8 +719,8 @@ def ll_field_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         # struct value is an address in this back end, so one GEP on the element's type
         # is the whole of it.  The type comes from the id the array carries.
         bp1: int = expr_packed(nd, ty, mem, vm, base)
-        sid1: int = unpack_elem_sid(bp1)
-        if sid1 <= 0 {
+        sid1: int = unpack_len(bp1)
+        if sid1 < 0 {
             trap(path, nd_line(nd, e),
                  "this array's element type has no struct id this back end knows")
         }
@@ -2660,9 +2660,14 @@ def ll_addr_of(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     # A struct element's type is spelled from the id the array type carries: `ll_type_of`
     # takes a bare kind and answers 0 for `K_ST`, which is what kept this shape out.
-    sid_e: int = unpack_elem_sid(expr_packed(nd, ty, mem, vm, base))
+    # the base name records the element's struct row as its shape (`NT_ROW`), which is
+    # what `bind_name` copied out of the scope cache at the declaration.
+    mut sid_e: int = -1
+    if nd_kind(nd, base) == 25 {
+        sid_e = nt_get(mem, base, NT_ROW())
+    }
     mut et: int = 0
-    if sid_e > 0 {
+    if sid_e >= 0 {
         et = ll_sty_of(lg, mem, vm, lit, sid_e, path, line)
     } else {
         et = ll_type_of(lg, elem_kind_of(bk))
@@ -2697,9 +2702,14 @@ def ll_index_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     ll_bounds(lg, iv, len, path, line)
     # A struct element's type is spelled from the id the array type carries: `ll_type_of`
     # takes a bare kind and answers 0 for `K_ST`, which is what kept this shape out.
-    sid_e: int = unpack_elem_sid(expr_packed(nd, ty, mem, vm, base))
+    # the base name records the element's struct row as its shape (`NT_ROW`), which is
+    # what `bind_name` copied out of the scope cache at the declaration.
+    mut sid_e: int = -1
+    if nd_kind(nd, base) == 25 {
+        sid_e = nt_get(mem, base, NT_ROW())
+    }
     mut et: int = 0
-    if sid_e > 0 {
+    if sid_e >= 0 {
         et = ll_sty_of(lg, mem, vm, lit, sid_e, path, line)
     } else {
         et = ll_type_of(lg, elem_kind_of(bk))
@@ -2735,10 +2745,31 @@ def ll_array_decl(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         trap(path, line, "this array declaration has no declared length")
     }
     ek: int = elem_kind_of(unpack_kind(kp))
-    esz: int = ll_esize_of(ek, path, line)
-    p: int = ll_call1(lg, lg.f_alloc,
-                      ll_ck(lg, "an array's size",
-                            vshim_const_i64(lg.m, n * esz)))
+    # `Array[S, N]`: the element's struct row is on the declaration node's type row, and
+    # the byte count is `n * sizeof`, which a GEP's scaled index *is* -- so `ll_esize_of`
+    # (the scalar path, with no width for `K_ST`) is not asked at all.
+    tl: int = nd[s * 10 + 3]
+    mut et: int = 0
+    mut ep1: int = 0
+    if tl > 0 {
+        ep1 = type_packed(ty, ty_elem(ty, tl), mem, vm)
+    }
+    mut p: int = 0
+    if unpack_kind(ep1) == K_ST() {
+        et = ll_type_of_st(lg, mem, vm, lit, path, line, K_ST(), unpack_len(ep1))
+        zv: int = vshim_build_inttoptr(lg.m, lg.t_ptr, vshim_const_i64(lg.m, 0))
+        p = ll_call1(lg, lg.f_alloc,
+                     ll_ck(lg, "an array's size",
+                           vshim_build_ptrtoint(lg.m, lg.t_i64,
+                                                vshim_build_gep(lg.m, et, zv,
+                                                                vshim_const_i64(lg.m, n)))))
+    } else {
+        esz: int = ll_esize_of(ek, path, line)
+        et = ll_type_of(lg, ek)
+        p = ll_call1(lg, lg.f_alloc,
+                     ll_ck(lg, "an array's size",
+                           vshim_const_i64(lg.m, n * esz)))
+    }
     ll_ckst(lg, "storing an array's address", vshim_build_store(lg.m, p, h))
     v: int = nd[s * 10 + 2]
     if v <= 0 {
@@ -2747,7 +2778,6 @@ def ll_array_decl(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     if nd_kind(nd, v) != 33 {
         trap(path, line, "an array declaration needs an array literal")
     }
-    et: int = ll_type_of(lg, ek)
     mut i: int = 0
     mut a: int = nd[v * 10 + 1]
     while a > 0 {
@@ -4013,6 +4043,9 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             return ep
         }
         et: int = ll_type_of(lg, ek)
+        if ek == K_ST() {
+            return ep
+        }
         mut lv: int = ll_ck(lg, "loading an element", vshim_build_load(lg.m, et, ep))
         if ek == K_F32() {
             # an `Array[f32, N]` element is 32 bits in memory and worth a `float`
@@ -5220,3 +5253,4 @@ def ll_emit_object(nd: Array[int, 1310720], ty: Array[int, 262144],
     }
     ll_ckst(lg, "writing the object file", vshim_emit_object_buf(lg.m))
 }
+

@@ -627,9 +627,12 @@ run-c     enum_field_in_struct              tests/build/enum_field_in_struct.vel
 # copy that must not alias (the LLVM back end refuses the shape: `array_of_struct` in
 # tests\llvm-gaps.txt)
 run-c     array_of_struct                    tests/build/array_of_struct.vel
+# the LLVM back end carries `Array[S, N]` now too, so both cases are judged three ways
+run       array_of_struct                    tests/build/array_of_struct.vel
 # an element of an `Array[S, N]` in every position a value can be in: copied into a
 # function, passed straight out of the array, read twice in a loop (C back end + interp)
 run-c     array_struct_elem                   tests/build/array_struct_elem.vel
+run       array_struct_elem                   tests/build/array_struct_elem.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is
