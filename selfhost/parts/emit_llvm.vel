@@ -711,8 +711,29 @@ def ll_type_of(lg: LG, k: int) -> int {
 def ll_field_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                   mem: Array[int, 3741696], vm: VM, slots: Array[int, 4096],
                   slotkind: Array[int, 4096], mut lit: Array[int, 132096],
-                  path: str, e: int) -> int {
+                  path: str, e: int, flt: Array[float, 262144], src: str,
+                  fns: Array[int, 8192]) -> int {
     base: int = nd[e * 10 + 1]
+    if nd_kind(nd, base) == 31 {
+        # `xs[i].x`: the element's own (checked) address is where the field lives -- a
+        # struct value is an address in this back end, so one GEP on the element's type
+        # is the whole of it.  The type comes from the id the array carries.
+        bp1: int = expr_packed(nd, ty, mem, vm, base)
+        sid1: int = unpack_elem_sid(bp1)
+        if sid1 <= 0 {
+            trap(path, nd_line(nd, e),
+                 "this array's element type has no struct id this back end knows")
+        }
+        st1: int = ll_sty_of(lg, mem, vm, lit, sid1, path, nd_line(nd, e))
+        ea1: int = ll_index_addr(lg, nd, ty, flt, src, path, mem, vm, slots,
+                                 slotkind, lit, fns, base)
+        idx1: int = ll_find_field(mem, sid1, nd[e * 10 + 2])
+        if idx1 < 0 {
+            trap(path, nd_line(nd, e), "this struct has no field of that name")
+        }
+        return ll_ck(lg, "a field's address",
+                     vshim_build_gep_field(lg.m, st1, ea1, idx1))
+    }
     if nd_kind(nd, base) == 32 {
         # `o.i.x`: the base is itself a field, so what this GEP starts from is the
         # *address* of that field -- this same function one level down, which is what
@@ -726,7 +747,7 @@ def ll_field_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             trap(path, nd_line(nd, e), "this struct has no id this back end knows")
         }
         st0: int = ll_sty_of(lg, mem, vm, lit, sid0, path, nd_line(nd, e))
-        h0: int = ll_field_addr(lg, nd, ty, mem, vm, slots, slotkind, lit, path, base)
+        h0: int = ll_field_addr(lg, nd, ty, mem, vm, slots, slotkind, lit, path, base, flt, src, fns)
         name0: int = nd[e * 10 + 2]
         idx0: int = ll_find_field(mem, sid0, name0)
         if idx0 < 0 {
@@ -2637,8 +2658,15 @@ def ll_addr_of(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         trap(path, line,
              "addr takes an array, and this value is not one: the interpreter has no addresses, and the two back ends can only name the address of an element of a local array")
     }
-    ek: int = elem_kind_of(bk)
-    et: int = ll_type_of(lg, ek)
+    # A struct element's type is spelled from the id the array type carries: `ll_type_of`
+    # takes a bare kind and answers 0 for `K_ST`, which is what kept this shape out.
+    sid_e: int = unpack_elem_sid(expr_packed(nd, ty, mem, vm, base))
+    mut et: int = 0
+    if sid_e > 0 {
+        et = ll_sty_of(lg, mem, vm, lit, sid_e, path, line)
+    } else {
+        et = ll_type_of(lg, elem_kind_of(bk))
+    }
     if et == 0 {
         trap(path, line, "an array of this element kind has no IR type yet")
     }
@@ -2667,8 +2695,15 @@ def ll_index_addr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
     iv: int = ll_expr(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
                       fns, nd[e * 10 + 2])
     ll_bounds(lg, iv, len, path, line)
-    ek: int = elem_kind_of(bk)
-    et: int = ll_type_of(lg, ek)
+    # A struct element's type is spelled from the id the array type carries: `ll_type_of`
+    # takes a bare kind and answers 0 for `K_ST`, which is what kept this shape out.
+    sid_e: int = unpack_elem_sid(expr_packed(nd, ty, mem, vm, base))
+    mut et: int = 0
+    if sid_e > 0 {
+        et = ll_sty_of(lg, mem, vm, lit, sid_e, path, line)
+    } else {
+        et = ll_type_of(lg, elem_kind_of(bk))
+    }
     if et == 0 {
         trap(path, line, "an array of this element kind has no IR type yet")
     }
@@ -4034,7 +4069,7 @@ def ll_expr(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         if unpack_kind(fk) == K_BAD() {
             trap(path, nd_line(nd, e), "this struct has no field of that name")
         }
-        fa: int = ll_field_addr(lg, nd, ty, mem, vm, slots, slotkind, lit, path, e)
+        fa: int = ll_field_addr(lg, nd, ty, mem, vm, slots, slotkind, lit, path, e, flt, src, fns)
         fkind: int = unpack_kind(fk)
         if fkind == K_ST() or fkind == K_STR() {
             return fa
@@ -4141,7 +4176,7 @@ def ll_assign(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                                                            nd[tgt * 10 + 1])),
                                     nd[tgt * 10 + 2])
             fa: int = ll_field_addr(lg, nd, ty, mem, vm, slots, slotkind, lit,
-                                    path, tgt)
+                                    path, tgt, flt, src, fns)
             ll_store_into(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
                           lit, fns, fk, fa, v)
             return
@@ -4336,7 +4371,7 @@ def ll_aug(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             trap(path, line,
                  "this augmented assignment's destination is not a struct field")
         }
-        h = ll_field_addr(lg, nd, ty, mem, vm, slots, slotkind, lit, path, tgt)
+        h = ll_field_addr(lg, nd, ty, mem, vm, slots, slotkind, lit, path, tgt, flt, src, fns)
     } else {
         trap(path, line,
              "only a local variable, an array element or a struct field can be updated in place by the LLVM back end so far")
