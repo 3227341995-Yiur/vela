@@ -7,3 +7,4 @@
 # Format, one per line:
 #
 #     <case name from tests/cases.txt> | <substring the refusal must contain>
+array_of_struct_param | an array of structs is not implemented in this slice

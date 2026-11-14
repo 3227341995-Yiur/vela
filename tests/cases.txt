@@ -643,6 +643,14 @@ run-c     array_parameter                    tests/build/array_parameter.vel
 # parameter must answer the declared length
 run       array_param_mut                    tests/build/array_param_mut.vel
 run-c     array_param_mut                    tests/build/array_param_mut.vel
+# `Array[S, N]` as a parameter: the C back end refuses one (tests\c-refusals.txt), the
+# interpreter and the LLVM back end print 4
+# `Array[S, N]` as a parameter: the C back end refuses one, which the corpus cannot express
+# as an expected refusal (`run-c` means "the C back end builds this"), so the program is
+# pinned on the interpreter here and the C refusal is recorded in tests\c-refusals.txt
+interpret array_of_struct_param              tests/build/array_of_struct_param.vel
+# an array whose element is an enum: the LLVM back end refuses it (tests\llvm-gaps.txt)
+run-c     array_of_enum                      tests/build/array_of_enum.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is

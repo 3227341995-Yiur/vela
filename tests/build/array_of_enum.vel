@@ -1,0 +1,24 @@
+# An array whose element is an enum.  The interpreter and the C back end both print 3; the LLVM
+# back end refuses it -- "an array of this element kind is not compiled ... only int, float,
+# i32, u8 and bool elements have an IR spelling here" -- because an enum's IR shape is
+# `{i64 tag, cells}` and `ll_esize` has no width for it.  Recorded in `tests\llvm-gaps.txt`
+# with a shape beside it.
+#
+# Expected stdout, byte for byte:
+#     3
+enum Shape {
+    Dot
+    Sized(w: int)
+}
+
+def main() -> None {
+    mut a: Array[Shape, 2] = [Dot, Sized(3)]
+    match a[1] {
+        Sized(w) {
+            print(w)
+        }
+        Dot {
+            print(0)
+        }
+    }
+}

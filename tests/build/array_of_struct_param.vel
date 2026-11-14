@@ -1,0 +1,21 @@
+# An `Array[S, N]` handed to a function.  The C back end declares such an array (it learned
+# that in 1055592) but refuses one as a parameter -- "an array of structs is not implemented in
+# this slice" -- while the interpreter and the LLVM back end both print 4.  Recorded in
+# `tests\c-refusals.txt` rather than left as an unrecorded refusal, and judged `run-c` so the
+# ledger is exercised: the interpreter runs, the C back end is refused, and the two claims are
+# the ones this row makes.
+#
+# Expected stdout, byte for byte:
+#     4
+struct Leaf {
+    x: int
+}
+
+def first(xs: Array[Leaf, 2]) -> int {
+    return xs[0].x
+}
+
+def main() -> None {
+    mut a: Array[Leaf, 2] = [Leaf(4), Leaf(5)]
+    print(first(a))
+}
