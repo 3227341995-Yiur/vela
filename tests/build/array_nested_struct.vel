@@ -1,0 +1,24 @@
+# An array whose element struct *contains* a struct: `Outer(Inner(v), tag)`.  The element is a
+# block holding another block, so a back end that flattened the outer row's fields without
+# following the inner one addresses the second field at the wrong offset -- and prints a wrong
+# number rather than refusing.
+#
+# Measured before recording, on all three paths: `2 / 20`.
+#
+# Expected stdout, byte for byte:
+#     2
+#     20
+struct Inner {
+    v: int
+}
+
+struct Outer {
+    i: Inner
+    tag: int
+}
+
+def main() -> None {
+    mut xs: Array[Outer, 2] = [Outer(Inner(1), 10), Outer(Inner(2), 20)]
+    print(xs[1].i.v)
+    print(xs[1].tag)
+}

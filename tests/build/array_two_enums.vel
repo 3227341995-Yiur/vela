@@ -1,0 +1,42 @@
+# Two enum arrays of *different* enums in one function, each assigned as a whole element, with a
+# `str` payload and a two-argument match.  A back end that keyed enum layout by array position
+# rather than by the enum's own row would mix these two up -- and mixing them up prints a wrong
+# value rather than failing, which is why the case exists.
+#
+# Measured before recording, on all three paths: `5 / hi`.
+#
+# Expected stdout, byte for byte:
+#     5
+#     hi
+enum E1 {
+    A
+    B(n: int)
+}
+
+enum E2 {
+    C
+    D(s: str)
+}
+
+def main() -> None {
+    mut p: Array[E1, 2] = [A, A]
+    mut q: Array[E2, 2] = [C, C]
+    p[0] = B(5)
+    q[1] = D("hi")
+    match p[0] {
+        B(n) {
+            print(n)
+        }
+        A {
+            print(0)
+        }
+    }
+    match q[1] {
+        D(s) {
+            print(s)
+        }
+        C {
+            print("none")
+        }
+    }
+}
