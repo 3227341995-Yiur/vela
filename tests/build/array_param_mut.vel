@@ -1,0 +1,31 @@
+# A `mut` array parameter: the write inside the callee has to be visible to the caller, which
+# is what makes `mut` on a parameter mean anything.  `len` on a parameter is pinned beside it,
+# because an array's length travels with the binding and a back end that dropped it would
+# answer 0 here.
+#
+# Measured before recording, on all three paths: `2 / 2 / 3` from the interpreter, a `build`
+# binary and a `build-c` binary.
+#
+# Expected stdout, byte for byte:
+#     2
+#     2
+#     3
+def bump(mut xs: Array[int, 3]) -> int {
+    mut i: int = 0
+    while i < 3 {
+        xs[i] = xs[i] + 1
+        i += 1
+    }
+    return xs[0]
+}
+
+def total(xs: Array[int, 3]) -> int {
+    return len(xs)
+}
+
+def main() -> None {
+    mut a: Array[int, 3] = [1, 2, 3]
+    print(bump(a))
+    print(a[0])
+    print(total(a))
+}

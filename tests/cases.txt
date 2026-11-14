@@ -639,6 +639,10 @@ run       array_struct_elem                   tests/build/array_struct_elem.vel
 # them up and still pass)
 run       array_parameter                    tests/build/array_parameter.vel
 run-c     array_parameter                    tests/build/array_parameter.vel
+# a `mut` array parameter: the callee's write must be visible to the caller, and `len` on a
+# parameter must answer the declared length
+run       array_param_mut                    tests/build/array_param_mut.vel
+run-c     array_param_mut                    tests/build/array_param_mut.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is
