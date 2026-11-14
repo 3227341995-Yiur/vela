@@ -1,0 +1,36 @@
+# Assigning a whole element: `a[1] = Leaf(9)` for an array of structs and `a[0] = Sized(7)` for
+# an array of enums.  Both are copies of a block into the element's storage -- the operation the
+# element *read* case (`array_of_struct`, `array_of_enum`) does not cover, and the one a back end
+# gets wrong by storing a handle where the block belongs.
+#
+# Measured before recording, on all three paths: `9 / 7` from the interpreter, a `build` binary
+# and a `build-c` binary.
+#
+# Expected stdout, byte for byte:
+#     9
+#     7
+struct Leaf {
+    x: int
+}
+
+enum Shape {
+    Dot
+    Sized(w: int)
+}
+
+def main() -> None {
+    mut a: Array[Leaf, 2] = [Leaf(1), Leaf(2)]
+    a[1] = Leaf(9)
+    print(a[1].x)
+
+    mut b: Array[Shape, 2] = [Dot, Dot]
+    b[0] = Sized(7)
+    match b[0] {
+        Sized(w) {
+            print(w)
+        }
+        Dot {
+            print(0)
+        }
+    }
+}

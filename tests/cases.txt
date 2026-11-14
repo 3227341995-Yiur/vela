@@ -657,6 +657,11 @@ run-c     array_of_enum                      tests/build/array_of_enum.vel
 # an array whose element is an enum, on all three paths now: the element's row decides the
 # kind, so `match a[i]` is typable
 run       array_of_enum                      tests/build/array_of_enum.vel
+# assigning a whole element: `a[1] = Leaf(9)` and `b[0] = Sized(7)`, the copies that an element
+# *read* case does not cover (and that hard-coded struct row 0 as `%vl_Leaf`, printing a
+# wrong tag until the row was taken from the element's own packed kind)
+run       array_elem_assign                  tests/build/array_elem_assign.vel
+run-c     array_elem_assign                  tests/build/array_elem_assign.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is

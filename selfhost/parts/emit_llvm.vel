@@ -2794,9 +2794,18 @@ def ll_array_decl(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
                                         ll_ck(lg, "an element index",
                                               vshim_const_i64(lg.m, i))))
         # the same store rule as `a[i] = v`: `["x", "y"]` into an `Array[str, N]` is a
-        # 16-byte copy per element, not a pointer written into an element-sized hole
+        # 16-byte copy per element, not a pointer written into an element-sized hole.
+        # The *element's* packed kind, not `pack_kind(ek, 0)`: the row was hard-coded to 0,
+        # which is a real struct row -- so `[Dot, Sized(7)]` into an `Array[Shape, 2]` was
+        # stored as whatever struct row 0 happened to be, and the program printed the wrong
+        # tag instead of failing.  Measured: with `struct Leaf` declared first,
+        # `Array[Shape, 2]` printed `0` where the interpreter and the C back end print `7`.
+        mut epk_s: int = pack_kind(ek, 0)
+        if ep1 != 0 {
+            epk_s = ep1
+        }
         ll_store_into(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind, lit,
-                      fns, pack_kind(ek, 0), ep, a)
+                      fns, epk_s, ep, a)
         i += 1
         a = nd_nx(nd, a)
     }
@@ -4203,9 +4212,21 @@ def ll_assign(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
             # `str` field is and an `int` element is a converted store.
             ep: int = ll_index_addr(lg, nd, ty, flt, src, path, mem, vm, slots,
                                     slotkind, lit, fns, tgt)
+            # the *element's* packed kind, which carries the struct or enum row;
+            # `pack_kind(elem_kind_of(bk), 0)` hard-coded row 0, so `b[0] = Sized(7)` into
+            # an `Array[Shape, 2]` wrote whatever struct row 0 was and the tag read back
+            # as `Dot` -- a wrong answer, not a refusal.
             bk: int = unpack_kind(expr_packed(nd, ty, mem, vm, nd[tgt * 10 + 1]))
+            mut epk_s: int = pack_kind(elem_kind_of(bk), 0)
+            pk_i: int = expr_packed(nd, ty, mem, vm, tgt)
+            # only for a struct or an enum element: there the *storage* kind is what carries
+            # the row.  For a scalar the element's packed kind is what a *read* is worth
+            # (`f32` reads as `float`), which is the wrong answer for a store.
+            if unpack_kind(pk_i) == K_ST() or unpack_kind(pk_i) == K_ENUM() {
+                epk_s = pk_i
+            }
             ll_store_into(lg, nd, ty, flt, src, path, mem, vm, slots, slotkind,
-                          lit, fns, pack_kind(elem_kind_of(bk), 0), ep, v)
+                          lit, fns, epk_s, ep, v)
             return
         }
         if nd_kind(nd, tgt) == 32 {
