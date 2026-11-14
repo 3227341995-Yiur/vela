@@ -1,0 +1,40 @@
+# Two element-level copies the earlier cases do not reach:
+#
+#   * an enum payload that is itself a struct, stored into an array element
+#     (`xs[1] = With(Box(42))`) -- the payload is a block inside the enum's block, inside the
+#     element's storage, so a back end that copies one level too few prints a wrong number;
+#   * a `str` element assigned as a whole (`a[0] = "zz"`), which must copy the 16-byte pair and
+#     not alias the literal -- `a[1]` has to stay `bb`.
+#
+# Measured before recording, on all three paths: `42 / zz / bb`.
+#
+# Expected stdout, byte for byte:
+#     42
+#     zz
+#     bb
+struct Box {
+    n: int
+}
+
+enum Holder {
+    Empty
+    With(b: Box)
+}
+
+def main() -> None {
+    mut xs: Array[Holder, 2] = [Empty, Empty]
+    xs[1] = With(Box(42))
+    match xs[1] {
+        With(b) {
+            print(b.n)
+        }
+        Empty {
+            print(0)
+        }
+    }
+
+    mut a: Array[str, 2] = ["aa", "bb"]
+    a[0] = "zz"
+    print(a[0])
+    print(a[1])
+}

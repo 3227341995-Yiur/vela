@@ -668,6 +668,10 @@ run-c     array_two_enums                    tests/build/array_two_enums.vel
 # an array whose element struct contains a struct
 run       array_nested_struct                tests/build/array_nested_struct.vel
 run-c     array_nested_struct                tests/build/array_nested_struct.vel
+# an enum payload that is itself a struct, assigned into an element, plus a whole `str`
+# element assignment (the pair must be copied, not aliased)
+run       array_payload_assign               tests/build/array_payload_assign.vel
+run-c     array_payload_assign               tests/build/array_payload_assign.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is
