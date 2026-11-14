@@ -3048,6 +3048,19 @@ def emit_params(nd: Array[int, 1310720], ty: Array[int, 262144],
             }
         }
         if spelled == 0 {
+            if unpack_kind(pk) == K_AX() {
+                # `Array[S, N]` as a parameter: the element type comes from the parameter's
+                # own type row (`param_packed` reads the same field), so the spelling is
+                # `struct vl_S *`.  A bare `K_ST` has lost the struct id, which is why this
+                # shape used to be refused by name.
+                tl: int = nd[p * 10 + 2]
+                epk: int = type_packed(ty, ty_elem(ty, tl), mem, vm)
+                emit_packed_ctype(mem, vm, path, nd_line(nd, p), epk)
+                emit_str("*")
+                spelled = 1
+            }
+        }
+        if spelled == 0 {
             emit_binding_ctype(nd, ty, mem, vm, path, pk, nd_line(nd, p))
         }
         if with_names {
