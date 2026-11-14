@@ -2832,6 +2832,12 @@ def expr_packed(nd: Array[int, 1310720], ty: Array[int, 262144],
             # without any extra bits anywhere.
             row: int = nt_get(mem, nd[e * 10 + 1], NT_ROW())
             if row >= 0 {
+                # The row decides the kind: an enum owns a row of the same table, and its
+                # value is a tagged block, not a struct of fields.  Answering `K_ST` for an
+                # `Array[E, N]` element is what made `match a[i]` untypable.
+                if enum_of_row(mem, vm, row) >= 0 {
+                    return pack_kind(K_ENUM(), row)
+                }
                 return pack_kind(K_ST(), row)
             }
             return pack_kind(K_ST(), unpack_elem_sid(base))

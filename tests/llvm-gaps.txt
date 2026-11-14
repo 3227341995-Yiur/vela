@@ -109,4 +109,3 @@
 #
 # Until then the LLVM back end refuses this shape by name and the corpus keeps the case as
 # `run-c` + `interpret`, which is the honest record.
-array_of_enum | an array of this element kind is not compiled by the LLVM back end yet

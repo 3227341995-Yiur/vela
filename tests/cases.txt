@@ -654,6 +654,9 @@ run       array_of_struct_param              tests/build/array_of_struct_param.v
 run-c     array_of_struct_param              tests/build/array_of_struct_param.vel
 # an array whose element is an enum: the LLVM back end refuses it (tests\llvm-gaps.txt)
 run-c     array_of_enum                      tests/build/array_of_enum.vel
+# an array whose element is an enum, on all three paths now: the element's row decides the
+# kind, so `match a[i]` is typable
+run       array_of_enum                      tests/build/array_of_enum.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is

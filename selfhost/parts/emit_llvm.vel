@@ -516,6 +516,13 @@ def ll_type_of_st(mut lg: LG, mem: Array[int, 3741696], vm: VM,
         if sid < 0 or sid >= lg.nstruct {
             return 0
         }
+        # An enum owns a row of the same table, and its IR shape is the tagged block
+        # `ll_enum_ty` builds -- not a struct of the row's fields.  A caller that only has
+        # the row (an `Array[E, N]` element, whose array kind says "struct row" for both)
+        # gets the right type from here rather than having to know which it is.
+        if enum_of_row(mem, vm, sid) >= 0 {
+            return ll_enum_ty(lg, mem, vm, sty, sid, path, line)
+        }
         return ll_sty_of(lg, mem, vm, sty, sid, path, line)
     }
     if k == K_ENUM() {
@@ -2756,8 +2763,8 @@ def ll_array_decl(mut lg: LG, nd: Array[int, 1310720], ty: Array[int, 262144],
         ep1 = type_packed(ty, ty_elem(ty, tl), mem, vm)
     }
     mut p: int = 0
-    if unpack_kind(ep1) == K_ST() {
-        et = ll_type_of_st(lg, mem, vm, lit, path, line, K_ST(), unpack_len(ep1))
+    if unpack_kind(ep1) == K_ST() or unpack_kind(ep1) == K_ENUM() {
+        et = ll_type_of_st(lg, mem, vm, lit, path, line, unpack_kind(ep1), unpack_len(ep1))
         zv: int = vshim_build_inttoptr(lg.m, lg.t_ptr, vshim_const_i64(lg.m, 0))
         p = ll_call1(lg, lg.f_alloc,
                      ll_ck(lg, "an array's size",
