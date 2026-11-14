@@ -676,6 +676,9 @@ run-c     array_payload_assign               tests/build/array_payload_assign.ve
 # mutated -- neither write may reach the original
 run       value_semantics_copy               tests/build/value_semantics_copy.vel
 run-c     value_semantics_copy               tests/build/value_semantics_copy.vel
+# an `Array[str, N]` as a parameter, and its element read as a value
+run       array_str_param                    tests/build/array_str_param.vel
+run-c     array_str_param                    tests/build/array_str_param.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is

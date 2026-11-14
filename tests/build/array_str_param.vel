@@ -1,0 +1,18 @@
+# An `Array[str, N]` as a parameter: the element is a 16-byte pair, so a parameter that hands the
+# callee the array's pointer must still read the pair correctly -- and the returned `str` must be
+# a value, not the address of an element that goes out of scope.
+#
+# Found while sweeping for shapes that would print a wrong string rather than refuse.
+#
+# Measured before recording, on all three paths: `hi`.
+#
+# Expected stdout, byte for byte:
+#     hi
+def first(xs: Array[str, 2]) -> str {
+    return xs[0]
+}
+
+def main() -> None {
+    mut a: Array[str, 2] = ["hi", "there"]
+    print(first(a))
+}
