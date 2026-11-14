@@ -1,0 +1,52 @@
+# Value semantics, twice: a `match` binding copied and then mutated, and an array element copied
+# and then mutated.  Neither write may reach the original -- a back end that treats a struct as a
+# reference (or hands a binding the enum's own storage) prints the mutated value for both lines,
+# which is a wrong answer rather than a refusal.
+#
+# Measured before recording, on all three paths: `99 / 5 / 77 / 2`.
+#
+# Expected stdout, byte for byte:
+#     99
+#     5
+#     77
+#     2
+struct Box {
+    n: int
+}
+
+enum Holder {
+    Empty
+    With(b: Box)
+}
+
+struct Leaf {
+    x: int
+}
+
+def main() -> None {
+    mut h: Holder = With(Box(5))
+    match h {
+        With(b) {
+            mut c: Box = b
+            c.n = 99
+            print(c.n)
+        }
+        Empty {
+            print(0)
+        }
+    }
+    match h {
+        With(b) {
+            print(b.n)
+        }
+        Empty {
+            print(0)
+        }
+    }
+
+    mut xs: Array[Leaf, 2] = [Leaf(1), Leaf(2)]
+    mut e: Leaf = xs[1]
+    e.x = 77
+    print(e.x)
+    print(xs[1].x)
+}

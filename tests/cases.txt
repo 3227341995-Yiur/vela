@@ -672,6 +672,10 @@ run-c     array_nested_struct                tests/build/array_nested_struct.vel
 # element assignment (the pair must be copied, not aliased)
 run       array_payload_assign               tests/build/array_payload_assign.vel
 run-c     array_payload_assign               tests/build/array_payload_assign.vel
+# value semantics twice: a `match` binding copied then mutated, and an element copied then
+# mutated -- neither write may reach the original
+run       value_semantics_copy               tests/build/value_semantics_copy.vel
+run-c     value_semantics_copy               tests/build/value_semantics_copy.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is
