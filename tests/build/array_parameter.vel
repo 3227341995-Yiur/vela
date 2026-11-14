@@ -1,0 +1,20 @@
+# An array as a function parameter: the shape every program that factors a loop out of `main`
+# needs, and the one the corpus never pinned.  Measured before writing this file, on all three
+# paths: `6 / 15` from the interpreter, from a `build-c` binary and from a `build` binary.
+#
+# Two arrays, so a back end that confused a parameter with the first local array would print
+# `6` twice rather than pass silently.
+#
+# Expected stdout, byte for byte:
+#     6
+#     15
+def sum(xs: Array[int, 3]) -> int {
+    return xs[0] + xs[1] + xs[2]
+}
+
+def main() -> None {
+    mut a: Array[int, 3] = [1, 2, 3]
+    mut b: Array[int, 3] = [4, 5, 6]
+    print(sum(a))
+    print(sum(b))
+}

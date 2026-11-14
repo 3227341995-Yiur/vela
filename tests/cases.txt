@@ -635,6 +635,10 @@ run       array_of_struct                    tests/build/array_of_struct.vel
 # function, passed straight out of the array, read twice in a loop (C back end + interp)
 run-c     array_struct_elem                   tests/build/array_struct_elem.vel
 run       array_struct_elem                   tests/build/array_struct_elem.vel
+# an array as a parameter, judged on all three paths (two arrays, so a back end cannot mix
+# them up and still pass)
+run       array_parameter                    tests/build/array_parameter.vel
+run-c     array_parameter                    tests/build/array_parameter.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is
