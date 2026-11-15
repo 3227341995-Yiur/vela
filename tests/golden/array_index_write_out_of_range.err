@@ -1,0 +1,2 @@
+vela: panic: index 5 out of range for array of length 2 (the compiler could not prove this index in range)
+  at tests/build/array_index_write_out_of_range.vel:4

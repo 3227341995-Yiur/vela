@@ -1,0 +1,6 @@
+def main() -> None {
+    mut a: Array[int, 2] = [1, 2]
+    mut i: int = 5
+    a[i] = 9
+    print(a[0])
+}

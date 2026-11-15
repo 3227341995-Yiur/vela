@@ -157,6 +157,13 @@ panic str_index_out_of_range                  tests/build/str_index_out_of_range
 # index value to name and says "index out of range for this array"
 panic     array_index_out_of_range            tests/build/array_index_out_of_range.vel
 panic-c   array_index_out_of_range            tests/build/array_index_out_of_range.vel
+# the same check on a *write*, where the store must not happen before the bound is proved
+panic     array_index_write_out_of_range      tests/build/array_index_write_out_of_range.vel
+panic-c   array_index_write_out_of_range      tests/build/array_index_write_out_of_range.vel
+# and on an element of an array of structs, where the bound is checked before the field
+# address is formed
+panic     array_of_struct_index_out_of_range  tests/build/array_of_struct_index_out_of_range.vel
+panic-c   array_of_struct_index_out_of_range  tests/build/array_of_struct_index_out_of_range.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
 # and that is not what it is for here: what it pins is that `+`, `+=` and `concat`
