@@ -256,15 +256,14 @@ if n < 2 {
   exactly why the **foreign** call is the careful one: a width is load-bearing
   where a rule compares two types — an operator, or the C boundary (§12) — and an
   ordinary call is not such a place.
-* **One width refusal is separate from all of this and unchanged.** `vm.exe run`
-  accepts a `u8` *scalar* into an `int` binding (the compiled twin agrees), but
-  refuses any program that has an `Array[u8]` at all — declaring one is enough,
-  and a `u8` read out of one is the case its message names:
-  `vela: interpreter: Array[u8] needs an integer width conversion (SPEC 3.1)`.
-  It states that refusal rather than guessing at the widening, and it is the
-  reason `bench/sieve.vel` has a compiled result and no interpreted one
-  (`DESIGN.md` §7.4).
-* Arrays do not decay, do not resize, and their length is part of the type.
+* **`Array[u8]` runs here too, through the int pool.** `vm.exe run` accepts a `u8`
+  *scalar* into an `int` binding (the compiled twin agrees), and an `Array[u8]` keeps
+  its elements in the interpreter's **int** pool, so an element is already a number:
+  a read needs no conversion, and a store truncates the value to its low byte --
+  which is exactly what a compiled back end stores (`ipool[base + idx] = v % 256`).
+  The byte pool is only for `bool`. Before this the interpreter refused any program
+  that declared an `Array[u8]` ("needs an integer width conversion"), which is why
+  `bench/sieve.vel` had a compiled result and no interpreted one (`DESIGN.md` 7.4).
 
 ### 3.2 Declarations
 

@@ -345,17 +345,12 @@ interpreted subset, and two of them are now in it:
 * a **value pool for array elements** — done: an array value is a descriptor
   (pool tag, base, length) and the pools are bump-allocated per frame, so the
   interpreter's memory obeys the same arena rule as the compiled program's;
-* a **field-layout table for structs** — done: the resolver records each struct's
-  fields in declaration order and each method against its owning struct, which is
-  exactly the information the parser does not record (`AST.md` §9);
-* an **integer width conversion** — *not* done, and it is a language gap rather
-  than an interpreter one: `b[0]` where `b: Array[u8, …]` is accepted by the
-  checker and widened by the compiled program (C widens implicitly), while this
-  interpreter has no width to widen into — Vela offers no `to_int(u8)`, and a
-  `u8` element has no value shape here. So any program with an `Array[u8]` is
-  refused, declaration included, with that reason; the fix is a rule in SPEC §3.1
-  (a width conversion) rather than a change here, and §3.1 says what the two back
-  ends actually do about widths today.
+* an **integer width conversion** -- *was* a gap, and the interpreter now works
+  around it rather than through it: `Array[u8]` elements live in the int pool, so a
+  read is already a number and a write truncates to the low byte, the value a
+  compiled back end stores. A `u8` *scalar* into an `int` binding was always
+  accepted. What is still missing is the conversion rule itself (SPEC 3.1), which
+  is a language question rather than an interpreter one.
 
 ### 7.2 What the differential test caught
 
@@ -429,8 +424,8 @@ compiler that only ever compiles toy programs is never asked the question.
 
 Stated here rather than discovered later:
 
-* `Array[u8]` is refused (the width-conversion gap above). `bench/sieve.vel`
-  therefore does not run under the interpreter yet.
+* `Array[u8]` runs under the interpreter now (elements in the int pool, low-byte
+  truncation on store), so `bench/sieve.vel` can have an interpreted result.
 * `Array[i32]` stores through `int32_t` truncation, but no corpus program
   exercises it.
 * An augmented assignment through an index (`a[i] += 1`) evaluates the *place*

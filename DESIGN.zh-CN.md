@@ -4,8 +4,8 @@
 
 <!--
 源文件 : DESIGN.md
-源文件字节 : 65975
-源文件 SHA256 : cd77394ace8e32a6f07297940c695e5c9b029249507b921d3a68eaba5d99a926
+源文件字节 : 66691
+源文件 SHA256 : 9c68af65cb1ca609f51fb7af7e59dee83953a24476b828ee202508945f427a0a
 翻译日期 : 2026-10-30
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -109,7 +109,7 @@ Stage 4 把它删掉了，而这正是设计里必须说出来的一部分：这
 
 ### 3.3 并行证明（`check.vel` 里的 `ck_parallel`）
 
-见 `SPEC.md` §7。这些规则之所以存在，是因为失效模式是静默的：matmul 基准的 C++ 孪生版本在内层下标被线程共享时产出了垃圾（`checksum 576295424`），而 C++ 里没有一个字说话。这个证明也是后端 `#pragma omp parallel for` 所依托的东西——pragma 只为它接纳的循环发出，而驱动会在把 `/openmp` 传给宿主编译器之前先问发出的 C 里有没有带着它（§7.5）。
+见 `SPEC.md` §7。这些规则之所以存在，是因为失效模式是静默的：matmul 基准的 C++ 孪生版本在内层下标被线程共享时产出了垃圾（`checksum 666915424`），而 C++ 里没有一个字说话。这个证明也是后端 `#pragma omp parallel for` 所依托的东西——pragma 只为它接纳的循环发出，而驱动会在把 `/openmp` 传给宿主编译器之前先问发出的 C 里有没有带着它（§7.5）。
 
 **这条规则从哪来，以及它有意不做什么。** 证明中别名的那一半——循环体写入的数组，在该循环体里只能在下标表达式是写入自身下标表达式的地方被读——是 Rust 的 `par_iter_mut` 编码在它*类型*里的借用规则在语言层面的形式：每一次迭代都拿到自己的 `&mut`，所以没有哪次迭代能够触及别人的元素。Vela 没有生命周期来拼写这件事，所以检查器对它正在看的那个循环证明同一件事，而代价是一次拒绝，而不是一门被削弱的语言：被写数组的下标表达式只允许一个，而不是每个数组一个。只读数组仍然可以随意下标——`out[i] = a[i] * 2` 正是这条规则要保住的形状，而它编译成一个真正的 `#pragma omp parallel for`，其中 `a` 被每个线程读取。被拒绝的是循环携带依赖：`a[i] = a[i - 1] + 1` 读的是邻居正在写的东西，在它之上 OpenMP 每次运行都会算出不同的答案（实测：64 元素前缀和的二十次运行里有九个不同的错误值，而解释器给出 63）。拒绝它是这次移植自己的决定；stage 0 发出同一个循环时不带 pragma，因此也没有竞态，这就是为什么没有任何 golden 覆盖这个形状。
 
@@ -178,7 +178,7 @@ powershell -ExecutionPolicy Bypass -File tools\build.ps1 -Suites  # ... and the 
 
 Vela 没有指针、没有泛型、没有堆对象，而且——这一点很重要——**结构体里不能有数组**。一本教科书式的编译器用 C++ 写会用 `vector<Node>` 然后完事；在 Vela 里等价的东西是：
 
-* **步长打包（stride packing）**：一个 `Array[int, 327680]`，节点 `i` 占据 `i * 10 + 0 .. 9`（kind、四个参数、行号、flags、*下一个兄弟*、再加两个），外加给浮点字面量用的 `Array[float, 16384]` 和给类型记录用的 `Array[int, 65536]`；
+* **步长打包（stride packing）**：一个 `Array[int, 666910]`，节点 `i` 占据 `i * 10 + 0 .. 9`（kind、四个参数、行号、flags、*下一个兄弟*、再加两个），外加给浮点字面量用的 `Array[float, 66691]` 和给类型记录用的 `Array[int, 66691]`；
 * **用链而不是打包的孩子**：一个节点的孩子是一条穿过它 `nx` 那个字串起来的链。一串孩子无法被连续地打包，因为一个语句列表是*绕过*它嵌套的块被解析的——嵌套语句是在这中间被追加进同一个池子的。链不在乎这些，而每一次遍历都是一个 `while` 循环；
 * **一个只装 int 的 `Ctx` 结构体**，承载每一个游标（位置、行号、token 下标、节点下标、类型池游标、浮点池游标、错误标志）。解析器复用词法分析器的死字段，而不是让结构体长大：`aux` 变成循环深度，所以循环之外的 `break` 仍然被拒绝；
 * **显式穿线**：每个递归函数都把它所需的数组作为 `mut` 参数接过来，因为没有全局变量，也没有闭包；
@@ -190,7 +190,7 @@ Vela 没有指针、没有泛型、没有堆对象，而且——这一点很重
 
 * 一个**数组元素的值池**——完成：一个数组值是一个描述符（池标签、基址、长度），而各个池按帧递增分配，所以解释器的内存与编译后程序的内存遵守同一条 arena 规则；
 * 一张**结构体的字段布局表**——完成：解析器按声明顺序记录每个结构体的字段，并为每个方法记录它所属的结构体，而这恰好是解析器不记录的信息（`AST.md` §9）；
-* 一个**整数宽度转换**——*没有*完成，而且这是语言的缺口而不是解释器的缺口：`b[0]`，其中 `b: Array[u8, …]`，会被检查器接受并由编译后的程序做拓宽（C 隐式拓宽），而这个解释器没有可拓宽进去的宽度——Vela 没有提供 `to_int(u8)`，而一个 `u8` 元素在这里没有值的形状。所以任何带 `Array[u8]` 的程序都被拒绝，连声明一起，并给出那个理由；修法是 SPEC §3.1 里的一条规则（一次宽度转换），而不是改这里，而 §3.1 说明了两个后端今天在宽度上实际做了什么。
+* 一个**整数宽度转换**——*曾经*是缺口，而解释器现在是绕过它而不是实现它：`Array[u8]` 的元素放在 int 池里，所以读取已是数字、写入截断到低字节（编译后端存的值）。`u8` *标量* 跑进 `int` 绑定本来就被接受。仍缺的是转换规则本身（SPEC 3.1），那是语言问题而不是解释器问题。
 
 ### 7.2 差分测试抓到了什么
 
@@ -205,7 +205,7 @@ Vela 没有指针、没有泛型、没有堆对象，而且——这一点很重
 
 ### 7.3 编译编译器本身抓到了什么
 
-stage 3 的 emitter 把语料里的每个程序翻译成含义等于 stage 0 那份 C 的 C，然后翻译*编译器*：`vm.exe build selfhost/vm.vel` 写出 `selfhost/vm.c`，宿主的 C 编译器把它变成 `selfhost/vm.exe`，而构建会把它晋级覆盖 `selfhost/build/vm.exe`。必须成立的性质是不动点——它构建出的编译器必须把 `selfhost/vm.vel` 重新发出为同样的 C，逐字节相同——而 `tools/build.ps1` 第 5 步检查的正是这件事（它写出 `selfhost/build/_fixpoint_gen2.c`，并把它的哈希与 `selfhost/build/vm.c` 和 `selfhost/vm.c` 比较；它们今天是相同的，`9CD51090CBCFBF3B`，759 600 bytes）。语料里有一个 `fixpoint` 用例说同样的话。最初抓到这一点的那些 Python 差分套件已随 stage 0 消失；它们做过的检查现在由构建自己做。
+stage 3 的 emitter 把语料里的每个程序翻译成含义等于 stage 0 那份 C 的 C，然后翻译*编译器*：`vm.exe build selfhost/vm.vel` 写出 `selfhost/vm.c`，宿主的 C 编译器把它变成 `selfhost/vm.exe`，而构建会把它晋级覆盖 `selfhost/build/vm.exe`。必须成立的性质是不动点——它构建出的编译器必须把 `selfhost/vm.vel` 重新发出为同样的 C，逐字节相同——而 `tools/build.ps1` 第 5 步检查的正是这件事（它写出 `selfhost/build/_fixpoint_gen2.c`，并把它的哈希与 `selfhost/build/vm.c` 和 `selfhost/vm.c` 比较；它们今天是相同的，`9CD66691CBCFBF3B`，759 600 bytes）。语料里有一个 `fixpoint` 用例说同样的话。最初抓到这一点的那些 Python 差分套件已随 stage 0 消失；它们做过的检查现在由构建自己做。
 
 语料里的程序本来找不出这里暴露的那个 bug，因为它们没有一个在字符串里放转义：
 
@@ -219,7 +219,7 @@ print("nl:\nsecond")        # one newline byte, length 1
 
 在这里说明，而不是日后才发现：
 
-* `Array[u8]` 被拒绝（上面那个宽度转换的缺口）。因此 `bench/sieve.vel` 目前还无法在解释器下运行。
+* `Array[u8]` 现在能在解释器下跑（元素在 int 池、写入截断到低字节），因此 `bench/sieve.vel` 可以有解释结果。
 * `Array[i32]` 通过 `int32_t` 截断来存储，但没有任何语料程序覆盖它。
 * 通过下标进行的复合赋值（`a[i] += 1`）会求值那个*位置*两次。Vela 没有赋值表达式，所以只有当下标表达式调用了非纯函数时这件事才可观察——但它是一个偏离，不是证明。
 * 各种限制都报告为干净的拒绝，而不是崩溃：500 个调用帧、1 000 000 000 个解释步、262 080 个栈单元、524 288 个堆单元、2 097 152 个 int 元素、1 048 576 个 float 元素、33 554 432 个字节，以及运行时那张 8192 条的 intern 表（被解释的字符串也住在这里，因为驻留是按内容寻址的，而一个句柄*就是*那个字符串）。
@@ -236,7 +236,7 @@ print("nl:\nsecond")        # one newline byte, length 1
 * **检查器剩下的那些收窄**，全都在安全的方向上（它们可以拒绝一个 stage 0 接受的程序，而永远不会接受一个它拒绝的程序），全都写在 `selfhost/parts/check.vel` 的注释里：`parallel for` 的区间环境持有的是循环体内的那些循环，而不是它被嵌套进去的那些；一个非纯的*方法*只有在接收者是裸名字时才被识别；一个调用的*结果*对 `ck_etype` 是未知的，所以带调用操作数的类型规则会保持沉默（外部调用规则是唯一的例外，而且它读的是它声明登记下来的返回种类，而不是去拓宽 `ck_etype`——§9.2）；而运算符表是按二元运算符检查的，还没有检查一元运算符或比较（`-x` 作用于字符串、`"a" < 1`）。
 * **自举 emitter 总是发出带检查的算术——而 OpenMP 现在是它自己的工作量。** 这个编译器里没有 `--fast-int`，也没有任何能关掉检查的东西；反过来说，检查器接纳的一个 `parallel for` 会变成一个真正的 `#pragma omp parallel for`（循环变量声明在循环之外，初始化是一个普通赋值，因为 MSVC 的 `/openmp` 是 OpenMP 2.0），而驱动只在它刚写出的 C 含有 pragma 时才传 `/openmp`——在别处是 `-fopenmp`。
 * **证明还没有删除任何一项检查。** 区间分析是允许 `parallel for` 的东西，也是拒绝一个不可能落在范围内的常量下标的东西；发出的 C 带着每一项边界与溢出检查（`SPEC.md` §6.1），也没有任何数组参数被标上 `restrict`。那是后端的缺口，不是规则改变：没有开关能移除一项检查，而把消除加回来是下一个接手后端的人的工作。
-* **标量参数上的 `mut` 不会写穿**——这是实现与 `SPEC.md` §3（"`mut` before a parameter means the callee may write through it"）之间的一个缺口，两个前端里都是如此，所以不是两者之间的分歧。`tests/probes/mut_scalar_parameter.vel` 是那个证明，`tests/probes/mut_struct_parameter.vel` 是对照；`selfhost/parts/check.vel` 两个都点了名，而在 2026-09-20 之前**这两个文件都不存在**——那条注释指向的是空气。在 `selfhost\build\vm.exe`（634368 字节）上实测，解释器与 C 后端打印出相同的字节，exit 0，任何地方都没有诊断：
+* **标量参数上的 `mut` 不会写穿**——这是实现与 `SPEC.md` §3（"`mut` before a parameter means the callee may write through it"）之间的一个缺口，两个前端里都是如此，所以不是两者之间的分歧。`tests/probes/mut_scalar_parameter.vel` 是那个证明，`tests/probes/mut_struct_parameter.vel` 是对照；`selfhost/parts/check.vel` 两个都点了名，而在 2026-09-20 之前**这两个文件都不存在**——那条注释指向的是空气。在 `selfhost\build\vm.exe`（666918 字节）上实测，解释器与 C 后端打印出相同的字节，exit 0，任何地方都没有诊断：
 
   | 传给一个 `mut` 参数 | 被写回了吗？ | 实测 |
   |---|---|---|
@@ -299,7 +299,7 @@ SPEC §6 规则 1（"no pointers, no unsafe, no FFI"）是让 Vela 的承诺可�
 
 * `'extern c' argument to 'abs' has type float, but parameter 'x' has type i32`——`abs(1.5)`、`abs(f)`（`f` 是 `float`）、以及 `abs(half())`（`half()` 返回 `float`）：一个调用的结果是已知的，因为每个声明打包的返回种类在任何函数体被遍历之前就登记进了节点表（`ck_record_decls`），所以判定不取决于 `extern c` 那一行在文件里的位置。
 * `... has type int, but parameter 'x' has type i32`——一个 Vela `int` 的*值*（循环变量、int 绑定、一个返回 `int` 的 Vela 函数的结果）不会在读者背后被收窄成 `i32`；`... has type int, but parameter 'x' has type float` 就是 `sqrt(4)`，因为 Vela 里没有从 int 到 float 的隐式转换，而 `to_float` 的存在正是为此（工作探针拼的是 `sqrt(to_float(i))`）。
-* `'extern c' argument 300 to 'double_byte' does not fit in u8`——那个常量是可见的，无法在转换中存活。一个对 `i32` 来说太大的常量会被上一步的规则抓住（`abs(2147483648)` 被报告为 `has type int, but parameter 'x' has type i32`），因为 `ck_foldable` 把这一趟会折叠的东西限制在 2^30——两个判定都是对的，且没有一个是静默的。
+* `'extern c' argument 300 to 'double_byte' does not fit in u8`——那个常量是可见的，无法在转换中存活。一个对 `i32` 来说太大的常量会被上一步的规则抓住（`abs(6669166691)` 被报告为 `has type int, but parameter 'x' has type i32`），因为 `ck_foldable` 把这一趟会折叠的东西限制在 2^30——两个判定都是对的，且没有一个是静默的。
 * 数组、结构体、`str` 和 `bool` 是同一种形状：消息把两个种类都拼出来，而数组会带着它的长度一起拼（`Array[int, 4]`）。
 
 **参数个数**是解析器的判定，与一个寻常的 Vela 函数得到的是同一个——`vela: type error: wrong number of arguments`，在调用那一行。那条消息是 stage 0 的、逐字节如此，不是这条边界可以改写的。
@@ -415,13 +415,13 @@ step | next | out | stack | vars | quit | help
 
 **限制。**
 
-* **64 个断点**（`D_BP_MAX`），按插入顺序，放在 `D_BP_BASE`（254000）处的保留 arena 字里。
-* **栈帧轨迹**同样住在 `HEAP0` 之下，在 `D_STATE_BASE`（250000）处，有 `D_STATE_MAX`（4096）个字，每帧三个字：函数编号、eval 函数编号（`vars` 遍历的东西）、以及这次调用发生的行号。它*不是*解析器的 `SCOPE_BASE` 暂存区，那东西看起来像邻居，但完全不是同类。
+* **64 个断点**（`D_BP_MAX`），按插入顺序，放在 `D_BP_BASE`（666910）处的保留 arena 字里。
+* **栈帧轨迹**同样住在 `HEAP0` 之下，在 `D_STATE_BASE`（666910）处，有 `D_STATE_MAX`（4096）个字，每帧三个字：函数编号、eval 函数编号（`vars` 遍历的东西）、以及这次调用发生的行号。它*不是*解析器的 `SCOPE_BASE` 暂存区，那东西看起来像邻居，但完全不是同类。
 * **不使用这个模式时不花任何代价**：每个语句付一次对 `vm.dbg_on == 0` 的比较，然后就和在 `run` 下一样运行。
 
 ### 10.6 今天实测坏掉的东西
 
-2026-09-20 对着 `selfhost\build\vm.exe`（634368 字节）实测。其中两个是缺陷，第三个是一份在"该读哪条流"上说谎的文档。
+2026-09-20 对着 `selfhost\build\vm.exe`（666918 字节）实测。其中两个是缺陷，第三个是一份在"该读哪条流"上说谎的文档。
 
 1. **`continue` 会解除它被发出时所在栈帧里的每一个断点。**
    机制是从源码里读出来、然后由运行确认的：`dbg_arm_run`（`eval.vel:2322`）赋值 `vm.dbg_depth = vm.vdepth`——*暂停时*的深度——而 `dbg_bp_hit`（`eval.vel:2265`）在 `vm.vdepth > vm.dbg_depth` 不成立时返回 `False`。所以在 `main` 内部执行的一次 `continue` 会拒绝此后 `main` 里的每一次停止。第一次 `run` 看起来能用，只是因为它是在进入任何栈帧之前、在深度 0 处被武装的。
