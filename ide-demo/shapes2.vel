@@ -1,0 +1,58 @@
+# shapes2.vel -- the shapes this repository learned most recently, in one program a reader can
+# run: an array of structs with a whole-element assignment, an array of enums matched element by
+# element, and an enum field reached through an array element.
+#
+# Every one of them is a `run` + `run-c` claim in the corpus (`array_elem_assign`,
+# `array_match_arms`, `array_enum_field_match`), and `tools/demo-check.ps1` runs this file on the
+# interpreter and on a `build-c` binary and compares against `expected/shapes2.txt`.
+struct Item {
+    n: int
+}
+
+enum Kind {
+    A
+    B
+    C(n: int)
+}
+
+struct Row {
+    name: str
+    kind: Kind
+}
+
+def main() -> None {
+    mut xs: Array[Item, 3] = [Item(1), Item(2), Item(3)]
+    xs[1] = Item(9)
+    print(xs[0].n, xs[1].n)
+
+    mut ks: Array[Kind, 3] = [A, B, C(7)]
+    mut i: int = 0
+    while i < 3 {
+        match ks[i] {
+            C(n) {
+                print(n)
+            }
+            B {
+                print(2)
+            }
+            A {
+                print(1)
+            }
+        }
+        i += 1
+    }
+
+    mut rows: Array[Row, 2] = [Row("x", A), Row("y", C(5))]
+    print(rows[1].name)
+    match rows[1].kind {
+        C(n) {
+            print(n)
+        }
+        B {
+            print(0)
+        }
+        A {
+            print(0)
+        }
+    }
+}

@@ -4,8 +4,8 @@
 
 <!--
 源文件 : README.md
-源文件字节 : 21261
-源文件 SHA256 : 83e42ce972336ba29d53632e67cc7fcf90a2a3a4703ebcf37fac8259763dbf64
+源文件字节 : 21614
+源文件 SHA256 : 83d0b5d69ff0678064675d3d663a2776d98dbb4f97a4d5a35ea00f8ac3d7ba0b
 翻译日期 : 2026-10-30
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -44,6 +44,8 @@ A small, real project for trying the Vela plugin in IntelliJ IDEA. 每个文件�
 | `expected\alias.txt` | `alias.vel` 必须打印的确切 stdout（同上，两个后端各实测一次） |
 | `shapes.vel` | 一个程序里展示 C 后端最近学会的两种形状：`Array[Leaf, 3]`（元素字段读、写，以及不得别名的副本）与持有 `enum Shape` 的 `struct Drawing`（通过字段 match）。LLVM 后端仍按名拒绝它们（见 `tests\llvm-gaps.txt`） |
 | `expected\shapes.txt` | `shapes.vel` 必须打印的确切 stdout（解释器与 `build-c` 产物各实测一次） |
+| `shapes2.vel` | 一个程序里展示最新的几种形状：可整元素赋值的 `Array[Item, 3]`、逐元素 `match` 的 `Array[Kind, 3]`，以及穿过数组元素访问的枚举字段（`match rows[1].kind`） |
+| `expected\shapes2.txt` | `shapes2.vel` 必须打印的确切 stdout（解释器与 `build-c` 产物各实测一次） |
 | `README.md` | 本文件。 |
 
 上面每个 demo 都由 `tools\demo-check.ps1` 跑：对每个文件分别执行解释器与 `build-c` 产物，
@@ -157,7 +159,7 @@ hello from Vela
 goodbye
 ```
 
-39 字节，SHA256 `83e42ce972336ba29d53632e67cc7fcf90a2a3a4703ebcf37fac8259763dbf64`
+39 字节，SHA256 `83d0b5d69ff0678064675d3d663a2776d98dbb4f97a4d5a35ea00f8ac3d7ba0b`
 （`expected\hello.txt` 的哈希与它完全相同）。
 解释器 `vm.exe run ide-demo\hello.vel` 打印出**同样**的 39 字节。
 
@@ -172,7 +174,7 @@ sum(out) = 72
 out[7] = 16
 ```
 
-87 字节，SHA256 `83e42ce972336ba29d53632e67cc7fcf90a2a3a4703ebcf37fac8259763dbf64`
+87 字节，SHA256 `83d0b5d69ff0678064675d3d663a2776d98dbb4f97a4d5a35ea00f8ac3d7ba0b`
 （`expected\tour.txt` 的哈希与它完全相同）。
 
 最后两行就是那个 `parallel for` 的结果：`sum(out) = 2×(1+2+…+8) = 72`，
@@ -213,7 +215,7 @@ selfhost\build\vm.exe run   ide-demo\modules.vel
 14
 ```
 
-8 字节，SHA256 `83e42ce972336ba29d53632e67cc7fcf90a2a3a4703ebcf37fac8259763dbf64`
+8 字节，SHA256 `83d0b5d69ff0678064675d3d663a2776d98dbb4f97a4d5a35ea00f8ac3d7ba0b`
 （`expected\modules.txt` 的哈希与它完全相同）。`3 × 4 = 12` 是 `area`，
 `2 × (3 + 4) = 14` 是 `perimeter`，两个都来自被导入的文件。
 
@@ -334,14 +336,14 @@ cd C:\Users\lu\Downloads\vela
 
 ## 这些数字是怎么来的 / How these numbers were measured
 
-* 编译器：`C:\Users\lu\Downloads\vela\selfhost\build\vm.exe`，212618 字节，
-  SHA256 `D35B330E3A72D00AFA4E84FBEB4F91A31F21261674E017FEA417D184BB990D6`。
+* 编译器：`C:\Users\lu\Downloads\vela\selfhost\build\vm.exe`，216148 字节，
+  SHA256 `D35B330E3A72D00AFA4E84FBEB4F91A31F21614674E017FEA417D184BB990D6`。
 * 所有 `build` 都在仓库根目录执行，源文件写作 `ide-demo\<名字>.vel`；
   `hello.exe`、`tour.exe` 的退出码都是 **0**，`check broken.vel` 是 **2**。
 * `expected\*.txt` 是用 shell 重定向抓下来的**原始 stdout 字节**，然后原样复制进
   `expected\`，再对比 SHA256 确认一致（不是照着屏幕重打的）。
 * 四个 `tour` 输出（解释器、默认、1 线程、8 线程）SHA256 全等，就是
-  `83e42ce972336ba29d53632e67cc7fcf90a2a3a4703ebcf37fac8259763dbf64`。
+  `83d0b5d69ff0678064675d3d663a2776d98dbb4f97a4d5a35ea00f8ac3d7ba0b`。
 * 编译器往上找的走法（`locate()` / `runtimeDir()`）是按
   `idea-plugin\src\main\kotlin\dev\vela\plugin\VelaCompiler.kt` 里的循环原样重走
   一遍量出来的，输出见上面「为什么放在仓库里面」。

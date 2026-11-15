@@ -33,6 +33,8 @@ checkout" below.  It has nothing to do with `vela\tests\` and depends on nothing
 | `expected\\alias.txt` | the exact stdout `alias.vel` must print (likewise, both back ends) |
 | `shapes.vel` | two shapes the C back end learned recently, in one program: `Array[Leaf, 3]` (element field read, write, and a copy that must not alias) and `struct Drawing` holding `enum Shape`, matched through the field.  Both still refused by the LLVM back end by name (`tests\llvm-gaps.txt`) |
 | `expected\shapes.txt` | the exact stdout `shapes.vel` must print (interpreter and a `build-c` binary both measured) |
+| `shapes2.vel` | the newest shapes in one program: an `Array[Item, 3]` with a whole-element assignment, an `Array[Kind, 3]` matched element by element, and an enum field reached through an array element (`match rows[1].kind`) |
+| `expected\shapes2.txt` | the exact stdout `shapes2.vel` must print (interpreter and a `build-c` binary both measured) |
 | `README.md` | this file |
 
 Every demo above is run by `tools\demo-check.ps1`: it executes the interpreter and a
