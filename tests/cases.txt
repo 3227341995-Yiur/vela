@@ -190,6 +190,9 @@ run-c     str_substr_bounds                  tests/build/str_substr_bounds.vel
 # `min_int`/`max_int`/`min_float`/`max_float`
 run       builtin_numeric                    tests/build/builtin_numeric.vel
 run-c     builtin_numeric                    tests/build/builtin_numeric.vel
+# the low-level builtins nothing called: `bytes_at`, `intern`/`interned`, `unescape`
+run       builtin_str_low                    tests/build/builtin_str_low.vel
+run-c     builtin_str_low                    tests/build/builtin_str_low.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
 # and that is not what it is for here: what it pins is that `+`, `+=` and `concat`

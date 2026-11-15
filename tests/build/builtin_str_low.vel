@@ -1,0 +1,36 @@
+# The four builtins nothing in the corpus called: `bytes_at`, `intern`/`interned` and `unescape`.
+# They are the compiler's own low-level tools, which is exactly why they were easy to leave
+# untested while every program that uses *them* kept working.
+#
+#   bytes_at(s, i)   the raw byte at `i` -- 97 and 98 for "ab", so a byte is signed-up on the
+#                    way out rather than handed over as a character;
+#   intern / interned  a str becomes a handle and the handle becomes the str again: the round trip
+#                    has to give back the same length, not the same pointer;
+#   unescape         turns the two bytes `\` `n` into the single byte 10.  The plain literal
+#                    `"\n"` is already one byte, which is the contrast the case makes explicit.
+#
+# Measured before recording, on all three paths: `97 / 98 / hi / 2 / 2 / 1 / 10`.
+#
+# Expected stdout, byte for byte:
+#     97
+#     98
+#     hi
+#     2
+#     2
+#     1
+#     10
+def main() -> None {
+    mut s: str = "ab"
+    print(bytes_at(s, 0))
+    print(bytes_at(s, 1))
+
+    mut h: int = intern("hi")
+    print(interned(h))
+    print(len(interned(h)))
+
+    mut esc: str = "\\n"
+    print(len(esc))
+    mut u: str = unescape(esc)
+    print(len(u))
+    print(bytes_at(u, 0))
+}
