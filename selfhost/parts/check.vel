@@ -993,6 +993,24 @@ def ck_recv_ck(nd: Array[int, 1310720], mem: Array[int, 3741696], vm: VM,
         }
         return sfl_get(mem, stb_get(mem, sid, STB_FOFF()) + f * 2 + 1)
     }
+    if k == 31 {
+        # `match ds[1].kind`: an element of `Array[S, N]` is a value of the element's own row,
+        # and the array binding records that row as its shape (`bind_name` copies `sc_shape`),
+        # so the element's packed kind is rebuilt from it -- `K_ENUM` when the row is an
+        # enum's, which is what makes the field of an element matchable.
+        base: int = nd[recv * 10 + 1]
+        if nd_kind(nd, base) != 25 {
+            return 0
+        }
+        row: int = nt_get(mem, base, NT_ROW())
+        if row < 0 {
+            return 0
+        }
+        if enum_of_row(mem, vm, row) >= 0 {
+            return pack_kind(K_ENUM(), row)
+        }
+        return pack_kind(K_ST(), row)
+    }
     return 0
 }
 

@@ -679,6 +679,10 @@ run-c     value_semantics_copy               tests/build/value_semantics_copy.ve
 # an `Array[str, N]` as a parameter, and its element read as a value
 run       array_str_param                    tests/build/array_str_param.vel
 run-c     array_str_param                    tests/build/array_str_param.vel
+# an enum field reached through an array element: `match ds[1].kind` (the local case is
+# `enum_field_in_struct`)
+run       array_enum_field_match             tests/build/array_enum_field_match.vel
+run-c     array_enum_field_match             tests/build/array_enum_field_match.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is

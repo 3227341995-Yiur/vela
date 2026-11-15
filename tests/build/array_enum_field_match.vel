@@ -1,0 +1,35 @@
+# `match ds[1].kind`: an enum field reached through an *array element*.  The local case is pinned
+# by `enum_field_in_struct` (`match d.kind`), and this one was refused one step earlier -- the
+# checker's receiver lookup knew a name and a field but not an index, so the field of an element
+# was "not an enum value".
+#
+# The array binding records the element's struct row as its shape, so the receiver's kind is
+# rebuilt from it (and `K_ENUM` when that row is an enum's).
+#
+# Measured before recording, on all three paths: `b / 4`.
+#
+# Expected stdout, byte for byte:
+#     b
+#     4
+enum Shape {
+    Dot
+    Sized(w: int)
+}
+
+struct Drawing {
+    name: str
+    kind: Shape
+}
+
+def main() -> None {
+    mut ds: Array[Drawing, 2] = [Drawing("a", Dot), Drawing("b", Sized(4))]
+    print(ds[1].name)
+    match ds[1].kind {
+        Sized(w) {
+            print(w)
+        }
+        Dot {
+            print(0)
+        }
+    }
+}
