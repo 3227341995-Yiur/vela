@@ -178,6 +178,10 @@ run-c     numeric_extremes                    tests/build/numeric_extremes.vel
 # the sign-based comparison used to answer `nan == nan` with `true`
 run       float_nan_compare                  tests/build/float_nan_compare.vel
 run-c     float_nan_compare                  tests/build/float_nan_compare.vel
+# how the special floats are spelled: `nan`, `inf`, `-inf` (the two back ends disagreed until
+# the runtime printers were aligned)
+run       float_nan_print                    tests/build/float_nan_print.vel
+run-c     float_nan_print                    tests/build/float_nan_print.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
 # and that is not what it is for here: what it pins is that `+`, `+=` and `concat`

@@ -483,7 +483,11 @@ static inline int64_t vela_wrap_mul(int64_t a, int64_t b)
 /* ------------------------------------------------------------------- printing */
 
 static void vela_print_i64(int64_t v)  { printf("%lld", (long long)v); }
-static void vela_print_f64(double v)   { printf("%.6f", v); }
+static void vela_print_f64(double v)   {
+  /* see vela_emit_float: one NaN, one spelling, whichever back end prints it */
+  if (v != v) { fputs("nan", stdout); return; }
+  printf("%.6f", v);
+}
 static void vela_print_bool(int v)     { fputs(v ? "True" : "False", stdout); }
 static void vela_print_str(vela_str s) { fwrite(s.data, 1, (size_t)s.len, stdout); }
 static void vela_print_sep(void)       { fputc(' ', stdout); }
@@ -494,7 +498,14 @@ static void vela_print_nl(void)        { fputc('\n', stdout); }
  * way the compiled form of the same program would. */
 static void vela_emit_str(vela_str s)  { fwrite(s.data, 1, (size_t)s.len, stdout); }
 static void vela_emit_int(int64_t v)   { printf("%lld", (long long)v); }
-static void vela_emit_float(double v)  { printf("%.6f", v); }
+/* A NaN has a sign bit and the C library prints it, so MSVC says "-nan(ind)" for the
+ * NaN that `inf - inf` produces while LLVM IR's `fsub` produces one without that bit
+ * -- measured: the same program printed "-nan(ind)" from the interpreter and the C
+ * back end and "nan" from the LLVM back end.  One NaN, one spelling. */
+static void vela_emit_float(double v)  {
+  if (v != v) { fputs("nan", stdout); return; }
+  printf("%.6f", v);
+}
 static void vela_emit_nl(void)         { fputc('\n', stdout); }
 
 /* Diagnostics go to stderr, so a compiler written in Vela can complain about

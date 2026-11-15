@@ -1,0 +1,18 @@
+# How the three special floats are spelled, which the two back ends disagreed about until the
+# runtime printers were aligned: `inf - inf` produced a NaN whose sign bit the C library prints,
+# so the interpreter and the C back end said `-nan(ind)` while the LLVM back end said `nan`.
+# One NaN, one spelling.
+#
+# Measured before recording, on all three paths: `nan / inf / -inf`.
+#
+# Expected stdout, byte for byte:
+#     nan
+#     inf
+#     -inf
+def main() -> None {
+    mut z: float = 0.0
+    mut i: float = 1.0 / z
+    print(i - i)
+    print(i)
+    print(0.0 - i)
+}
