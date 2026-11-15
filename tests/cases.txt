@@ -182,6 +182,10 @@ run-c     float_nan_compare                  tests/build/float_nan_compare.vel
 # the runtime printers were aligned)
 run       float_nan_print                    tests/build/float_nan_print.vel
 run-c     float_nan_print                    tests/build/float_nan_print.vel
+# `substr(s, start, end)`: the third argument is an end index; end<start and a start past the
+# end both give "" rather than panicking, and a 100-byte string still compares equal
+run       str_substr_bounds                  tests/build/str_substr_bounds.vel
+run-c     str_substr_bounds                  tests/build/str_substr_bounds.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
 # and that is not what it is for here: what it pins is that `+`, `+=` and `concat`

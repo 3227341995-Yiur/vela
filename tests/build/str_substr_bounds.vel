@@ -1,0 +1,38 @@
+# `substr(s, start, end)`: the third argument is an **end index**, not a length -- measured, and
+# easy to get wrong in either the runtime or the reader.  Four edges in one program:
+#
+#   substr(s, 2, 3)   "c"          (two characters in, one character wide)
+#   substr(s, 0, 6)   "abcdef"     (the whole string)
+#   substr(s, 4, 2)   ""           (end before start)
+#   substr(s, k, 2)   ""           (start past the end, `k` a runtime value: no panic)
+#
+# A long string is compared for equality beside them, because a length-prefixed string that fell
+# back to `strcmp` would stop at a NUL and two 100-byte strings would still compare equal -- this
+# case proves the comparison works, and `str_index_out_of_range` proves the bounds do.
+#
+# Measured before recording, on all three paths: `c / abcdef / 0 / 0 / 100 / 1`.
+#
+# Expected stdout, byte for byte:
+#     c
+#     abcdef
+#     0
+#     0
+#     100
+#     1
+def main() -> None {
+    mut s: str = "abcdef"
+    print(substr(s, 2, 3))
+    print(substr(s, 0, 6))
+    print(len(substr(s, 4, 2)))
+    mut k: int = 5
+    print(len(substr(s, k, 2)))
+
+    mut a: str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    mut b: str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    print(len(a))
+    if a == b {
+        print(1)
+    } else {
+        print(0)
+    }
+}
