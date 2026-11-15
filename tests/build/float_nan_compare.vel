@@ -1,0 +1,39 @@
+# NaN against everything: `==` is false (itself included), `!=` is true, and every ordering is
+# false -- including `>=`, which a sign-based comparison gets wrong because NaN is neither less
+# nor greater.  The interpreter used to answer `nan == nan` with `true` (measured), while both
+# compiled back ends answered `false`; this case is what caught it.
+#
+# `nan` is produced without writing it: `inf - inf`.
+#
+# Measured before recording, on all three paths: `ne / ne2 / notlt / notge`.
+#
+# Expected stdout, byte for byte:
+#     ne
+#     ne2
+#     notlt
+#     notge
+def main() -> None {
+    mut z: float = 0.0
+    mut i: float = 1.0 / z
+    mut n: float = i - i
+    if n == n {
+        print("eq")
+    } else {
+        print("ne")
+    }
+    if n != n {
+        print("ne2")
+    } else {
+        print("eq2")
+    }
+    if n < 1.0 {
+        print("lt")
+    } else {
+        print("notlt")
+    }
+    if n >= 1.0 {
+        print("ge")
+    } else {
+        print("notge")
+    }
+}
