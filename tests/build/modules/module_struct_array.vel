@@ -1,0 +1,20 @@
+# An `Array[lib.Item, N]` whose element type is defined in the imported module: the element's
+# row lives in a table the resolver built from *both* files, so a back end that indexed structs
+# per file would spell the wrong element type -- and print a wrong number rather than refuse.
+#
+# `import shapes_lib` is read relative to this file; the library's declarations are spliced in
+# front of this file's own, which is what puts `Item` in the struct table at all.
+#
+# Measured before recording, on all three paths: `9 / 4`.
+#
+# Expected stdout, byte for byte:
+#     9
+#     4
+import shapes_lib
+
+def main() -> None {
+    mut xs: Array[shapes_lib.Item, 2] = [shapes_lib.make(3), shapes_lib.make(4)]
+    xs[0] = shapes_lib.make(9)
+    print(xs[0].n)
+    print(xs[1].n)
+}

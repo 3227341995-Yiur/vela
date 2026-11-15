@@ -1,0 +1,9 @@
+# A struct and a constructor that live in another file, so the array in the app module stores
+# values whose definition it does not own.
+struct Item {
+    n: int
+}
+
+def make(n: int) -> Item {
+    return Item(n)
+}
