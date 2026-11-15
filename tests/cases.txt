@@ -152,6 +152,11 @@ run-c   string_concat_append                      tests/build/string_concat_appe
 # in the interpreter and in the compiled binary, with the same sentence in both.
 run-c   str_index_slice                           tests/build/str_index_slice.vel
 panic str_index_out_of_range                  tests/build/str_index_out_of_range.vel
+# a *dynamic* index that is out of range.  The golden is the compiled message (`case_panic`
+# runs the executable first); the interpreter only has to panic too, because it has no
+# index value to name and says "index out of range for this array"
+panic     array_index_out_of_range            tests/build/array_index_out_of_range.vel
+panic-c   array_index_out_of_range            tests/build/array_index_out_of_range.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
 # and that is not what it is for here: what it pins is that `+`, `+=` and `concat`
