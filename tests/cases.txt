@@ -164,6 +164,12 @@ panic-c   array_index_write_out_of_range      tests/build/array_index_write_out_
 # address is formed
 panic     array_of_struct_index_out_of_range  tests/build/array_of_struct_index_out_of_range.vel
 panic-c   array_of_struct_index_out_of_range  tests/build/array_of_struct_index_out_of_range.vel
+# checked arithmetic: an overflow is a *runtime* panic, not a wrap -- `literal_overflow` pins
+# the compile-time half
+panic     int_overflow_add                     tests/build/int_overflow_add.vel
+panic-c   int_overflow_add                     tests/build/int_overflow_add.vel
+panic     int_overflow_mul                     tests/build/int_overflow_mul.vel
+panic-c   int_overflow_mul                     tests/build/int_overflow_mul.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
 # and that is not what it is for here: what it pins is that `+`, `+=` and `concat`

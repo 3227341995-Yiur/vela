@@ -1,0 +1,2 @@
+vela: panic: integer overflow (addition)
+  at tests/build/int_overflow_add.vel:4

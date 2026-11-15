@@ -1,0 +1,2 @@
+vela: panic: integer overflow (multiply)
+  at tests/build/int_overflow_mul.vel:4
