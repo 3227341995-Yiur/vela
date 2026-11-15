@@ -1,0 +1,38 @@
+# `for i in range(n)` walking an array: the loop index is an ordinary `int` used as a subscript, so
+# a back end that folded the bound check, or hoisted the element address out of the loop, answers
+# a wrong number rather than refusing.  A `str` array in a `while` loop is the same read through
+# a different loop form, and `len(a[i])` on each element rules out a length that was cached once.
+#
+# Measured before recording, on all three paths: `60 / 6 / 2 / 3`.
+#
+# Expected stdout, byte for byte:
+#     60
+#     6
+#     2
+#     3
+struct Item {
+    n: int
+}
+
+def main() -> None {
+    mut a: Array[int, 3] = [10, 20, 30]
+    mut s: int = 0
+    for i in range(3) {
+        s += a[i]
+    }
+    print(s)
+
+    mut xs: Array[Item, 3] = [Item(1), Item(2), Item(3)]
+    mut t: int = 0
+    for i in range(3) {
+        t += xs[i].n
+    }
+    print(t)
+
+    mut words: Array[str, 2] = ["ab", "cde"]
+    mut k: int = 0
+    while k < 2 {
+        print(len(words[k]))
+        k += 1
+    }
+}
