@@ -1,0 +1,30 @@
+# The numeric builtins the corpus never mentioned: `floor`, `pow`, and the four two-argument
+# min/max forms.  Their arities are worth pinning too -- `min_int`/`max_int`/`min_float`/
+# `max_float` take **two** arguments (`min_int(3, 9)`), not zero: the first attempt at this case
+# wrote `max_int()` and the checker answered "wrong number of arguments for this builtin".
+#
+# Negative `floor` is the interesting one of the four: -3.0 for -2.1, not -2.0, which is what a
+# truncation-toward-zero would give.
+#
+# Measured before recording, on all three paths:
+#     2.000000 / -3.000000 / 1024.000000 / 9 / 3 / 2.500000 / 1.500000 / 7
+#
+# Expected stdout, byte for byte:
+#     2.000000
+#     -3.000000
+#     1024.000000
+#     9
+#     3
+#     2.500000
+#     1.500000
+#     7
+def main() -> None {
+    print(floor(2.7))
+    print(floor(0.0 - 2.1))
+    print(pow(2.0, 10.0))
+    print(max_int(3, 9))
+    print(min_int(3, 9))
+    print(max_float(1.5, 2.5))
+    print(min_float(1.5, 2.5))
+    print(abs(0 - 7))
+}
