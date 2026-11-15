@@ -199,6 +199,7 @@ run-c     builtin_str_low                    tests/build/builtin_str_low.vel
 refuse    bind_float_to_int                   tests/build/bind_float_to_int.vel
 refuse    bind_str_to_int                     tests/build/bind_str_to_int.vel
 refuse    bind_builtin_float_to_int           tests/build/bind_builtin_float_to_int.vel
+refuse    assign_float_to_int                tests/build/assign_float_to_int.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
 # and that is not what it is for here: what it pins is that `+`, `+=` and `concat`

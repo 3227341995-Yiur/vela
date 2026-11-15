@@ -1788,6 +1788,13 @@ def ck_store_name(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                             "': it is read-only here (declared without `mut`, or a loop variable)"))
         return
     }
+    if nd_kind(nd, s) == 6 {
+        # `t = v`: the same family rule the declaration form uses, because the two failed
+        # the same way -- `t = 1.5` on an `int` was accepted and then answered `1.500000`
+        # under `run` and 4609434218613702656 in the compiled twin.
+        ck_kind_pair(path, nd_line(nd, s), unpack_kind(ck),
+                     ck_value_kind(nd, mem, vm, nd[s * 10 + 2]))
+    }
     if ck_is_array_ck(ck) {
         ck_safety(path, nd_line(nd, s),
                   ck_quoted("cannot rebind array '", name, "'"))
@@ -3459,20 +3466,13 @@ def ck_builtin_kind(b: int) -> int {
     return K_BAD()
 }
 
-def ck_bind_kind(nd: Array[int, 1310720], mem: Array[int, 3741696],
-                 path: str, vm: VM, s: int, v: int) -> None {
-    # A binding's declared kind and its initialiser's kind have to belong to the same family.
-    # SPEC 3.1 lets the *integer* widths meet in a binding -- `mut x: u8 = 200` is legal and a
-    # narrowing whose value is only known at run time is checked there -- and forbids every
-    # other pairing.  Without this the checker accepted `mut t: int = 1.5` and then the three
-    # paths disagreed about what `t` holds: the interpreter printed `1.500000`, the C back end
-    # printed `1`, and the LLVM back end printed 4609434218613702656 -- a double's bits read
-    # as an int.  Measured before this rule was added.
+def ck_value_kind(nd: Array[int, 1310720], mem: Array[int, 3741696],
+                    vm: VM, v: int) -> int {
+    # The kind an initialiser or a right-hand side has, including the builtin calls that
+    # `ck_arg_kind` cannot name.  `K_BAD` means "cannot tell" and every caller treats it that
+    # way rather than guessing.
     mut a: int = ck_arg_kind(nd, mem, vm, v)
     if a == K_BAD() {
-        # a builtin call: `ck_arg_kind` only knows user functions, and widening it would
-        # change the rules that already use it for call arguments.  The table below is
-        # therefore local to this binding rule.
         if nd_kind(nd, v) == 26 {
             callee: int = nd[v * 10 + 1]
             if nd_kind(nd, callee) == 25 {
@@ -3482,17 +3482,22 @@ def ck_bind_kind(nd: Array[int, 1310720], mem: Array[int, 3741696],
             }
         }
     }
-    d: int = unpack_kind(nt_get(mem, s, NT_LIT()))
+    return a
+}
+
+def ck_kind_pair(path: str, line: int, d: int, a: int) -> None {
+    # A storage location and the value going into it have to belong to the same family.
+    # SPEC 3.1 lets the integer widths meet in a binding or an assignment -- `mut x: u8 = 200`,
+    # and a narrowing whose value is only known at run time is checked there -- and `f32`
+    # meets `float` for the same reason.  Everything else is refused: before this rule,
+    # `t = 1.5` on an `int` left the interpreter holding a double (`1.500000`) and the LLVM
+    # back end printing that double's *bits* as an int (4609434218613702656).
     if a == K_BAD() or d == K_BAD() {
         return
     }
     if a == d {
         return
     }
-    # only two kinds this rule knows can be compared: a future, an array, a struct or an
-    # enum answers "cannot tell" here rather than a guess, and the two were caught by the
-    # suite when this rule first went in (`async_library` declared a future and bound an
-    # int to it; `f32_vector` bound an f32 element to a float)
     if not ck_bind_scalar(a) {
         return
     }
@@ -3505,10 +3510,16 @@ def ck_bind_kind(nd: Array[int, 1310720], mem: Array[int, 3741696],
     if ck_flt_kind(a) and ck_flt_kind(d) {
         return
     }
-    ck_type(path, nd_line(nd, s),
+    ck_type(path, line,
             concat(concat("this binding is declared ", ck_kind_name(d)),
-                   concat(concat(" but its initialiser is ", ck_kind_name(a)),
+                   concat(concat(" but the value given to it is ", ck_kind_name(a)),
                           "; Vela converts nothing implicitly -- write to_int(...) or to_float(...)")))
+}
+
+def ck_bind_kind(nd: Array[int, 1310720], mem: Array[int, 3741696],
+                 path: str, vm: VM, s: int, v: int) -> None {
+    ck_kind_pair(path, nd_line(nd, s), unpack_kind(nt_get(mem, s, NT_LIT())),
+                 ck_value_kind(nd, mem, vm, v))
 }
 
 def ck_stmt(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
