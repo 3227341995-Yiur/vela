@@ -1,0 +1,24 @@
+# Two numeric edges that are *values*, not panics, and that a back end could easily get wrong in
+# the other direction:
+#
+#   * `1.0 / 0.0` is `inf`.  Vela follows IEEE here rather than inventing a panic -- integer
+#     division by zero *does* panic (`divide_by_mutable_zero_checks_at_runtime`), so the two rules
+#     differ and both are pinned;
+#   * negating the most negative `int` is exact, because the literal is `-9223372036854775807`
+#     (the representable boundary is one further out, and `-9223372036854775808` is a literal
+#     overflow, not a value).
+#
+# Measured before recording, on all three paths: `inf / 9223372036854775807 / -9223372036854775807`.
+#
+# Expected stdout, byte for byte:
+#     inf
+#     9223372036854775807
+#     -9223372036854775807
+def main() -> None {
+    mut z: float = 0.0
+    print(1.0 / z)
+
+    mut a: int = -9223372036854775807
+    print(-a)
+    print(0 - 9223372036854775807)
+}

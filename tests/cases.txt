@@ -170,6 +170,10 @@ panic     int_overflow_add                     tests/build/int_overflow_add.vel
 panic-c   int_overflow_add                     tests/build/int_overflow_add.vel
 panic     int_overflow_mul                     tests/build/int_overflow_mul.vel
 panic-c   int_overflow_mul                     tests/build/int_overflow_mul.vel
+# numeric edges that are *values*, not panics: float division by zero is `inf`, and negating
+# the most negative int is exact (integer division by zero panics -- the two rules differ)
+run       numeric_extremes                    tests/build/numeric_extremes.vel
+run-c     numeric_extremes                    tests/build/numeric_extremes.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
 # and that is not what it is for here: what it pins is that `+`, `+=` and `concat`
