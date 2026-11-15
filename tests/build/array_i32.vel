@@ -1,0 +1,15 @@
+# A narrow element type the interpreter *can* run: `Array[i32, N]` with a whole-element write.
+# The C back end stores four bytes and the interpreter keeps a cell, so a read that does not
+# convert back would print a value from the neighbouring cell.
+#
+# Measured before recording, on all three paths: `9 / 8`.
+#
+# Expected stdout, byte for byte:
+#     9
+#     8
+def main() -> None {
+    mut a: Array[i32, 2] = [7, 8]
+    a[0] = 9
+    print(a[0])
+    print(a[1])
+}

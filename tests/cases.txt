@@ -692,6 +692,13 @@ run-c     array_match_arms                   tests/build/array_match_arms.vel
 # `int`, and `len(a[i])` rules out a length cached once for the whole array
 run       array_loop_read                    tests/build/array_loop_read.vel
 run-c     array_loop_read                    tests/build/array_loop_read.vel
+# a narrow element type the interpreter runs: `i32`
+run       array_i32                        tests/build/array_i32.vel
+run-c     array_i32                        tests/build/array_i32.vel
+# `u8` elements: the interpreter refuses this one, so only the two compiled back ends are
+# claimed -- and they must agree with each other
+native    array_u8                         tests/build/array_u8.vel
+native-c  array_u8                         tests/build/array_u8.vel
 # `from geometry import area as a` then `a(3)`: the alias rebinds to the imported name
 run-c     module_str                         tests/build/modules/str_module.vel
 # A module imported *by a module*, with an escaped literal at every level.  This is

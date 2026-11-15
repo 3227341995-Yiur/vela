@@ -1,0 +1,17 @@
+# `Array[u8, N]`: an element is one byte, and `200` does not fit a signed byte, so the store has to
+# reinterpret rather than extend.  Both compiled back ends print 201 (`1 + 200`).
+#
+# The *interpreter* refuses this program ("Array[u8] needs an integer width conversion", SPEC 3.1),
+# which is why the rows are `native` and `native-c` -- compiled paths only -- rather than `run`.
+# That makes this the case that pins the two back ends to each other where the interpreter cannot
+# arbitrate.
+#
+# Measured before recording: `201` from both compiled back ends.
+#
+# Expected stdout, byte for byte:
+#     201
+def main() -> None {
+    mut a: Array[u8, 2] = [1, 2]
+    a[1] = 200
+    print(a[0] + a[1])
+}
