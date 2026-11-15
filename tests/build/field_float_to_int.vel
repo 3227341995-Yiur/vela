@@ -1,0 +1,9 @@
+struct Box {
+    n: int
+}
+
+def main() -> None {
+    mut b: Box = Box(0)
+    b.n = 1.5
+    print(b.n)
+}

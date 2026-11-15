@@ -200,6 +200,10 @@ refuse    bind_float_to_int                   tests/build/bind_float_to_int.vel
 refuse    bind_str_to_int                     tests/build/bind_str_to_int.vel
 refuse    bind_builtin_float_to_int           tests/build/bind_builtin_float_to_int.vel
 refuse    assign_float_to_int                tests/build/assign_float_to_int.vel
+# the same rule at the other two places a value is stored: a struct field and a compound
+# assignment (`t += 1.5` escaped the operator rule that refuses `t = t + 1.5`)
+refuse    field_float_to_int                 tests/build/field_float_to_int.vel
+refuse    compound_float_to_int              tests/build/compound_float_to_int.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
 # and that is not what it is for here: what it pins is that `+`, `+=` and `concat`

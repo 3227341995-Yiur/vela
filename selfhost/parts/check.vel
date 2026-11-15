@@ -1788,10 +1788,13 @@ def ck_store_name(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
                             "': it is read-only here (declared without `mut`, or a loop variable)"))
         return
     }
-    if nd_kind(nd, s) == 6 {
-        # `t = v`: the same family rule the declaration form uses, because the two failed
-        # the same way -- `t = 1.5` on an `int` was accepted and then answered `1.500000`
-        # under `run` and 4609434218613702656 in the compiled twin.
+    if nd_kind(nd, s) == 6 or nd_kind(nd, s) == 7 {
+        # `t = v` and `t += v`: the same family rule the declaration form uses, because they
+        # failed the same way -- `t = 1.5` on an `int` was accepted and then answered
+        # `1.500000` under `run` and 4609434218613702656 in the compiled twin.  The compound
+        # form is `t = t + v`, so the operator rule applies to it too: measured,
+        # `t = t + 1.5` was refused with "operator '+' mixes int and float" while
+        # `t += 1.5` was accepted.
         ck_kind_pair(path, nd_line(nd, s), unpack_kind(ck),
                      ck_value_kind(nd, mem, vm, nd[s * 10 + 2]))
     }
@@ -1936,6 +1939,14 @@ def ck_store(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         }
         ck_expr(nd, mem, path, vm, rc0)
         ck_member_write(nd, mem, path, vm, tgt)
+        # `b.n = 1.5`: the same family rule as a binding, at the third place a value can be
+        # stored.  Measured before this: `run` printed 1.500000, the C back end 1, and the
+        # LLVM back end the double's bits as an int.
+        fk: int = ck_recv_ck(nd, mem, vm, tgt)
+        if fk != 0 {
+            ck_kind_pair(path, nd_line(nd, s), unpack_kind(fk),
+                         ck_value_kind(nd, mem, vm, nd[s * 10 + 2]))
+        }
         return
     }
     ck_type(path, nd_line(nd, s), "invalid assignment target")
