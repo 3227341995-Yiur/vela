@@ -481,7 +481,10 @@ def elem_load(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
     }
     elem_bounds(path, vm, n, idx)
     if tag == K_AB() {
-        selflimit("Array[u8]: reading a byte needs an integer width conversion, which Vela 0.1 does not have (SPEC 3.1)")
+        # `Array[u8]` lives in the *int* pool, so an element is already a number and no
+        # width conversion is needed.  The byte pool is only for `bool` (0/1).
+        set_int(mem, fmem, dst, ipool[base + idx])
+        return
     }
     if tag == K_AA() {
         set_bool(mem, fmem, dst, bpool[base + idx] != 0)
@@ -547,7 +550,13 @@ def elem_store(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
         return
     }
     if tag == K_AB() {
-        selflimit("Array[u8]: storing a byte needs an integer width conversion, which Vela 0.1 does not have (SPEC 3.1)")
+        if st != K_INT() {
+            trap(path, vm.line, "this array holds bytes")
+        }
+        # the value a compiled back end stores is the low byte of the int, so the
+        # interpreter truncates the same way instead of keeping a wider cell
+        ipool[base + idx] = mem[src * 4 + 1] % 256
+        return
     }
     if tag == K_AX() {
         if st != K_ST() {
@@ -620,7 +629,7 @@ def exec_array_decl(nd: Array[int, 1310720], ty: Array[int, 262144],
         # read a byte out of an Array[u8] and use it as a number.  The compiled
         # program can, because C widens implicitly where Vela does not — this is
         # a gap in the language, named here rather than hidden.
-        selflimit("Array[u8] needs an integer width conversion (SPEC 3.1)")
+        # `Array[u8]` is stored in the int pool, so a declaration needs no conversion.
     }
     sid: int = nt_get(mem, s, NT_VAL())
     alloc_array(mem, fmem, ipool, fpool, bpool, path, vm, kind, n, sid, dstc)
