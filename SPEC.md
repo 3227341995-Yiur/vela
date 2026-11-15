@@ -263,7 +263,10 @@ if n < 2 {
   which is exactly what a compiled back end stores (`ipool[base + idx] = v % 256`).
   The byte pool is only for `bool`. Before this the interpreter refused any program
   that declared an `Array[u8]` ("needs an integer width conversion"), which is why
-  `bench/sieve.vel` had a compiled result and no interpreted one (`DESIGN.md` 7.4).
+  `bench/sieve.vel` had a compiled result and no interpreted one (`DESIGN.md` 7.4). A u8
+  array large enough to outgrow the int pool is still refused, and the message names that
+  pool rather than the language -- `bench/sieve.vel` asks for 20 000 000 elements and is
+  refused for that reason.
 
 ### 3.2 Declarations
 

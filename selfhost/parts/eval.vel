@@ -421,9 +421,14 @@ def alloc_array(mut mem: Array[int, 3741696], mut fmem: Array[float, 786432],
     }
     mut base: int = 0
     if tag == K_AB() {
-        pool_room(path, vm, vm.bpc, n, 33554432, "the byte arrays this program asked for are too large")
-        base = vm.bpc
-        vm.bpc += n
+        # `Array[u8]` elements are kept in the *int* pool (an element is already a number,
+        # so reading one needs no width conversion) -- which means the allocation has to
+        # come from that pool too, or every access lands outside it.  `pool_room` names
+        # the limit rather than letting an index run past the end: a program with a very
+        # large byte array -- `bench\sieve.vel` asks for 20 000 000 -- is refused here.
+        pool_room(path, vm, vm.ipc, n, 2097152, "the byte arrays this program asked for are too large for the interpreter's int pool, which `Array[u8]` uses so that an element needs no width conversion")
+        base = vm.ipc
+        vm.ipc += n
     } else if tag == K_AA() {
         pool_room(path, vm, vm.bpc, n, 33554432, "the byte arrays this program asked for are too large")
         base = vm.bpc

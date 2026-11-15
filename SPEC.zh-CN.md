@@ -4,8 +4,8 @@
 
 <!--
 源文件 : SPEC.md
-源文件字节 : 50310
-源文件 SHA256 : 5df9ce8511c6f2ce3ff0bb00cb6b59f590e3d37dc0f4cc709ac15486c15a5bff
+源文件字节 : 50524
+源文件 SHA256 : 4e33e4c1ca968aca18e65413dca96d0904d1b7c269462188d49d7379336ce87e
 翻译日期 : 2026-10-31
 规则 : 本文件是上面那个英文文件的完整翻译。英文文件一旦改动，本文件立即过期，
        powershell -ExecutionPolicy Bypass -File tools\docs-zh-check.ps1 会指名报告。
@@ -205,16 +205,16 @@ if n < 2 {
   `300`，在编译出来的孪生体里是 `44`。那个分歧已经被删掉，取而代之的是：
   * **放不下所声明宽度的字面量，在写它的那一行就被拒绝**，由检查器给出，而 `run` 报告
     同一条拒绝而不是开始运行：`vela: type error: 256 does not fit in u8`、
-    `vela: type error: 5031050310 does not fit in i32`。放得下的字面量不受影响——
+    `vela: type error: 5052450524 does not fit in i32`。放得下的字面量不受影响——
     `mut x: u8 = 200` 与 `mut x: i32 = 7` 都被接受。
-  * **值要到运行期才知道的窄化，就在运行期检查。** 有了 `mut big: int = 5031050310`，
+  * **值要到运行期才知道的窄化，就在运行期检查。** 有了 `mut big: int = 5052450524`，
     绑定 `mut x: i32 = big` 会通过检查器，然后程序以
-    `vela: panic: 5031050310 does not fit in i32` 停下——解释器与编译产物给出**同一句
+    `vela: panic: 5052450524 does not fit in i32` 停下——解释器与编译产物给出**同一句
     消息、同一行**。一个程序按运行方式有两种含义，正是这条规则要删掉的那种 bug，所以三条
     路径只给一个答案。
   * **这条规则同样覆盖经过元素或字段的写入。** 对 `a[i] = big` 与 `p.x = big`，检查器
     接受，解释器与编译产物都以上面那句、在**同一行**停下——2026-09-24 实测；而在此之前，
-    解释器对前一种会打印 `503102704`、对后一种会保留 `5031050310`，编译产物却已经停下。
+    解释器对前一种会打印 `505242704`、对后一种会保留 `5052450524`，编译产物却已经停下。
     这一条以前标着「未闭」，现在收掉是因为**两条路已经一致**，不是因为改了文字。仍有一处
     差别且不属于这条规则：解释器在任何 panic 之后都会追加自己的
     `vela: panic: the interpreted program stopped` 那一行，所以两边的 stderr 即使消息与
@@ -231,6 +231,8 @@ if n < 2 {
   （`ipool[base + idx] = v % 256`）。字节池只用于 `bool`。在此之前，解释器会拒绝任何
   声明了 `Array[u8]` 的程序（"needs an integer width conversion"），这也是
   `bench/sieve.vel` 有编译结果却没有解释结果的原因（`DESIGN.md` 7.4）。
+  大到超岀 int 池的 u8 数组仍会被拒绝，而消息点名的是那个池、不是语言本身——
+  `bench/sieve.vel` 申请 20 000 000 个元素，正是因为这个原因被拒绝。
 * 数组不退化（decay）、不改变大小，其长度是类型的一部分。
 
 ### 3.2 声明
@@ -255,7 +257,7 @@ mut buf: Array[float, 1024]    # zero-filled array; scalars need an initialiser
 * 比声明长度短的数组字面量会被补零；`mut a: Array[float, 4] = [0.0]` 合法。
 * 结构体字段和参数声明为 `name: T`；参数前的 `mut` 意味着被调方可以通过它写入——
   **而本实现对标量并不守这个承诺。** 它实际做的是下面这些，2026-09-20 在
-  `selfhost\build\vm.exe`（503108 字节）上实测，解释器和 C 后端打印出的字节完全一致、
+  `selfhost\build\vm.exe`（505248 字节）上实测，解释器和 C 后端打印出的字节完全一致、
   退出码 0、没有任何诊断：
 
   | 传给 `mut` 参数的东西 | 会写回吗？ | 实测 |
@@ -431,7 +433,7 @@ Vela 的主张是机械性的，而非风格上的：
 一个块引入一个作用域。块内的声明在块外不可见；对一个在当前函数中未声明的名字赋值是
 错误；在同一个作用域里声明同一个名字两次是错误。编译器就这几件事自己的说法如下，
 取自它打印的消息以及锁定这些消息的 golden 文件——本段之前的版本引用了一句在编译器里
-**任何地方都不存在**的话，对 `selfhost\build\vm.exe`（503108 字节，2026-09-20）的一次
+**任何地方都不存在**的话，对 `selfhost\build\vm.exe`（505248 字节，2026-09-20）的一次
 字节搜索就能定案：`'different meaning'` 和 `'one scope'` 都不在，而 `'cannot rebind'`、
 `'already declared in this scope'` 和 `'declared immutable'` 都在。
 
@@ -619,7 +621,7 @@ selfhost\build\vm.exe build-llvm file.vel [runtime-dir]
   `tests/llvm-refusals.txt` 里那份账本，`tools\llvm-column.ps1` 同时掌管两侧。
 * **一次安装是三个文件，其中两个不是可选的。** `vm.exe` 内部带着 `libLLVM`，所以
   **`LLVM-C.dll` 是这个编译器自己的载入期依赖**：一个放在没有这个 DLL 的目录里的 `vm.exe` 根本
-  起不来——`STATUS_DLL_NOT_FOUND`（退出码 `0xC5031035`）发生在 `main` 之前，两个输出流上都不会
+  起不来——`STATUS_DLL_NOT_FOUND`（退出码 `0xC5052435`）发生在 `main` 之前，两个输出流上都不会
   提到 LLVM，于是之后每一个检查都会失败并报出错误的问题。`vela_llvm_runtime.obj` 是第二个：
   `build` 把它链接进它构建的每一个程序，并且在编译器旁边找它。`tools\build.ps1` 把它写出的每个
   `vm.exe` 旁边都放上这两个文件，缺了就拒绝结束；`tools\smoke.ps1` 断言它们在那里。这与 Rust
@@ -702,7 +704,7 @@ enum Shape {
 def area(s: Shape) -> float {
     match s {
         Circle(r) {
-            return 3.50310 * r * r
+            return 3.50524 * r * r
         }
         Rect(w, h) {
             return w * h

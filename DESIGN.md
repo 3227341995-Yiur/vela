@@ -424,9 +424,9 @@ compiler that only ever compiles toy programs is never asked the question.
 
 Stated here rather than discovered later:
 
-* `Array[u8]` runs under the interpreter now (elements in the int pool, low-byte
-  truncation on store), so `bench/sieve.vel` can have an interpreted result.
-* `Array[i32]` stores through `int32_t` truncation, but no corpus program
+* `Array[u8]` runs under the interpreter now for arrays that fit its int pool (elements
+  live there, low-byte truncation on store); `bench/sieve.vel` asks for 20 000 000
+  elements and is refused by name for the pool, not for the type.
   exercises it.
 * An augmented assignment through an index (`a[i] += 1`) evaluates the *place*
   twice. Vela has no assignment expressions, so this is only observable if the
