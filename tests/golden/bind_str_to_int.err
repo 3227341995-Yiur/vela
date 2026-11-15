@@ -1,0 +1,2 @@
+vela: type error: this binding is declared int but its initialiser is str; Vela converts nothing implicitly -- write to_int(...) or to_float(...)
+  at tests/build/bind_str_to_int.vel:2

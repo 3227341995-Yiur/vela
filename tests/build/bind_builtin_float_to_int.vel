@@ -1,0 +1,4 @@
+def main() -> None {
+    mut t: int = now()
+    print(t)
+}

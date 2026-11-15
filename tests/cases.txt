@@ -193,6 +193,12 @@ run-c     builtin_numeric                    tests/build/builtin_numeric.vel
 # the low-level builtins nothing called: `bytes_at`, `intern`/`interned`, `unescape`
 run       builtin_str_low                    tests/build/builtin_str_low.vel
 run-c     builtin_str_low                    tests/build/builtin_str_low.vel
+# a binding whose declared kind and initialiser kind are in different families: refused, and
+# the three paths used to disagree about what such a binding held (float into int printed
+# `1.500000` under `run`, `1` from the C back end and a double's bits from the LLVM one)
+refuse    bind_float_to_int                   tests/build/bind_float_to_int.vel
+refuse    bind_str_to_int                     tests/build/bind_str_to_int.vel
+refuse    bind_builtin_float_to_int           tests/build/bind_builtin_float_to_int.vel
 # The lowerings themselves, held by a digest — three numbers each, so a change in
 # the back end cannot hide behind an unchanged parser.  A digest cannot be read,
 # and that is not what it is for here: what it pins is that `+`, `+=` and `concat`

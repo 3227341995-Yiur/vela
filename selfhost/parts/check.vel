@@ -3397,6 +3397,120 @@ def ck_block(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
     ck_body(nd, mem, path, vm, head)
 }
 
+def ck_bind_scalar(k: int) -> bool {
+    # the kinds a binding may be declared and initialised with, when this rule is allowed to
+    # compare them: the integer widths, the two float widths, bool and str
+    if ck_is_int_kind(k) {
+        return True
+    }
+    if ck_flt_kind(k) {
+        return True
+    }
+    if k == K_BOOL() {
+        return True
+    }
+    if k == K_STR() {
+        return True
+    }
+    return False
+}
+
+
+def ck_flt_kind(k: int) -> bool {
+    # `f32` and `float` are the two float widths, and a binding may move between them the
+    # same way it may move between the integer widths (SPEC 3.1).
+    if k == K_FLT() {
+        return True
+    }
+    if k == K_F32() {
+        return True
+    }
+    return False
+}
+
+def ck_builtin_kind(b: int) -> int {
+    # The builtins whose result kind a binding rule has to know.  Anything absent answers
+    # `K_BAD`, which the rule reads as "cannot tell" and leaves alone -- the safe direction,
+    # and the reason this table can grow without changing anything it does not mention.
+    if b == B_NOW() { return K_FLT() }
+    if b == B_SQRT() { return K_FLT() }
+    if b == B_FLOOR() { return K_FLT() }
+    if b == B_FABS() { return K_FLT() }
+    if b == B_POW() { return K_FLT() }
+    if b == B_TO_FLOAT() { return K_FLT() }
+    if b == B_MIN_FLT() { return K_FLT() }
+    if b == B_MAX_FLT() { return K_FLT() }
+    if b == B_LEN() { return K_INT() }
+    if b == B_BYTES_AT() { return K_INT() }
+    if b == B_TO_INT() { return K_INT() }
+    if b == B_ABS() { return K_INT() }
+    if b == B_MIN_INT() { return K_INT() }
+    if b == B_MAX_INT() { return K_INT() }
+    if b == B_INTERN() { return K_INT() }
+    if b == B_ARGC() { return K_INT() }
+    if b == B_SUBSTR() { return K_STR() }
+    if b == B_CONCAT() { return K_STR() }
+    if b == B_INTERNED() { return K_STR() }
+    if b == B_UNESCAPE() { return K_STR() }
+    if b == B_TO_STR() { return K_STR() }
+    if b == B_ENV() { return K_STR() }
+    if b == B_READ_TEXT() { return K_STR() }
+    if b == B_WRITE_TEXT() { return K_BOOL() }
+    return K_BAD()
+}
+
+def ck_bind_kind(nd: Array[int, 1310720], mem: Array[int, 3741696],
+                 path: str, vm: VM, s: int, v: int) -> None {
+    # A binding's declared kind and its initialiser's kind have to belong to the same family.
+    # SPEC 3.1 lets the *integer* widths meet in a binding -- `mut x: u8 = 200` is legal and a
+    # narrowing whose value is only known at run time is checked there -- and forbids every
+    # other pairing.  Without this the checker accepted `mut t: int = 1.5` and then the three
+    # paths disagreed about what `t` holds: the interpreter printed `1.500000`, the C back end
+    # printed `1`, and the LLVM back end printed 4609434218613702656 -- a double's bits read
+    # as an int.  Measured before this rule was added.
+    mut a: int = ck_arg_kind(nd, mem, vm, v)
+    if a == K_BAD() {
+        # a builtin call: `ck_arg_kind` only knows user functions, and widening it would
+        # change the rules that already use it for call arguments.  The table below is
+        # therefore local to this binding rule.
+        if nd_kind(nd, v) == 26 {
+            callee: int = nd[v * 10 + 1]
+            if nd_kind(nd, callee) == 25 {
+                if nt_get(mem, callee, NT_SYM()) == SYM_BUILTIN() {
+                    a = ck_builtin_kind(nt_get(mem, callee, NT_VAL()))
+                }
+            }
+        }
+    }
+    d: int = unpack_kind(nt_get(mem, s, NT_LIT()))
+    if a == K_BAD() or d == K_BAD() {
+        return
+    }
+    if a == d {
+        return
+    }
+    # only two kinds this rule knows can be compared: a future, an array, a struct or an
+    # enum answers "cannot tell" here rather than a guess, and the two were caught by the
+    # suite when this rule first went in (`async_library` declared a future and bound an
+    # int to it; `f32_vector` bound an f32 element to a float)
+    if not ck_bind_scalar(a) {
+        return
+    }
+    if not ck_bind_scalar(d) {
+        return
+    }
+    if ck_is_int_kind(a) and ck_is_int_kind(d) {
+        return
+    }
+    if ck_flt_kind(a) and ck_flt_kind(d) {
+        return
+    }
+    ck_type(path, nd_line(nd, s),
+            concat(concat("this binding is declared ", ck_kind_name(d)),
+                   concat(concat(" but its initialiser is ", ck_kind_name(a)),
+                          "; Vela converts nothing implicitly -- write to_int(...) or to_float(...)")))
+}
+
 def ck_stmt(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
             path: str, mut vm: VM, s: int, mark: int) -> None {
     k: int = nd_kind(nd, s)
@@ -3435,6 +3549,14 @@ def ck_stmt(nd: Array[int, 1310720], mut mem: Array[int, 3741696],
         }
         if v > 0 {
             ck_expr(nd, mem, path, vm, v)
+        }
+        # the declared kind and the initialiser's kind must be in the same family
+        if (nd[s * 10 + 6] & 2) == 2 {
+            if v > 0 {
+                if nd[s * 10 + 3] >= 0 {
+                    ck_bind_kind(nd, mem, path, vm, s, v)
+                }
+            }
         }
         return
     }
